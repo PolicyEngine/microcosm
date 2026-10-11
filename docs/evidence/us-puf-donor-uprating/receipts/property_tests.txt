@@ -1,3 +1,3 @@
-............x                                                            [100%]
+..................x                                                      [100%]
 =========================== short test summary info ============================
 XFAIL docs/evidence/us-puf-donor-uprating/proposal/test_rebase_properties.py::test_declared_uprate_on_the_donor_ages_the_source_once - the declared 2015-to-Y uprate double-counts

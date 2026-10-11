@@ -72,6 +72,60 @@ PUF_SOURCED_TARGET_VARIABLES = (
 )
 
 
+# Donor columns as the frame stores them (person or tax-unit grain).
+STORED_INPUTS = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "long_term_capital_gains_on_collectibles",
+    "unrecaptured_section_1250_gain",
+    "non_sch_d_capital_gains",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "miscellaneous_income",
+    "alimony_income",
+    "alimony_expense",
+    "salt_refund_income",
+    "charitable_cash_donations",
+    "charitable_non_cash_donations",
+    "real_estate_taxes",
+    "home_mortgage_interest",
+    "investment_interest_expense",
+    "investment_income_elected_form_4952",
+    "student_loan_interest",
+    "educator_expense",
+    "qualified_tuition_expenses",
+    "casualty_loss",
+    "unreimbursed_business_employee_expenses",
+    "traditional_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
+    "domestic_production_ald",
+    "health_savings_account_ald",
+    "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "qualified_reit_and_ptp_income",
+    "qualified_bdc_income",
+)
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -184,6 +238,76 @@ def main() -> None:
                 ),
             }
             for year in sorted(set(source_year[on_asec].tolist()))
+        }
+
+        # Stored inputs by arm, at design and final weights: the level the
+        # frame's PUF arm carries for each donor column before any target.
+        household_ids = group[by_name["household_id"]]["values"][()]
+        household_position = {int(h): i for i, h in enumerate(household_ids)}
+        person_household = np.array(
+            [household_position[int(h)] for h in person_column("person_household_id")]
+        )
+        person_arm = channel[person_household]
+        tax_unit = handle["tables/tax_unit/columns"]
+        tax_unit_by_name = {tax_unit[key].attrs["name"]: key for key in tax_unit.keys()}
+        tax_unit_ids = tax_unit[tax_unit_by_name["tax_unit_id"]]["values"][()]
+        first_person = {}
+        for row, unit in enumerate(person_column("person_tax_unit_id")):
+            first_person.setdefault(int(unit), row)
+        tax_unit_household = np.array(
+            [person_household[first_person[int(unit)]] for unit in tax_unit_ids]
+        )
+        tax_unit_arm = channel[tax_unit_household]
+
+        def masses(values, households, arms):
+            values = values.astype(np.float64)
+            out = {}
+            for label in ("asec", "puf_arm"):
+                mask = arms == "asec" if label == "asec" else arms != "asec"
+                for stage, weight in (("design", initial), ("final", final)):
+                    w = weight[households[mask]]
+                    out[f"{label}_{stage}_positive"] = float(
+                        w @ np.clip(values[mask], 0, None)
+                    )
+                    out[f"{label}_{stage}_negative"] = float(
+                        w @ np.clip(values[mask], None, 0)
+                    )
+            return out
+
+        stored = {}
+        for name in STORED_INPUTS:
+            if name in person_by_name:
+                stored[name] = {
+                    "entity": "person",
+                    **masses(person_column(name), person_household, person_arm),
+                }
+            elif name in tax_unit_by_name:
+                stored[name] = {
+                    "entity": "tax_unit",
+                    **masses(
+                        tax_unit[tax_unit_by_name[name]]["values"][()],
+                        tax_unit_household,
+                        tax_unit_arm,
+                    ),
+                }
+        receipt["stored_inputs_by_arm"] = stored
+        receipt["weighted_units_by_arm"] = {
+            "tax_units": {
+                "asec_design": float(
+                    initial[tax_unit_household[tax_unit_arm == "asec"]].sum()
+                ),
+                "puf_arm_design": float(
+                    initial[tax_unit_household[tax_unit_arm != "asec"]].sum()
+                ),
+            },
+            "persons": {
+                "asec_design": float(
+                    initial[person_household[person_arm == "asec"]].sum()
+                ),
+                "puf_arm_design": float(
+                    initial[person_household[person_arm != "asec"]].sum()
+                ),
+            },
         }
 
         decomposition = {}

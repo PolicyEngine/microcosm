@@ -1,4 +1,4 @@
-"""Seed six faults in the rebase reference and check a property test catches each.
+"""Seed nine faults in the rebase reference and check a property test catches each.
 
 Run from the repository root:
     uv run python docs/evidence/us-puf-donor-uprating/proposal/mutation_check.py
@@ -35,9 +35,21 @@ MUTATIONS = {
         "    expected = source_values * carried\n    return bool(",
         "    expected = source_values * carried\n    return True or bool(",
     ),
-    "non-qualified dividends are not clipped at zero": (
-        "    non_qualified_out = np.maximum(difference, 0.0)\n",
-        "    non_qualified_out = difference\n",
+    "non-qualified dividends follow the qualified series": (
+        "        non_qualified_series, SOURCE_YEAR, build_year\n",
+        "        qualified_series, SOURCE_YEAR, build_year\n",
+    ),
+    "recovered dividends are not snapped to whole dollars": (
+        "    snapped = tuple(np.rint(values) for values in recovered)\n",
+        "    snapped = recovered\n",
+    ),
+    "the splice applies the projection index without rebasing it to the pivot": (
+        "            spliced[year] = actuals[pivot] * index / projection[pivot]\n",
+        "            spliced[year] = actuals[pivot] * index\n",
+    ),
+    "derived columns are left unscaled": (
+        "    return values * ratio\n",
+        "    return values\n",
     ),
     "untouched columns are changed": (
         "        untouched={name: values.copy() for name, values in donor.untouched.items()},\n",

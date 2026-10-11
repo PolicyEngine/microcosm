@@ -18,14 +18,30 @@ A *leg* is one field (optionally restricted to one sign) together with
 
 Per-return growth of a series from year ``a`` to year ``b`` is
 ``(L[series][b] / L[series][a]) / (N[b] / N[a])`` for an aggregate level table
-``L`` and a return-count table ``N``. Deriving every factor from one level
-table makes chained factors consistent by construction.
+``L`` and a return-count table ``N``. A level table is spliced from observed
+actuals up to a pivot year and a projection index from the pivot on, the way
+``us_runtime/target_aging.py`` chains SOI actuals to a CBO projection.
 
 The rebase factor of a leg is ``growth(series, 2015, Y) / carried``. Applying
 it turns a verified donor value into ``field × growth(series, 2015, Y)``: the
 TY2015 amount aged once, by its own series, to the build year ``Y``. That is
 what "start from the donor's verified price year" means when columns carry
 different price years.
+
+Three kinds of column:
+
+- **Single-expression columns** (one leg, or a positive and a negative leg of
+  one field): verified by the gate, then rebased leg by leg.
+- **Dividends.** The donor stores qualified and non-qualified dividends, the
+  second as ordinary less qualified after each was aged by its own factor.
+  The TY2015 ordinary and qualified amounts are recovered exactly from the two
+  stored columns, then qualified follows the qualified line and non-qualified
+  follows the ordinary-less-qualified line. Non-qualified is zero exactly
+  where the source's ordinary equals its qualified.
+- **Derived columns** (simulated from, or a structural transform of, a base
+  amount): each record is scaled by the ratio of its rebased to its carried
+  base, which keeps the record's ratio to its base. They are not verified by
+  the gate.
 
 A donor stamped as rebased cannot be rebased again, and a donor whose values
 do not verify against the source refuses to rebase.
@@ -40,6 +56,8 @@ import numpy as np
 
 ARCHIVED_LINEAGE = "policyengine-us-data 42ed5d45 uprate_puf 2015-to-2021"
 SOURCE_YEAR = 2015
+FLOAT64_RTOL = 1e-9
+FLOAT32_RTOL = 1e-6
 
 
 class RebaseError(ValueError):
@@ -58,6 +76,7 @@ class Leg:
 class Column:
     name: str
     legs: tuple[Leg, ...]
+    rtol: float = FLOAT64_RTOL
 
 
 @dataclass
@@ -82,6 +101,27 @@ class LevelTable:
         return (level[end] / level[start]) / (self.returns[end] / self.returns[start])
 
 
+def splice(
+    actuals: Mapping[int, float], projection: Mapping[int, float]
+) -> dict[int, float]:
+    """Observed levels up to the pivot, then the projection's growth from it.
+
+    The pivot is the earliest projection year, as in
+    ``target_aging._projection_factor``: observed growth for observed years,
+    projected growth only where nothing is observed. The pivot year's observed
+    level is kept, so the pivot is counted once.
+    """
+
+    pivot = min(projection)
+    if pivot not in actuals:
+        raise RebaseError(f"no observed level for the pivot year {pivot}")
+    spliced = {year: level for year, level in actuals.items() if year <= pivot}
+    for year, index in projection.items():
+        if year > pivot:
+            spliced[year] = actuals[pivot] * index / projection[pivot]
+    return spliced
+
+
 def leg_mask(values: np.ndarray, leg: Leg) -> np.ndarray:
     if leg.sign > 0:
         return values > 0
@@ -95,7 +135,7 @@ def verify_carried(
     source_values: np.ndarray,
     carried: float,
     *,
-    rtol: float = 1e-9,
+    rtol: float = FLOAT64_RTOL,
 ) -> bool:
     """Every record equals its TY2015 value times the carried factor."""
 
@@ -118,35 +158,72 @@ def rebase_column(
     return out
 
 
+def recover_source_dividends(
+    qualified: np.ndarray,
+    non_qualified: np.ndarray,
+    *,
+    carried_ordinary: float,
+    carried_qualified: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """TY2015 ordinary and qualified dividends from the two stored columns.
+
+    The donor stores ``qualified = Q × a`` and ``non_qualified = O × b − Q × a``,
+    so ``Q = qualified / a`` and ``O = (non_qualified + qualified) / b``. PUF
+    amounts are whole dollars; the recovered values are snapped to that grid
+    and refused if they are not on it.
+    """
+
+    recovered = (
+        (non_qualified + qualified) / carried_ordinary,
+        qualified / carried_qualified,
+    )
+    snapped = tuple(np.rint(values) for values in recovered)
+    for values, grid in zip(recovered, snapped, strict=True):
+        if not np.all(np.abs(values - grid) <= 1e-6 * np.maximum(1.0, np.abs(grid))):
+            raise RebaseError("recovered dividends are not whole TY2015 dollars")
+    return snapped
+
+
 def rebase_dividends(
     qualified: np.ndarray,
     non_qualified: np.ndarray,
     *,
-    ordinary_leg: Leg,
-    qualified_leg: Leg,
+    carried_ordinary: float,
+    carried_qualified: float,
     table: LevelTable,
     build_year: int,
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Rebase ordinary and qualified dividends, then derive non-qualified.
+    qualified_series: str = "qualified_dividends",
+    non_qualified_series: str = "non_qualified_dividends",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Qualified by its own line; non-qualified by ordinary less qualified."""
 
-    The donor stores qualified and non-qualified dividends; ordinary dividends
-    are their sum. Each of ordinary and qualified follows its own series, and
-    non-qualified is the difference, clipped at zero. Returns the clipped mass.
-    """
+    ordinary_2015, qualified_2015 = recover_source_dividends(
+        qualified,
+        non_qualified,
+        carried_ordinary=carried_ordinary,
+        carried_qualified=carried_qualified,
+    )
+    qualified_out = qualified_2015 * table.growth(
+        qualified_series, SOURCE_YEAR, build_year
+    )
+    non_qualified_out = (ordinary_2015 - qualified_2015) * table.growth(
+        non_qualified_series, SOURCE_YEAR, build_year
+    )
+    return qualified_out, non_qualified_out
 
-    ordinary = qualified + non_qualified
-    ordinary_out = ordinary * (
-        table.growth(ordinary_leg.series, SOURCE_YEAR, build_year)
-        / ordinary_leg.carried
+
+def scale_derived(
+    values: np.ndarray, base_carried: np.ndarray, base_rebased: np.ndarray
+) -> np.ndarray:
+    """Scale a derived column by its base amount's rebase, record by record."""
+
+    ratio = np.divide(
+        base_rebased,
+        base_carried,
+        out=np.ones_like(base_carried, dtype=np.float64),
+        where=base_carried != 0,
     )
-    qualified_out = qualified * (
-        table.growth(qualified_leg.series, SOURCE_YEAR, build_year)
-        / qualified_leg.carried
-    )
-    difference = ordinary_out - qualified_out
-    non_qualified_out = np.maximum(difference, 0.0)
-    clipped = float(-difference[difference < 0].sum())
-    return qualified_out, non_qualified_out, clipped
+    return values * ratio
 
 
 def rebase_donor(
@@ -155,27 +232,29 @@ def rebase_donor(
     table: LevelTable,
     build_year: int,
     *,
-    source: Mapping[str, np.ndarray] | None = None,
+    source: Mapping[str, np.ndarray],
 ) -> Donor:
-    """The proposed stage: verify the carried factors, then rebase once."""
+    """The proposed stage: verify the carried factors, then rebase once.
+
+    ``source`` is required: there is no path that rebases an unverified donor.
+    """
 
     if donor.lineage != ARCHIVED_LINEAGE or donor.price_year is not None:
         raise RebaseError(
             f"donor lineage {donor.lineage!r} (price year {donor.price_year}) "
             "is not the archived lineage this rebase starts from"
         )
-    if source is not None:
-        for column in columns:
-            values = donor.columns[column.name]
-            for leg in column.legs:
-                mask = leg_mask(source[leg.field], leg)
-                if not verify_carried(
-                    values[mask], source[leg.field][mask], leg.carried
-                ):
-                    raise RebaseError(
-                        f"{column.name}: donor values do not equal "
-                        f"{leg.field} x {leg.carried}"
-                    )
+    for column in columns:
+        values = donor.columns[column.name]
+        for leg in column.legs:
+            mask = leg_mask(source[leg.field], leg)
+            if not verify_carried(
+                values[mask], source[leg.field][mask], leg.carried, rtol=column.rtol
+            ):
+                raise RebaseError(
+                    f"{column.name}: donor values do not equal "
+                    f"{leg.field} x {leg.carried}"
+                )
     rebased = {name: values.copy() for name, values in donor.columns.items()}
     for column in columns:
         rebased[column.name] = rebase_column(

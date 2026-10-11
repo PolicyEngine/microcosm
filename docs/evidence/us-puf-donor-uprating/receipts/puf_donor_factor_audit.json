@@ -5163,6 +5163,235 @@
    "note": "E19200 split by Microcosm into mortgage and investment interest by TY2015 SOI AGI band; field-local quarantine zeroes raw totals of $10M or more; the archived structural conversion (utils/mortgage_interest.py lines 274-283 at 42ed5d45) divides deductible interest by the deductible share where balances exceed the cap, so unmatched records sit above the uprated E19200"
   }
  },
+ "donor_weighted_mass": {
+  "tax_units_weighted": 161181891.72138393,
+  "columns": {
+   "alimony_expense": {
+    "positive": 10214608158.583982,
+    "negative": 0.0
+   },
+   "alimony_income": {
+    "positive": 12561190829.03997,
+    "negative": 0.0
+   },
+   "casualty_loss": {
+    "positive": 2140563372.4307394,
+    "negative": 0.0
+   },
+   "charitable_cash_donations": {
+    "positive": 196759546610.57764,
+    "negative": 0.0
+   },
+   "charitable_non_cash_donations": {
+    "positive": 105640256844.93207,
+    "negative": 0.0
+   },
+   "domestic_production_ald": {
+    "positive": 19188906907.070805,
+    "negative": 0.0
+   },
+   "educator_expense": {
+    "positive": 1379405493.8790045,
+    "negative": 0.0
+   },
+   "employment_income_before_lsr": {
+    "positive": 9078255779726.191,
+    "negative": 0.0
+   },
+   "estate_income": {
+    "positive": 47967862722.1245,
+    "negative": -7004003651.4605465
+   },
+   "farm_income": {
+    "positive": 8016778945.99015,
+    "negative": 0.0
+   },
+   "farm_operations_income": {
+    "positive": 15101800726.580772,
+    "negative": -31812522898.389236
+   },
+   "farm_rent_income": {
+    "positive": 7462364025.258285,
+    "negative": -1082037747.4107451
+   },
+   "first_home_mortgage_balance": {
+    "positive": 10542078168635.275,
+    "negative": 0.0
+   },
+   "first_home_mortgage_interest": {
+    "positive": 378352505558.4586,
+    "negative": 0.0
+   },
+   "health_savings_account_ald": {
+    "positive": 6275587493.423831,
+    "negative": 0.0
+   },
+   "home_mortgage_interest": {
+    "positive": 378352505558.4586,
+    "negative": 0.0
+   },
+   "investment_income_elected_form_4952": {
+    "positive": 5765862813.634813,
+    "negative": 0.0
+   },
+   "investment_interest_expense": {
+    "positive": 39898986612.668724,
+    "negative": 0.0
+   },
+   "long_term_capital_gains_before_response": {
+    "positive": 1112634712876.3374,
+    "negative": -70981641668.6691
+   },
+   "long_term_capital_gains_on_collectibles": {
+    "positive": 8989950062.80442,
+    "negative": 0.0
+   },
+   "miscellaneous_income": {
+    "positive": 48428560483.229645,
+    "negative": -31802734078.821156
+   },
+   "non_qualified_dividend_income": {
+    "positive": 92275982223.2536,
+    "negative": -1422548992.2301135
+   },
+   "non_sch_d_capital_gains": {
+    "positive": 24311594282.324425,
+    "negative": 0.0
+   },
+   "partnership_income": {
+    "positive": 766162292645.4902,
+    "negative": -123771039298.77885
+   },
+   "partnership_self_employment_net_earnings": {
+    "positive": 106855147459.33704,
+    "negative": -78699013542.54645
+   },
+   "puf_source_adjusted_gross_income": {
+    "positive": 11091237625510.66,
+    "negative": -232023722282.74615
+   },
+   "qualified_bdc_income": {
+    "positive": 124662245.3911809,
+    "negative": 0.0
+   },
+   "qualified_dividend_income": {
+    "positive": 297122813185.1782,
+    "negative": 0.0
+   },
+   "qualified_reit_and_ptp_income": {
+    "positive": 7875747917.434613,
+    "negative": 0.0
+   },
+   "qualified_tuition_expenses": {
+    "positive": 5705675493.808702,
+    "negative": 0.0
+   },
+   "real_estate_taxes": {
+    "positive": 227279292526.92236,
+    "negative": 0.0
+   },
+   "rental_income": {
+    "positive": 142456397714.2381,
+    "negative": -67115200032.84764
+   },
+   "s_corp_income": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "salt_refund_income": {
+    "positive": 45468745854.76796,
+    "negative": 0.0
+   },
+   "second_home_mortgage_balance": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "second_home_mortgage_interest": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "self_employed_pension_contributions_desired": {
+    "positive": 35134041067.72041,
+    "negative": 0.0
+   },
+   "self_employment_income_before_lsr": {
+    "positive": 500272500575.4542,
+    "negative": -134903142032.17824
+   },
+   "short_term_capital_gains": {
+    "positive": 55030032327.17965,
+    "negative": -116895285147.88043
+   },
+   "social_security_dependents": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "social_security_disability": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "social_security_retirement": {
+    "positive": 790662247935.0814,
+    "negative": 0.0
+   },
+   "social_security_survivors": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "sstb_self_employment_income_before_lsr": {
+    "positive": 198781485980.1443,
+    "negative": -3949718086.2134113
+   },
+   "sstb_unadjusted_basis_qualified_property": {
+    "positive": 376662903068.9099,
+    "negative": 0.0
+   },
+   "sstb_w2_wages_from_qualified_business": {
+    "positive": 57838709466.38254,
+    "negative": 0.0
+   },
+   "student_loan_interest": {
+    "positive": 19636364936.590668,
+    "negative": 0.0
+   },
+   "tax_exempt_interest_income": {
+    "positive": 55299819857.1012,
+    "negative": 0.0
+   },
+   "taxable_interest_income": {
+    "positive": 105659861734.69215,
+    "negative": 0.0
+   },
+   "taxable_ira_distributions": {
+    "positive": 406130987951.6224,
+    "negative": 0.0
+   },
+   "taxable_private_pension_income": {
+    "positive": 861772339481.1648,
+    "negative": 0.0
+   },
+   "traditional_ira_contributions_desired": {
+    "positive": 18813162172.95157,
+    "negative": 0.0
+   },
+   "unadjusted_basis_qualified_property": {
+    "positive": 2065792953475.9648,
+    "negative": 0.0
+   },
+   "unrecaptured_section_1250_gain": {
+    "positive": 39930592875.61032,
+    "negative": 0.0
+   },
+   "unreimbursed_business_employee_expenses": {
+    "positive": 230464373545.76993,
+    "negative": 0.0
+   },
+   "w2_wages_from_qualified_business": {
+    "positive": 235044494071.71097,
+    "negative": 0.0
+   }
+  }
+ },
  "donor_weighted_totals_vs_soi": {
   "donor_weight_total": 161181891.72138393,
   "soi_returns": {

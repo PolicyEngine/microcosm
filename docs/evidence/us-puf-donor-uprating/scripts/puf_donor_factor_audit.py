@@ -778,6 +778,24 @@ def main() -> None:
                 for year in (2015, 2021, 2022, 2023)
             },
         }
+    # 8. Weighted positive and negative mass of every dollar column of the
+    # donor table, all rows, for comparison with the frame's PUF arm.
+    receipt["donor_weighted_mass"] = {
+        "tax_units_weighted": float(weights.sum()),
+        "columns": {
+            column: {
+                "positive": float(
+                    weights @ np.clip(table[column].to_numpy(dtype=np.float64), 0, None)
+                ),
+                "negative": float(
+                    weights @ np.clip(table[column].to_numpy(dtype=np.float64), None, 0)
+                ),
+            }
+            for column in expected_columns
+            if classes.get(column, {}).get("class")
+            not in ("not a dollar amount", "design weight")
+        },
+    }
     receipt["donor_weighted_totals_vs_soi"] = {
         "donor_weight_total": float(weights.sum()),
         "soi_returns": {

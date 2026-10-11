@@ -4,9 +4,11 @@ Run from the repository root:
     uv run pytest docs/evidence/us-puf-donor-uprating/proposal/test_rebase_properties.py
 
 These test ``rebase_reference.py``, a standalone statement of the proposal's
-semantics, and check the carried factors it relies on against the archived
-generator's own ``uprate_puf`` (copied unchanged into ``../archived/``). They
-do not exercise a production stage or the live build, and the repository's
+semantics. Two are differential tests against other implementations of the
+same semantics: the carried-factor manifest against the archived generator's
+own ``uprate_puf`` (copied unchanged into ``../archived/``), and the spliced
+growth series against ``microcosm.build.us_runtime.target_aging``. They do not
+exercise a production stage or the live build, and the repository's
 ``testpaths = ["packages"]`` keeps them out of ordinary collection.
 
 The last test states the source-aging invariant for the ``uprate`` that
@@ -15,6 +17,7 @@ expected to fail and is marked xfail(strict=True) to record the counterexample.
 """
 
 import gzip
+import io
 import sys
 import tempfile
 import types
@@ -31,6 +34,7 @@ sys.path.insert(0, str(HERE))
 
 from rebase_reference import (  # noqa: E402
     ARCHIVED_LINEAGE,
+    FLOAT32_RTOL,
     Column,
     Donor,
     Leg,
@@ -40,6 +44,9 @@ from rebase_reference import (  # noqa: E402
     rebase_column,
     rebase_dividends,
     rebase_donor,
+    recover_source_dividends,
+    scale_derived,
+    splice,
     verify_carried,
 )
 
@@ -51,10 +58,16 @@ positive = st.floats(min_value=0.05, max_value=20.0, allow_nan=False)
 amount = st.integers(min_value=-5_000_000, max_value=50_000_000).map(float)
 amounts = st.lists(amount, min_size=1, max_size=60).map(np.array)
 build_years = st.integers(min_value=2016, max_value=2026)
+SERIES = (
+    "wages",
+    "interest",
+    "qualified_dividends",
+    "non_qualified_dividends",
+)
 
 
 @st.composite
-def level_tables(draw, series=("wages", "interest", "dividends", "qualified")):
+def level_tables(draw, series=SERIES):
     levels = {name: {year: draw(positive) for year in YEARS} for name in series}
     returns = {year: draw(positive) for year in YEARS}
     return LevelTable(levels=levels, returns=returns)
@@ -62,6 +75,9 @@ def level_tables(draw, series=("wages", "interest", "dividends", "qualified")):
 
 def close(a, b, rtol=1e-12):
     return np.all(np.abs(a - b) <= rtol * np.maximum(1.0, np.abs(b)))
+
+
+# --- Single-expression columns ---------------------------------------------
 
 
 @SETTINGS
@@ -72,88 +88,6 @@ def test_rebase_ages_the_source_value_once(source, carried, table, year):
     column = Column("x", (Leg("F", "wages", carried),))
     out = rebase_column(source * carried, column, table, year)
     assert close(out, source * table.growth("wages", 2015, year), rtol=1e-9)
-
-
-@SETTINGS
-@given(amounts, positive, st.integers(min_value=0, max_value=59), st.floats(1e-6, 1.0))
-def test_verify_gate_rejects_any_perturbed_record(source, carried, index, delta):
-    """Invariant 1: one record off its carried factor fails verification."""
-
-    assume(index < len(source) and abs(source[index]) >= 1.0)
-    donor = source * carried
-    assert verify_carried(donor, source, carried)
-    donor[index] *= 1.0 + delta
-    assert not verify_carried(donor, source, carried)
-
-
-@SETTINGS
-@given(amounts, positive, level_tables(), build_years)
-def test_a_rebased_donor_refuses_a_second_rebase(source, carried, table, year):
-    """Invariant 2: the stage runs once; its output cannot be rebased again."""
-
-    columns = (Column("x", (Leg("F", "wages", carried),)),)
-    donor = Donor(columns={"x": source * carried})
-    once = rebase_donor(donor, columns, table, year, source={"F": source})
-    with pytest.raises(RebaseError):
-        rebase_donor(once, columns, table, year)
-
-
-@SETTINGS
-@given(amounts, positive, level_tables(), build_years)
-def test_rebase_refuses_a_donor_that_does_not_verify(source, carried, table, year):
-    """Invariant 1 at the stage: a donor already aged further does not verify."""
-
-    assume(np.any(np.abs(source) >= 1.0))
-    columns = (Column("x", (Leg("F", "wages", carried),)),)
-    donor = Donor(columns={"x": source * carried * 1.05})
-    with pytest.raises(RebaseError):
-        rebase_donor(donor, columns, table, year, source={"F": source})
-
-
-@SETTINGS
-@given(amounts, positive, level_tables(), build_years, build_years)
-def test_factors_chain(source, carried, table, first, second):
-    """Invariant 4: rebasing to Y1 then aging to Y2 equals rebasing to Y2."""
-
-    column = Column("x", (Leg("F", "wages", carried),))
-    donor = source * carried
-    via = rebase_column(donor, column, table, first) * table.growth(
-        "wages", first, second
-    )
-    direct = rebase_column(donor, column, table, second)
-    assert close(via, direct, rtol=1e-9)
-
-
-@SETTINGS
-@given(amounts, level_tables(), build_years)
-def test_identity_when_the_series_matches_the_carried_factor(source, table, year):
-    """Invariant 3: a column already at its series level is unchanged."""
-
-    carried = table.growth("wages", 2015, year)
-    column = Column("x", (Leg("F", "wages", carried),))
-    donor = source * carried
-    assert close(rebase_column(donor, column, table, year), donor, rtol=1e-12)
-
-
-@SETTINGS
-@given(amounts, positive, positive, level_tables(), build_years)
-def test_zero_sign_support_and_rank_are_preserved(source, pos, neg, table, year):
-    """Invariants 6 and 7, including a sign-split column like Schedule C."""
-
-    column = Column(
-        "c",
-        (Leg("F", "wages", pos, sign=1), Leg("F", "interest", neg, sign=-1)),
-    )
-    donor = np.where(source > 0, source * pos, source * neg)
-    out = rebase_column(donor, column, table, year)
-    assert np.array_equal(out == 0, donor == 0)
-    assert np.array_equal(np.sign(out), np.sign(donor))
-    for side in (donor > 0, donor < 0):
-        order = np.argsort(donor[side], kind="stable")
-        before, after = donor[side][order], out[side][order]
-        # Strictly larger donor values stay strictly larger; ties stay ties.
-        assert np.all(np.diff(after)[np.diff(before) > 0] > 0)
-        assert np.all(np.diff(after)[np.diff(before) == 0] == 0)
 
 
 @SETTINGS
@@ -176,9 +110,95 @@ def test_sign_split_legs_follow_their_own_series(
 
 
 @SETTINGS
-@given(amounts, positive, level_tables(), build_years, st.data())
-def test_weighted_totals_scale_by_the_leg_factor(source, carried, table, year, data):
-    """Invariant 8: weighted totals move by exactly the leg's factor."""
+@given(amounts, positive, st.integers(min_value=0, max_value=59), st.floats(1e-6, 1.0))
+def test_verify_gate_rejects_any_perturbed_record(source, carried, index, delta):
+    """Invariant 1: one record off its carried factor fails verification."""
+
+    assume(index < len(source) and abs(source[index]) >= 1.0)
+    donor = source * carried
+    assert verify_carried(donor, source, carried)
+    donor[index] *= 1.0 + delta
+    assert not verify_carried(donor, source, carried)
+
+
+@SETTINGS
+@given(amounts, positive)
+def test_float32_columns_verify_at_their_own_tolerance(source, carried):
+    """Invariant 1 for float32 arrays: they pass at 1e-6 and may fail at 1e-9."""
+
+    donor = (source * carried).astype(np.float32).astype(np.float64)
+    assert verify_carried(donor, source, carried, rtol=FLOAT32_RTOL)
+
+
+@SETTINGS
+@given(amounts, positive, level_tables(), build_years)
+def test_a_rebased_donor_refuses_a_second_rebase(source, carried, table, year):
+    """Invariant 2: the stage runs once; its output cannot be rebased again."""
+
+    columns = (Column("x", (Leg("F", "wages", carried),)),)
+    donor = Donor(columns={"x": source * carried})
+    once = rebase_donor(donor, columns, table, year, source={"F": source})
+    with pytest.raises(RebaseError):
+        rebase_donor(once, columns, table, year, source={"F": source})
+
+
+@SETTINGS
+@given(amounts, positive, level_tables(), build_years)
+def test_rebase_refuses_a_donor_that_does_not_verify(source, carried, table, year):
+    """Invariant 1 at the stage: a donor already aged further does not verify."""
+
+    assume(np.any(np.abs(source) >= 1.0))
+    columns = (Column("x", (Leg("F", "wages", carried),)),)
+    donor = Donor(columns={"x": source * carried * 1.05})
+    with pytest.raises(RebaseError):
+        rebase_donor(donor, columns, table, year, source={"F": source})
+
+
+def test_the_stage_has_no_unverified_path():
+    """Invariant 1 at the stage: the source is a required argument."""
+
+    donor = Donor(columns={"x": np.array([1.0])})
+    table = LevelTable({"wages": {2015: 1.0, 2024: 2.0}}, {2015: 1.0, 2024: 1.0})
+    with pytest.raises(TypeError):
+        rebase_donor(donor, (Column("x", (Leg("F", "wages", 1.0),)),), table, 2024)
+
+
+@SETTINGS
+@given(amounts, level_tables(), build_years)
+def test_identity_when_the_series_matches_the_carried_factor(source, table, year):
+    """Invariant 3: a column already at its series level is unchanged."""
+
+    carried = table.growth("wages", 2015, year)
+    column = Column("x", (Leg("F", "wages", carried),))
+    donor = source * carried
+    assert close(rebase_column(donor, column, table, year), donor, rtol=1e-12)
+
+
+@SETTINGS
+@given(amounts, positive, positive, level_tables(), build_years)
+def test_zero_sign_support_and_rank_are_preserved(source, pos, neg, table, year):
+    """Invariants 6 and 7, on a sign-split column like Schedule C."""
+
+    column = Column(
+        "c",
+        (Leg("F", "wages", pos, sign=1), Leg("F", "interest", neg, sign=-1)),
+    )
+    donor = np.where(source > 0, source * pos, source * neg)
+    out = rebase_column(donor, column, table, year)
+    assert np.array_equal(out == 0, donor == 0)
+    assert np.array_equal(np.sign(out), np.sign(donor))
+    for side in (donor > 0, donor < 0):
+        order = np.argsort(donor[side], kind="stable")
+        before, after = donor[side][order], out[side][order]
+        # Strictly larger donor values stay strictly larger; ties stay ties.
+        assert np.all(np.diff(after)[np.diff(before) > 0] > 0)
+        assert np.all(np.diff(after)[np.diff(before) == 0] == 0)
+
+
+@SETTINGS
+@given(amounts, positive, positive, level_tables(), build_years, st.data())
+def test_each_leg_total_scales_by_its_factor(source, pos, neg, table, year, data):
+    """Invariant 8: per leg, the weighted total moves by exactly that leg's factor."""
 
     weights = np.array(
         data.draw(
@@ -189,11 +209,23 @@ def test_weighted_totals_scale_by_the_leg_factor(source, carried, table, year, d
             )
         )
     )
-    column = Column("x", (Leg("F", "wages", carried),))
-    donor = source * carried
+    column = Column(
+        "c",
+        (Leg("F", "wages", pos, sign=1), Leg("F", "interest", neg, sign=-1)),
+    )
+    donor = np.where(source > 0, source * pos, source * neg)
     out = rebase_column(donor, column, table, year)
-    factor = table.growth("wages", 2015, year) / carried
-    assert np.isclose(weights @ out, factor * (weights @ donor), rtol=1e-9, atol=1e-6)
+    for mask, series, carried in (
+        (donor > 0, "wages", pos),
+        (donor < 0, "interest", neg),
+    ):
+        factor = table.growth(series, 2015, year) / carried
+        assert np.isclose(
+            weights[mask] @ out[mask],
+            factor * (weights[mask] @ donor[mask]),
+            rtol=1e-9,
+            atol=1e-6,
+        )
 
 
 @SETTINGS
@@ -212,60 +244,156 @@ def test_untouched_columns_and_determinism(source, carried, table, year):
     assert first.price_year == year and donor.lineage == ARCHIVED_LINEAGE
 
 
-@SETTINGS
-@given(
-    st.lists(st.integers(0, 10_000_000), min_size=1, max_size=60),
-    st.data(),
-    positive,
-    positive,
-    level_tables(),
-    build_years,
-)
-def test_dividends_add_up_and_stay_nonnegative(
-    ordinary_raw, data, g_ordinary, g_qualified, table, year
-):
-    """Invariant 10: qualified + non-qualified = ordinary; non-qualified >= 0."""
+# --- Factors chain across the splice ----------------------------------------
 
-    ordinary_raw = np.array(ordinary_raw, dtype=float)
-    shares = np.array(
-        data.draw(
-            st.lists(
-                st.floats(0.0, 1.0),
-                min_size=len(ordinary_raw),
-                max_size=len(ordinary_raw),
-            )
+
+@st.composite
+def spliced_series(draw):
+    """Observed actuals to a pivot year, a projection index from the pivot on."""
+
+    pivot = draw(st.integers(min_value=2017, max_value=2024))
+    actuals = {year: draw(positive) for year in range(2015, pivot + 1)}
+    projection = {year: draw(positive) for year in range(pivot, 2027)}
+    return pivot, actuals, projection
+
+
+@SETTINGS
+@given(spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026))
+def test_growth_across_the_pivot_counts_it_once(series, start, end):
+    """Invariant 4: observed growth to the pivot times projected growth from it."""
+
+    pivot, actuals, projection = series
+    assume(start < end)
+    level = splice(actuals, projection)
+    growth = level[end] / level[start]
+    if end <= pivot:
+        expected = actuals[end] / actuals[start]
+    elif start >= pivot:
+        expected = projection[end] / projection[start]
+    else:
+        expected = (actuals[pivot] / actuals[start]) * (
+            projection[end] / projection[pivot]
         )
+    assert np.isclose(growth, expected, rtol=1e-12)
+    # Chained through any intermediate year, the result is the same.
+    for middle in range(start + 1, end):
+        assert np.isclose(
+            growth,
+            (level[middle] / level[start]) * (level[end] / level[middle]),
+            rtol=1e-12,
+        )
+
+
+@SETTINGS
+@given(spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026))
+def test_splice_agrees_with_target_aging(series, start, end):
+    """Invariant 4, differential: the reference splice equals the factor
+    ``target_aging._projection_factor`` gives targets for the same span."""
+
+    target_aging = pytest.importorskip("microcosm.build.us_runtime.target_aging")
+    pivot, actuals, projection = series
+    assume(start < end and end >= pivot)
+    result = target_aging._projection_factor(
+        {"line": {year: (value, f"cbo.{year}") for year, value in projection.items()}},
+        {"line": {year: (value, f"soi.{year}") for year, value in actuals.items()}},
+        income_source="line",
+        build_period_key=end,
+        source_period_key=start,
     )
-    qualified_raw = np.floor(ordinary_raw * shares)
-    qualified = qualified_raw * g_qualified
-    non_qualified = ordinary_raw * g_ordinary - qualified
-    assume(np.all(non_qualified >= 0))
-    q_out, nq_out, clipped = rebase_dividends(
-        qualified,
-        non_qualified,
-        ordinary_leg=Leg("E00600", "dividends", g_ordinary),
-        qualified_leg=Leg("E00650", "qualified", g_qualified),
+    assert result is not None
+    level = splice(actuals, projection)
+    assert np.isclose(result[0], level[end] / level[start], rtol=1e-12)
+
+
+# --- Dividends ---------------------------------------------------------------
+
+dividend_records = st.lists(
+    st.tuples(st.integers(0, 10_000_000), st.floats(0.0, 1.0)),
+    min_size=1,
+    max_size=60,
+)
+
+
+@SETTINGS
+@given(dividend_records, positive, positive, level_tables(), build_years)
+def test_dividends_follow_two_series_and_keep_the_source_support(
+    records, carried_ordinary, carried_qualified, table, year
+):
+    """Invariant 10: qualified and non-qualified each follow a series, and
+    non-qualified is zero exactly where source ordinary equals qualified."""
+
+    ordinary = np.array([o for o, _ in records], dtype=float)
+    qualified = np.floor(ordinary * np.array([share for _, share in records]))
+    stored_qualified = qualified * carried_qualified
+    stored_non_qualified = ordinary * carried_ordinary - stored_qualified
+    recovered_ordinary, recovered_qualified = recover_source_dividends(
+        stored_qualified,
+        stored_non_qualified,
+        carried_ordinary=carried_ordinary,
+        carried_qualified=carried_qualified,
+    )
+    assert np.array_equal(recovered_ordinary, ordinary)
+    assert np.array_equal(recovered_qualified, qualified)
+    q_out, nq_out = rebase_dividends(
+        stored_qualified,
+        stored_non_qualified,
+        carried_ordinary=carried_ordinary,
+        carried_qualified=carried_qualified,
         table=table,
         build_year=year,
     )
+    assert close(
+        q_out, qualified * table.growth("qualified_dividends", 2015, year), rtol=1e-9
+    )
+    assert close(
+        nq_out,
+        (ordinary - qualified) * table.growth("non_qualified_dividends", 2015, year),
+        rtol=1e-9,
+    )
+    assert np.array_equal(nq_out == 0, ordinary == qualified)
     assert np.all(nq_out >= 0)
-    ordinary_out = ordinary_raw * table.growth("dividends", 2015, year)
-    if clipped == 0:
-        assert close(q_out + nq_out, ordinary_out, rtol=1e-9)
-    else:
-        assert np.all(q_out + nq_out >= ordinary_out - 1e-6)
 
 
-# --- Differential: the stated carried factors against the archived code -----
+def test_dividends_off_the_dollar_grid_are_refused():
+    """A stored pair that is not whole TY2015 dollars does not rebase."""
+
+    with pytest.raises(RebaseError):
+        recover_source_dividends(
+            np.array([100.4]),
+            np.array([10.0]),
+            carried_ordinary=1.0,
+            carried_qualified=1.0,
+        )
+
+
+# --- Derived columns ---------------------------------------------------------
+
+
+@SETTINGS
+@given(amounts, positive, positive, st.data())
+def test_derived_columns_keep_their_ratio_to_the_base(base, carried, factor, data):
+    """A derived record keeps its ratio to its base; a zero base leaves it alone."""
+
+    shares = np.array(
+        data.draw(st.lists(st.floats(0.0, 3.0), min_size=len(base), max_size=len(base)))
+    )
+    base_carried = base * carried
+    derived = np.abs(base_carried) * shares
+    out = scale_derived(derived, base_carried, base_carried * factor)
+    nonzero = base_carried != 0
+    assert close(out[nonzero], derived[nonzero] * factor, rtol=1e-9)
+    assert np.array_equal(out[~nonzero], derived[~nonzero])
+
+
+# --- Differential: the carried-factor manifest against the archived code ----
 
 ARCHIVED = HERE.parent / "archived"
+SOI_BYTES = gzip.decompress((ARCHIVED / "soi_targets_42ed5d45.csv.gz").read_bytes())
 
 
 def _archived_uprate_namespace():
     calibration = Path(tempfile.mkdtemp(prefix="soi_"))
-    (calibration / "soi_targets.csv").write_bytes(
-        gzip.decompress((ARCHIVED / "soi_targets_42ed5d45.csv.gz").read_bytes())
-    )
+    (calibration / "soi_targets.csv").write_bytes(SOI_BYTES)
     storage = types.ModuleType("policyengine_us_data.storage")
     storage.CALIBRATION_FOLDER = calibration
     sys.modules.setdefault("policyengine_us_data", types.ModuleType("pud"))
@@ -277,46 +405,122 @@ def _archived_uprate_namespace():
 
 
 NS = _archived_uprate_namespace()
-GROWTH = NS["get_growth"]
-AGI_2021 = GROWTH("adjusted_gross_income", 2015, 2021)
-# The carried factors the proposal's lineage manifest would state, written
-# here independently of the archived code.
-STATED_CARRIED = {
-    "E00200": lambda v: np.full_like(v, GROWTH("employment_income", 2015, 2021)),
-    "E00300": lambda v: np.full_like(v, GROWTH("taxable_interest_income", 2015, 2021)),
-    "E19800": lambda v: np.full_like(v, 1.02**6),
-    "P23250": lambda v: np.full_like(v, AGI_2021),
-    "E02100": lambda v: np.ones_like(v),
-    "E26190": lambda v: np.ones_like(v),
-    "E00900": lambda v: np.where(
-        v > 0,
-        GROWTH("business_net_profits", 2015, 2021) * AGI_2021,
-        GROWTH("business_net_losses", 2015, 2021) * AGI_2021,
-    ),
+SOI = pd.read_csv(io.BytesIO(SOI_BYTES))
+
+
+def soi_total(variable: str, year: int, count: bool) -> float:
+    """One all-returns national SOI row, read here without the archived code."""
+
+    rows = SOI[
+        (SOI["Variable"] == variable)
+        & (SOI["Year"] == year)
+        & (SOI["Filing status"] == "All")
+        & (SOI["AGI lower bound"] == -np.inf)
+        & (SOI["AGI upper bound"] == np.inf)
+        & (SOI["Count"] == count)
+        & ~SOI["Taxable only"]
+    ]
+    return float(rows["Value"].iloc[0])
+
+
+def per_return(variable: str) -> float:
+    aggregate = soi_total(variable, 2021, False) / soi_total(variable, 2015, False)
+    returns = soi_total("count", 2021, True) / soi_total("count", 2015, True)
+    return aggregate / returns
+
+
+AGI = per_return("adjusted_gross_income")
+FLAT = 1.02**6
+# The lineage manifest the proposal's gate would hold: for each TY2015 field,
+# the factor the processed donor carries. Written from the audit's findings,
+# with the factors recomputed above from the SOI table.
+OWN_LINE = {
+    "E00200": "employment_income",
+    "E01100": "capital_gains_distributions",
+    "E00300": "taxable_interest_income",
+    "E00400": "exempt_interest",
+    "E00600": "ordinary_dividends",
+    "E00650": "qualified_dividends",
+    "E01400": "ira_distributions",
+    "E01500": "total_pension_income",
+    "E01700": "taxable_pension_income",
+    "E02300": "unemployment_compensation",
+    "E02400": "total_social_security",
+    "E02500": "taxable_social_security",
 }
+FLAT_TWO_PERCENT = ("E17500", "E18400", "E18500", "E19200", "E19800")
+AGI_DEFAULT = (
+    "E03500 E00800 E20500 E32800 E20100 E03240 E03400 E03220 E26390 E26400 "
+    "T27800 E27200 E03290 P23250 E24518 E20400 E03230 E87530 E25850 E25860 "
+    "E03270 E03300 P22250 E03210 E03150 E24515 E07300 E62900 E01200 E00700 "
+    "E58990 E07400 E07600 E11200 E87521 E07260 E09900 P08000 E07240 E09700 "
+    "E09800"
+).split()
+# (profits line, losses line, whether AGI growth is applied on top)
+SIGN_SPLIT = {
+    "E00900": ("business_net_profits", "business_net_losses", True),
+    "E26270": ("partnership_and_s_corp_income", "partnership_and_s_corp_losses", True),
+    "E01000": ("capital_gains_gross", "capital_gains_losses", False),
+}
+NOT_AGED = ("E02100", "E25960", "E25980", "E26180", "E26190", "E30400", "E30500")
+ALL_FIELDS = (
+    *OWN_LINE,
+    *FLAT_TWO_PERCENT,
+    *AGI_DEFAULT,
+    *SIGN_SPLIT,
+    *NOT_AGED,
+)
+
+
+def stated_carried(field: str, values: np.ndarray) -> np.ndarray:
+    if field in OWN_LINE:
+        return np.full_like(values, per_return(OWN_LINE[field]))
+    if field in FLAT_TWO_PERCENT:
+        return np.full_like(values, FLAT)
+    if field in AGI_DEFAULT:
+        return np.full_like(values, AGI)
+    if field in SIGN_SPLIT:
+        profits, losses, then_agi = SIGN_SPLIT[field]
+        factor = np.where(
+            values > 0,
+            per_return(profits),
+            np.where(values < 0, per_return(losses), 1.0),
+        )
+        return factor * (AGI if then_agi else 1.0)
+    return np.ones_like(values)
+
+
+def test_the_manifest_names_every_field_the_archived_lists_name():
+    """Invariant 12, coverage: no archived field is missing from the manifest."""
+
+    archived = set(NS["REMAINING_VARIABLES"])
+    for table in ("STRAIGHT", "POS_ONLY", "NEG_ONLY"):
+        archived |= set(NS[f"SOI_TO_PUF_{table}_RENAMES"].values())
+    assert archived == set(ALL_FIELDS) - set(NOT_AGED)
+    assert len(set(ALL_FIELDS)) == len(ALL_FIELDS)
 
 
 @settings(max_examples=200, deadline=None)
-@given(st.lists(st.tuples(*[amount] * len(STATED_CARRIED)), min_size=1, max_size=40))
+@given(st.lists(st.tuples(*[amount] * len(ALL_FIELDS)), min_size=1, max_size=20))
 def test_stated_carried_factors_match_archived_uprate_puf(rows):
-    """Invariant 12: the lineage manifest agrees with the archived generator.
+    """Invariant 12: the manifest agrees with the archived generator on every
+    field, with the factors recomputed here from the SOI table.
 
-    Includes the two cases a single 2021 price year would get wrong: Schedule C
-    (E00900, aged by its own sign-split series and then by AGI growth again)
-    and fields the archived lists never name (E02100, E26190), left at TY2015.
+    It covers the cases a single 2021 price year would get wrong: Schedule C
+    and partnership income (aged by their own sign-split lines and then by AGI
+    growth again) and the fields no archived list names, left at TY2015.
     """
 
-    frame = pd.DataFrame(rows, columns=list(STATED_CARRIED), dtype=float)
+    frame = pd.DataFrame(rows, columns=list(ALL_FIELDS), dtype=float)
     frame["S006"] = 100.0
-    # uprate_puf indexes every field its three rename tables name.
-    for table in ("STRAIGHT", "POS_ONLY", "NEG_ONLY"):
-        for name in NS[f"SOI_TO_PUF_{table}_RENAMES"].values():
-            if name not in frame:
-                frame[name] = 0.0
     aged = NS["uprate_puf"](frame, 2015, 2021)
-    for column, carried in STATED_CARRIED.items():
-        raw = frame[column].to_numpy()
-        assert close(aged[column].to_numpy(), raw * carried(raw), rtol=1e-12)
+    for field in ALL_FIELDS:
+        raw = frame[field].to_numpy()
+        assert close(
+            aged[field].to_numpy(), raw * stated_carried(field, raw), rtol=1e-12
+        ), field
+    returns = soi_total("count", 2021, True) / soi_total("count", 2015, True)
+    assert close(aged["S006"].to_numpy(), frame["S006"].to_numpy() * returns)
 
 
 # --- Today's declared uprate, applied to the processed donor -----------------
@@ -333,6 +537,6 @@ def test_declared_uprate_on_the_donor_ages_the_source_once(source, table, year):
     """
 
     assume(np.any(np.abs(source) >= 1.0))
-    carried = GROWTH("employment_income", 2015, 2021)
+    carried = per_return("employment_income")
     out = naive_declared_uprate(source * carried, "wages", table, year)
     assert close(out, source * table.growth("wages", 2015, year), rtol=1e-9)
