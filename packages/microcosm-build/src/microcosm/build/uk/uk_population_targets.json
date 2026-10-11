@@ -27681,7 +27681,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -27746,7 +27746,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -27798,7 +27798,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -27863,7 +27863,7 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Count",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123)."
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
     },
     {
       "target_id": "ons.age.0_10",
@@ -28310,7 +28310,7 @@
       "label": "Households by area",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -28387,7 +28387,7 @@
       "label": "Households by area children 0",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -28464,7 +28464,7 @@
       "label": "Households by area children 1",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -28541,7 +28541,7 @@
       "label": "Households by area children 2",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -28639,7 +28639,7 @@
         }
       ],
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "ons.equiv_net_income_bhc",

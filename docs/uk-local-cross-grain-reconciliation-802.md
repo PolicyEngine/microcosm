@@ -112,8 +112,11 @@ country-spec fingerprint covers:
 - **band_bridges**: projected UK ITL bands that control the SPI regional
   band cells nesting in them (see above).
 - **bridges**: higher-grain targets whose measurement signature cannot match
-  the lower side's. The household-composition partition controls the census
-  household cells, and the GB UC caseload controls UC households by area.
+  the lower side's. Each nation's household estimate controls its census
+  household cells, each region's and nation's higher rate taxpayer row
+  controls its area cells, and the GB UC caseload controls UC households by
+  area. The UC sides are not yet one concept (paid claims against every
+  household on UC), so that bridge applies the GB paid share to every area.
   Eight age bridges join the region-tier ONS age bands (inclusive integer
   ages) to the local bands (half-open). The 80-89 band has no local cell.
 - **partitions**: member targets that divide a parent at one geography,
@@ -162,7 +165,8 @@ parent value and factor.
 Published constituency and local-authority household counts compile from the
 pinned Chronicle feed and remain disclosure-controlled. The cells total
 28,061,271 households at constituency grain and 28,061,277 at local-authority
-grain. A15 uprates each grain to the 2025 Ledger control of 29,003,000, and
+grain. A15 uprates each grain to the sum of the nations' 2025 household
+estimates (29,082,020; the LFS UK total of 29,003,000 is a diagnostic), and
 A17 applies the grain factor to eligible census-tenure holds (#887). The
-household-composition bridge then rescales both local grains to the
-composition total.
+nation and region household bridge then places the level in each leg, so
+A15 sets no final value on its own.

@@ -141,4 +141,4 @@ and public sector employment is the mean of its four 2025 quarters. Three vendor
 the periods their stages were built on (UK and regional population 2023 and 2024, the DfI series
 to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
 population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
-rounding of eleven earlier receipts and journeys.
+rounding of seventeen earlier values (eleven receipts and six journeys).
