@@ -20,6 +20,8 @@
     "puf_tax_detail/clone2": 15256
    },
    "rows_matched": 394058,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 394058
   },
   "household": {
@@ -86,6 +88,8 @@
     "puf_tax_detail/clone2": 15228
    },
    "rows_matched": 352932,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 352932
   },
   "marital_unit": {
@@ -106,6 +110,8 @@
     "puf_tax_detail/clone2": 30823
    },
    "rows_matched": 722569,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 722569
   },
   "person": {
@@ -756,6 +762,8 @@
     "puf_tax_detail/clone2": 42817
    },
    "rows_matched": 907863,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 907863
   },
   "spm_unit": {
@@ -839,6 +847,8 @@
     "puf_tax_detail/clone2": 15228
    },
    "rows_matched": 367306,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 367306
   },
   "tax_unit": {
@@ -880,6 +890,8 @@
     "puf_tax_detail/clone2": 15228
    },
    "rows_matched": 467432,
+   "rows_only_in_base": 0,
+   "rows_only_in_release": 0,
    "rows_release": 467432
   }
  },

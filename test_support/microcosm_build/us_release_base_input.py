@@ -1,18 +1,26 @@
 """A synthetic base frame and the release's re-runs of its QRF stages.
 
 Shared by the release base-input invariant tests. The base is built with the
-production stage functions in ``tools/build_us_puf_support_base.py`` order
-(childcare, energy subsidy, retirement contributions, once before the PUF
-support clone and once after), and the release frames apply the release
-builder's own repair functions before re-running those stages as
-``tools/build_us_fiscal_refresh_release.py`` does when it has no validated
-pool frame.
+production stage functions, called as ``tools/build_us_puf_support_base.py``
+calls them (childcare, energy subsidy, retirement contributions, once before
+the PUF support clone and once after). The release frames apply the release
+builder's own repair functions and then call each stage as
+``tools/build_us_fiscal_refresh_release.py::_main`` calls it: the function,
+whether it is called at all, and its constant keyword arguments are read from
+``_main``'s source. A change to those calls (dropping a re-run, or passing a
+flag that consumes the base's value) changes what these helpers run.
+
+The tests are stage-level: they replay ``_main``'s calls on a small frame.
+They do not execute ``_main``, which needs the ledger, the engine and the
+release inputs.
 """
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 from collections.abc import Callable
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import numpy as np
@@ -40,6 +48,7 @@ BASE_TOOL = TEST_PATHS.repository / "tools" / "build_us_puf_support_base.py"
 SEED = 0
 PERIOD = 2024
 N_PEOPLE = 320
+STAGE_CALL_PREFIXES = ("with_us_", "_with_", "impute_us_", "with_household_")
 
 # The Route A release's recorded Social Security component factors
 # (calibration_diagnostics.json build.support_value_repairs, release
@@ -51,35 +60,159 @@ ROUTE_A_SS_FACTORS = {
     "social_security_dependents": 0.9056065944636575,
 }
 
-
-def childcare(frame: Frame) -> Frame:
-    return with_us_childcare_inputs(
-        frame, seed=SEED, time_period=PERIOD, allow_existing_without_source=True
-    )
-
-
-def energy_subsidy(frame: Frame) -> Frame:
-    return with_us_energy_subsidy_input(
-        frame, seed=SEED, time_period=PERIOD, allow_existing_without_source=True
-    )
-
-
-def retirement_contributions(frame: Frame) -> Frame:
-    return with_us_retirement_contribution_inputs(frame, seed=SEED, time_period=PERIOD)
-
-
-# Stage -> (entity, output columns, the call as the release makes it). The base
-# builder makes the same calls without ``allow_existing_without_source``, which
-# only matters when the raw ASEC source columns are absent.
-STAGES: dict[str, tuple[str, tuple[str, ...], Callable[[Frame], Frame]]] = {
-    "childcare": ("spm_unit", US_CHILDCARE_OUTPUT_COLUMNS, childcare),
-    "energy_subsidy": ("spm_unit", US_ENERGY_SUBSIDY_OUTPUT_COLUMNS, energy_subsidy),
+# Stage -> (entity, output columns, stage function).
+STAGES: dict[str, tuple[str, tuple[str, ...], Callable[..., Frame]]] = {
+    "childcare": ("spm_unit", US_CHILDCARE_OUTPUT_COLUMNS, with_us_childcare_inputs),
+    "energy_subsidy": (
+        "spm_unit",
+        US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
+        with_us_energy_subsidy_input,
+    ),
     "retirement_contributions": (
         "person",
         US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
-        retirement_contributions,
+        with_us_retirement_contribution_inputs,
     ),
 }
+
+
+@dataclass(frozen=True)
+class StageCall:
+    """One stage call in the release builder's ``_main``."""
+
+    name: str
+    lineno: int
+    pool_absent_only: bool
+    constant_keywords: tuple[tuple[str, object], ...]
+    other_keywords: tuple[str, ...]
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _pool_comparison(test: ast.expr) -> str | None:
+    """``"absent"`` / ``"present"`` when ``test`` compares ``pool_frame`` with
+    ``None`` anywhere inside it (alone or in a compound condition)."""
+
+    for node in ast.walk(test):
+        if (
+            isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name)
+            and node.left.id == "pool_frame"
+            and len(node.ops) == 1
+            and isinstance(node.comparators[0], ast.Constant)
+            and node.comparators[0].value is None
+        ):
+            if isinstance(node.ops[0], ast.Is):
+                return "absent"
+            if isinstance(node.ops[0], ast.IsNot):
+                return "present"
+    return None
+
+
+def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
+    """Every stage call in ``_main``, in source order, with its guard.
+
+    A call is ``pool_absent_only`` when it sits in the body of an ``if`` whose
+    condition contains ``pool_frame is None`` or in the ``else`` of one whose
+    condition contains ``pool_frame is not None``, at any nesting depth.
+    ``source`` defaults to the release builder's source.
+    """
+
+    tree = ast.parse(RELEASE_TOOL.read_text() if source is None else source)
+    main = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    calls: list[StageCall] = []
+
+    def visit(node: ast.AST, pool_absent: bool) -> None:
+        if isinstance(node, ast.If):
+            kind = _pool_comparison(node.test)
+            visit(node.test, pool_absent)
+            for child in node.body:
+                visit(child, pool_absent or kind == "absent")
+            for child in node.orelse:
+                visit(child, pool_absent or kind == "present")
+            return
+        if isinstance(node, ast.Call):
+            name = _call_name(node)
+            if name is not None and name.startswith(STAGE_CALL_PREFIXES):
+                calls.append(
+                    StageCall(
+                        name=name,
+                        lineno=node.lineno,
+                        pool_absent_only=pool_absent,
+                        constant_keywords=tuple(
+                            (keyword.arg, keyword.value.value)
+                            for keyword in node.keywords
+                            if isinstance(keyword.value, ast.Constant)
+                        ),
+                        other_keywords=tuple(
+                            keyword.arg
+                            for keyword in node.keywords
+                            if not isinstance(keyword.value, ast.Constant)
+                        ),
+                    )
+                )
+        for child in ast.iter_child_nodes(node):
+            visit(child, pool_absent)
+
+    visit(main, False)
+    return tuple(sorted(calls, key=lambda call: call.lineno))
+
+
+def base_builder_call_names() -> frozenset[str]:
+    """Names of every function the base builder calls."""
+
+    tree = ast.parse(BASE_TOOL.read_text())
+    return frozenset(
+        name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and (name := _call_name(node)) is not None
+    )
+
+
+def base_stage(stage: str) -> Callable[[Frame], Frame]:
+    """The stage as the base builder calls it (seed and target year only)."""
+
+    function = STAGES[stage][2]
+    return lambda frame: function(frame, seed=SEED, time_period=PERIOD)
+
+
+def release_stage(stage: str) -> Callable[[Frame], Frame]:
+    """The stage as the release builder's ``_main`` calls it today.
+
+    Returns the identity when ``_main`` no longer calls the stage. Constant
+    keyword arguments are passed through; ``seed`` and ``time_period`` take the
+    test's values. Any other keyword argument is refused, so a new one has to
+    be handled here.
+    """
+
+    function = STAGES[stage][2]
+    matches = [call for call in release_stage_calls() if call.name == function.__name__]
+    if not matches:
+        return lambda frame: frame
+    if len(matches) > 1:
+        raise AssertionError(
+            f"_main calls {function.__name__} {len(matches)} times; say which "
+            "call the invariant tests should replay."
+        )
+    call = matches[0]
+    unknown = sorted(set(call.other_keywords) - {"seed", "time_period"})
+    if unknown:
+        raise AssertionError(
+            f"_main passes {function.__name__} non-constant keyword(s) "
+            f"{unknown}; the invariant tests do not know how to supply them."
+        )
+    keywords = dict(call.constant_keywords)
+    return lambda frame: function(frame, seed=SEED, time_period=PERIOD, **keywords)
 
 
 def load_release_tool():
@@ -190,8 +323,8 @@ def build_base(n: int = N_PEOPLE, seed: int = 11) -> Frame:
     """ASEC pass, PUF-support clone, PUF-half income, then the post-clone pass."""
 
     frame = asec_frame(n, seed)
-    for _, _, call in STAGES.values():
-        frame = call(frame)
+    for stage in STAGES:
+        frame = base_stage(stage)(frame)
     expanded = clone_us_frame_for_puf_support(frame)
     person = expanded.table("person").copy()
     puf = person["person_support_clone_index"].astype(int).to_numpy() > 0
@@ -207,8 +340,8 @@ def build_base(n: int = N_PEOPLE, seed: int = 11) -> Frame:
         values[puf] = np.round(values[puf] * rng.lognormal(0.0, 0.35, puf.sum()))
         person[column] = values
     frame = replace_person(expanded, person)
-    for _, _, call in STAGES.values():
-        frame = call(frame)
+    for stage in STAGES:
+        frame = base_stage(stage)(frame)
     return frame
 
 
@@ -265,8 +398,9 @@ class ReleaseScenario:
         self._reruns: dict[tuple[str, str], pd.DataFrame] = {}
 
     def rerun(self, start: str, stage: str) -> pd.DataFrame:
-        """Outputs of ``stage`` re-run on ``base``, ``mass_repaired`` or
-        ``release_prefix`` (mass repair, then Social Security repair)."""
+        """Outputs of ``stage``, called as ``_main`` calls it, on ``base``,
+        ``mass_repaired`` or ``release_prefix`` (mass repair, then Social
+        Security repair)."""
 
         key = (start, stage)
         if key not in self._reruns:
@@ -275,5 +409,5 @@ class ReleaseScenario:
                 "mass_repaired": self.mass_repaired,
                 "release_prefix": self.release_prefix,
             }[start]
-            self._reruns[key] = outputs(STAGES[stage][2](frame), stage)
+            self._reruns[key] = outputs(release_stage(stage)(frame), stage)
         return self._reruns[key]

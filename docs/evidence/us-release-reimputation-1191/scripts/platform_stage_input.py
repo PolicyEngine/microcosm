@@ -16,7 +16,9 @@ limits BLAS/OpenMP pools, forest fit jobs and draw workers, and
 ``--compare-outputs`` compares the outputs bit for bit with an earlier run.
 
 ``compare`` compares two saved output files (``--outputs``) from different
-platforms, row by row.
+platforms, row by row. ``verify-export`` runs the stage on the full person
+table and checks that it gives, bit for bit, the outputs a replay of the
+exported column-reduced table saved.
 
 Usage:
     python platform_stage_input.py export --builder-root ROOT --base-h5 BASE \
@@ -25,6 +27,8 @@ Usage:
         [--outputs OUTPUTS.npz] [--weight-factor F] [--threads N] \
         [--compare-outputs EARLIER.npz]
     python platform_stage_input.py compare A.npz B.npz --out RECEIPT.json
+    python platform_stage_input.py verify-export --builder-root ROOT \
+        --base-h5 BASE --outputs OUTPUTS.npz --out RECEIPT.json
 """
 
 from __future__ import annotations
@@ -61,19 +65,21 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def export(args: argparse.Namespace) -> None:
-    sys.path.insert(0, str(args.builder_root / "tools"))
+def full_stage_person(builder_root: Path, base_h5: Path):
+    """The person table as with_us_retirement_contribution_inputs builds it."""
+
+    sys.path.insert(0, str(builder_root / "tools"))
     spec = importlib.util.spec_from_file_location(
         "build_us_fiscal_refresh_release",
-        args.builder_root / "tools" / "build_us_fiscal_refresh_release.py",
+        builder_root / "tools" / "build_us_fiscal_refresh_release.py",
     )
     builder = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = builder
     spec.loader.exec_module(builder)
     from microcosm.build.us_runtime import retirement_contributions as stage
 
-    base_sha = sha256(args.base_h5)
-    frame = builder._load_frame(args.base_h5, expected_sha256=base_sha)
+    base_sha = sha256(base_h5)
+    frame = builder._load_frame(base_h5, expected_sha256=base_sha)
     person = frame.table("person")
     # Mirror with_us_retirement_contribution_inputs up to run_source_stage.
     stage_person = person.copy(deep=True)
@@ -84,6 +90,62 @@ def export(args: argparse.Namespace) -> None:
         name = stage._PUF_PREDICTOR_PREFIX + column
         stage_person[name] = predictors[column].to_numpy()
         predictor_columns.append(name)
+    return stage, stage_person, predictor_columns, base_sha
+
+
+def run_stage(stage, table: pd.DataFrame, seed: int, period: int) -> pd.DataFrame:
+    from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
+
+    return run_source_stage(
+        stage.us_retirement_contributions_stage_spec(),
+        tables={"person": table},
+        operation_handlers={
+            "derive_retirement_contributions": (
+                stage.derive_us_retirement_contributions_from_manifest
+            ),
+            "impute_retirement_contributions_to_puf_support": (
+                stage.impute_us_retirement_contributions_to_puf_support_from_manifest
+            ),
+        },
+        config=SourceRuntimeConfig(seed=seed, target_year=period),
+    )
+
+
+def verify_export(args: argparse.Namespace) -> None:
+    """Run the stage on the full person table and compare, bit for bit, with
+    the outputs a replay of the exported (column-reduced) table saved."""
+
+    stage, stage_person, _, base_sha = full_stage_person(
+        args.builder_root, args.base_h5
+    )
+    output = run_stage(stage, stage_person, args.seed, args.period)
+    aligned = output.set_index("person_id").reindex(
+        stage_person["person_id"].to_numpy()
+    )
+    saved = np.load(args.outputs)
+    assert np.array_equal(saved["person_id"], stage_person["person_id"].to_numpy())
+    receipt = {
+        "base_h5": str(args.base_h5),
+        "base_h5_sha256": base_sha,
+        "full_table_columns": int(stage_person.shape[1]),
+        "exported_table_outputs": str(args.outputs),
+        "exported_table_outputs_sha256": sha256(args.outputs),
+        "rows": int(len(stage_person)),
+        "rows_differing_full_table_vs_exported_table": {
+            column: int(
+                (aligned[column].to_numpy(dtype=np.float64) != saved[column]).sum()
+            )
+            for column in OUTPUTS
+        },
+    }
+    Path(args.out).write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
+    print(json.dumps(receipt["rows_differing_full_table_vs_exported_table"]))
+
+
+def export(args: argparse.Namespace) -> None:
+    stage, stage_person, predictor_columns, base_sha = full_stage_person(
+        args.builder_root, args.base_h5
+    )
     keep = [
         *PROVENANCE,
         *SOURCE,
@@ -285,12 +347,24 @@ def main() -> None:
     rp.add_argument("--weight-factor", type=float, default=1.0)
     rp.add_argument("--threads", type=int)
     rp.add_argument("--compare-outputs", type=Path)
+    ve = sub.add_parser("verify-export")
+    ve.add_argument("--builder-root", type=Path, required=True)
+    ve.add_argument("--base-h5", type=Path, required=True)
+    ve.add_argument("--outputs", type=Path, required=True)
+    ve.add_argument("--out", type=Path, required=True)
+    ve.add_argument("--seed", type=int, default=0)
+    ve.add_argument("--period", type=int, default=2024)
     cp = sub.add_parser("compare")
     cp.add_argument("left", type=Path)
     cp.add_argument("right", type=Path)
     cp.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    {"export": export, "replay": replay, "compare": compare}[args.command](args)
+    {
+        "export": export,
+        "replay": replay,
+        "compare": compare,
+        "verify-export": verify_export,
+    }[args.command](args)
 
 
 if __name__ == "__main__":

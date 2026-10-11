@@ -1,11 +1,14 @@
-"""Check that a base H5 stores a base stage's outputs unchanged.
+"""Compare a base H5's weighted leaf totals with the base stage's record.
 
 The base builder records each stage's signal-gate details in its run context.
 For the retirement-contribution stage those include the weighted total of each
 of the five leaves at the moment the stage finished. This script recomputes
 the same totals from the exported base H5 (stored values times the stored
-household weight of each person's household) and compares them exactly. Equal
-totals show that no later base stage changed the leaves or the weights.
+household weight of each person's household) and compares them exactly.
+
+Equal totals are aggregate evidence that the H5 holds the stage's outputs and
+weights. They are five sums, so they cannot show that every row is unchanged;
+a row-level check would need the stage's checkpoint.
 
 Usage:
     python base_stage_record_check.py BASE_H5 STAGE_RUN_CONTEXT_JSON OUT_JSON

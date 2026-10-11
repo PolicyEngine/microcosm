@@ -8,7 +8,8 @@
 # On a shared host, set MAX_COMPRESSOR_GB to wait between groups until the macOS
 # memory compressor holds less than that many GB.
 set -eu
-builder_root=$1 base_h5=$2 release_h5=$3 diagnostics=$4 asec=$5
+# Resolve the caller's paths before changing directory.
+builder_root=${1:A} base_h5=${2:A} release_h5=${3:A} diagnostics=${4:A} asec=${5:A}
 here=${0:A:h}
 cd "$here/.."
 python="$builder_root/.venv/bin/python"

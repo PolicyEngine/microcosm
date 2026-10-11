@@ -24,7 +24,6 @@ import hashlib
 import json
 import platform
 import sys
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -98,6 +97,77 @@ def first_divergence(left: dict, right: dict) -> dict[str, object] | None:
                 )
         frontier = next_frontier
     return None
+
+
+def relative_gain_difference(divergence: dict) -> float | None:
+    """Relative gap between the two platforms' impurity decreases at a node
+    both split; ``None`` when one platform made the node a leaf."""
+
+    x, y = divergence["weighted_impurity_decrease"]
+    if x is None or y is None:
+        return None
+    scale = max(abs(x), abs(y))
+    return abs(x - y) / scale if scale > 0 else 0.0
+
+
+def summarize_divergences(found: list[dict]) -> dict[str, object]:
+    """Describe a forest's first-divergent nodes, one per diverging tree."""
+
+    def block(rows: list[dict]) -> dict[str, object]:
+        gaps = [g for g in map(relative_gain_difference, rows) if g is not None]
+        depths = [d["depth"] for d in rows]
+        samples = [d["n_node_samples"][0] for d in rows]
+        return {
+            "trees": len(rows),
+            "both_platforms_split": len(gaps),
+            "one_platform_leaf_other_split": len(rows) - len(gaps),
+            "depth_min": int(min(depths)),
+            "depth_median": float(np.median(depths)),
+            "depth_max": int(max(depths)),
+            "trees_at_depth_0_or_1": sum(depth <= 1 for depth in depths),
+            "node_samples_min": int(min(samples)),
+            "node_samples_median": float(np.median(samples)),
+            "node_samples_max": int(max(samples)),
+            "gains_within_1e-12": sum(g <= 1e-12 for g in gaps),
+            "gains_within_1e-9": sum(g <= 1e-9 for g in gaps),
+            "gains_within_1e-6": sum(g <= 1e-6 for g in gaps),
+            "gain_relative_difference_median": (
+                float(np.median(gaps)) if gaps else None
+            ),
+            "gain_relative_difference_max": max(gaps) if gaps else None,
+        }
+
+    by_pair: dict[str, list[dict]] = {}
+    for d in found:
+        lo, hi = sorted(d["feature"])
+        by_pair.setdefault(f"{lo}|{hi}", []).append(d)
+    summary = block(found)
+    summary.update(
+        {
+            "same_node_samples_both_platforms": sum(
+                d["n_node_samples"][0] == d["n_node_samples"][1] for d in found
+            ),
+            "same_parent_impurity_bitwise": sum(
+                d["parent_impurity"][0] == d["parent_impurity"][1] for d in found
+            ),
+            "different_feature": sum(d["feature"][0] != d["feature"][1] for d in found),
+            "same_feature_different_threshold": sum(
+                d["feature"][0] == d["feature"][1]
+                and d["threshold"][0] != d["threshold"][1]
+                for d in found
+            ),
+            # sklearn marks a leaf's feature as -2, so a pair with -2 is a node
+            # one platform split and the other left as a leaf.
+            "by_feature_pair": {
+                pair: block(rows) for pair, rows in sorted(by_pair.items())
+            },
+            "gain_relative_differences_sorted": sorted(
+                g for g in map(relative_gain_difference, found) if g is not None
+            ),
+            "examples": found[:3],
+        }
+    )
+    return summary
 
 
 def tree_arrays(arrays, index: int, tree: int) -> dict[str, np.ndarray]:
@@ -308,54 +378,7 @@ def compare(args: argparse.Namespace) -> None:
                 found = [d for d in divergences if d is not None]
                 entry["trees_with_a_divergent_split"] = len(found)
                 if found:
-                    relative = []
-                    for d in found:
-                        x, y = d["weighted_impurity_decrease"]
-                        if x is not None and y is not None and max(abs(x), abs(y)) > 0:
-                            relative.append(abs(x - y) / max(abs(x), abs(y)))
-                    samples = [d["n_node_samples"][0] for d in found]
-                    entry["first_divergence"] = {
-                        "depth_min": min(d["depth"] for d in found),
-                        "depth_median": float(np.median([d["depth"] for d in found])),
-                        "node_samples_min": int(min(samples)),
-                        "node_samples_median": float(np.median(samples)),
-                        "node_samples_max": int(max(samples)),
-                        "same_node_samples_both_platforms": sum(
-                            d["n_node_samples"][0] == d["n_node_samples"][1]
-                            for d in found
-                        ),
-                        "same_parent_impurity_bitwise": sum(
-                            d["parent_impurity"][0] == d["parent_impurity"][1]
-                            for d in found
-                        ),
-                        "different_feature": sum(
-                            d["feature"][0] != d["feature"][1] for d in found
-                        ),
-                        "feature_pairs": {
-                            f"{lo}|{hi}": count
-                            for (lo, hi), count in sorted(
-                                Counter(
-                                    tuple(sorted(d["feature"])) for d in found
-                                ).items()
-                            )
-                        },
-                        "same_feature_different_threshold": sum(
-                            d["feature"][0] == d["feature"][1]
-                            and d["threshold"][0] != d["threshold"][1]
-                            for d in found
-                        ),
-                        "both_split": len(relative),
-                        "impurity_decrease_relative_difference_max": (
-                            max(relative) if relative else None
-                        ),
-                        "impurity_decrease_relative_difference_median": (
-                            float(np.median(relative)) if relative else None
-                        ),
-                        "impurity_decrease_equal_within_1e-12": sum(
-                            r <= 1e-12 for r in relative
-                        ),
-                        "examples": found[:3],
-                    }
+                    entry["first_divergence"] = summarize_divergences(found)
         elif a["step"] in ("gate_fit", "gate_draw"):
             key = a["train_proba_key"] if a["step"] == "gate_fit" else a["proba_key"]
             pa, pb = left_arrays[key], right_arrays[key]
@@ -386,6 +409,29 @@ def compare(args: argparse.Namespace) -> None:
                 )
                 entry["max_abs_difference"] = float(difference.max())
         report["steps"].append(entry)
+    forests = [step for step in report["steps"] if step["step"] == "forest"]
+    divergent = [
+        step["first_divergence"] for step in forests if "first_divergence" in step
+    ]
+    report["forest_totals"] = {
+        "trees": sum(step["trees"] for step in forests),
+        "trees_differing_in_structure": sum(
+            step["trees_differing_in_structure"] for step in forests
+        ),
+        **{
+            key: sum(d[key] for d in divergent)
+            for key in (
+                "both_platforms_split",
+                "one_platform_leaf_other_split",
+                "different_feature",
+                "same_feature_different_threshold",
+                "same_node_samples_both_platforms",
+                "gains_within_1e-12",
+                "gains_within_1e-9",
+                "gains_within_1e-6",
+            )
+        },
+    }
     report["outputs_identical"] = {
         column: left["output_sha256"][column] == right["output_sha256"][column]
         for column in left["output_sha256"]

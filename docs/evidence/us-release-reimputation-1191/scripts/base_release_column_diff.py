@@ -1,7 +1,7 @@
 """Compare every stored column of a US base frame H5 with a release H5.
 
-Rows are matched on each entity's id column. For every column present in
-both files the receipt records how many rows changed, split by support channel
+Rows are matched on each entity's id column, which must be unique; rows
+present in only one file are counted. For every column present in both files the receipt records how many rows changed, split by support channel
 and clone index, the direction of each change (zero to positive, positive to
 zero, up, down), the largest absolute difference and, where every changed row
 moved by the same ratio, that ratio. Columns present in only one file are
@@ -58,20 +58,31 @@ def as_float(values: pd.Series) -> np.ndarray | None:
     return None
 
 
+def differs(base: pd.Series, release: pd.Series) -> np.ndarray:
+    """Row-wise inequality without a lossy conversion.
+
+    Integer and boolean columns are compared in their own dtype (float64
+    cannot tell integers above 2**53 apart); floats are compared exactly with
+    NaN equal to NaN; everything else is compared as decoded text.
+    """
+
+    if base.dtype.kind in "biu" and release.dtype.kind in "biu":
+        return base.to_numpy() != release.to_numpy()
+    if base.dtype.kind in "biuf" and release.dtype.kind in "biuf":
+        left = base.to_numpy(dtype=np.float64)
+        right = release.to_numpy(dtype=np.float64)
+        return ~(np.isnan(left) & np.isnan(right)) & (left != right)
+    left = base.map(lambda v: v.decode() if isinstance(v, bytes) else str(v))
+    right = release.map(lambda v: v.decode() if isinstance(v, bytes) else str(v))
+    return (left != right).to_numpy()
+
+
 def compare_column(
     base: pd.Series, release: pd.Series, labels: pd.Series
 ) -> dict[str, object] | None:
     base_float = as_float(base)
     release_float = as_float(release)
-    if base_float is not None and release_float is not None:
-        both_nan = np.isnan(base_float) & np.isnan(release_float)
-        changed = ~both_nan & (base_float != release_float)
-    else:
-        base_text = base.map(lambda v: v.decode() if isinstance(v, bytes) else str(v))
-        release_text = release.map(
-            lambda v: v.decode() if isinstance(v, bytes) else str(v)
-        )
-        changed = (base_text != release_text).to_numpy()
+    changed = differs(base, release)
     n_changed = int(changed.sum())
     if n_changed == 0:
         return None
@@ -128,11 +139,16 @@ def main() -> None:
         base = pd.read_hdf(base_path, entity)
         release = pd.read_hdf(release_path, entity)
         id_column = ID_COLUMN[entity]
+        rows_base, rows_release = int(len(base)), int(len(release))
+        if not base[id_column].is_unique or not release[id_column].is_unique:
+            raise ValueError(f"{entity}: {id_column} is not unique in both files")
         base = base.set_index(id_column, drop=False)
         release = release.set_index(id_column, drop=False)
         only_base = sorted(set(base.columns) - set(release.columns))
         only_release = sorted(set(release.columns) - set(base.columns))
         common_ids = base.index.intersection(release.index)
+        rows_only_base = int(len(base.index.difference(release.index)))
+        rows_only_release = int(len(release.index.difference(base.index)))
         base = base.loc[common_ids]
         release = release.loc[common_ids]
         labels = channel_labels(base, entity)
@@ -145,9 +161,11 @@ def main() -> None:
             else:
                 changed_columns[column] = result
         receipt["entities"][entity] = {
-            "rows_base": int(len(base)),
-            "rows_release": int(len(release)),
+            "rows_base": rows_base,
+            "rows_release": rows_release,
             "rows_matched": int(len(common_ids)),
+            "rows_only_in_base": rows_only_base,
+            "rows_only_in_release": rows_only_release,
             "rows_by_channel": {
                 str(key): int(value) for key, value in labels.value_counts().items()
             },
