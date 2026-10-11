@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_51aa40f.jsonl",
- "feed_sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac",
+ "feed": "consumer_facts_us_cf9ece2.jsonl",
+ "feed_sha256": "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -22,6 +22,7 @@
   "bea_nipa.personal_outlays": 1,
   "bea_nipa.personal_saving": 1,
   "bea_nipa.personal_saving_rate": 1,
+  "bea_nipa.private_group_health_insurance": 3,
   "bea_nipa.proprietors_income": 1,
   "bea_nipa.rental_income_of_persons": 1,
   "bea_nipa.social_security_benefits": 1,

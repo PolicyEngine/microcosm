@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "f002c79cc4a9296d34573d9c259eea0058f06e999630752ae3396395333889eb",
+  "documentation_sha256": "58a745afcfd8c3fd55317a61c4e79880dffbaf49344888b28b331d0318e67404",
   "field_usage": {
-    "authored_normative_field_count": 32436,
+    "authored_normative_field_count": 32437,
     "claim_count": 49,
     "claims": [
       {
@@ -514,8 +514,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1748,
-        "pointer_sha256": "dcc891c12eb675ee7f21c903995db98c3b8c6ccba569d71f0fd59b589abce04c",
+        "pointer_count": 1749,
+        "pointer_sha256": "d0979722ea5153bd152e5e1c1201f5d530d11b21aecad18aca38473962caa062",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -772,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42216,
-    "consumed_field_count": 42216,
+    "configuration_field_count": 42217,
+    "consumed_field_count": 42217,
     "generation0_effect_counts": {
-      "legacy_behavior": 38530,
+      "legacy_behavior": 38531,
       "no_generation0_effect": 3686
     },
     "mode_counts": {
       "compiler_semantic": 27717,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14042
+      "legacy_behavior": 14043
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "e8d32da2dbdaa015cb4eb363084c66cf509a93dde76cd473113750120dcaef80",
+    "pointer_inventory_sha256": "c1e2a118a0d53db0bb628b14357a2c86db2956332f5b359c9092764f9c451a95",
     "resolved_binding_field_count": 9780,
     "unused_field_count": 0
   },
@@ -1361,12 +1361,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "3bfce32d85079804f869686bd6bf983dbbb7e262c05a982a9d40d85ae0f69238"
+          "sha256": "6eb2f999ab2d7b733673f3b13402c01fe6204445b06f8b4f508dc82bbe9e1a3e"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "3bfce32d85079804f869686bd6bf983dbbb7e262c05a982a9d40d85ae0f69238"
+          "sha256": "6eb2f999ab2d7b733673f3b13402c01fe6204445b06f8b4f508dc82bbe9e1a3e"
         },
         "status": "covered"
       },
@@ -1775,12 +1775,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "b90f0b264f9357eeda5169416babb50f3f360927a70aa0fd6ec78aa54af50427",
+          "sha256": "33e20427d3bddd9ee0b9b55042cc061854442c20cb6c397951642e1d3a334c50",
           "stages": 37
         },
         "failures": [],
         "observed": {
-          "sha256": "b90f0b264f9357eeda5169416babb50f3f360927a70aa0fd6ec78aa54af50427",
+          "sha256": "33e20427d3bddd9ee0b9b55042cc061854442c20cb6c397951642e1d3a334c50",
           "stages": 38
         },
         "status": "covered"
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "e2a40490a6b705bab15bf2e7dff8eea4d7841ad70d3b7858874778d4e4829021"
+          "sha256": "d468a00f74ce64da5470df8487f932a8dd5db2b758f58397c6279b3c19fa9b1b"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "e2a40490a6b705bab15bf2e7dff8eea4d7841ad70d3b7858874778d4e4829021"
+          "sha256": "d468a00f74ce64da5470df8487f932a8dd5db2b758f58397c6279b3c19fa9b1b"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "fa02861d576da88cc771651aa309fb87bd8ac9427157b4175bced510f20d6d4d"
+          "sha256": "70c36826e568cc8b2e16687b8ac674618573be09b3b553dd47e5517dd4a17bf2"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "a1e98deaa1f5a451c7d0e1f380a7bf50a82b0cbc94753b885b7cf9a11e7d0005"
+      "spec_sha256": "b73115661e39ca2263821022aa5c5f50c453a96fb13e8af4e231428962ce0b2e"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "a1e98deaa1f5a451c7d0e1f380a7bf50a82b0cbc94753b885b7cf9a11e7d0005"
+    "spec_sha256": "b73115661e39ca2263821022aa5c5f50c453a96fb13e8af4e231428962ce0b2e"
   },
   "status": "pass"
 }

@@ -136,6 +136,7 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_anchor_feed_mismatches,
     us_esi_premiums_anchor_gate,
     us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
@@ -12518,6 +12519,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
     )
+    # microcosm#454 / d1317: the ESI stage scales to BEA B4923C values it pins
+    # itself; the feed banks the same series. Refuse a feed that disagrees.
+    esi_anchor_feed_mismatches = us_esi_premiums_anchor_feed_mismatches(
+        ledger_artifact.facts
+    )
+    if esi_anchor_feed_mismatches and not args.allow_esi_premium_gaps:
+        raise SystemExit(
+            "error: the meps_esi_premiums anchor differs from the Chronicle "
+            "feed: " + "; ".join(esi_anchor_feed_mismatches)
+        )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,

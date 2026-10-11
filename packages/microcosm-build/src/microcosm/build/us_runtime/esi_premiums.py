@@ -58,17 +58,22 @@ AHRQ suppresses nine small-firm employee-contribution cells; each takes the
 national small-firm cell times the State's total-to-national ratio.
 
 One factor scales every policyholder's raw share so the weighted total equals
+BEA NIPA Table 7.8 line 17 (series B4923C, "Private group health insurance")
+for the build year, the anchor decision d1317 chose. BEA's State Personal
+Income methodology (December 2025, paragraphs 3.18-3.19) says its MEPS source
+"covers both health insurance purchased by employers for their active and
+retired employees" and its federal estimate covers "active and retired federal
+civilian employees". The pinned US Chronicle feed carries the same values
+(record sets ``bea_nipa.cy<year>.private_group_health_insurance``), and the
+release tool refuses a feed whose values differ from the stage's.
+
 CMS NHE Table 24's employer contribution to private health insurance premiums
-for the build year, the anchor microcosm#454 chose. Its methodology paper says
-the estimate covers "active employees, continuation of health coverage
-(COBRA), and retirees" of private and State and local sponsors (from MEPS-IC)
-and federal "employers, employees and retirees" (from OPM). BEA NIPA Table 7.8
-line 17 (series B4923C) is a second estimate of the same concept, 6.7% lower
-for 2024: BEA's State Personal Income methodology (December 2025, paragraphs
-3.18-3.19) says its MEPS source "covers both health insurance purchased by
-employers for their active and retired employees" and its federal estimate
-covers "active and retired federal civilian employees". It is recorded as a
-cross-check, not gated.
+is a second estimate of the same concept, 7.2% higher for 2024 (its
+methodology paper: "active employees, continuation of health coverage
+(COBRA), and retirees"). It is recorded beside the anchor verdict, as is
+MEPS-IC's own private-sector active-employee total, which the private part of
+the column matches within half a percent on the pinned pools. Neither is
+gated.
 
 Not produced here
 -----------------
@@ -84,7 +89,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from types import MappingProxyType
@@ -118,6 +123,7 @@ __all__ = [
     "load_meps_ic_esi_premium_cells",
     "meps_ic_private_active_employer_totals",
     "refuse_unassigned_us_esi_premiums",
+    "us_esi_premiums_anchor_feed_mismatches",
     "us_esi_premiums_anchor_gate",
     "us_esi_premiums_signal_gate",
     "us_esi_premiums_stage_spec",
@@ -197,50 +203,53 @@ _BEA_SECTION7_URL = (
 )
 _NHE_TABLES_URL = "https://www.cms.gov/files/zip/nhe-tables.zip"
 
-#: CMS NHE Table 24 (2024 National Health Expenditure Accounts, data through
-#: CY2024), row "Employer Contribution to Private Health Insurance Premiums":
-#: private, federal and State and local employers, for active employees, COBRA
-#: enrollees and retirees. The anchor microcosm#454 chose; banked in the
-#: pinned feed as cms_nhe.cy{2023,2024}.esi_employer_contribution_premiums.
-#: ``sha256`` is the digest of the zip archive at ``source`` (520,391 bytes),
-#: not of the Table 24 workbook inside it.
-EMPLOYER_PREMIUM_ANCHOR: Mapping[str, Any] = MappingProxyType(
-    {
-        "source": _NHE_TABLES_URL,
-        "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
-        "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
-        "row": "Employer Contribution to Private Health Insurance Premiums",
-        "coverage": (
-            "active employees, COBRA enrollees and retirees of private, "
-            "federal and State and local employers"
-        ),
-        # Integer dollars: the manifest round-trips through YAML.
-        "values": {"2023": 975_700_000_000, "2024": 1_047_000_000_000},
-    }
-)
 #: BEA NIPA Table 7.8 line 17 (B4923C), millions of dollars converted to
 #: dollars, from the annual update published 2026-09-30 (file created
-#: 2026-09-28). That update revised 2024 from the $1,002.9B the retired
-#: us-data loss matrix pinned. A second estimate of the same concept; recorded,
-#: not gated.
-EMPLOYER_PREMIUM_CROSS_CHECK: Mapping[str, Any] = MappingProxyType(
+#: 2026-09-28; that update revised 2024 from the $1,002.9B the retired us-data
+#: loss matrix pinned). The anchor decision d1317 chose. The pinned US
+#: Chronicle feed banks the same three values (chronicle#331).
+EMPLOYER_PREMIUM_ANCHOR: Mapping[str, Any] = MappingProxyType(
     {
         "source": _BEA_SECTION7_URL,
         "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
         "table": "NIPA Table 7.8 Supplements to Wages and Salaries by Type",
+        "row": "line 17, series B4923C, Private group health insurance",
         "line": 17,
         "series": "B4923C",
-        "label": "Private group health insurance",
         "published": "2026-09-30",
+        "feed_record_set": "bea_nipa.cy{year}.private_group_health_insurance",
+        "coverage": (
+            "employer contributions for active and retired employees (BEA "
+            "State Personal Income methodology, December 2025, paragraphs "
+            "3.18-3.19)"
+        ),
+        # Integer dollars: the manifest round-trips through YAML.
         "values": {
             "2023": 923_195_000_000,
             "2024": 977_034_000_000,
             "2025": 1_027_929_000_000,
         },
+    }
+)
+#: CMS NHE Table 24 (2024 National Health Expenditure Accounts, data through
+#: CY2024), row "Employer Contribution to Private Health Insurance Premiums":
+#: private, federal and State and local employers, for active employees, COBRA
+#: enrollees and retirees; banked in the pinned feed as
+#: cms_nhe.cy{2023,2024}.esi_employer_contribution_premiums. A second estimate
+#: of the same concept; recorded, not gated. ``sha256`` is the digest of the
+#: zip archive at ``source`` (520,391 bytes), not of the Table 24 workbook
+#: inside it.
+EMPLOYER_PREMIUM_CROSS_CHECK: Mapping[str, Any] = MappingProxyType(
+    {
+        "source": _NHE_TABLES_URL,
+        "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+        "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+        "row": "Employer Contribution to Private Health Insurance Premiums",
+        "values": {"2023": 975_700_000_000, "2024": 1_047_000_000_000},
         "relation": (
             "second estimate of the same concept: employer contributions for "
-            "active and retired employees (BEA State Personal Income "
-            "methodology, December 2025, paragraphs 3.18-3.19)"
+            "active employees, COBRA enrollees and retirees (NHEA methodology "
+            "paper, 2024, p. 29)"
         ),
     }
 )
@@ -653,11 +662,51 @@ def meps_ic_private_active_employer_totals(
     return totals
 
 
+def us_esi_premiums_anchor_feed_mismatches(
+    facts: Iterable[Mapping[str, Any]],
+) -> list[str]:
+    """Where the Chronicle feed's B4923C facts differ from the stage's anchor.
+
+    The stage pins the BEA values it scales to; the pinned US feed banks the
+    same series (``bea_nipa.cy<year>.private_group_health_insurance``). The
+    release tool calls this on the facts it compiles targets from, so the
+    producer's anchor and the banked fact cannot drift apart unseen. Returns
+    one message per anchor year whose fact is missing, repeated or different.
+    """
+
+    template = str(EMPLOYER_PREMIUM_ANCHOR["feed_record_set"])
+    wanted = {
+        template.format(year=year): (year, int(value))
+        for year, value in EMPLOYER_PREMIUM_ANCHOR["values"].items()
+    }
+    found: dict[str, list[Any]] = {record_set: [] for record_set in wanted}
+    for fact in facts:
+        layout = fact.get("layout")
+        record_set = (
+            layout.get("record_set_id") if isinstance(layout, Mapping) else None
+        )
+        if record_set in found:
+            found[record_set].append(fact.get("value"))
+    problems: list[str] = []
+    for record_set, (year, expected) in sorted(wanted.items()):
+        values = found[record_set]
+        if not values:
+            problems.append(f"{record_set}: no fact in the feed ({year}).")
+        elif len(values) > 1:
+            problems.append(f"{record_set}: {len(values)} facts in the feed ({year}).")
+        elif values[0] != expected:
+            problems.append(
+                f"{record_set}: feed value {values[0]!r} is not the stage's "
+                f"anchor {expected} ({year})."
+            )
+    return problems
+
+
 def _anchor(year: int) -> float:
     values = EMPLOYER_PREMIUM_ANCHOR["values"]
     if str(year) not in values:
         raise SourceRuntimeError(
-            f"US ESI premium stage has no NHE Table 24 anchor for {year}; pinned "
+            f"US ESI premium stage has no BEA NIPA 7.8 line 17 anchor for {year}; pinned "
             f"years: {sorted(values)}."
         )
     return float(values[str(year)])
@@ -689,7 +738,7 @@ def derive_us_employer_esi_premiums_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Assign MEPS-IC employer shares and scale them to the NHE anchor.
+    """Assign MEPS-IC employer shares and scale them to the BEA anchor.
 
     The factor is set over every policyholder, the anchor's universe; the
     column carries the employed policyholders' part.
@@ -1088,17 +1137,17 @@ def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
 def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult:
     """Hold a release's weighted ESI employer premium total to its anchor.
 
-    Runs on the calibrated export (dense and sparse). The anchor, CMS NHE
-    Table 24, counts employer contributions for every policyholder, so the
+    Runs on the calibrated export (dense and sparse). The anchor, BEA NIPA
+    7.8 line 17, counts employer contributions for every policyholder, so the
     gate compares the anchor-universe total: the column (employed
     policyholders) plus the same scale factor applied to the other
     policyholders' MEPS-IC shares, recomputed from the raw ASEC columns at the
     frame's weights. It fails when the column is absent or zero-mass, when
     the raw columns are absent, when that total leaves
     ±``ANCHOR_RELATIVE_TOLERANCE`` of the anchor for ``time_period``, or when
-    the employed share of it leaves its band. BEA NIPA 7.8 line 17 and
-    MEPS-IC's own private-sector enrollment total are recorded beside the
-    verdict, not gated.
+    the employed share of it leaves its band. CMS NHE Table 24 and MEPS-IC's
+    own private-sector enrollment total are recorded beside the verdict, not
+    gated.
     """
 
     person = frame.table("person")
@@ -1143,7 +1192,7 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
         failures.append(f"{US_ESI_EMPLOYER_PREMIUM_COLUMN}: zero weighted mass.")
     anchor = EMPLOYER_PREMIUM_ANCHOR["values"].get(year)
     if anchor is None:
-        failures.append(f"no NHE Table 24 employer-contribution anchor for {year}.")
+        failures.append(f"no BEA NIPA 7.8 line 17 anchor for {year}.")
     if summary["source_columns_missing"]:
         failures.append(
             _missing_source_failure(
@@ -1178,8 +1227,8 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
             if abs(relative) > ANCHOR_RELATIVE_TOLERANCE:
                 failures.append(
                     "employer premiums over every policyholder total "
-                    f"${universe_total / 1e9:,.1f}B, {relative:+.1%} from NHE "
-                    f"Table 24 ${float(anchor) / 1e9:,.1f}B ({year}); tolerance "
+                    f"${universe_total / 1e9:,.1f}B, {relative:+.1%} from BEA NIPA 7.8 "
+                    f"line 17 ${float(anchor) / 1e9:,.1f}B ({year}); tolerance "
                     f"±{ANCHOR_RELATIVE_TOLERANCE:.0%}."
                 )
         low, high = _EMPLOYED_SHARE_BAND
@@ -1189,9 +1238,9 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
                 f"employed policyholders carry {employed_share:.4f} of the "
                 f"anchor-universe employer total, outside [{low}, {high}]."
             )
-        bea = EMPLOYER_PREMIUM_CROSS_CHECK["values"].get(year)
-        if bea is not None and np.isfinite(universe_total):
-            details["cross_check_ratio"] = universe_total / float(bea)
+        nhe = EMPLOYER_PREMIUM_CROSS_CHECK["values"].get(year)
+        if nhe is not None and np.isfinite(universe_total):
+            details["cross_check_ratio"] = universe_total / float(nhe)
         active = dict(summary["meps_ic_private_active_employer_total"])
         if year in active:
             private = float(dict(summary["employer_premium_by_sector"])["private"])

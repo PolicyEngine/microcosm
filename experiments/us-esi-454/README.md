@@ -35,3 +35,16 @@ These are pre-calibration figures at pooled ASEC weights. They are evidence
 about the stage, not about a release:
 `packages/microcosm-build/tests/engine_free/us/test_us_esi_premiums.py` pins
 the figures the docs and registers quote to these files.
+
+## The feed re-pin
+
+`feed-repin/` holds the two checks behind the 2026-10-11 re-pin of the US
+Chronicle feed to `cf9ece2`, which banks BEA B4923C, the stage's anchor
+(`docs/us-chronicle-feed-repin.md`):
+
+- `compare_feeds.py` joins the previous and new feeds on
+  `aggregate_fact_key` and compares row bytes; `value_diff.json` records 0
+  rows missing, 0 changed and the three added B4923C facts.
+- `compare_registries.py` compiles the US fiscal target registry on both
+  feeds the way the target-parity generator does; `registry_diff.json`
+  records 33,250 targets on each and no difference.

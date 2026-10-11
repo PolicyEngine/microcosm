@@ -7079,9 +7079,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     # The invented feed is not the committed pin; this test is about the
-    # corridor contract, not the pin, which has its own tests.
+    # corridor contract, not the pin, which has its own tests. Nor does it
+    # carry the ESI anchor's B4923C facts (checked in test_us_esi_premiums).
     monkeypatch.setattr(
         builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_feed_mismatches", lambda facts: []
     )
     monkeypatch.setattr(
         builder,
@@ -16167,6 +16171,19 @@ def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
     compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
     assert loaded < checked < compiled
     assert source.count("_check_committed_us_ledger_feed_pin(") == 1
+
+
+def test_main_holds_the_esi_anchor_to_the_feed_before_compiling_targets() -> None:
+    """microcosm#454: the anchor-versus-feed check runs on the pinned feed."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    anchored = source.index(
+        "us_esi_premiums_anchor_feed_mismatches(\n        ledger_artifact.facts"
+    )
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert checked < anchored < compiled
+    assert source.count("us_esi_premiums_anchor_feed_mismatches(") == 1
 
 
 # SPM measurement composition refusal

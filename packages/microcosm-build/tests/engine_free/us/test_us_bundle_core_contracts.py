@@ -25,7 +25,7 @@ def test_source_surface_classification_is_complete() -> None:
     }
     assert normative["stage_asset"] == {
         "id": "source_stages",
-        "sha256": "e02a7b2682963a9d50519b592472e07903379361c63304b63b851575cb0a7dbe",
+        "sha256": "50c9eb0dc57a74117d17db67f160e500664fed5b3a39c77a423f6e4aaafe0d24",
     }
     assert operational["stage_asset"] == {
         "path": "microcosm.build.us/source_stages.json"

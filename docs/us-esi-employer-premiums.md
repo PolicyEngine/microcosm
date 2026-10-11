@@ -108,9 +108,10 @@ employee, by coverage tier:
 
 `NOEMP` and `PEIO1COW` describe different jobs. `PEIO1COW` is the class of
 worker of the current job. `NOEMP` is the size of the employer of the longest
-job held last year. A worker who changed jobs takes the earlier employer's
-size band, and a current worker with no job last year (`NOEMP` 0) takes the
-State's all-sizes column.
+job held last year. A worker whose longest job last year was with a different
+employer from the current one takes that other employer's size band, and a
+current worker with no job last year (`NOEMP` 0) takes the State's all-sizes
+column.
 
 Series III for 2025 is not yet published. The 2024 government cells are aged
 to 2025 by the private-sector national ratio of the same tier and measure
@@ -177,24 +178,32 @@ factor times the employed policyholders' shares.
 
 | Series | CY2024 | Who it covers |
 |---|---:|---|
-| CMS NHE Table 24, "Employer Contribution to Private Health Insurance Premiums" | **$1,047.0B** | Private, federal and State and local employers. The NHEA methodology paper (2024, p. 29) says the estimates cover "active employees, continuation of health coverage (COBRA), and retirees" of private and State and local sponsors, from MEPS-IC, and federal "employers, employees and retirees", from OPM. |
-| BEA NIPA Table 7.8 line 17, B4923C, "Private group health insurance" | $977.0B | Employer contributions as a supplement to wages and salaries. BEA's State Personal Income methodology (December 2025, paragraphs 3.18 and 3.19) says its MEPS source "covers both health insurance purchased by employers for their active and retired employees" and that the federal estimate covers "active and retired federal civilian employees". |
+| BEA NIPA Table 7.8 line 17, B4923C, "Private group health insurance" | **$977.0B** | Employer contributions as a supplement to wages and salaries. BEA's State Personal Income methodology (December 2025, paragraphs 3.18 and 3.19) says its MEPS source "covers both health insurance purchased by employers for their active and retired employees" and that the federal estimate covers "active and retired federal civilian employees". |
+| CMS NHE Table 24, "Employer Contribution to Private Health Insurance Premiums" | $1,047.0B | Private, federal and State and local employers. The NHEA methodology paper (2024, p. 29) says the estimates cover "active employees, continuation of health coverage (COBRA), and retirees" of private and State and local sponsors, from MEPS-IC, and federal "employers, employees and retirees", from OPM. |
 
 Both series measure the same concept, and both include retirees. The stage
-scales to **NHE**, the series the issue chose and the pinned feed banks
-(`cms_nhe.cy2024.esi_employer_contribution_premiums`). **BEA** is recorded
-beside every anchor verdict and is not gated: it is 6.7% below NHE for 2024.
+scales to **BEA**, as decision d1317 (2026-10-11) ruled. **NHE** is recorded
+beside every anchor verdict and is not gated: it is 7.2% above BEA for 2024,
+more than the anchor gate's tolerance, so a release scaled to NHE would fail
+that gate.
 
-Two facts differ from what the issue recorded in July:
+The stage pins BEA's values itself (`EMPLOYER_PREMIUM_ANCHOR`, the
+Section 7 workbook by URL and SHA-256). The pinned US Chronicle feed banks the
+same series (record sets `bea_nipa.cy<year>.private_group_health_insurance`,
+PolicyEngine/chronicle#331; `docs/us-chronicle-feed-repin.md`), and the
+release tool refuses a feed whose values differ from the stage's
+(`us_esi_premiums_anchor_feed_mismatches`), so the two cannot drift apart.
+
+Two facts differ from what #454 recorded in July:
 
 1. BEA revised 2024. The issue cited $1,002.9B, from the release of
-   2025-09-26. The annual update published 2026-09-30 puts 2024 at $977.034B.
-   The stage pins the September 2026 file by SHA-256.
+   2025-09-26. The annual update published 2026-09-30 puts 2024 at $977.034B
+   (2023 $923.195B, unchanged; 2025 $1,027.929B).
 2. The issue described NHE as the broader series because it includes
    retirees. BEA's does too.
 
-NHE Table 24 ends at CY2024, so the stage refuses a 2025 build year. BEA's
-2025 value does not stand in for it.
+The workbook column covers 2023 to 2025, so the stage refuses any other build
+year.
 
 ### What the choice moves
 
@@ -204,21 +213,21 @@ choices; the first row is what the stage builds.
 
 | Reading | Employed column | Mean per policyholder with a positive premium |
 |---|---:|---:|
-| **NHE over every policyholder (as built)** | **$925.7B** | **$12,515** |
-| NHE over every policyholder, 65-and-over non-employed at half price | $948.1B | $12,817 |
-| BEA over every policyholder | $863.9B | $11,679 |
-| NHE loaded onto employed policyholders only | $1,047.0B | $14,155 |
+| **BEA over every policyholder (as built, d1317)** | **$863.9B** | **$11,679** |
+| BEA over every policyholder, 65-and-over non-employed at half price | $884.7B | $11,961 |
+| NHE over every policyholder | $925.7B | $12,515 |
 | BEA loaded onto employed policyholders only | $977.0B | $13,209 |
+| NHE loaded onto employed policyholders only | $1,047.0B | $14,155 |
 
-One outside check bears on it. MEPS-IC's own national rows give the
-private-sector employer total for enrolled, active employees: employees times
-the share in establishments that offer insurance times the share enrolled
-there, times each tier's share of enrollees and its premium less average
-contribution. That is $668.6B for 2024 (65.6M enrollees) and $714.4B for 2025.
-The private-sector part of the as-built column is $713.2B, 6.7% above the 2024
-figure; under the BEA reading it would be $665.6B, 0.4% below. The check
-covers the private sector only (77% of the column) and shares the cells'
-source, so it informs the choice without settling it.
+One outside check bears on it, and decided it. MEPS-IC's own national rows
+give the private-sector employer total for enrolled, active employees:
+employees times the share in establishments that offer insurance times the
+share enrolled there, times each tier's share of enrollees and its premium
+less average contribution. That is $668.6B for 2024 (65.6M enrollees) and
+$714.4B for 2025. The private-sector part of the as-built column is $665.6B,
+0.4% below the 2024 figure; under the NHE reading it would be $713.2B, 6.7%
+above. The check covers the private sector only (77% of the column) and
+shares the cells' source.
 
 ## The pre-tax employee premium
 
@@ -266,15 +275,15 @@ pre-calibration figures at pooled ASEC weights, target year 2024.
 | With a positive employer premium | 74.0M | 74.1M |
 | Other policyholders (priced, outside the column) | 12.7M | 13.2M |
 | Raw MEPS-IC total, every policyholder | $1,006.4B | $1,012.1B |
-| Scale factor | 1.040 | 1.034 |
-| Anchor-universe total | $1,047.0B | $1,047.0B |
-| **Employer premium column** | **$925.7B** | $923.9B |
+| Scale factor | 0.971 | 0.965 |
+| Anchor-universe total | $977.0B | $977.0B |
+| **Employer premium column** | **$863.9B** | $862.2B |
 | Employed share of the anchor universe | 88.4% | 88.2% |
-| Other policyholders' share, not in the column | $121.3B | $123.1B |
-| Mean per policyholder with a positive premium | **$12,515** | $12,476 |
-| Mean per employed policyholder | $11,616 | $11,579 |
-| By tier: family / self plus one / self-only | $393.1B / $198.2B / $334.4B | $393.2B / $199.7B / $331.0B |
-| By employer: private / State and local / federal | $713.2B / $174.3B / $38.1B | $711.2B / $174.1B / $38.6B |
+| Other policyholders' share, not in the column | $113.2B | $114.9B |
+| Mean per policyholder with a positive premium | **$11,679** | $11,642 |
+| Mean per employed policyholder | $10,840 | $10,805 |
+| By tier: family / self plus one / self-only | $366.9B / $184.9B / $312.1B | $366.9B / $186.3B / $308.9B |
+| By employer: private / State and local / federal | $665.6B / $162.7B / $35.6B | $663.7B / $162.5B / $36.0B |
 
 Of the 12.7M other policyholders in the default pool, 7.1M are retired
 (`PEMLR` 5), 2.1M are otherwise out of the labor force (7), 0.9M are disabled
@@ -289,7 +298,7 @@ the PUF-support clone, and the clone conserves both totals.
 | Gate | Where | Checks |
 |---|---|---|
 | `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. |
-| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. |
+| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of BEA NIPA 7.8 line 17 for the release period. Employed policyholders must carry 80% to 95% of it. |
 | `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
 | `assert_required_us_release_source_columns` | the L0/refit export (`l0_refit_export.export_us_l0_refit_h5`, run by `tools/export_us_l0_refit_h5.py`), unless `--allow-missing-source-columns` is passed | The column must be present and non-constant. |
 | reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
@@ -328,8 +337,10 @@ stage; the failures it waives are still written to that file.
   `tools/build_us_meps_ic_esi_cells.py`, extracted to
   `us_runtime/data/meps_ic_esi_premium_cells.json`, whose own SHA-256 the
   stage pins and checks on load.
-- NHE and BEA files: URL, byte length and SHA-256 in the stage manifest
-  (`us/source_stages.json`), and URL and SHA-256 in the module. The NHE
+- BEA and NHE files: URL, byte length and SHA-256 in the stage manifest
+  (`us/source_stages.json`), and URL and SHA-256 in the module; the BEA
+  values also as Chronicle feed facts, checked against the module by the
+  release tool. The NHE
   digest is of the zip archive, not of the Table 24 workbook inside it.
 - The base summary records the stage's full summary twice
   (`esi_premiums_signal`, `esi_premiums_post_clone_signal`): scale factor, raw
@@ -348,13 +359,16 @@ stage; the failures it waives are still written to that file.
   input has it null on its ACS rows. `fill_reviewed_nulls` refuses that frame
   instead of default-filling it to zero, so this lineage does not build until
   the input is assigned or transferred for every spine.
-- **A calibration target.** The column is the employed part of the NHE fact,
+- **A calibration target.** The column is the employed part of the BEA fact,
   so the fact cannot be compiled as a sum target on it. The target-parity
-  manifest keeps the two `cms_nhe` ESI families as `deferred` reviewed
-  exclusions and records BEA's series as a source-absent family.
+  manifest keeps the BEA family and the two `cms_nhe` ESI families as
+  `deferred` reviewed exclusions. Whether and how to calibrate the column is
+  decision d1264.
 - **The standalone L0/refit export.** `tools/export_us_l0_refit_h5.py`
   writes an H5 without running the signal or anchor gate. By default it
-  refuses a frame whose column is absent or constant, and nothing more: the
-  two ESI gates run only in the base build and in
+  refuses a frame whose column is absent or constant, and its generic
+  input-mass parity check (default tolerance 50%) compares the column's
+  weighted total with the base or reference, as for every input. Neither ESI
+  gate runs there: they run only in the base build and in
   `tools/build_us_fiscal_refresh_release.py`.
 - **The pre-tax employee premium.** See the section above.

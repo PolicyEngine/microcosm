@@ -87,7 +87,7 @@ def _other_policyholder_sensitivity(frame, target_year: int) -> dict[str, object
     outside the column priced at half the active cell, and nobody outside the
     column priced at all (the whole anchor loaded onto employed workers). It
     also restates the as-built column and the all-on-employed reading against
-    BEA NIPA 7.8 line 17, the second estimate of the anchor's concept.
+    CMS NHE Table 24, the second estimate of the anchor's concept.
     """
 
     person = esi._person_with_state(frame)
@@ -98,7 +98,7 @@ def _other_policyholder_sensitivity(frame, target_year: int) -> dict[str, object
     age = person["A_AGE"].to_numpy(dtype=np.float64)
     older = other & (age >= 65)
     anchor = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"][str(target_year)])
-    bea = float(esi.EMPLOYER_PREMIUM_CROSS_CHECK["values"][str(target_year)])
+    nhe = float(esi.EMPLOYER_PREMIUM_CROSS_CHECK["values"][str(target_year)])
     employed = float(weights[universe] @ raw[universe])
     everyone = float(weights @ raw)
     older_raw = float(weights[older] @ raw[older])
@@ -116,8 +116,8 @@ def _other_policyholder_sensitivity(frame, target_year: int) -> dict[str, object
         "as_built_other_priced_as_active": column(everyone),
         "other_65_plus_priced_at_half": column(everyone - 0.5 * older_raw),
         "other_not_priced_all_anchor_on_employed": column(employed),
-        "bea_anchor_other_priced_as_active": column(everyone, bea),
-        "bea_anchor_all_on_employed": column(employed, bea),
+        "nhe_anchor_other_priced_as_active": column(everyone, nhe),
+        "nhe_anchor_all_on_employed": column(employed, nhe),
         "weighted_other_policyholders_by_pemlr": {
             str(code): float(weights[other & (pemlr == code)].sum())
             for code in sorted(set(pemlr[other].tolist()))

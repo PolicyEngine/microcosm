@@ -2,23 +2,11 @@
  "anchor_gate": {
   "details": {
    "anchor": {
-    "coverage": "active employees, COBRA enrollees and retirees of private, federal and State and local employers",
-    "row": "Employer Contribution to Private Health Insurance Premiums",
-    "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
-    "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
-    "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
-    "values": {
-     "2023": 975700000000,
-     "2024": 1047000000000
-    }
-   },
-   "anchor_universe_employer_total": 1047000000000.0,
-   "anchor_value": 1047000000000.0,
-   "cross_check": {
-    "label": "Private group health insurance",
+    "coverage": "employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+    "feed_record_set": "bea_nipa.cy{year}.private_group_health_insurance",
     "line": 17,
     "published": "2026-09-30",
-    "relation": "second estimate of the same concept: employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+    "row": "line 17, series B4923C, Private group health insurance",
     "series": "B4923C",
     "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
     "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
@@ -29,29 +17,42 @@
      "2025": 1027929000000
     }
    },
-   "cross_check_ratio": 1.0716106092520834,
+   "anchor_universe_employer_total": 977034000000.0,
+   "anchor_value": 977034000000.0,
+   "cross_check": {
+    "relation": "second estimate of the same concept: employer contributions for active employees, COBRA enrollees and retirees (NHEA methodology paper, 2024, p. 29)",
+    "row": "Employer Contribution to Private Health Insurance Premiums",
+    "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+    "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
+    "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+    "values": {
+     "2023": 975700000000,
+     "2024": 1047000000000
+    }
+   },
+   "cross_check_ratio": 0.9331747851002865,
    "employed_share_band": [
     0.8,
     0.95
    ],
    "employed_share_of_anchor_universe": 0.8824300567320681,
    "employer_premium_by_sector": {
-    "federal": 38621718711.29335,
-    "private": 711190949595.6248,
-    "state_and_local": 174091601091.55725
+    "federal": 36040814058.6149,
+    "private": 663665461554.1658,
+    "state_and_local": 162457892436.37872
    },
-   "employer_premium_mean_per_positive_person": 12475.548691763059,
+   "employer_premium_mean_per_positive_person": 11641.867469444154,
    "employer_premium_positive_persons": 74057205.19599111,
-   "employer_premium_total": 923904269398.4752,
-   "other_policyholder_employer_total": 123095730601.5247,
+   "employer_premium_total": 862164168049.1594,
+   "other_policyholder_employer_total": 114869831950.84059,
    "private_active_cross_check": {
-    "employer_premium_private_sector": 711190949595.6248,
+    "employer_premium_private_sector": 663665461554.1658,
     "meps_ic_private_active_employer_total": 668573745863.8779,
-    "ratio": 1.0637434598582394
+    "ratio": 0.9926585745550477
    },
    "relative_error": 0.0,
    "relative_tolerance": 0.05,
-   "scale_factor": 1.034460355190118,
+   "scale_factor": 0.9653323196493044,
    "time_period": 2024,
    "weighted_employed_policyholders": 79790597.17620382,
    "weighted_other_policyholders": 13156453.970184255,
@@ -63,20 +64,20 @@
  "by_vintage": {
   "2022": {
    "employer_premium_positive_persons": 24684189.26891587,
-   "employer_premium_total": 310331531290.6173,
-   "mean_per_positive_person": 12572.077126365637,
+   "employer_premium_total": 289593560021.9647,
+   "mean_per_positive_person": 11731.945370660484,
    "weighted_persons": 108650789.68666667
   },
   "2023": {
    "employer_premium_positive_persons": 24692526.63040858,
-   "employer_premium_total": 307546511529.20874,
-   "mean_per_positive_person": 12455.044237978813,
+   "employer_premium_total": 286994649804.61224,
+   "mean_per_positive_person": 11622.733230190439,
    "weighted_persons": 108650789.68666664
   },
   "2024": {
    "employer_premium_positive_persons": 24680489.296666663,
-   "employer_premium_total": 306026226578.64923,
-   "mean_per_positive_person": 12399.520240467073,
+   "employer_premium_total": 285575958222.5826,
+   "mean_per_positive_person": 11570.919635744516,
    "weighted_persons": 108650789.68666667
   }
  },
@@ -109,24 +110,24 @@
  "issue": "PolicyEngine/microcosm#454",
  "other_policyholder_sensitivity": {
   "as_built_other_priced_as_active": {
-   "employer_premium_total": 923904269398.4752,
-   "mean_per_positive_person": 12475.548691763057
-  },
-  "bea_anchor_all_on_employed": {
-   "employer_premium_total": 977034000000.0001,
-   "mean_per_positive_person": 13192.963431637698
-  },
-  "bea_anchor_other_priced_as_active": {
    "employer_premium_total": 862164168049.1594,
    "mean_per_positive_person": 11641.867469444152
   },
-  "other_65_plus_priced_at_half": {
-   "employer_premium_total": 946325497990.1058,
-   "mean_per_positive_person": 12778.304224223311
-  },
-  "other_not_priced_all_anchor_on_employed": {
+  "nhe_anchor_all_on_employed": {
    "employer_premium_total": 1047000000000.0,
    "mean_per_positive_person": 14137.71958081773
+  },
+  "nhe_anchor_other_priced_as_active": {
+   "employer_premium_total": 923904269398.4752,
+   "mean_per_positive_person": 12475.548691763057
+  },
+  "other_65_plus_priced_at_half": {
+   "employer_premium_total": 883087093221.8387,
+   "mean_per_positive_person": 11924.391298385674
+  },
+  "other_not_priced_all_anchor_on_employed": {
+   "employer_premium_total": 977034000000.0001,
+   "mean_per_positive_person": 13192.963431637698
   },
   "raw_other_65_plus_share_of_other": 0.4030440846499319,
   "weighted_other_policyholders_65_plus": 5861452.143127043,
@@ -533,8 +534,8 @@
  ],
  "puf_support_clone": {
   "anchor_gate": {
-   "anchor_universe_employer_total": 1047000000000.0002,
-   "employer_premium_total": 923904269398.4753,
+   "anchor_universe_employer_total": 977034000000.0001,
+   "employer_premium_total": 862164168049.1594,
    "failures": [],
    "passed": true
   },
@@ -544,7 +545,7 @@
    "passed": true
   }
  },
- "seconds": 35.4,
+ "seconds": 37.5,
  "seed": 0,
  "signal_gate": {
   "failures": [],
@@ -552,24 +553,11 @@
  },
  "summary": {
   "anchor": {
-   "coverage": "active employees, COBRA enrollees and retirees of private, federal and State and local employers",
-   "row": "Employer Contribution to Private Health Insurance Premiums",
-   "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
-   "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
-   "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
-   "values": {
-    "2023": 975700000000,
-    "2024": 1047000000000
-   }
-  },
-  "anchor_universe_employer_total": 1047000000000.0,
-  "cells_sha256": "29a5502abbd921e70007d6bcec8ed1ae065b309cacfa80f49f9bc4dd9a28ec93",
-  "clone_disagreement_source_persons": 0,
-  "cross_check": {
-   "label": "Private group health insurance",
+   "coverage": "employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+   "feed_record_set": "bea_nipa.cy{year}.private_group_health_insurance",
    "line": 17,
    "published": "2026-09-30",
-   "relation": "second estimate of the same concept: employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+   "row": "line 17, series B4923C, Private group health insurance",
    "series": "B4923C",
    "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
    "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
@@ -580,22 +568,36 @@
     "2025": 1027929000000
    }
   },
+  "anchor_universe_employer_total": 977034000000.0,
+  "cells_sha256": "29a5502abbd921e70007d6bcec8ed1ae065b309cacfa80f49f9bc4dd9a28ec93",
+  "clone_disagreement_source_persons": 0,
+  "cross_check": {
+   "relation": "second estimate of the same concept: employer contributions for active employees, COBRA enrollees and retirees (NHEA methodology paper, 2024, p. 29)",
+   "row": "Employer Contribution to Private Health Insurance Premiums",
+   "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+   "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
+   "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+   "values": {
+    "2023": 975700000000,
+    "2024": 1047000000000
+   }
+  },
   "employed_share_of_anchor_universe": 0.8824300567320681,
   "employer_premium_by_sector": {
-   "federal": 38621718711.29335,
-   "private": 711190949595.6248,
-   "state_and_local": 174091601091.55725
+   "federal": 36040814058.6149,
+   "private": 663665461554.1658,
+   "state_and_local": 162457892436.37872
   },
   "employer_premium_by_tier": {
-   "employee_plus_one": 199685222296.09024,
-   "family": 393209175914.58295,
-   "single": 331009871187.80206
+   "employee_plus_one": 186341214403.85696,
+   "family": 366932888233.55176,
+   "single": 308890065411.75073
   },
-  "employer_premium_mean_per_positive_person": 12475.548691763059,
+  "employer_premium_mean_per_positive_person": 11641.867469444154,
   "employer_premium_outside_universe_rows": 0,
   "employer_premium_positive_persons": 74057205.19599111,
   "employer_premium_positive_share": 0.2272025370134953,
-  "employer_premium_total": 923904269398.4752,
+  "employer_premium_total": 862164168049.1594,
   "employer_premium_where_employer_pays_none_rows": 0,
   "employer_premium_without_raw_share_rows": 0,
   "meps_ic_private_active_employer_total": {
@@ -604,7 +606,7 @@
   },
   "negative_rows": 0,
   "nonfinite_rows": 0,
-  "other_policyholder_employer_total": 123095730601.5247,
+  "other_policyholder_employer_total": 114869831950.84059,
   "raw_anchor_universe_total": 1012121919169.708,
   "raw_employer_share_band": [
    6000.0,
@@ -613,8 +615,8 @@
   "raw_employer_share_mean_per_positive_person": 12059.958246993665,
   "raw_employer_share_total": 893126802552.6951,
   "raw_over_published_employer_mean": 1.030960994318845,
-  "scale_factor": 1.034460355190118,
-  "scale_factor_spread": 0.0,
+  "scale_factor": 0.9653323196493044,
+  "scale_factor_spread": 2.220446049250313e-16,
   "source_columns_missing": [],
   "weighted_employed_policyholders": 79790597.17620382,
   "weighted_employed_policyholders_by_payment": {

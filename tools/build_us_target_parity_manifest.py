@@ -61,7 +61,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_51aa40f.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_cf9ece2.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -239,53 +239,81 @@ _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION = (
     ),
 )
 
-_ESI_ANCHOR_EXCLUSION = (
+_ESI_ORIGIN = (
+    "a REAL us-data calibration target: utils/loss.py pinned "
+    "employer_sponsored_insurance_premiums at 1_002.9e9 (the NIPA 7.8 "
+    "employer-contribution aggregate; verified at archived commit 2e044571, "
+    "loss.py line 33, with etl_national_targets carrying the row), removed at "
+    "9f320d2c ('Remove survey-based national calibration targets', PR #831). "
+    "The input itself was imputed by the retired eCPS (MEPS-IC priors over "
+    "ASEC NOW_* policyholder fields, archived 42ed5d45 cps.py "
+    "L197-271/L1575-1581)."
+)
+
+_ESI_BEA_ANCHOR_EXCLUSION = (
     "deferred",
-    "NHE Table 24 employer contribution to ESI premiums. The meps_esi_premiums "
-    "base stage (microcosm#454) scales to this fact over the fact's own "
-    "universe, every current ESI policyholder (NHEA methodology paper 2024, "
-    "p. 29: active employees, COBRA and retirees), and writes the pe-us input "
-    "(employer_sponsored_insurance_premiums) for employed policyholders only. "
-    "So the fact is not a sum target on the column: the column carries about "
-    "88% of it and the rest is priced, not exported. Validation-gated "
-    "instead: us_esi_premiums_anchor_gate recomputes the anchor-universe "
-    "total at release weights and holds it within 5% of this all-employer "
-    "fact.",
+    "BEA NIPA Table 7.8 line 17 (B4923C), employer contributions for private "
+    "group health insurance: the scale anchor of the meps_esi_premiums base "
+    "stage (microcosm#454, decision d1317). The stage prices every current ESI "
+    "policyholder from MEPS-IC, scales that universe to this fact (BEA State "
+    "Personal Income methodology, December 2025, paragraphs 3.18-3.19: "
+    "contributions for active and retired employees) and writes the pe-us "
+    "input (employer_sponsored_insurance_premiums) for employed policyholders "
+    "only. So the fact is not a sum target on the column: the column carries "
+    "about 88% of it and the rest is priced, not exported. Validation-gated "
+    "instead: us_esi_premiums_anchor_gate recomputes the anchor-universe total "
+    "at release weights and holds it within 5% of this fact, and the release "
+    "tool refuses a feed whose values differ from the stage's pinned anchor "
+    "(us_esi_premiums_anchor_feed_mismatches).",
     "experiments/us-esi-454/receipts/stage_on_pool_2023_2025.json: 92.4M "
-    "weighted current policyholders; anchor-universe total $1,047.0B at scale "
-    "factor 1.040; employed column $925.7B (88.4%); other policyholders "
-    "$121.3B; private-sector part of the column $713.2B against MEPS-IC's own "
+    "weighted current policyholders; anchor-universe total $977.0B at scale "
+    "factor 0.971; employed column $863.9B (88.4%); other policyholders "
+    "$113.2B; private-sector part of the column $665.6B against MEPS-IC's own "
     "private active-employee total of $668.6B (2024)",
     _fence(
-        origin=(
-            "a REAL us-data calibration target: utils/loss.py pinned "
-            "employer_sponsored_insurance_premiums at 1_002.9e9 (the NIPA "
-            "7.8 employer-contribution aggregate; verified at archived "
-            "commit 2e044571, loss.py line 33, with etl_national_targets "
-            "carrying the row), removed at 9f320d2c ('Remove survey-based "
-            "national calibration targets', PR #831). The input itself was "
-            "imputed by the retired eCPS (MEPS-IC priors over ASEC NOW_* "
-            "policyholder fields, archived 42ed5d45 cps.py "
-            "L197-271/L1575-1581). The v9.2 feed banks the NHE series for the "
-            "#454 gate; the NIPA series the us-data target used is not in the "
-            "feed (source-absent family bea_nipa.private_group_health_insurance)."
-        ),
+        origin=_ESI_ORIGIN,
         purpose=(
             "anchor the CBO market-income ESI component once the column has a "
-            "live producer. NHE Table 24 and NIPA 7.8 line 17 both count "
-            "employer contributions for active and retired employees (NHEA "
-            "methodology paper; BEA State Personal Income methodology, "
-            "December 2025, paragraphs 3.18-3.19); NIPA is 6.7% lower in "
-            "CY2024 and is recorded beside the gate verdict."
+            "live producer. The BEA annual update of 2026-09-30 revised CY2024 "
+            "from the $1,002.9B the retired target used to $977.034B."
         ),
         verdict_basis=(
             "deferred, not dropped: the producer is live and scaled to this "
             "fact, but the column is the employed policyholders' part of it, "
             "so the fact cannot be compiled as a sum target on the column. "
             "Release validation (us_esi_premiums_anchor_gate, both dense and "
-            "sparse exports) holds the anchor-universe total to it. A "
-            "calibration target needs an exported anchor-universe quantity or "
-            "a banked active-employee fact."
+            "sparse exports) holds the anchor-universe total to it. Whether "
+            "and how to calibrate the column is decision d1264."
+        ),
+    ),
+)
+
+_ESI_NHE_EXCLUSION = (
+    "deferred",
+    "NHE Table 24 employer contribution to ESI premiums, a second estimate of "
+    "the concept the meps_esi_premiums stage scales to (microcosm#454): "
+    "employer contributions for active employees, COBRA enrollees and "
+    "retirees (NHEA methodology paper 2024, p. 29). Decision d1317 chose BEA "
+    "NIPA 7.8 line 17 as the stage's anchor instead; this fact is 7.2% above "
+    "it for CY2024. It is neither compiled nor gated: "
+    "us_esi_premiums_anchor_gate records the anchor-universe total against it "
+    "beside the verdict (cross_check_ratio).",
+    "experiments/us-esi-454/receipts/stage_on_pool_2023_2025.json: "
+    "anchor-universe total $977.0B, 0.933 of NHE's $1,047.0B; scaled to NHE "
+    "instead, the employed column would be $925.7B",
+    _fence(
+        origin=_ESI_ORIGIN,
+        purpose=(
+            "a cross-check on the ESI anchor's level: an independent estimate "
+            "of the same active-plus-retired concept from the national health "
+            "accounts."
+        ),
+        verdict_basis=(
+            "deferred, not dropped: the stage's anchor is BEA (d1317), and "
+            "this fact, like it, includes retirees, so it is not a sum target "
+            "on the employed column. It is recorded beside the anchor "
+            "verdict. Whether and how to calibrate the column is decision "
+            "d1264."
         ),
     ),
 )
@@ -293,22 +321,35 @@ _ESI_ANCHOR_EXCLUSION = (
 _ESI_PRIVATE_EMPLOYER_EXCLUSION = (
     "deferred",
     "NHE Table 24 private-employer contribution to ESI premiums, the private "
-    "part of the all-employer fact the meps_esi_premiums stage scales to "
-    "(microcosm#454). It is neither compiled nor gated: the stage scales one "
-    "factor to the all-employer total over every current ESI policyholder, "
-    "and nothing holds the private-sector part of the column to this fact, "
-    "which also counts private retirees and COBRA enrollees. The private part "
-    "is instead recorded beside the anchor verdict against MEPS-IC's own "
-    "active-employee total (us_esi_premiums_anchor_gate, "
-    "private_active_cross_check).",
+    "part of the NHE all-employer fact (microcosm#454). It is neither "
+    "compiled nor gated: the stage scales one factor to BEA NIPA 7.8 line 17 "
+    "over every current ESI policyholder, and nothing holds the private-sector "
+    "part of the column to this fact, which also counts private retirees and "
+    "COBRA enrollees. The private part is instead recorded beside the anchor "
+    "verdict against MEPS-IC's own active-employee total "
+    "(us_esi_premiums_anchor_gate, private_active_cross_check).",
     "experiments/us-esi-454/receipts/stage_on_pool_2023_2025.json: "
-    "private-sector part of the column $713.2B; MEPS-IC private "
+    "private-sector part of the column $665.6B; MEPS-IC private "
     "active-employee total $668.6B (2024)",
-    _ESI_ANCHOR_EXCLUSION[3],
+    _fence(
+        origin=_ESI_ORIGIN,
+        purpose=(
+            "a sector cross-check that private employers' share of the ESI "
+            "total is in range."
+        ),
+        verdict_basis=(
+            "deferred, not dropped: no gate reads this fact. The private part "
+            "of the column is compared with MEPS-IC's active-employee total "
+            "instead, because this fact includes private retirees and COBRA "
+            "enrollees. Whether and how to calibrate the column is decision "
+            "d1264."
+        ),
+    ),
 )
 
 _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
-    "cms_nhe.esi_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
+    "bea_nipa.private_group_health_insurance": _ESI_BEA_ANCHOR_EXCLUSION,
+    "cms_nhe.esi_employer_contribution_premiums": _ESI_NHE_EXCLUSION,
     "cms_nhe.esi_private_employer_contribution_premiums": (
         _ESI_PRIVATE_EMPLOYER_EXCLUSION
     ),
@@ -565,31 +606,6 @@ _COMPILED_FAMILY_NOTES = {
 # us-data targets the pinned feed carries NO ledger fact for. (reason, evidence,
 # fence) with classification source_absent.
 _SOURCE_ABSENT_US_DATA_FAMILIES: dict[str, tuple[str, str, dict[str, str]]] = {
-    "bea_nipa.private_group_health_insurance": (
-        "BEA NIPA Table 7.8 line 17 private group health insurance (B4923C), "
-        "the employer-contribution aggregate the retired pipeline calibrated "
-        "employer_sponsored_insurance_premiums to (loss.py 1_002.9e9). The "
-        "pinned feed carries no fact for it.",
-        "retired us-data pipeline (archived 2e044571) loss.py line 33; "
-        "feed bea_nipa families carry no group-health series",
-        _fence(
-            origin="us-data loss.py employer_sponsored_insurance_premiums target",
-            purpose=(
-                "anchor employer-paid ESI premiums. The series counts "
-                "contributions for active and retired employees (BEA State "
-                "Personal Income methodology, December 2025, paragraphs "
-                "3.18-3.19), the same concept as NHE Table 24."
-            ),
-            verdict_basis=(
-                "source-absent from the feed: the meps_esi_premiums stage pins "
-                "the BEA file (Section7All_xls.xlsx sha256 de1c34e3..., "
-                "published 2026-09-30: $977.034B CY2024, revised from "
-                "$1,002.9B) and records the anchor-universe total against it "
-                "beside the release anchor verdict; the stage scales to NHE "
-                "Table 24. Compile it here once the ledger banks the series."
-            ),
-        ),
-    ),
     "bls.consumer_expenditure": (
         "BLS Consumer Expenditure childcare-expense target the retired pipeline "
         "calibrated (loss.py BLS_CE_TOTALS childcare_expenses = $63.09B). The "

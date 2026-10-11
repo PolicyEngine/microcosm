@@ -4,7 +4,7 @@ Invariants the stage and its gates must hold for every valid input:
 
 * **Conservation**: the weighted employer share over every policyholder (the
   column plus the other policyholders' share at the same scale factor) equals
-  the CMS NHE Table 24 anchor of the build year, whatever the frame. The
+  the BEA NIPA 7.8 line 17 anchor of the build year, whatever the frame. The
   column total is the anchor times the employed policyholders' share of the
   weighted raw mass, so it equals the anchor exactly when no one outside the
   column carries an employer share.
@@ -74,10 +74,11 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 TIME_PERIOD = 2024
-#: CMS NHE Table 24 employer contribution, CY2024: the scale anchor.
-ANCHOR = 1_047_000e6
-#: BEA NIPA Table 7.8 line 17, CY2024 (2026-09-30 vintage): the cross-check.
-BEA = 977_034e6
+#: BEA NIPA Table 7.8 line 17 (B4923C), CY2024, 2026-09-30 vintage: the scale
+#: anchor (decision d1317).
+ANCHOR = 977_034e6
+#: CMS NHE Table 24 employer contribution, CY2024: the recorded cross-check.
+NHE = 1_047_000e6
 EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
 _REPOSITORY_ROOT = paths_for("microcosm-build").repository
 _CELLS = load_meps_ic_esi_premium_cells()
@@ -240,8 +241,9 @@ class TestManifestDeclaration:
         spec = us_esi_premiums_stage_spec()
         employer = spec.operations[1].parameters
         assert employer["cells_sha256"] == esi._CELLS_SHA256
-        assert employer["anchor"]["table"].startswith("NHE Table 24")
+        assert employer["anchor"]["table"].startswith("NIPA Table 7.8")
         assert employer["anchor"]["row"] == esi.EMPLOYER_PREMIUM_ANCHOR["row"]
+        assert "B4923C" in employer["anchor"]["row"]
         assert employer["anchor"]["values"]["2024"] == ANCHOR
         assert employer["anchor_universe"] == "NOW_OWNGRP == 1"
         assert "PEMLR in (1, 2)" in employer["universe"]
@@ -640,7 +642,7 @@ class TestEmployerPremium:
             _values(on_household, EMPLOYER), _values(on_person, EMPLOYER)
         )
 
-    @pytest.mark.parametrize("year", [2023, 2024])
+    @pytest.mark.parametrize("year", [2023, 2024, 2025])
     def test_each_pinned_year_scales_to_its_own_anchor(self, year) -> None:
         result = _run(_realistic_rows(60), time_period=year)
         total = us_esi_premiums_summary(result)["anchor_universe_employer_total"]
@@ -702,11 +704,11 @@ class TestRefusals:
         with pytest.raises(SourceRuntimeError, match="no weighted employer-paid"):
             _run([{"NOW_HIPAID": 3}, other])
 
-    @pytest.mark.parametrize("year", [2025, 2030])
+    @pytest.mark.parametrize("year", [2022, 2026, 2030])
     def test_an_unpinned_build_year_is_refused(self, year) -> None:
-        # NHE Table 24 ends at CY2024; BEA's 2025 value does not stand in.
+        # The pinned BEA workbook column covers 2023 to 2025.
         with pytest.raises(
-            SourceRuntimeError, match=f"no NHE Table 24 anchor for {year}"
+            SourceRuntimeError, match=f"no BEA NIPA 7.8 line 17 anchor for {year}"
         ):
             _run([{}], time_period=year)
 
@@ -802,8 +804,8 @@ class TestSignalGate:
         )
         assert details["scale_factor_spread"] <= 1e-9 * details["scale_factor"]
         assert details["cells_sha256"] == esi._CELLS_SHA256
-        assert details["anchor"]["row"].startswith("Employer Contribution")
-        assert details["cross_check"]["series"] == "B4923C"
+        assert details["anchor"]["series"] == "B4923C"
+        assert details["cross_check"]["row"].startswith("Employer Contribution")
         assert sum(details["employer_premium_by_tier"].values()) == pytest.approx(
             column
         )
@@ -975,7 +977,7 @@ class TestAnchorGate:
             self._export(weight_scale=scale), time_period=TIME_PERIOD
         )
         assert not gate.passed
-        assert any("from NHE Table 24" in f for f in gate.failures)
+        assert any("from BEA NIPA 7.8 line 17" in f for f in gate.failures)
 
     def test_the_verdict_is_over_every_policyholder_not_the_column(self) -> None:
         gate = us_esi_premiums_anchor_gate(self._export(), time_period=TIME_PERIOD)
@@ -1005,15 +1007,16 @@ class TestAnchorGate:
             _column_total(frame)
         )
         assert not gate.passed
-        assert any("from NHE Table 24" in f for f in gate.failures)
+        assert any("from BEA NIPA 7.8 line 17" in f for f in gate.failures)
         assert any("employed policyholders carry" in f for f in gate.failures)
 
     def test_the_cross_checks_are_recorded_not_gated(self) -> None:
         gate = us_esi_premiums_anchor_gate(self._export(), time_period=TIME_PERIOD)
         assert gate.passed, gate.failures
-        # BEA's estimate of the same concept is 6.7% below NHE's for 2024.
-        assert gate.details["cross_check_ratio"] == pytest.approx(ANCHOR / BEA)
-        assert ANCHOR / BEA - 1 > esi.ANCHOR_RELATIVE_TOLERANCE
+        # NHE's estimate of the same concept is 7.2% above BEA's for 2024, so
+        # a release scaled to NHE would fail this gate.
+        assert gate.details["cross_check_ratio"] == pytest.approx(ANCHOR / NHE)
+        assert NHE / ANCHOR - 1 > esi.ANCHOR_RELATIVE_TOLERANCE
         active = gate.details["private_active_cross_check"]
         assert active["meps_ic_private_active_employer_total"] == pytest.approx(
             668.6e9, rel=5e-4
@@ -1066,13 +1069,12 @@ class TestAnchorGate:
                 for f in gate.failures
             )
 
-    @pytest.mark.parametrize("year", [2025, 2031])
+    @pytest.mark.parametrize("year", [2022, 2031])
     def test_a_year_without_an_anchor_is_red(self, year) -> None:
         gate = us_esi_premiums_anchor_gate(self._export(), time_period=year)
         assert not gate.passed
         assert any(
-            f"no NHE Table 24 employer-contribution anchor for {year}" in f
-            for f in gate.failures
+            f"no BEA NIPA 7.8 line 17 anchor for {year}" in f for f in gate.failures
         )
 
     def test_details_serialize_for_the_release_evidence_file(self) -> None:
@@ -1080,7 +1082,7 @@ class TestAnchorGate:
         payload = json.loads(json.dumps(dict(gate.details)))
         assert payload["anchor"]["sha256"] == esi.EMPLOYER_PREMIUM_ANCHOR["sha256"]
         assert payload["anchor"]["values"]["2024"] == ANCHOR
-        assert payload["cross_check"]["values"]["2024"] == BEA
+        assert payload["cross_check"]["values"]["2024"] == NHE
 
 
 class TestOperatorBoundary:
@@ -1096,6 +1098,41 @@ class TestOperatorBoundary:
         assert_operator_free_source_frame(_frame(_realistic_rows(40)), label="raw")
         with pytest.raises(ValueError, match="esi_premiums:person="):
             assert_operator_free_source_frame(_run(_realistic_rows(40)), label="raw")
+
+
+class TestAnchorFeedCheck:
+    @staticmethod
+    def _facts(values: dict[int, object]) -> list[dict]:
+        return [
+            {
+                "layout": {
+                    "record_set_id": f"bea_nipa.cy{year}.private_group_health_insurance"
+                },
+                "value": value,
+            }
+            for year, value in values.items()
+        ] + [{"layout": {"record_set_id": "bea_nipa.cy2024.total_wages_salaries"}}]
+
+    def test_the_banked_series_matches_the_anchor(self) -> None:
+        values = {
+            int(year): value
+            for year, value in esi.EMPLOYER_PREMIUM_ANCHOR["values"].items()
+        }
+        assert values == {
+            2023: 923_195_000_000,
+            2024: 977_034_000_000,
+            2025: 1_027_929_000_000,
+        }
+        assert esi.us_esi_premiums_anchor_feed_mismatches(self._facts(values)) == []
+
+    def test_a_missing_repeated_or_different_fact_is_named(self) -> None:
+        facts = self._facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+        facts += self._facts({2023: 923_195_000_000})[:1]
+        problems = esi.us_esi_premiums_anchor_feed_mismatches(facts)
+        assert len(problems) == 3
+        assert any("cy2023" in p and "2 facts" in p for p in problems)
+        assert any("cy2024" in p and "1002920000000" in p for p in problems)
+        assert any("cy2025" in p and "no fact" in p for p in problems)
 
 
 class TestUnassignedRefusal:
@@ -1437,35 +1474,50 @@ class TestRegisters:
         assert 0 < employer.min_abs_effect < ANCHOR
         assert "pre_tax_health_insurance_premium_neutralization" not in probes
 
-    def test_the_nhe_target_family_is_gated_not_compiled(self) -> None:
+    def test_the_anchor_and_cross_check_families_are_gated_not_compiled(
+        self,
+    ) -> None:
         manifest = json.loads(
             files("microcosm.build.us")
             .joinpath("target_parity_manifest.json")
             .read_text()
         )
         families = manifest["families"]
-        for family in (
-            "cms_nhe.esi_employer_contribution_premiums",
-            "cms_nhe.esi_private_employer_contribution_premiums",
-        ):
-            entry = families[family]
-            assert entry["status"] == "reviewed_exclusion"
-            assert entry["classification"] == "deferred"
-            assert "every current ESI policyholder" in entry["reason"]
-            assert "retirees" in entry["reason"]
-            assert "us_esi_premiums_anchor_gate" in entry["reason"]
-        absent = families["bea_nipa.private_group_health_insurance"]
-        assert absent["classification"] == "source_absent"
-        assert "B4923C" in absent["reason"]
-        assert "active and retired" in absent["fence"]["purpose"]
+        anchor = families["bea_nipa.private_group_health_insurance"]
+        assert anchor["status"] == "reviewed_exclusion"
+        assert anchor["classification"] == "deferred"
+        assert "scale anchor" in anchor["reason"]
+        assert "B4923C" in anchor["reason"]
+        assert "active and retired" in anchor["reason"]
+        assert "us_esi_premiums_anchor_gate" in anchor["reason"]
+        assert "us_esi_premiums_anchor_feed_mismatches" in anchor["reason"]
+        assert "d1264" in anchor["fence"]["verdict_basis"]
+        nhe = families["cms_nhe.esi_employer_contribution_premiums"]
+        assert nhe["classification"] == "deferred"
+        assert "retirees" in nhe["reason"] and "d1317" in nhe["reason"]
+        private = families["cms_nhe.esi_private_employer_contribution_premiums"]
+        assert private["classification"] == "deferred"
+        assert "no gate reads this fact" in private["fence"]["verdict_basis"]
+        # Each family states its own verdict basis.
+        assert (
+            len({entry["fence"]["verdict_basis"] for entry in (anchor, nhe, private)})
+            == 3
+        )
+        # The BEA facts are in the pinned feed now, so the family is no longer
+        # source-absent.
+        assert not any(
+            entry.get("classification") == "source_absent"
+            and family.startswith("bea_nipa.private_group_health")
+            for family, entry in families.items()
+        )
 
     @pytest.mark.parametrize(
         ("pool", "scale", "holders", "column", "mean", "share"),
         [
             # The default pool (docs/us-asec-source-pins.md) and the historical
             # Build J/N/P pool; figures quoted in the docs and the registers.
-            ("2023_2025", 1.0404, 73.97e6, 925.7e9, 12_515, 0.8842),
-            ("2022_2024", 1.0345, 74.06e6, 923.9e9, 12_476, 0.8824),
+            ("2023_2025", 0.9708, 73.97e6, 863.85e9, 11_679, 0.8842),
+            ("2022_2024", 0.9653, 74.06e6, 862.16e9, 11_642, 0.8824),
         ],
     )
     def test_the_receipts_reproduce_the_documented_measurements(
@@ -1502,12 +1554,13 @@ class TestRegisters:
             mean, abs=1
         )
         details = receipt["anchor_gate"]["details"]
-        assert details["cross_check_ratio"] == pytest.approx(ANCHOR / BEA)
+        assert details["cross_check_ratio"] == pytest.approx(ANCHOR / NHE)
         active = details["private_active_cross_check"]
         assert active["meps_ic_private_active_employer_total"] == pytest.approx(
             668.6e9, rel=5e-4
         )
-        assert 1.06 < active["ratio"] < 1.07
+        # The private part of the column against MEPS-IC's own active total.
+        assert 0.99 < active["ratio"] < 1.0
         sensitivity = receipt["other_policyholder_sensitivity"]
         assert sensitivity["as_built_other_priced_as_active"][
             "employer_premium_total"

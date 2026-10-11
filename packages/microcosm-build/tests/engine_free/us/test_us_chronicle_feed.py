@@ -31,8 +31,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "51aa40fd28e2ca81937752515e773d123fecfb71"
-_FACTS_SHA256 = "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+_CHRONICLE_COMMIT = "cf9ece2e7be11158c21fdc4dd38b44d92db552f6"
+_FACTS_SHA256 = "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -55,7 +55,7 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.source_commit == _CHRONICLE_COMMIT
     assert pin.scope == "us_fiscal_targets"
-    assert pin.fact_row_count == 40178
+    assert pin.fact_row_count == 40181
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
@@ -137,8 +137,9 @@ def test_scope_names_every_pinned_pair_once() -> None:
     scope = builder.load_scope(scope_path)
     raw = scope["raw"]
     assert scope["commit"] == load_us_chronicle_feed().source_commit
-    assert len(scope["pairs"]) == 637 == raw["pair_count"]
-    assert sum(len(p) for p in scope["runs"].values()) == 63
+    assert len(scope["pairs"]) == 640 == raw["pair_count"]
+    # 63 package runs, plus the B4923C package in its three years (#454).
+    assert sum(len(p) for p in scope["runs"].values()) == 66
     assert set(scope["runs"]) == {
         2020,
         2021,
