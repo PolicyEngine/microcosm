@@ -1148,13 +1148,24 @@ def _resample_band_donor_leaves(
         raise ValueError(f"band donor carriers name undeclared band(s) {unknown}.")
     columns = list(SPI_INCOME_QRF_OUTPUT_COLUMNS)
     factors = np.asarray([float(uprating_factors[column]) for column in columns])
+    # Restricted finance costs are a deduction the published total never held,
+    # so they take no part in a record's band: the pools are cut on the income
+    # leaves alone, and a drawn record's finance costs travel with its leaves
+    # (microcosm#1106).
+    income_columns = [
+        column for column in columns if column != SPI_PROPERTY_FINANCE_COSTS_COLUMN
+    ]
+    income_factors = np.asarray(
+        [float(uprating_factors[column]) for column in income_columns]
+    )
     published_total = donor["total_income"].to_numpy(dtype=float)
     leaf_values = donor[columns].to_numpy(dtype=np.float64)
-    # The total income a drawn record realises on the frame: its leaves at the
-    # stage's factors plus whatever of the published total the leaves do not
-    # carry, held nominal.
-    total_income = leaf_values @ factors + np.maximum(
-        published_total - leaf_values.sum(axis=1), 0.0
+    income_values = donor[income_columns].to_numpy(dtype=np.float64)
+    # The total income a drawn record realises on the frame: its income leaves
+    # at the stage's factors plus whatever of the published total the leaves do
+    # not carry, held nominal.
+    total_income = income_values @ income_factors + np.maximum(
+        published_total - income_values.sum(axis=1), 0.0
     )
     donor_region = donor["region"].astype(str).to_numpy()
     fact = donor["FACT"].to_numpy(dtype=float)
@@ -1290,8 +1301,9 @@ def _resample_band_donor_leaves(
         "carriers": int(carriers.sum()),
         "carriers_outside_band": int(outside.sum()),
         "pool_basis": (
-            "uprated total income: stage-1 leaves at the stage's uprating factors "
-            "plus the published remainder held nominal"
+            "uprated total income: stage-1 income leaves at the stage's uprating "
+            "factors plus the published remainder held nominal; restricted "
+            "finance costs cut no pool and are copied with the drawn record"
         ),
         "regional_pool_minimum": regional_pool_minimum,
         "age_pool_minimum": age_pool_minimum,
@@ -1547,6 +1559,9 @@ def _check_spi_property_finance_costs(numeric: pd.DataFrame) -> dict[str, object
         "median_relief_ratio_bounds": [low, high],
     }
     if not restricted.any():
+        # A tape without restricted costs (the synthetic test tapes) donates no
+        # finance costs; property_components refuses such a donor, so the
+        # build fails closed where the costs are consumed.
         receipt["median_relief_ratio"] = None
         return receipt
     ratio = float(np.median(credits[restricted] / costs[restricted]))

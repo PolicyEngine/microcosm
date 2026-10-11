@@ -43,11 +43,13 @@ for the highest profit down to its lower bound, never below their profit.
 Each band is filled to its share of PRIS's individual landlords applied to
 the spine's own landlord weight, not to PRIS's count: before calibration the
 spine carries fewer landlords than PRIS (2.21m against 2.85m), and filling
-the published counts would push every profit rank into a higher band. The open top band takes
-receipts proportional to profit, ``max(100,000, k x profit)``, with ``k >= 1``
-solved so that receipts reach the individuals' Table 2 total. Receipts less
-profit are the deductible expenses: PRIS's allowable expenses other than
-residential finance costs.
+the published counts would push every profit rank into a higher band. The open
+top band takes receipts proportional to profit, ``max(100,000, k x profit)``,
+with ``k >= 1`` solved by bisection so the band's mean receipts reach what the
+individuals' Table 2 total leaves it after the bounded bands; where the floor
+at ``k = 1`` already exceeds that mean, ``k`` stays 1 and the overshoot is
+recorded. Receipts less profit are the deductible expenses: PRIS's allowable
+expenses other than residential finance costs.
 
 Sub-letting rent (SUBRENT, on the household reference person) stays in
 ``property_income`` as reported until Rent a Room is released
@@ -104,7 +106,6 @@ __all__ = [
     "ALLOCATE_PROPERTY_RENTAL_INCOME_KIND",
     "IMPUTE_FRS_PROPERTY_FINANCE_COSTS_KIND",
     "UK_PROPERTY_COMPONENTS_MASS_CONSERVATION_REASON",
-    "UK_PROPERTY_COMPONENTS_NONNEGATIVE_OUTPUT_COLUMNS",
     "UK_PROPERTY_COMPONENTS_OUTPUT_COLUMNS",
     "UK_PROPERTY_COMPONENTS_REWRITE_COLUMNS",
     "UK_PROPERTY_COMPONENTS_STAGE_NAME",
@@ -140,11 +141,6 @@ PROFIT_AFTER_FINANCE_COSTS = "profit_after_finance_costs"
 
 UK_PROPERTY_COMPONENTS_OUTPUT_COLUMNS: tuple[str, ...] = (RECEIPTS_COLUMN,)
 UK_PROPERTY_COMPONENTS_REWRITE_COLUMNS: tuple[str, ...] = (
-    PROFIT_COLUMN,
-    FINANCE_COSTS_COLUMN,
-)
-UK_PROPERTY_COMPONENTS_NONNEGATIVE_OUTPUT_COLUMNS: tuple[str, ...] = (
-    RECEIPTS_COLUMN,
     PROFIT_COLUMN,
     FINANCE_COSTS_COLUMN,
 )
@@ -658,8 +654,11 @@ def allocate_property_rental_income(
     Table 13's bands, each filled to its share of the individuals-basis
     landlords times the landlords' weight here, linear within a bounded band
     from its upper bound down, never below profit; the open top band takes
-    ``max(lower bound, k x profit)`` with ``k`` solved so that receipts per
-    landlord reach the individuals' Table 2 receipts per landlord.
+    ``max(lower bound, k x profit)`` with ``k >= 1`` solved so that receipts
+    per landlord reach the individuals' Table 2 receipts per landlord, or
+    ``k = 1`` with the overshoot recorded where the floor already exceeds it.
+    Each bounded band's cell records the walk's rounding allowance: the
+    weight of the person straddling each of its boundaries.
     """
 
     profit = np.asarray(profit, dtype=float)
@@ -685,6 +684,20 @@ def allocate_property_rental_income(
         [band.landlords * share_scale for band in top_down[:-1]] + [np.inf],
         offset,
     )
+    # The walk's rounding at boundary j (between bands j and j + 1, top down)
+    # is bounded by the weight of the person straddling it: the last person
+    # above the boundary or the first below. A band's mass error is bounded by
+    # the sum over its two boundaries.
+    boundary_allowance = np.zeros(len(top_down))
+    for boundary in range(len(top_down) - 1):
+        first_below = int(np.searchsorted(band_index, boundary, side="right"))
+        straddle = 0.0
+        if first_below < len(ranked_weights):
+            straddle = float(ranked_weights[first_below])
+        if first_below > 0:
+            straddle = max(straddle, float(ranked_weights[first_below - 1]))
+        boundary_allowance[boundary] += straddle
+        boundary_allowance[boundary + 1] += straddle
     cells: list[dict[str, Any]] = []
     floored_weight = 0.0
     floored_rows = 0
@@ -700,6 +713,7 @@ def allocate_property_rental_income(
             "target_landlords": band.landlords * share_scale,
             "walk_landlords_weight": float(weights[members].sum()),
             "walk_records": int(len(members)),
+            "boundary_allowance_weight": float(boundary_allowance[index]),
         }
         if band.upper_bound is None:
             top_members = members
@@ -755,8 +769,19 @@ def allocate_property_rental_income(
             multiplier = 0.5 * (low + high)
         receipts[top_members] = np.maximum(top.lower_bound, multiplier * top_profit)
         cells[0]["mean_receipts_gbp"] = mean_at(multiplier)
+        cells[0]["mean_receipts_at_floor_gbp"] = mean_at(1.0)
     cells[0]["target_mean_receipts_gbp"] = top_target_mean
     cells[0]["profit_multiplier"] = multiplier
+    # At the floor the band's receipts are its profit floor and the band
+    # overshoots its share of the total; the overshoot per landlord is recorded
+    # (negative shortfall), as is a target mean the bounded bands already used up.
+    cells[0]["multiplier_at_floor"] = bool(multiplier == 1.0)
+    cells[0]["mean_receipts_shortfall_gbp"] = (
+        top_target_mean - cells[0]["mean_receipts_gbp"]
+        if "mean_receipts_gbp" in cells[0]
+        else None
+    )
+    cells[0]["target_mean_nonpositive"] = bool(top_target_mean <= 0.0)
 
     expenses = receipts - np.where(profit > 0.0, profit, 0.0)
     share = np.divide(
@@ -884,6 +909,13 @@ class UKPropertyComponentsStageTransform:
             )
         facts = self.facts or load_hmrc_property_rental_facts()
         period = int(uk_time_period(frame))
+        declared_period = verify.get("mapped_build_period")
+        if declared_period is None or int(declared_period) != period:
+            raise PropertyComponentsError(
+                "verify_vendored_fact_resource maps PRIS "
+                f"{verify.get('source_vintage')} to build period {declared_period}, "
+                f"but the frame's period is {period}."
+            )
 
         person = frame.table("person").copy()
         household = frame.table("household")

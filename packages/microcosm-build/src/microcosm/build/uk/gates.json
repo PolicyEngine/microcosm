@@ -188,9 +188,10 @@
         "stage": "property_components",
         "check": "property_components",
         "maximum_rows_receipts_below_profit": 0,
-        "maximum_band_error_in_landlord_weights": 2.0
+        "maximum_rows_with_profit_above_band": 0,
+        "maximum_band_error_in_boundary_weights": 1.0
       },
-      "notes": "Stage-time gate over the landlords' receipts and finance costs receipt (microcosm#1106). No row may carry property_rental_income below its property_income: the engine reads such receipts as unknown and withholds the property allowance. Every PRIS Table 13 band above the lowest holds its share of the spine's landlord weight (the band's share of the individuals-basis landlords) to within twice the largest landlord weight, the whole-person rounding of the walk (each band boundary is reached within one person; the lowest band takes the remainder). The open top band's profit multiplier must stay below the declared cap, so the band reaches the individuals' Table 2 receipts rather than stopping at the cap. The finance-cost incidence, its realisation by cell, the totals against PRIS, the channel split, the residuals and the coherence share are recorded in the receipt and carry no threshold."
+      "notes": "Stage-time gate over the landlords' receipts and finance costs receipt (microcosm#1106). No row may carry property_rental_income below its property_income: the engine reads such receipts as unknown and withholds the property allowance. No landlord may sit in a receipts band below their own profit. Every PRIS Table 13 band above the lowest holds its share of the spine's landlord weight (the band's share of the individuals-basis landlords) to within its recorded rounding allowance, the weight of the person straddling each of its two boundaries (the walk's whole-person rounding; the lowest band takes the remainder). The open top band's profit multiplier must stay below the declared cap; where the floor at profit already exceeds the band's share of the individuals' Table 2 receipts the multiplier stays at 1 and the overshoot is recorded, not failed. The finance-cost incidence, its realisation by cell, the totals against PRIS, the channel split, the residuals and the coherence share are recorded in the receipt and carry no threshold."
     },
     {
       "id": "uk_stage_nts_bus_travel_support",

@@ -3172,13 +3172,13 @@ def _property_components_gate(
 ) -> GateResult:
     """Landlords' receipts keep their invariants (microcosm#1106).
 
-    No receipts below profit (the engine would read them as unknown). The
-    walk fills every Table 13 band above the lowest to its individuals-basis
-    count up to whole-person rounding: a band's mass sits within the declared
-    number of the largest landlord weight of its target, since each band
-    boundary is reached within one person. The open top band's profit
-    multiplier stays below its declared cap, so the band reaches the
-    individuals' receipts total rather than stopping at the cap.
+    No receipts below profit (the engine would read them as unknown), and no
+    landlord placed in a band below their own profit. The walk fills every
+    Table 13 band above the lowest to its share of the spine's landlords up to
+    whole-person rounding: a band's mass sits within the declared multiple of
+    its recorded rounding allowance, the weight of the person straddling each
+    of its two boundaries. The open top band's profit multiplier stays below
+    its declared cap; a multiplier at its floor of 1 is reported, not failed.
     """
 
     check = "property_components"
@@ -3196,9 +3196,21 @@ def _property_components_gate(
             f"{stage}: {below} rows carry receipts below profit "
             f"(allowed {maximum_below})."
         )
+    maximum_above = int(parameters["maximum_rows_with_profit_above_band"])
+    above = int(
+        _finite_number(
+            receipts.get("rows_with_profit_above_their_band"),
+            label=f"{stage}.receipts.rows_with_profit_above_their_band",
+        )
+    )
+    if above > maximum_above:
+        failures.append(
+            f"{stage}: {above} landlords sit in a receipts band below their "
+            f"profit (allowed {maximum_above})."
+        )
     factor = _finite_number(
-        parameters["maximum_band_error_in_landlord_weights"],
-        label=f"{stage}.maximum_band_error_in_landlord_weights",
+        parameters["maximum_band_error_in_boundary_weights"],
+        label=f"{stage}.maximum_band_error_in_boundary_weights",
     )
     largest = _finite_number(
         receipts.get("largest_landlord_weight"),
@@ -3216,13 +3228,23 @@ def _property_components_gate(
         walked = _finite_number(
             band.get("walk_landlords_weight"), label=f"{stage} band mass"
         )
+        allowance = _finite_number(
+            band.get("boundary_allowance_weight"),
+            label=f"{stage} band rounding allowance",
+        )
         error = abs(walked - target)
-        errors.append({"lower_bound": band.get("lower_bound"), "error_weight": error})
-        if error > factor * largest:
+        errors.append(
+            {
+                "lower_bound": band.get("lower_bound"),
+                "error_weight": error,
+                "allowance_weight": allowance,
+            }
+        )
+        if error > factor * allowance:
             failures.append(
                 f"{stage}: the band from {band.get('lower_bound')} holds "
                 f"{walked:.1f} landlords against {target:.1f}, beyond "
-                f"{factor} x the largest landlord weight {largest:.1f}."
+                f"{factor} x its rounding allowance {allowance:.1f}."
             )
     top = _mapping(bands[0], label=f"{stage}.receipts.bands_top_down[0]")
     multiplier = _finite_number(
@@ -3239,10 +3261,12 @@ def _property_components_gate(
         )
     details = {
         "rows_receipts_below_profit": below,
+        "rows_with_profit_above_their_band": above,
         "largest_landlord_weight": largest,
         "band_errors": errors,
         "top_band_multiplier": multiplier,
         "top_band_multiplier_cap": cap,
+        "top_band_multiplier_at_floor": bool(top.get("multiplier_at_floor", False)),
     }
     if failures:
         return _fail(stage, check, failures, details)

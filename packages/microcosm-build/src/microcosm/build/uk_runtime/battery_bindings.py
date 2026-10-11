@@ -1477,8 +1477,14 @@ def _evaluate_input_mass_parity(
         minimum_reference_total=minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
+    # The reference is compared against the surface the release ships: the
+    # export frame, with the reviewed export exclusions dropped. The release
+    # cut already loads that frame; at the national seam the raw frame still
+    # carries the spine's WAS property_wealth, which the reference also
+    # stores, so comparing it there would call the signed exclusion stale
+    # (microcosm#1106).
     return uk_input_mass_parity_gate(
-        uk_input_mass_totals(context.frame),
+        uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
@@ -1803,9 +1809,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "period_type",
                 "period_value",
                 # #1106 property_components check: no receipts below profit,
-                # the walk's whole-person rounding in landlord weights.
+                # no landlord banded below their profit, the walk's rounding
+                # within its recorded boundary allowance.
                 "maximum_rows_receipts_below_profit",
-                "maximum_band_error_in_landlord_weights",
+                "maximum_rows_with_profit_above_band",
+                "maximum_band_error_in_boundary_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

@@ -2365,3 +2365,123 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
     assert not gate(share=0.12, exhausted=True).passed
     assert not gate(units=0).passed
     assert not gate(ages=[]).passed
+
+
+_PROPERTY_COMPONENTS_PARAMETERS = {
+    "stage": "property_components",
+    "check": "property_components",
+    "maximum_rows_receipts_below_profit": 0,
+    "maximum_rows_with_profit_above_band": 0,
+    "maximum_band_error_in_boundary_weights": 1.0,
+}
+
+
+def _property_components_evidence() -> dict:
+    # Three bounded bands and the remainder; the £90k band's allowance is the
+    # two straddlers' weights, 9,000 + 8,000, and its error 600 sits inside.
+    return {
+        "stage": "property_components",
+        "receipts": {
+            "rows_receipts_below_profit": 0,
+            "rows_with_profit_above_their_band": 0,
+            "largest_landlord_weight": 9_500.0,
+            "top_band_multiplier_bounds": [1.0, 5.0],
+            "bands_top_down": [
+                {
+                    "lower_bound": 100_000,
+                    "target_landlords": 30_000.0,
+                    "walk_landlords_weight": 30_400.0,
+                    "boundary_allowance_weight": 9_000.0,
+                    "profit_multiplier": 1.0,
+                    "multiplier_at_floor": True,
+                },
+                {
+                    "lower_bound": 90_000,
+                    "target_landlords": 7_600.0,
+                    "walk_landlords_weight": 7_000.0,
+                    "boundary_allowance_weight": 17_000.0,
+                },
+                {
+                    "lower_bound": 10_000,
+                    "target_landlords": 650_000.0,
+                    "walk_landlords_weight": 652_000.0,
+                    "boundary_allowance_weight": 8_000.0 + 7_500.0,
+                },
+                {
+                    "lower_bound": 0,
+                    "target_landlords": 900_000.0,
+                    "walk_landlords_weight": 950_000.0,
+                    "boundary_allowance_weight": 7_500.0,
+                },
+            ],
+        },
+    }
+
+
+def _property_components(evidence: dict):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="property_components",
+        check="property_components",
+        parameters=_PROPERTY_COMPONENTS_PARAMETERS,
+    )
+
+
+def test_property_components_gate_passes_and_reports_the_floor() -> None:
+    result = _property_components(_property_components_evidence())
+
+    assert _passed(result)
+    # The remainder band is never checked, and a multiplier at its floor of 1
+    # is reported, not failed.
+    assert [row["lower_bound"] for row in result.details["band_errors"]] == [
+        100_000,
+        90_000,
+        10_000,
+    ]
+    assert result.details["top_band_multiplier_at_floor"] is True
+    assert result.details["rows_with_profit_above_their_band"] == 0
+
+
+def test_property_components_gate_holds_a_band_to_its_own_rounding_allowance() -> None:
+    # An empty £90k band passed the old test of twice the largest landlord
+    # weight (19,000 against a 7,600 target); against its own straddlers'
+    # weights it fails.
+    evidence = _property_components_evidence()
+    band = evidence["receipts"]["bands_top_down"][1]
+    band["walk_landlords_weight"] = 0.0
+    band["boundary_allowance_weight"] = 7_000.0
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "band from 90000" in failed.failures[0]
+    assert "rounding allowance 7000.0" in failed.failures[0]
+
+    # The allowance is the receipt's, so a missing one fails closed.
+    del band["boundary_allowance_weight"]
+    with pytest.raises(ValueError, match="rounding allowance"):
+        _property_components(evidence)
+
+
+@pytest.mark.parametrize(
+    ("key", "fragment"),
+    [
+        ("rows_receipts_below_profit", "receipts below profit"),
+        ("rows_with_profit_above_their_band", "band below their profit"),
+    ],
+)
+def test_property_components_gate_requires_the_zero_counts(key, fragment) -> None:
+    evidence = _property_components_evidence()
+    evidence["receipts"][key] = 3
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert fragment in failed.failures[0]
+
+
+def test_property_components_gate_fails_a_top_band_at_its_cap() -> None:
+    evidence = _property_components_evidence()
+    top = evidence["receipts"]["bands_top_down"][0]
+    top["profit_multiplier"] = 5.0
+    top["multiplier_at_floor"] = False
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "reached its cap 5.0" in failed.failures[0]
+    assert failed.details["top_band_multiplier_at_floor"] is False

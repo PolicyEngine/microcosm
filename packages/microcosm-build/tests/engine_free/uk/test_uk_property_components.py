@@ -312,6 +312,35 @@ class TestReceiptsWalk:
             top["target_mean_receipts_gbp"], rel=1e-9
         )
 
+    def test_the_top_band_holds_its_floor_and_records_the_overshoot(self) -> None:
+        # Receipts equal to profit in total leave the top band nothing after
+        # the bounded bands' midpoints: the multiplier stays at its floor of 1,
+        # the band's receipts are its profit floor and the overshoot is
+        # recorded rather than hidden (microcosm#1145 review, item 7).
+        ids, profit, weights = _landlords()
+        allocation, _ = self._allocate(ids, profit, weights, receipts_per_profit=1.0)
+        top = allocation.receipt["bands_top_down"][0]
+        assert top["profit_multiplier"] == 1.0
+        assert top["multiplier_at_floor"] is True
+        assert top["mean_receipts_at_floor_gbp"] == top["mean_receipts_gbp"]
+        assert top["mean_receipts_shortfall_gbp"] < 0.0
+        assert top["target_mean_nonpositive"] is True
+
+    def test_every_bounded_band_sits_within_its_recorded_rounding_allowance(
+        self,
+    ) -> None:
+        ids, profit, weights = _landlords()
+        # Receipts at twice the profit keep the top band's solve off its floor.
+        allocation, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        cells = allocation.receipt["bands_top_down"]
+        for cell in cells[:-1]:
+            error = abs(cell["walk_landlords_weight"] - cell["target_landlords"])
+            assert error <= cell["boundary_allowance_weight"]
+            # Two straddlers at most, each no heavier than the heaviest landlord.
+            assert cell["boundary_allowance_weight"] <= 2.0 * float(weights.max())
+        assert cells[0]["multiplier_at_floor"] is False
+        assert cells[0]["target_mean_nonpositive"] is False
+
     def test_bands_take_their_pris_share_of_the_landlords_here(self) -> None:
         # microcosm#1106: before calibration the spine carries fewer landlords
         # than PRIS. Each band takes its share of the landlords present, so a
@@ -400,6 +429,29 @@ class TestStageTransform:
             time_period="2024",
             household_weights=rng.uniform(100.0, 300.0, households),
         )
+
+    def test_the_stage_refuses_a_frame_off_the_declared_build_period(self) -> None:
+        from microcosm.build.uk_runtime.national_frame import uk_national_frame
+        from microcosm.build.uk_runtime.property_components import (
+            PropertyComponentsError,
+            UKPropertyComponentsStageTransform,
+        )
+
+        frame = self._frame()
+        moved = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2025",
+            household_weights=frame.weights_for("household").values,
+        )
+        transform = UKPropertyComponentsStageTransform(
+            stage=_stage(),
+            uprating_factors={"property_income": 1.0, "property_finance_costs": 1.0},
+            facts=_facts(landlords=1_000.0, receipts=1_000_000.0),
+        )
+        with pytest.raises(PropertyComponentsError, match="build period 2024"):
+            transform(moved)
 
     def test_the_stage_adds_frs_costs_back_and_gives_every_landlord_receipts(
         self, tmp_path

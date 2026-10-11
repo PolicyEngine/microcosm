@@ -43,6 +43,7 @@ from microcosm.build.uk_runtime.spi_income import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     build_uk_spi_support_channel,
     support_channel_column,
@@ -611,6 +612,60 @@ def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None
     assert receipt["carriers_outside_band"] == 0
     assert all(row["carriers_outside_band"] == 0 for row in receipt["bands"])
     assert receipt["pool_basis"].startswith("uprated total income")
+
+
+def test_resample_pools_ignore_restricted_finance_costs() -> None:
+    # Given: restricted finance costs on every record below 200k large enough
+    # that, counted as income, each would sit in the 200k band; the 260k
+    # records carry a modest cost too. TAX_CRED carries the 20% relief.
+    raw = _raw_tape()
+    low = raw["PAY"] < 200_000.0
+    raw.loc[low, "LLIR_RESTRICT_AMT_TOT"] = 300_000.0
+    raw.loc[low, "TAX_CRED"] = 60_000.0
+    mid = raw["PAY"] == 260_000.0
+    raw.loc[mid, "LLIR_RESTRICT_AMT_TOT"] = 10_000.0
+    raw.loc[mid, "TAX_CRED"] = 2_000.0
+    donor = prepare_spi_donor_table(raw, seed=1)
+    household = pd.DataFrame(
+        {
+            "household_id": [1],
+            "region": ["LONDON"],
+            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11],
+            "person_household_id": [1],
+            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True],
+        }
+    )
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        person[column] = 1.0
+    factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
+    factors[SPI_PROPERTY_FINANCE_COSTS_COLUMN] = 2.0
+    updated, receipt = _resample_band_donor_leaves(
+        person,
+        donor,
+        household=household,
+        spi_people=pd.Series([True], index=person.index),
+        uprating_factors=factors,
+        lower_bounds=BANDS,
+        regional_pool_minimum=5,
+        seed=44,
+    )
+    # Then: the 200k pool holds the 260k records alone, as it did before the
+    # finance costs joined the tape; the costs cut no pool...
+    rows = {row["lower_bound"]: row for row in receipt["bands"]}
+    assert rows[200_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 260_000.0).sum()
+    )
+    assert receipt["carriers_outside_band"] == 0
+    assert "finance costs cut no pool" in receipt["pool_basis"]
+    # ...and the drawn record's costs travel with its leaves at their own factor.
+    carrier = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER]].iloc[0]
+    assert carrier["hmrc_spi_pay"] == 260_000.0
+    assert carrier[SPI_PROPERTY_FINANCE_COSTS_COLUMN] == 20_000.0
 
 
 def test_resample_draw_is_keyed_on_the_carrier_not_on_the_row_order() -> None:
