@@ -1,0 +1,46 @@
+{
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "input": "/work/other/childcare.pkl",
+ "input_sha256": "1cbf4651f785fd4db9409b91dd3b458bd9e372e91bb9cad19c3382413de299f5",
+ "period": 2024,
+ "platform": {
+  "cpu_count": 2,
+  "machine": "x86_64",
+  "numpy": "2.4.6",
+  "pandas": "3.0.3",
+  "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.36",
+  "python": "3.14.2 (main, Feb  3 2026, 03:09:04) [GCC 12.2.0]",
+  "quantile_forest": "1.4.2",
+  "sklearn": "1.8.0",
+  "thread_environment": {
+   "OMP_NUM_THREADS": "4",
+   "OPENBLAS_NUM_THREADS": "4",
+   "PYTHONHASHSEED": "0"
+  }
+ },
+ "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+ "rows": 367306,
+ "seconds": 39.6,
+ "seed": 0,
+ "stage": "childcare",
+ "vs_stored_base": {
+  "max_abs_difference": 5.093170329928398e-11,
+  "rows_differing": 15,
+  "rows_differing_by_channel": {
+   "asec/clone0": 0,
+   "puf_tax_detail/clone1": 14,
+   "puf_tax_detail/clone2": 1
+  },
+  "rows_differing_by_more_than_1e-9": 0
+ },
+ "vs_stored_release": {
+  "max_abs_difference": 50000.0,
+  "rows_differing": 1836,
+  "rows_differing_by_channel": {
+   "asec/clone0": 0,
+   "puf_tax_detail/clone1": 1605,
+   "puf_tax_detail/clone2": 231
+  },
+  "rows_differing_by_more_than_1e-9": 1801
+ }
+}

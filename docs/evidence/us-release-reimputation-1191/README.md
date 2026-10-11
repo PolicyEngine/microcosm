@@ -80,23 +80,29 @@ commit that built the release, loads the base with the builder's
    base stage's recorded weighted contribution totals exactly
    (`base_stage_record_check.base_0fb05b67.json`), so the stored outputs and
    weights are the base stage's own.
-5. The platform is the cause (`platform_replay.*.json`). The retirement
-   stage's exact input table, exported from the base, was replayed with the
-   production stage code on two platforms. On linux/amd64 (CPython 3.14.2,
-   the base build's uv.lock wheels, under QEMU) the traditional 401(k) leaf
-   matches the Modal-built base on all but 235 of 907,863 persons, each by at
-   most 6.9e-11; the other four leaves differ on 15, 5, 11 and 1 persons, at
-   most 1.6e-12. On macOS arm64 the same input differs from the base on 21,765
-   persons, and the two platforms' outputs differ from each other on 21,764
-   (21,484 by more than $1;
-   `platform_outputs.linux_amd64_vs_macos_arm64.json`). Because Linux
-   reproduces the base from the inputs the H5 stores, those inputs are the ones
-   the base stage read; the macOS difference is the platform's. quantile-forest 1.4.2
-   has no cp314 Linux aarch64 wheel, so architecture and operating system were
-   not separated. Only the retirement stage was replayed on Linux; the
-   weeks-unemployed, childcare and energy-subsidy differences in point 4 were
-   not.
+5. The platform is the cause (`platform_replay.*.json`). Each stage's exact
+   input table, exported from the base, was replayed with the production stage
+   code on linux/amd64 (CPython 3.14.2 and the base build's uv.lock wheels,
+   under QEMU) and on macOS arm64. Rows that differ from the Modal-built base:
 
+   | Stage | linux/amd64 | macOS arm64 |
+   |---|---|---|
+   | weeks unemployed | 0 of 907,863 persons | 9 persons, 1 to 10 weeks |
+   | childcare | 15 of 367,306 SPM units, at most 5.1e-11 | 54, at most 5.1e-11 |
+   | energy subsidy | 7 SPM units, at most 1.1e-12 | 17, at most 1.1e-12 |
+   | retirement contributions (traditional 401(k)) | 235 persons, at most 6.9e-11 | 21,765 persons, 21,484 by more than $1 |
+
+   The other four contribution leaves differ on 15, 5, 11 and 1 persons on
+   Linux, at most 1.6e-12. The two platforms' retirement outputs differ from
+   each other on 21,764 persons
+   (`platform_outputs.linux_amd64_vs_macos_arm64.json`). Because Linux
+   reproduces the base from the inputs the H5 stores, those inputs are the ones
+   the base stages read; the macOS differences are the platform's. Each
+   exported table keeps only the columns its stage reads and was checked to
+   give the full table's output bit for bit
+   (`platform_other_stages.export.macos_arm64.json`). quantile-forest 1.4.2
+   has no cp314 Linux aarch64 wheel, so architecture and operating system were
+   not separated.
 6. The divergence is in growing the trees, at tied splits
    (`platform_forest_probe.*.json`). The production QRF was fingerprinted step
    by step on both platforms. The five sign gates' training probabilities agree
@@ -162,6 +168,7 @@ release's platform.
 | `scripts/base_stage_record_check.py` | The five leaves' weighted totals recomputed from the base H5 against the totals the base stage recorded when it finished | `receipts/base_stage_record_check.base_0fb05b67.json` |
 | `scripts/second_pass_effect.py` | Weighted base and release totals on the same rows, by channel and clone | `receipts/second_pass_effect.base_0fb05b67.release_417d23ae.json` |
 | `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed) and replays it on any platform, optionally with a weight factor or a thread limit | `receipts/platform_replay.*.json` |
+| `scripts/platform_other_stages.py` | The same export and replay for weeks unemployed, childcare and energy subsidy | `receipts/platform_other_stages.export.macos_arm64.json`, `receipts/platform_replay.{weeks_unemployed,childcare,energy_subsidy}.linux_amd64.json` |
 | `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent split | `receipts/platform_forest_probe.*.json` |
 | `scripts/platform/` | The linux/amd64 harness: a `python:3.14.2-slim-bookworm` image, the stage's third-party imports at the base build's locked versions and hashes (`req.min.txt`, cross-installed on the host with `uv pip install --python-platform x86_64-manylinux_2_36 --target`), and a loader that imports the stage module without the package `__init__` chains | `receipts/platform_replay.linux_amd64.json` |
 
