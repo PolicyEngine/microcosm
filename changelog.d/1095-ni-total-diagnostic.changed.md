@@ -2,4 +2,4 @@ OBR's total National Insurance contributions (`obr.ni`, table 3.8 row 12) is now
 
 The binding note had put the gap down to Class 1A and 1B alone. It is wider than that. OBR's total is a cash figure while the class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3, and settlements, none of which any household carries.
 
-The exact FY2025-26 forecast (£200.08bn) is retained on `obr.ni_employee` and never fitted. The contract now holds 391 targets and 1,232 active references, and the incumbent row `obr/ni` moves from mapped to excluded.
+The exact FY2025-26 forecast (£200.08bn) is retained on `obr.ni_employee` and never fitted. The incumbent row `obr/ni` moves from mapped to excluded.

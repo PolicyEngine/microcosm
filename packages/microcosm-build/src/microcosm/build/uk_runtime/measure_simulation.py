@@ -19,6 +19,8 @@ from microcosm.build.uk_runtime.atomic_area_support import (
 )
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
+    UK_RATE_CLASS_ENGINE_TOLERANCE_GBP,
+    UK_RATE_CLASS_ENGINE_VARIABLE,
     UK_RATE_CLASSES,
     relief_by_rate_class,
 )
@@ -757,6 +759,29 @@ class UKMeasureResolver:
             scottish=np.asarray(scottish, dtype=bool),
             schedules=schedules,
         )
+        # The allocation re-implements the engine's earned_income_tax, the
+        # schedule applied to earned taxable income. Its classes must add up
+        # to that variable's rise, or the schedule has moved away from the
+        # brackets read here.
+        engine_variable = UK_RATE_CLASS_ENGINE_VARIABLE
+        baseline_earned, _ = compute_uk_measure_input(
+            self.frame, self.simulation, "person", engine_variable, self.year
+        )
+        counterfactual_earned, _ = compute_uk_measure_input(
+            self.frame, counterfactual, "person", engine_variable, self.year
+        )
+        earned_tax_change = np.asarray(counterfactual_earned, dtype=float) - np.asarray(
+            baseline_earned, dtype=float
+        )
+        earned_gap = np.abs(earned_tax_change - sum(relief.values()))
+        beyond = earned_gap > UK_RATE_CLASS_ENGINE_TOLERANCE_GBP
+        if beyond.any():
+            raise ValueError(
+                f"The {UK_RATE_CLASS_ALLOCATION['kind']} allocation no longer adds "
+                f"up to the engine's {engine_variable}: {int(beyond.sum())} "
+                f"person(s) differ by up to GBP {float(earned_gap.max()):.2f}. "
+                "Review the income tax schedule it reads."
+            )
         baseline_tax, _ = compute_uk_measure_input(
             self.frame, self.simulation, "person", "income_tax", self.year
         )
@@ -772,6 +797,11 @@ class UKMeasureResolver:
             "relief_by_class_unweighted_total": {
                 name: float(np.sum(values)) for name, values in relief.items()
             },
+            "engine_variable": engine_variable,
+            "engine_variable_change_unweighted_total": float(np.sum(earned_tax_change)),
+            "largest_gap_to_engine_variable": float(earned_gap.max())
+            if earned_gap.size
+            else 0.0,
             "income_tax_change_unweighted_total": float(np.sum(income_tax_change)),
             "gap_to_income_tax_change_unweighted": float(
                 np.sum(income_tax_change) - classes_total

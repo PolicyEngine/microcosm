@@ -174,9 +174,43 @@ def test_relief_bands_relieve_each_slice_at_its_rate(tmp_path):
     np.testing.assert_allclose(total[:3], income_tax[:3], atol=0.01)
     assert income_tax[3] > total[3] + 100.0
     (receipt,) = resolver.receipt()["rate_class_reliefs"].values()
+    # The classes add up to the rise in the engine's own earned_income_tax
+    # for every person, the fourth included: a drifted schedule fails there.
+    earned, _ = resolver.counterfactual_delta(
+        _relief_binding("earned_income_tax"), 2025
+    )
+    np.testing.assert_allclose(total, earned, atol=0.01)
+    assert receipt["engine_variable"] == "earned_income_tax"
+    assert receipt["largest_gap_to_engine_variable"] < 0.01
+    assert receipt["engine_variable_change_unweighted_total"] == pytest.approx(
+        float(np.sum(total)), abs=0.01
+    )
     assert receipt["persons_with_gap"] == 1
     assert receipt["gap_to_income_tax_change_unweighted"] == pytest.approx(
         float(np.sum(income_tax) - np.sum(total)), abs=0.01
     )
     # One counterfactual simulation serves the three bands and the total.
     assert len(resolver._counterfactuals) == 1
+
+
+def test_relief_bands_refuse_when_they_leave_the_engines_earned_income_tax(
+    tmp_path, monkeypatch
+):
+    """The allocation re-implements earned_income_tax; a schedule it no longer
+    follows refuses the measure instead of binding a drifted band."""
+
+    from microcosm.build.uk_runtime import measure_simulation
+
+    real = measure_simulation.relief_by_rate_class
+
+    def drifted(**kwargs):
+        relief = real(**kwargs)
+        return {**relief, "basic": relief["basic"] + 5.0}
+
+    monkeypatch.setattr(measure_simulation, "relief_by_rate_class", drifted)
+    resolver = UKMeasureResolver(
+        simulation_source=None, frame=_band_frame(), scratch_dir=tmp_path, year=2025
+    )
+
+    with pytest.raises(ValueError, match="no longer adds up to the engine's"):
+        resolver.counterfactual_delta(_band_binding("basic"), 2025)

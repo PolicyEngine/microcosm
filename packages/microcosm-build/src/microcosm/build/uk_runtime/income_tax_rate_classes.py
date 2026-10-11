@@ -9,9 +9,10 @@ that straddles a band boundary is relieved partly at each rate (uk-data#533).
 
 The categories group a schedule's brackets: a bracket taxed below 30% is basic
 (HMRC counts the Scottish starter, basic and intermediate rates there), the
-schedule's top rate is additional (the rest-of-UK additional rate and the
-Scottish top rate), and every other bracket is higher (the Scottish higher and
-advanced rates, which span the rest-of-UK higher-rate income range). Where the
+schedule's top rate is additional where a higher rate sits below it (the
+rest-of-UK additional rate and the Scottish top rate), and every other bracket
+is higher (the Scottish higher and advanced rates, which span the rest-of-UK
+higher-rate income range). Where the
 returned pay tapers the personal allowance, the allowance it withdraws raises
 taxable income too, so that tax lands in the brackets it reaches, as
 uk-data#533 reads it. policyengine-uk puts the Scottish top-rate threshold at
@@ -43,6 +44,13 @@ UK_RATE_CLASS_ALLOCATION: Mapping[str, object] = {
 }
 
 
+#: The engine variable the allocation re-implements: the schedule applied to
+#: earned taxable income. A person's classes must add up to its rise within
+#: the tolerance (the engine computes in float32), or the measure refuses.
+UK_RATE_CLASS_ENGINE_VARIABLE = "earned_income_tax"
+UK_RATE_CLASS_ENGINE_TOLERANCE_GBP = 1.0
+
+
 def tax_by_rate_class(
     income: np.ndarray,
     thresholds: Sequence[float],
@@ -62,7 +70,10 @@ def tax_by_rate_class(
     ]
     if not brackets:
         raise ValueError("an income tax schedule needs at least one bracket.")
-    top = brackets[-1][1]
+    # The top rate is the additional rate only where a higher rate sits below
+    # it; a schedule with one rate above the basic class has no additional rate.
+    above_basic = {rate for _, rate in brackets if rate >= UK_BASIC_RATE_CLASS_CEILING}
+    top = brackets[-1][1] if len(above_basic) > 1 else None
     uppers = [threshold for threshold, _ in brackets[1:]] + [np.inf]
     classes = {name: np.zeros_like(values) for name in UK_RATE_CLASSES}
     for (lower, rate), upper in zip(brackets, uppers, strict=True):

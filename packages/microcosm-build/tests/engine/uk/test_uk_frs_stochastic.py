@@ -28,7 +28,7 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
     """The population is policyengine-uk's is_uc_eligible, capital aside.
 
     The take-up population holds a unit with a UC claimant or partner aged 18
-    to under Pension Credit qualifying age. One-person units aged 14 to 90
+    to under Pension Credit qualifying age. One-person units aged 0 to 100
     agree with the engine; the two cases below are engine conditions the
     population does not read, named so that an engine change to either fails
     here.
@@ -42,7 +42,7 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
         source="policyengine-uk parameters " + metadata.version("policyengine-uk"),
     )
 
-    ages = list(range(14, 91))
+    ages = list(range(0, 101))
     engine = _engine_uc_eligible(
         {f"p{age}": {"age": {2025: age}} for age in ages},
         {f"b{age}": {"members": [f"p{age}"]} for age in ages},
