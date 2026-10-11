@@ -14,13 +14,13 @@ pytest, where this module skips.
 
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 hypothesis = pytest.importorskip("hypothesis")
 st = pytest.importorskip("hypothesis.strategies")
 
 from test_support.microcosm_build.us_release_base_input import (  # noqa: E402
+    assert_identical,
     build_base,
     outputs,
     retirement_contributions,
@@ -45,7 +45,7 @@ def test_retirement_rerun_is_invariant_to_any_uniform_weight_scale(
     base = _base()
     rerun = retirement_contributions(with_scaled_weights(base, factor))
 
-    pd.testing.assert_frame_equal(
+    assert_identical(
         outputs(rerun, "retirement_contributions"),
         outputs(base, "retirement_contributions"),
     )

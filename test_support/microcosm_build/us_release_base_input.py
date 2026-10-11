@@ -217,6 +217,16 @@ def outputs(frame: Frame, stage: str) -> pd.DataFrame:
     return frame.table(entity).set_index(f"{entity}_id")[list(columns)].sort_index()
 
 
+def assert_identical(left: pd.DataFrame, right: pd.DataFrame) -> None:
+    """Require two output tables to be equal bit for bit.
+
+    ``assert_frame_equal`` compares floats to a relative tolerance of 1e-5 by
+    default; these invariants are about exact reproduction.
+    """
+
+    pd.testing.assert_frame_equal(left, right, check_exact=True)
+
+
 def ss_targets(release_tool, frame: Frame) -> list[SimpleNamespace]:
     """SSA targets that make the release repair apply the Route A factors."""
 

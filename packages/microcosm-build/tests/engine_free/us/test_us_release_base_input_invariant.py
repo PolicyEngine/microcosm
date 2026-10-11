@@ -37,7 +37,6 @@ from __future__ import annotations
 import ast
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from test_support.microcosm_build.us_release_base_input import (
@@ -46,6 +45,7 @@ from test_support.microcosm_build.us_release_base_input import (
     ROUTE_A_SS_FACTORS,
     STAGES,
     ReleaseScenario,
+    assert_identical,
     load_release_tool,
     outputs,
 )
@@ -90,16 +90,14 @@ def scenario() -> ReleaseScenario:
 def test_rerun_on_unchanged_base_reproduces_every_output(
     scenario: ReleaseScenario, stage: str
 ) -> None:
-    pd.testing.assert_frame_equal(
-        scenario.rerun("base", stage), outputs(scenario.base, stage)
-    )
+    assert_identical(scenario.rerun("base", stage), outputs(scenario.base, stage))
 
 
 @pytest.mark.parametrize("stage", sorted(STAGES))
 def test_rerun_is_invariant_to_the_population_mass_repair(
     scenario: ReleaseScenario, stage: str
 ) -> None:
-    pd.testing.assert_frame_equal(
+    assert_identical(
         scenario.rerun("mass_repaired", stage), outputs(scenario.base, stage)
     )
 
@@ -140,7 +138,7 @@ def test_social_security_repair_reorders_the_shared_predictor(
 def test_release_reruns_store_the_base_outputs(
     scenario: ReleaseScenario, stage: str
 ) -> None:
-    pd.testing.assert_frame_equal(
+    assert_identical(
         scenario.rerun("release_prefix", stage), outputs(scenario.base, stage)
     )
 

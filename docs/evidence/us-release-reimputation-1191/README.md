@@ -76,11 +76,10 @@ commit that built the release, loads the base with the builder's
    traditional 401(k) leaf (21,484 by more than $1, up to $18,523, no zero or
    nonzero flips), childcare on 54 and energy subsidy on 17 SPM units (at most
    5.1e-11), weeks unemployed on 9 persons (1 to 10 weeks). Weeks unemployed is
-   the release's first re-run, before any repair. Childcare and energy subsidy
-   read the same eight predictors as retirement contributions and ran just
-   before it in the base build; their ULP-level agreement rules out a predictor
-   that moved between that stage and the exported H5. The base H5 also
-   reproduces the base stage's recorded weighted contribution totals exactly.
+   the release's first re-run, before any repair. The base H5 reproduces the
+   base stage's recorded weighted contribution totals exactly
+   (`base_stage_record_check.base_0fb05b67.json`), so the stored outputs and
+   weights are the base stage's own.
 5. The platform is the cause (`platform_replay.*.json`). The retirement
    stage's exact input table, exported from the base, was replayed with the
    production stage code on two platforms. On linux/amd64 (CPython 3.14.2,
@@ -90,7 +89,9 @@ commit that built the release, loads the base with the builder's
    most 1.6e-12. On macOS arm64 the same input differs from the base on 21,765
    persons, and the two platforms' outputs differ from each other on 21,764
    (21,484 by more than $1;
-   `platform_outputs.linux_amd64_vs_macos_arm64.json`). quantile-forest 1.4.2
+   `platform_outputs.linux_amd64_vs_macos_arm64.json`). Because Linux
+   reproduces the base from the inputs the H5 stores, those inputs are the ones
+   the base stage read; the macOS difference is the platform's. quantile-forest 1.4.2
    has no cp314 Linux aarch64 wheel, so architecture and operating system were
    not separated. Only the retirement stage was replayed on Linux; the
    weeks-unemployed, childcare and energy-subsidy differences in point 4 were
@@ -133,19 +134,19 @@ its sign or an earlier leaf in the chain changed.
 
 **Direction and size** (`second_pass_effect…json`, PUF half, same rows):
 
-| Column | Under release weights | Under base weights |
+| Column | Under base weights | Under release weights |
 |---|---:|---:|
-| traditional 401(k) | +$3.57B (+2.11%) | +$1.59B (+1.21%) |
-| Roth 401(k) | +$0.64B (+2.14%) | +$0.29B (+1.23%) |
-| traditional IRA | +$0.15B (+1.87%) | +$0.07B (+1.18%) |
-| Roth IRA | +$0.22B (+1.79%) | +$0.10B (+1.01%) |
-| self-employed pension | +$0.03B (+4.18%) | +$0.01B (+3.48%) |
-| childcare expenses | +$0.35B (+0.93%) | −$0.18B (−0.67%) |
-| energy subsidy | +$0.13B (+8.13%) | +$0.002B (+0.18%) |
-| weeks unemployed | −0.22% | −0.06% |
+| traditional 401(k) | +$1,593M (+1.21%) | +$3,567M (+2.11%) |
+| Roth 401(k) | +$285M (+1.23%) | +$638M (+2.14%) |
+| traditional IRA | +$75M (+1.18%) | +$151M (+1.87%) |
+| Roth IRA | +$100M (+1.01%) | +$224M (+1.79%) |
+| self-employed pension | +$11M (+3.48%) | +$33M (+4.18%) |
+| childcare expenses | −$182M (−0.67%) | +$347M (+0.93%) |
+| energy subsidy | +$2M (+0.18%) | +$127M (+8.13%) |
+| weeks unemployed (person-weeks) | −0.06% | −0.22% |
 
-The release weights were calibrated on the release values, so the first
-column includes calibration's response to the second pass; the second column
+The release weights were calibrated on the release values, so the second
+column includes calibration's response to the second pass; the first column
 isolates the redraw.
 
 **Which pass ships.** The release's. Its stored values are the second pass's
@@ -158,6 +159,7 @@ release's platform.
 |---|---|---|
 | `scripts/base_release_column_diff.py` | Every common column of every entity, base against release, by channel and clone, with direction | `receipts/column_diff.base_0fb05b67.release_417d23ae.json` |
 | `scripts/replay_release_reimputation.py`, `scripts/run_replays.sh` | The four stages replayed under the variants above, each output compared with both files | `receipts/replay.{release_order,isolated,attribution}.json` |
+| `scripts/base_stage_record_check.py` | The five leaves' weighted totals recomputed from the base H5 against the totals the base stage recorded when it finished | `receipts/base_stage_record_check.base_0fb05b67.json` |
 | `scripts/second_pass_effect.py` | Weighted base and release totals on the same rows, by channel and clone | `receipts/second_pass_effect.base_0fb05b67.release_417d23ae.json` |
 | `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed) and replays it on any platform, optionally with a weight factor or a thread limit | `receipts/platform_replay.*.json` |
 | `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent split | `receipts/platform_forest_probe.*.json` |
