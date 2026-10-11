@@ -2121,7 +2121,10 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    # Joint SCF retirement vectors replace the contribution QRF, removing
+    # seven role-aware predictor gates and four primary-PUF Social Security
+    # dependencies from the retirement source producer's input inventory.
+    expected_graph_counts = (2733, 92, 227, 35, 0, 213)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "
