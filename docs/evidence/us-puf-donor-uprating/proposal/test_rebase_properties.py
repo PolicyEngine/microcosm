@@ -149,14 +149,30 @@ def test_zero_sign_support_and_rank_are_preserved(source, pos, neg, table, year)
     assert np.array_equal(out == 0, donor == 0)
     assert np.array_equal(np.sign(out), np.sign(donor))
     for side in (donor > 0, donor < 0):
-        if side.sum() > 1:
-            assert (
-                np.array_equal(
-                    np.argsort(donor[side], kind="stable"),
-                    np.argsort(out[side], kind="stable"),
-                )
-                or len(np.unique(donor[side])) < side.sum()
-            )
+        order = np.argsort(donor[side], kind="stable")
+        before, after = donor[side][order], out[side][order]
+        # Strictly larger donor values stay strictly larger; ties stay ties.
+        assert np.all(np.diff(after)[np.diff(before) > 0] > 0)
+        assert np.all(np.diff(after)[np.diff(before) == 0] == 0)
+
+
+@SETTINGS
+@given(amounts, positive, positive, level_tables(), build_years, st.booleans())
+def test_sign_split_legs_follow_their_own_series(
+    source, pos, neg, table, year, positive_first
+):
+    """Invariant 5 for a sign-split column, whatever order the legs are listed in."""
+
+    legs = (Leg("F", "wages", pos, sign=1), Leg("F", "interest", neg, sign=-1))
+    column = Column("c", legs if positive_first else legs[::-1])
+    donor = np.where(source > 0, source * pos, source * neg)
+    out = rebase_column(donor, column, table, year)
+    expected = np.where(
+        source > 0,
+        source * table.growth("wages", 2015, year),
+        source * table.growth("interest", 2015, year),
+    )
+    assert close(out, expected, rtol=1e-9)
 
 
 @SETTINGS
