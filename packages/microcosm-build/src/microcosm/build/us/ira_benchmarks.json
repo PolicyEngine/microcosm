@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "country": "us",
+  "use": "validation_only",
+  "verification_date": "2026-10-11",
+  "ira_accumulation_methodology_url": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+  "comparison_notes": [
+    "Gross-contribution observations are factual contribution benchmarks from the matched Forms 1040, 5498, and 1099-R IRA accumulation study. They must not be replaced with deductible IRA payments.",
+    "Model-derived deduction observations are IRA payments from individual income tax Table 1.4. They validate traditional_ira_deduction and must never be stored as contribution inputs.",
+    "Gross-contribution counts are taxpayers; deductible-payment counts are returns. The counts require different aggregation grains. Traditional and Roth taxpayer counts can overlap and must not be summed as unique people.",
+    "Compare matched tax years. A 2025 model result against tax year 2022 or 2023 is a cross-year diagnostic, not a same-year validation.",
+    "The IRS introduced an enhanced IRA accumulation series starting in 2022. These gross observations use the June 2026 workbooks; earlier extracted totals and B8/C8 coordinates are not these tables' All taxpayers observations.",
+    "Source money amounts are in thousands of dollars. Multiply amount_thousands by 1000 for dollars."
+  ],
+  "gross_contributions": [
+    {
+      "year": 2022,
+      "account_type": "traditional",
+      "model_variable": "traditional_ira_contributions",
+      "count_unit": "taxpayer",
+      "number_of_taxpayers": 5900726,
+      "amount_thousands": 25807585,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/22in05ira.xlsx",
+        "sha256": "d4aa270c3f2a4219504052560ca93eddc6b182429e62da1430b751ec64186bde",
+        "table_number": 5,
+        "sheet": "Estimates",
+        "title": "Table 5. Taxpayers with Traditional Individual Retirement Arrangement (IRA) Plan Contributions, by Size of Contribution and Age of Taxpayer, Tax Year 2022",
+        "publication_vintage": "June 2026",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "row_label": "All taxpayers",
+        "row_label_cell": "A7",
+        "count_cell": "B7",
+        "amount_cell": "C7"
+      }
+    },
+    {
+      "year": 2022,
+      "account_type": "roth",
+      "model_variable": "roth_ira_contributions",
+      "count_unit": "taxpayer",
+      "number_of_taxpayers": 9170792,
+      "amount_thousands": 30584013,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/22in06ira.xlsx",
+        "sha256": "6b3eb9a6623e315fca3021743beb66e0a16362aa38fd91208848154b5654d0a0",
+        "table_number": 6,
+        "sheet": "Estimates",
+        "title": "Table 6. Taxpayers with Roth Individual Retirement Arrangement (IRA) Plan Contributions, by Size of Contribution and Age of Taxpayer, Tax Year 2022",
+        "publication_vintage": "June 2026",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "row_label": "All taxpayers",
+        "row_label_cell": "A7",
+        "count_cell": "B7",
+        "amount_cell": "C7"
+      }
+    },
+    {
+      "year": 2023,
+      "account_type": "traditional",
+      "model_variable": "traditional_ira_contributions",
+      "count_unit": "taxpayer",
+      "number_of_taxpayers": 5873053,
+      "amount_thousands": 26901749,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/23in05ira.xlsx",
+        "sha256": "17b02670eeb35dab5d3f8be6a26333d527993f8b22933fa77bb3a06f3c8ad143",
+        "table_number": 5,
+        "sheet": "Estimates",
+        "title": "Table 5. Taxpayers with Traditional Individual Retirement Arrangement (IRA) Plan Contributions, by Size of Contribution and Age of Taxpayer, Tax Year 2023",
+        "publication_vintage": "June 2026",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "row_label": "All taxpayers",
+        "row_label_cell": "A7",
+        "count_cell": "B7",
+        "amount_cell": "C7"
+      }
+    },
+    {
+      "year": 2023,
+      "account_type": "roth",
+      "model_variable": "roth_ira_contributions",
+      "count_unit": "taxpayer",
+      "number_of_taxpayers": 9488414,
+      "amount_thousands": 32809393,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/23in06ira.xlsx",
+        "sha256": "b526e4d4163172ed9992d16375cbf601b1c8b4d5bcf66f86e038c0e91c420418",
+        "table_number": 6,
+        "sheet": "Estimates",
+        "title": "Table 6. Taxpayers with Roth Individual Retirement Arrangement (IRA) Plan Contributions, by Size of Contribution and Age of Taxpayer, Tax Year 2023",
+        "publication_vintage": "June 2026",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "row_label": "All taxpayers",
+        "row_label_cell": "A7",
+        "count_cell": "B7",
+        "amount_cell": "C7"
+      }
+    }
+  ],
+  "model_derived_deductions": [
+    {
+      "year": 2022,
+      "model_variable": "traditional_ira_deduction",
+      "count_unit": "return",
+      "number_of_returns": 2430935,
+      "amount_thousands": 13166590,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/22in14ar.xls",
+        "sha256": "93811f816933d4ac3250c402f7ddae5989a145b60ce47db413d0f19c71af6617",
+        "table_number": "1.4",
+        "sheet": "TBL14",
+        "title": "Table 1.4.  All Returns: Sources of Income, Adjustments, and Tax Items, \nby Size of Adjusted Gross Income, Tax Year 2022 (Filing Year 2023)",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "measure_label": "IRA payments",
+        "measure_label_cell": "DT4",
+        "row_label": "All returns, total",
+        "row_label_cell": "A9",
+        "count_cell": "DT9",
+        "amount_cell": "DU9"
+      }
+    },
+    {
+      "year": 2023,
+      "model_variable": "traditional_ira_deduction",
+      "count_unit": "return",
+      "number_of_returns": 2503934,
+      "amount_thousands": 13771289,
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-soi/23in14ar.xls",
+        "sha256": "b6c1f87fbb5533417e195f6938538e5de09b6a0825a6a54346bf9363a18d96af",
+        "table_number": "1.4",
+        "sheet": "TBL14",
+        "title": "Table 1.4.  All Returns: Sources of Income, Adjustments, and Tax Items, \nby Size of Adjusted Gross Income, Tax Year 2023 (Filing Year 2024)",
+        "money_unit": "thousand_usd",
+        "money_unit_cell": "A2",
+        "measure_label": "IRA payments",
+        "measure_label_cell": "DT4",
+        "row_label": "All returns, total",
+        "row_label_cell": "A9",
+        "count_cell": "DT9",
+        "amount_cell": "DU9"
+      }
+    }
+  ]
+}
