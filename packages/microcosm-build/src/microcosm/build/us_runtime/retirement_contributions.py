@@ -322,11 +322,14 @@ def with_us_retirement_contribution_inputs(
     time_period: int,
     donor: pd.DataFrame | None = None,
     cache_dir: str | Path | None = None,
+    draw_audit: dict[str, object] | None = None,
 ) -> Frame:
     """Materialize source contributions, rebuilding legacy fixed-share leaves.
 
     Donor injection is for explicit source tables and hermetic contract tests.
     Ordinary builds fetch the byte-pinned public SCF into their local cache.
+    ``draw_audit`` optionally receives donor and per-cell participation evidence
+    separately from the frame's immutable assembly metadata.
     """
 
     if frame.schema != US_SCHEMA:
@@ -373,22 +376,23 @@ def with_us_retirement_contribution_inputs(
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
         tables["person"][column] = aligned[column].to_numpy(dtype=np.float64)
+    if draw_audit is not None:
+        draw_audit.update(
+            {
+                "method": "weighted_joint_hot_deck_v1",
+                "seed": int(seed),
+                "donor": dict(donor.attrs.get("scf_retirement", {})),
+                "cps_draw": output.attrs.get("retirement_cps_draw"),
+                "puf_draw": output.attrs.get("retirement_puf_draw"),
+            }
+        )
     return Frame(
         tables,
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
-        metadata={
-            **frame.metadata,
-            "retirement_contributions": {
-                "method": "weighted_joint_hot_deck_v1",
-                "seed": int(seed),
-                "donor": dict(donor.attrs.get("scf_retirement", {})),
-                "cps_draw": output.attrs.get("retirement_cps_draw"),
-                "puf_draw": output.attrs.get("retirement_puf_draw"),
-            },
-        },
+        metadata=frame.metadata,
     )
 
 

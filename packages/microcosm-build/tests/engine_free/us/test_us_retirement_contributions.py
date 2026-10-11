@@ -20,7 +20,7 @@ from microcosm.build.us_runtime.retirement_contributions import (
     us_retirement_contributions_summary,
     with_us_retirement_contribution_inputs,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 
 
 def _person_source() -> pd.DataFrame:
@@ -108,9 +108,19 @@ def _derive(frame: pd.DataFrame, seed: int = 0) -> pd.DataFrame:
     return derive_us_retirement_contributions_from_manifest(frame, operation, context)
 
 
-def _with(frame: Frame, *, seed: int = 0, time_period: int = 2024) -> Frame:
+def _with(
+    frame: Frame,
+    *,
+    seed: int = 0,
+    time_period: int = 2024,
+    draw_audit: dict[str, object] | None = None,
+) -> Frame:
     return with_us_retirement_contribution_inputs(
-        frame, seed=seed, time_period=time_period, donor=_donor()
+        frame,
+        seed=seed,
+        time_period=time_period,
+        donor=_donor(),
+        draw_audit=draw_audit,
     )
 
 
@@ -206,6 +216,56 @@ def test_with_inputs_materializes_signal_and_preserves_reported_total() -> None:
     np.testing.assert_allclose(allocated, person["RETCB_VAL"])
 
 
+@pytest.mark.parametrize("with_support_roles", [False, True])
+def test_wrapper_preserves_existing_metadata_mass_history_and_draw_evidence(
+    with_support_roles: bool,
+) -> None:
+    frame = _frame().with_weights(
+        "household",
+        Weights(np.full(4, 2.0), WeightKind.IMPORTANCE),
+        mass=MassChange(factor=2.0, reason="Regression fixture population scaling"),
+    )
+    if with_support_roles:
+        frame = clone_us_frame_for_puf_support(_with(frame))
+    frame = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={"assembly": {"sources": ["fixture"], "seed": 4}},
+    )
+    donor = _donor()
+    donor.attrs["scf_retirement"] = {"source": "hermetic regression donor"}
+    draw_audit: dict[str, object] = {}
+
+    result = with_us_retirement_contribution_inputs(
+        frame,
+        seed=7,
+        time_period=2024,
+        donor=donor,
+        draw_audit=draw_audit,
+    )
+
+    assert frame.mass_log
+    assert result.metadata == frame.metadata
+    assert result.mass_log == frame.mass_log
+    pd.testing.assert_series_equal(result.strata, frame.strata)
+    for entity in frame.weighted_entities:
+        np.testing.assert_array_equal(
+            result.weights_for(entity).values, frame.weights_for(entity).values
+        )
+    assert draw_audit["method"] == "weighted_joint_hot_deck_v1"
+    assert draw_audit["seed"] == 7
+    assert draw_audit["donor"] == donor.attrs["scf_retirement"]
+    assert draw_audit["cps_draw"]["cells"]
+    if with_support_roles:
+        assert draw_audit["puf_draw"]["cells"]
+    else:
+        assert draw_audit["puf_draw"] is None
+    assert us_retirement_contributions_signal_gate(result).passed
+
+
 def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> None:
     stacked = _stacked_frame()
 
@@ -246,11 +306,9 @@ def test_legacy_valid_split_is_rebuilt_instead_of_passing_through() -> None:
     frame = _frame()
     for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
         frame.table("person")[column] = 0.2
-    result = _with(frame)
-    assert (
-        result.metadata["retirement_contributions"]["method"]
-        == "weighted_joint_hot_deck_v1"
-    )
+    draw_audit: dict[str, object] = {}
+    result = _with(frame, draw_audit=draw_audit)
+    assert draw_audit["method"] == "weighted_joint_hot_deck_v1"
     assert us_retirement_contributions_signal_gate(result).passed
     assert (
         not result.table("person")["traditional_ira_contributions_desired"]
