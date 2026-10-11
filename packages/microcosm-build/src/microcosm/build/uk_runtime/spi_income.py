@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.frs_spine import uc_gainful_self_employment
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -81,6 +82,17 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
+#: Each SPI component is rebased by the index policyengine-uk's dataset
+#: projection grows its variable with (``policyengine_uk/data/
+#: uprating_indices.yaml``), since the engine runs a loaded dataset on it.
+#: Savings interest is the one component whose ``Variable.uprating`` attribute
+#: names another index: ONS household interest income, x2.27 from 2022 to 2024
+#: against GDP per head's x1.09. The attribute only carries a situation input
+#: forward (uk-data#541; María's ruling of 2026-10-09, microcosm#1095). The
+#: engine lockstep test holds every component to the projection table.
+SPI_INCOME_UPRATING_INDEX_OVERRIDES = {
+    "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+}
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
 # broader indexed benefit inputs do not establish a taxable SPI crosswalk.
@@ -984,6 +996,7 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
+    person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1321,7 +1334,9 @@ def _spi_income_uprating_factors(year: int):
                 raise ValueError(
                     f"Missing SPI uprating variable {variable_name!r} for {column}."
                 )
-            path = getattr(variable, "uprating", None)
+            path = SPI_INCOME_UPRATING_INDEX_OVERRIDES.get(
+                variable_name, getattr(variable, "uprating", None)
+            )
             if not isinstance(path, str) or not path:
                 raise ValueError(f"Unsupported SPI uprating index for {column}.")
             before, after = source, target
@@ -1342,6 +1357,8 @@ def _spi_income_uprating_factors(year: int):
             "factor": factor,
             "basis": "model_index" if path else "held_nominal",
         }
+        if variable_name in SPI_INCOME_UPRATING_INDEX_OVERRIDES:
+            columns[column]["index_source"] = "dataset_projection"
     return factors, {
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": year,
@@ -2044,6 +2061,36 @@ def _refresh_uc_start_up_period(
         spi_people,
         "uc_is_in_startup_period",
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
+    )
+    return person
+
+
+def _refresh_uc_gainful_self_employment(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Derive a redrawn row's UC gainful self-employment from its drawn incomes.
+
+    A redrawn row keeps the donor's employment status but takes new imputed
+    pay and profit, and the draw does not read the status (uk-data#529,
+    microcosm#840): on such a row the status says nothing about the drawn
+    trade. So the row takes the earnings route of the root's rule alone, a
+    profit above zero and above its pay (uk-data#525, ADM H4034). The main-job
+    route returns when the SPI draw follows employment status.
+    """
+
+    if "uc_is_in_gainful_self_employment" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_gainful_self_employment",
+        uc_gainful_self_employment(
+            np.zeros(len(rows), dtype=bool),
+            pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
+            pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
+        ),
         default=False,
     )
     return person

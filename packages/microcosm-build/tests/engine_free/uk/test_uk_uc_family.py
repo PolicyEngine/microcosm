@@ -237,8 +237,9 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
             ],
         ),
     ]
-    # Match the published decimal lower edges, independently of _band_bounds.
-    # DWP's last included band is £2,400.01–£2,500/month, inclusive:
+    # Award values around the published decimal lower edges, independently of
+    # _band_bounds. DWP's bands are whole pence, "£0.01 to £100.00" up to
+    # "£2,400.01 to £2,500.00" and "£2,500.01 or over":
     # https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html
     # The separately published £2,500.01+ category remains unbound. It must
     # never be silently absorbed into the last finite reference.
@@ -376,18 +377,16 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
     uc = bu.universal_credit.to_numpy()
     # Synthetic ids encode the independent fixture's two-benefit-unit dwelling.
     bu_household = bu.benunit_id.to_numpy() // 2
+    # microcosm#1095: band i is (GBP 1,200 i, 1,200 (i + 1)] a year compared in
+    # whole pence, and an award above GBP 30,000 is in no bound band.
+    pence = np.rint(uc * 100.0)
     for spec, name, row in zip(
         active, problem.names, problem.matrix.toarray(), strict=True
     ):
         family_name, band_name = spec.name.split("/")[-1].split("_annual_payment_")
         band_index = int(band_name.split("_to_")[0].replace("_", "")) // 1200
-        lower = edges[band_index]
-        upper = (
-            edges[band_index + 1] if band_index < 24 else np.nextafter(30_000.0, np.inf)
-        )
-        mask = (
-            (expected_family == family_name) & (uc > 0) & (uc >= lower) & (uc < upper)
-        )
+        in_band = (pence > 120_000 * band_index) & (pence <= 120_000 * (band_index + 1))
+        mask = (expected_family == family_name) & (uc > 0) & in_band
         expected = np.array(
             [mask[bu_household == hid].sum() for hid in hh.household_id]
         )

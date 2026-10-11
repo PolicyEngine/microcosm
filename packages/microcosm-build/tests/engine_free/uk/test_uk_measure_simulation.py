@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
@@ -570,10 +571,10 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 #: a drifting count is a register change that must be re-adjudicated,
 #: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
-    # microcosm#1069 c11: the live counterfactual route binds the two NICs
-    # relief rows and the income-tax relief total; the three rate bands wait
-    # for the band-test fix.
-    "hmrc.salary_sacrifice.": 3,
+    # microcosm#1069 c11 held the three salary-sacrifice rate bands out until
+    # a band test that reads the Scottish bands; microcosm#1095 binds them by
+    # rate class, so no salary-sacrifice entry remains.
+    "hmrc.salary_sacrifice.": 0,
     "_1_000_000_to_inf": 10,
     "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
@@ -637,7 +638,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 64
+    assert len(names) == len(set(names)) == 61
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -1069,10 +1070,26 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         year=2025,
         frame=FrameStub(),
     )
-    with pytest.raises(ValueError, match="banded counterfactual measures are deferred"):
+    with pytest.raises(ValueError, match="banded counterfactual measures are refused"):
         resolver.counterfactual_delta(
             _relief_binding("income_tax", band={"variable": "adjusted_net_income"}),
             2025,
+        )
+    # A rate-class allocation must be exactly the declared one (microcosm#1095).
+    allocation = {**UK_RATE_CLASS_ALLOCATION, "rate_class": "basic"}
+    for drifted in (
+        {**allocation, "basic_below_rate": 0.25},
+        {**allocation, "rate_class": "starter"},
+        {**allocation, "taxable_income": "adjusted_net_income"},
+    ):
+        with pytest.raises(ValueError, match="rate-class allocation must declare"):
+            resolver.counterfactual_delta(
+                _relief_binding("earned_taxable_income", allocation=drifted),
+                2025,
+            )
+    with pytest.raises(ValueError, match="rate-class allocation must declare"):
+        resolver.counterfactual_delta(
+            _relief_binding("income_tax", allocation=allocation), 2025
         )
     with pytest.raises(ValueError, match="does not match target period"):
         resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)

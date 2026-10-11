@@ -786,9 +786,28 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         # it above GBP 35,000, where the engine withholds it; the recipient count
         # sits beside the bound OBR line until payment and recovery separate.
         "obr.winter_fuel_allowance": ("dwp.winter_fuel_payment.recipients",),
+        # microcosm#1095 (María, 2026-10-09): OBR's cash NICs total sits beside
+        # the accrued class rows it does not equal; the class rows are bound.
+        "obr.ni_employee": ("obr.ni",),
+        # microcosm#1095 (María, 2026-10-09): the three Table 6.1 rate bands
+        # bind, and the Table 6.2 total sits beside the higher-rate band.
+        "hmrc.salary_sacrifice.it_relief_higher_rate": (
+            "hmrc.salary_sacrifice.it_relief_total",
+        ),
+        # microcosm#1095 (María, 2026-10-10): DWP's England-and-Wales daily
+        # living caseload sits beside the bound spending line; fitting the two
+        # rows breaks the weight-ratio fence.
+        "obr.pip": (
+            "dwp.pip.daily_living_standard_claimants",
+            "dwp.pip.daily_living_enhanced_claimants",
+        ),
     }
 )
-_DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))
+#: A diagnostic is one exactly dated publisher figure; a caseload snapshot is
+#: dated by its month (microcosm#1095).
+_DIAGNOSTIC_PERIOD_TYPES = frozenset(
+    ("fiscal_year", "tax_year", "calendar_year", "month")
+)
 _DIAGNOSTIC_ASSERTION_POLICIES = MappingProxyType(
     {"source_projection": "allow_source_projection", "observation": "observed_only"}
 )

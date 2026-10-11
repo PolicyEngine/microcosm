@@ -54,6 +54,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "person_benunit_id": np.arange(201, 201 + n),
             "person_household_id": household_ids,
             "age": [30, 40] * 5,
+            "is_uc_claimant": [True] * n,
         }
     )
     benunit = pd.DataFrame(

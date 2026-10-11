@@ -187,6 +187,7 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "is_uc_claimant": [False, False, True, True],
             "child_benefit_reported": [0.0, 10.0, 0.0, 0.0],
             "pension_credit_reported": [0.0, 0.0, 0.0, 5.0],
             "universal_credit_reported": [0.0, 0.0, 20.0, 0.0],

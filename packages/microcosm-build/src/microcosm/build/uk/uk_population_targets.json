@@ -24,16 +24,14 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 625,
-    "excluded_rows": 27,
+    "mapped_rows": 622,
+    "excluded_rows": 30,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
       "dwp/esa_contrib_claimants": "dwp.esa_contrib_claimants",
       "dwp/esa_income_claimants": "dwp.esa_income_claimants",
       "dwp/jsa_claimants": "dwp.jsa_claimants",
-      "dwp/pip_dl_enhanced_claimants": "dwp.pip.daily_living_enhanced_claimants",
-      "dwp/pip_dl_standard_claimants": "dwp.pip.daily_living_standard_claimants",
       "dwp/scotland_uc_households_child_under_1": "dwp.uc.scotland_households_child_under_1",
       "dwp/uc/claimants_couple_no_children": "dwp.uc.households_couple_no_children",
       "dwp/uc/claimants_couple_with_children": "dwp.uc.households_couple_with_children",
@@ -353,7 +351,6 @@
       "obr/housing_benefit": "obr.housing_benefit",
       "obr/income_tax": "obr.income_tax",
       "obr/jobseekers_allowance": "obr.jobseekers_allowance",
-      "obr/ni": "obr.ni",
       "obr/ni_employee": "obr.ni_employee",
       "obr/ni_employer": "obr.ni_employer",
       "obr/ni_self_employed": "obr.ni_self_employed",
@@ -680,7 +677,10 @@
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
-      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit."
+      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
+      "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows pushes the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
+      "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows pushes the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -830,8 +830,7 @@
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
-      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
-      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
+      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -866,7 +865,6 @@
     },
     "scope_target_ids": [
       "obr.income_tax",
-      "obr.ni",
       "obr.ni_employee",
       "obr.ni_employer",
       "obr.ni_self_employed",
@@ -915,8 +913,6 @@
       "hmrc.cgt.taxpayers_total",
       "hmrc.cgt.gains_total",
       "dwp.benefit_cap.capped_households",
-      "dwp.pip.daily_living_standard_claimants",
-      "dwp.pip.daily_living_enhanced_claimants",
       "dwp.esa_claimants",
       "dwp.esa_contrib_claimants",
       "dwp.esa_income_claimants",
@@ -1204,8 +1200,7 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age",
-      "hmrc.salary_sacrifice.it_relief_total"
+      "dwp.hb.amount_pension_age"
     ]
   },
   "profile_parity": {
@@ -1762,41 +1757,6 @@
       "value_operation": "calendar_year_window"
     },
     {
-      "target_id": "obr.ni",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "concept": "uk.tax.national_insurance.amount",
-        "map_to": "household"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/ni",
-          "value_variable": "total_national_insurance",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
-        },
-        "axiom": {
-          "metric_name": "obr/ni",
-          "status": "pending",
-          "value_rule": "uk.tax.national_insurance.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.ni_total",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_receipts",
-      "label": "National Insurance contributions",
-      "value_operation": "calendar_year_window"
-    },
-    {
       "target_id": "obr.ni_employee",
       "family": "obr",
       "geography_levels": [
@@ -2196,13 +2156,46 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.tax.council_tax.net_amount"
+        "concept": "uk.tax.council_tax.net_amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "household"
+            }
+          ],
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). It binds row 15 ('Total council tax receipts'), the sum of the England, Scotland and Wales rows, over Great Britain's households (microcosm#1095). Row 19 ('Total net council tax receipts', obr.council_tax_total, bound before) adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge: GBP 1.34bn, 2.7% of the calendar-2025 window, which no household's council tax carries (domestic rates are obr.domestic_rates, held). Chronicle stamps the row K02000001, as OBR's table is UK-wide, and the selector pins it there. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2213,7 +2206,7 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_total"
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales"
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax",
@@ -3084,16 +3077,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[0].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "basic"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the basic rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_basic_rate",
@@ -3126,16 +3125,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "higher"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the higher rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_higher_rate",
@@ -3168,15 +3173,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "additional"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the additional rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_additional_rate",
@@ -4060,100 +4072,6 @@
       },
       "category_id": "dwp.benefit_cap",
       "label": "Capped households"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_standard_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "standard"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "STANDARD"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "standard"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living standard claimants"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_enhanced_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "enhanced"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "ENHANCED"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "enhanced"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living enhanced claimants"
     },
     {
       "target_id": "dwp.esa_claimants",
@@ -5751,7 +5669,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5773,9 +5693,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/SINGLE",
@@ -5843,7 +5761,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5865,9 +5785,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/LONE_PARENT",
@@ -5935,7 +5853,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5957,9 +5877,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN",
@@ -6027,7 +5945,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -6049,9 +5969,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN",
@@ -18679,8 +18597,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the index policyengine-uk's dataset projection grows savings_interest_income with (policyengine_uk/data/uprating_indices.yaml); the household-interest index its Variable.uprating attribute names only carries a situation input forward (uk-data#541). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane), with the index moved to the projection's by her ruling of 2026-10-09 (microcosm#1095). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
@@ -26877,42 +26795,6 @@
       "value_operation": "calendar_year_window"
     },
     {
-      "target_id": "hmrc.salary_sacrifice.it_relief_total",
-      "family": "hmrc_salary_sacrifice",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.tax.salary_sacrifice.income_tax_relief"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "kind": "input_substitution_counterfactual",
-          "zeroed_input": "pension_contributions_via_salary_sacrifice",
-          "folded_into": "employment_income",
-          "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions, all rates, as the rise in income tax when the sacrifice is returned to pay (one counterfactual simulation from the same frame at the calibration year, uk-data's recipe; microcosm#1069 c11, R7). income_tax carries the High Income Child Benefit charge and the annual-allowance charge, so the delta includes their response to the returned pay (measured on the c11 arm). The rate-band rows wait for a band test that reads after-allowance thresholds and the Scottish bands."
-        },
-        "axiom": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "status": "pending",
-          "value_rule": "uk.tax.salary_sacrifice.income_tax_relief"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_income_tax_relief_total"
-      },
-      "category_id": "hmrc.salary_sacrifice_income_tax_relief",
-      "label": "Income Tax relief total"
-    },
-    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -29985,6 +29867,124 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:31256472aba8a0b143c30697"
       },
       "notes": "DWP Winter Fuel Payment statistics, winter 2025/26 recipients in England and Wales (11.0m), retained as diagnostic provenance beside the bound OBR line (microcosm#1069 c10): DWP counts everyone paid and HMRC recovers the payment above £35,000 later, while the engine withholds the household payment above £35,000 (PolicyEngine/policyengine-uk#1760), so the count measures a different quantity until the engine separates payment from recovery. Never insert it into the fitting registry."
+    },
+    "obr.ni": {
+      "attach_to_target": "obr.ni_employee",
+      "metadata_prefix": "obr_ni_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "obr.ni",
+        "ledger_selector": {
+          "source_name": "obr",
+          "source_concept": "obr.ni_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "obr/ni",
+        "family": "obr",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "cash_total_beside_accrued_class_rows"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:eccab3ee763d68bb782276a7"
+      },
+      "notes": "March 2026 OBR FY2025-26 total National Insurance contributions forecast (table 3.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 1.8% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "attach_to_target": "hmrc.salary_sacrifice.it_relief_higher_rate",
+      "metadata_prefix": "salary_sacrifice_it_relief_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "tax_year",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "hmrc.salary_sacrifice.it_relief_total",
+        "ledger_selector": {
+          "source_name": "hmrc",
+          "source_concept": "hmrc.ss_income_tax_relief_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "hmrc/salary_sacrifice_it_relief_total",
+        "family": "hmrc_salary_sacrifice",
+        "period": 2024,
+        "metadata": {
+          "diagnostic_role": "all_rates_total_beside_bound_rate_bands"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:ab19a7f36038519a7f359742"
+      },
+      "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions at all rates (GBP 8.8bn), retained as diagnostic provenance beside the three bound rate bands of Table 6.1 (María's ruling of 2026-10-09, microcosm#1095). The bands carry the same relief by rate; binding the total as well would fit it twice. Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_standard_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_standard_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_standard_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "standard"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_standard_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:7e25a3faa6fdceb4f5ee5868"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living standard-rate claimants in England and Wales at the end of January 2025 (1.283m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_enhanced_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_enhanced_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_enhanced_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "enhanced"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_enhanced_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:8d850c8ffb6eae8f4c71e611"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living enhanced-rate claimants in England and Wales at the end of January 2025 (1.608m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

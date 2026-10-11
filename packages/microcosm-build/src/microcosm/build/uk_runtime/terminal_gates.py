@@ -289,6 +289,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
     "person.uc_is_in_startup_period",
+    "person.uc_is_in_gainful_self_employment",
+    "person.is_looked_after_by_local_authority",
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",

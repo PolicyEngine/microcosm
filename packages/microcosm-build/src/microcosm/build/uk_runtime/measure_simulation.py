@@ -17,6 +17,11 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.income_tax_rate_classes import (
+    UK_RATE_CLASS_ALLOCATION,
+    UK_RATE_CLASSES,
+    relief_by_rate_class,
+)
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -613,16 +618,22 @@ class UKMeasureResolver:
         amount added to the folded-into input (salary sacrifice returned to
         pay, uk-data's recipe), and the output's delta against this resolver's
         baseline comes back for the binding's entity (microcosm#1069 c11).
-        Banded deltas are refused: their band test compares adjusted net income
-        with after-allowance thresholds and ignores the Scottish bands.
+
+        A binding that declares ``allocation`` splits the delta by HMRC rate
+        category instead (microcosm#1095, uk-data#533): its output is the rise
+        in tax on the declared taxable income under each person's schedule,
+        computed once per substitution pair and cached. The old adjusted-net-
+        income ``band`` test stays refused: it compared after-allowance
+        thresholds and ignored the Scottish bands.
         """
 
         self.validate_period(period)
         if binding.get("band"):
             raise ValueError(
-                "banded counterfactual measures are deferred: the band test "
+                "banded counterfactual measures are refused: the band test "
                 "compares adjusted net income with after-allowance thresholds "
-                "and ignores the Scottish bands (microcosm#1069 c11)"
+                "and ignores the Scottish bands; declare a rate-class "
+                "allocation instead (microcosm#1095)"
             )
         if binding.get("kind") != "input_substitution_counterfactual":
             raise ValueError(f"unsupported counterfactual kind {binding.get('kind')!r}")
@@ -637,6 +648,27 @@ class UKMeasureResolver:
             "baseline_minus_counterfactual",
         ):
             raise ValueError(f"unsupported output_delta {direction!r}")
+        metric = str(binding.get("metric_name") or output)
+        allocation = binding.get("allocation")
+        if allocation is not None:
+            rate_class = _declared_rate_class(allocation, output, direction, entity)
+            delta = self._rate_class_relief(zeroed, folded)[rate_class]
+            self._counterfactual_measures[metric] = {
+                "entity": entity,
+                "zeroed_input": zeroed,
+                "folded_into": folded,
+                "output_variable": output,
+                "output_delta": direction,
+                "allocation": str(allocation["kind"]),
+                "rate_class": rate_class,
+                "rows_nonzero": int(np.count_nonzero(delta)),
+            }
+            route = (
+                f"policyengine-uk counterfactual: {zeroed} set to zero"
+                + (f" and folded into {folded}" if folded else "")
+                + f"; rise in tax on {entity}.{output} at the {rate_class} rate"
+            )
+            return delta, route
         counterfactual = self._counterfactual_simulation(zeroed, folded)
         baseline_values, _ = compute_uk_measure_input(
             self.frame, self.simulation, entity, output, self.year
@@ -649,7 +681,6 @@ class UKMeasureResolver:
         )
         if direction == "baseline_minus_counterfactual":
             delta = -delta
-        metric = str(binding.get("metric_name") or output)
         self._counterfactual_measures[metric] = {
             "entity": entity,
             "zeroed_input": zeroed,
@@ -664,6 +695,79 @@ class UKMeasureResolver:
             + f"; {entity}.{output} {direction}"
         )
         return delta, route
+
+    def _rate_class_relief(
+        self, zeroed: str, folded: str | None
+    ) -> Mapping[str, np.ndarray]:
+        """Each person's rise in tax on earned income by rate class, cached."""
+
+        cache = getattr(self, "_rate_class_reliefs", None)
+        if cache is None:
+            cache = self._rate_class_reliefs = {}
+            self._rate_class_receipts = {}
+        key = (zeroed, folded)
+        if key in cache:
+            return cache[key]
+        counterfactual = self._counterfactual_simulation(zeroed, folded)
+        income = str(UK_RATE_CLASS_ALLOCATION["taxable_income"])
+        flag = str(UK_RATE_CLASS_ALLOCATION["schedule_flag"])
+        baseline_income, _ = compute_uk_measure_input(
+            self.frame, self.simulation, "person", income, self.year
+        )
+        counterfactual_income, _ = compute_uk_measure_input(
+            self.frame, counterfactual, "person", income, self.year
+        )
+        scottish, _ = compute_uk_measure_input(
+            self.frame, self.simulation, "person", flag, self.year
+        )
+        # The simulation's own parameters at the measurement year are its
+        # fiscal-year values, so the Scottish bands are the ones in force from
+        # 6 April, as the engine taxes them.
+        rates = self.simulation.tax_benefit_system.parameters(self.year)
+        schedules = {}
+        for name, path in dict(UK_RATE_CLASS_ALLOCATION["schedules"]).items():
+            node = rates
+            for part in str(path).split("."):
+                node = getattr(node, part)
+            schedules[name] = (list(node.thresholds), list(node.rates))
+        relief = relief_by_rate_class(
+            baseline_income=np.asarray(baseline_income, dtype=float),
+            counterfactual_income=np.asarray(counterfactual_income, dtype=float),
+            scottish=np.asarray(scottish, dtype=bool),
+            schedules=schedules,
+        )
+        baseline_tax, _ = compute_uk_measure_input(
+            self.frame, self.simulation, "person", "income_tax", self.year
+        )
+        counterfactual_tax, _ = compute_uk_measure_input(
+            self.frame, counterfactual, "person", "income_tax", self.year
+        )
+        income_tax_change = np.asarray(counterfactual_tax, dtype=float) - np.asarray(
+            baseline_tax, dtype=float
+        )
+        classes_total = float(sum(np.sum(values) for values in relief.values()))
+        self._rate_class_receipts[f"{zeroed}->{folded}"] = {
+            "allocation": str(UK_RATE_CLASS_ALLOCATION["kind"]),
+            "relief_by_class_unweighted_total": {
+                name: float(np.sum(values)) for name, values in relief.items()
+            },
+            "income_tax_change_unweighted_total": float(np.sum(income_tax_change)),
+            "gap_to_income_tax_change_unweighted": float(
+                np.sum(income_tax_change) - classes_total
+            ),
+            "persons_with_gap": int(
+                np.count_nonzero(
+                    ~np.isclose(
+                        income_tax_change,
+                        sum(relief.values()),
+                        rtol=0.0,
+                        atol=0.01,
+                    )
+                )
+            ),
+        }
+        cache[key] = relief
+        return relief
 
     def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
         key = (zeroed, folded)
@@ -697,6 +801,11 @@ class UKMeasureResolver:
             receipt["counterfactual_measures"] = {
                 name: dict(entry)
                 for name, entry in sorted(counterfactual_measures.items())
+            }
+        rate_class_receipts = getattr(self, "_rate_class_receipts", None)
+        if rate_class_receipts:
+            receipt["rate_class_reliefs"] = {
+                name: dict(entry) for name, entry in sorted(rate_class_receipts.items())
             }
         if self._uc_tcl_measures_used:
             receipt["uc_tcl_comparison_contract"] = {
@@ -900,3 +1009,29 @@ def _uk_contract_targets() -> dict[str, Any]:
         for target in contract["targets"]
         if set(target.get("geography_levels") or ()) <= national_geography_levels
     }
+
+
+def _declared_rate_class(
+    allocation: object, output: str, direction: str, entity: str
+) -> str:
+    """The rate class a binding's allocation names, refused unless declared."""
+
+    if not isinstance(allocation, Mapping):
+        raise ValueError("a counterfactual allocation must be a mapping")
+    rate_class = allocation.get("rate_class")
+    expected = {**UK_RATE_CLASS_ALLOCATION, "rate_class": rate_class}
+    if (
+        rate_class not in UK_RATE_CLASSES
+        or dict(allocation) != expected
+        or output != UK_RATE_CLASS_ALLOCATION["taxable_income"]
+        or direction != "counterfactual_minus_baseline"
+        or entity != "person"
+    ):
+        raise ValueError(
+            "a rate-class allocation must declare "
+            f"{dict(UK_RATE_CLASS_ALLOCATION)} with a rate_class in "
+            f"{UK_RATE_CLASSES}, on person {UK_RATE_CLASS_ALLOCATION['taxable_income']} "
+            f"counterfactual_minus_baseline; got {allocation!r} on {entity}.{output} "
+            f"{direction}"
+        )
+    return str(rate_class)

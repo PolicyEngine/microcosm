@@ -134,14 +134,15 @@ def test_brma_missing_cell_fails_closed() -> None:
 
 
 def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> None:
-    """A unit with no adult under State Pension age is never drawn into UC."""
+    """A unit with no UC claimant or partner of working age is never drawn."""
 
     frame = _frame()
     person, benunit = frame.table("person"), frame.table("benunit")
 
     eligible = uc_age_eligible_benunits(person, benunit, _POLICY)
     assert eligible.tolist() == [False, True, False]  # children only / 40 / 70
-    # The bounds are the engine's is_WA_adult edges: 17 is out, 18 in, 66 out.
+    # The age bounds: 17 is out, 18 in, and 66, Pension Credit qualifying age
+    # for the 2025 cohort, out.
     assert _POLICY.working_age(np.array([17, 18, 65, 66])).tolist() == [
         False,
         True,
@@ -166,8 +167,39 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
         derive_frs_take_up(
             benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible[:2]
         )
-    with pytest.raises(KeyError, match="person.age is missing"):
+    with pytest.raises(KeyError, match=r"\['age'\] are missing"):
         uc_age_eligible_benunits(person.drop(columns=["age"]), benunit, _POLICY)
+    with pytest.raises(KeyError, match=r"\['is_uc_claimant'\] are missing"):
+        uc_age_eligible_benunits(
+            person.drop(columns=["is_uc_claimant"]), benunit, _POLICY
+        )
+
+
+def test_uc_take_up_population_needs_a_claimant_or_partner_of_working_age() -> None:
+    """A working-age dependant does not bring a unit into the UC population.
+
+    policyengine-uk 2.122.2's is_uc_eligible reads the age of the unit's UC
+    claimant or partner (is_uc_claimant), not of any adult: a pensioner unit
+    with an 18-year-old dependant cannot claim Universal Credit.
+    """
+
+    frame = _frame()
+    person, benunit = frame.table("person").copy(), frame.table("benunit")
+    # Unit 30 (a 70-year-old) gains an 18-year-old dependant; unit 20's
+    # 40-year-old stops being a claimant or partner.
+    dependant = person.iloc[[3]].assign(person_id=302, age=18, is_uc_claimant=False)
+    person = pd.concat([person, dependant], ignore_index=True)
+    person.loc[person["person_id"] == 201, "is_uc_claimant"] = False
+
+    eligible = uc_age_eligible_benunits(person, benunit, _POLICY)
+
+    assert eligible.tolist() == [False, False, False]
+    person.loc[person["person_id"] == 302, "is_uc_claimant"] = True
+    assert uc_age_eligible_benunits(person, benunit, _POLICY).tolist() == [
+        False,
+        False,
+        True,
+    ]
 
 
 def test_take_up_stage_refuses_a_manifest_that_drops_the_population_declaration() -> (

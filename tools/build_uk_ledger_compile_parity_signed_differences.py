@@ -96,6 +96,17 @@ _OBR_WINDOW_DRIFT_RATIONALE = (
     "alone."
 )
 
+_OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
+    "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours "
+    "binds OBR table 4.1 row 15, the council tax receipts of England, Scotland "
+    "and Wales, over Great Britain's households, at the calendar-2025 window "
+    "(three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule "
+    "of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent "
+    "fixture holds the FY2025-26 value of row 19 alone, which adds Northern "
+    "Ireland domestic rates, the council tax accruals adjustment and the "
+    "high-value council tax surcharge."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -120,6 +131,28 @@ _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
     "the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as "
     "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
     "fitted row is fixture-only on the current surface."
+)
+_OBR_NI_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves "
+    "OBR's total NICs receipts out of the fit: a cash total against the three "
+    "accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 "
+    "and settlements that no household carries. The exact FY2025-26 figure is "
+    "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
+_DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS = frozenset(
+    {
+        "dwp.pip.daily_living_standard_claimants",
+        "dwp.pip.daily_living_enhanced_claimants",
+    }
+)
+_DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales "
+    "PIP daily living caseload (FOI2025/24990, end of January 2025) out of the "
+    "fit: the two rows resolve and fit, but they push the heaviest support "
+    "family's weight over the uk_weight_ratio fence. The exact figures are "
+    "retained as diagnostic provenance on obr.pip, so the frozen fixture's "
+    "fitted rows are fixture-only on the current surface."
 )
 _STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
 _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
@@ -614,6 +647,13 @@ def _add_signed_rationale_notes(
             row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
         elif name == "obr.state_pension" and row.get("kind") == "fixture_only":
             row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
+        elif name == "obr.ni" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_NI_DIAGNOSTIC_RATIONALE
+        elif (
+            name in _DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS
+            and row.get("kind") == "fixture_only"
+        ):
+            row["reason"] = _DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE
         elif (
             name.startswith(_STATE_PENSION_PREFIXES)
             and row.get("kind") == "ledger_only"
@@ -638,6 +678,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
         elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
+        elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
+            row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
         elif (
             name.startswith("obr.")
             and row.get("kind") == "calibration_drift"

@@ -1,0 +1,3 @@
+Loss-making landlords keep the CGT residential stock signal (microcosm#1095). #1081 counts a letting loss (`RENTPROF` 2) as zero `property_income`, and the CGT residential split read `property_income > 0` as one of its two signs that a gainer holds residential property. So landlords whose letting made a loss lost the sign, and the split's stock shift moved residential gains away from them.
+
+The UK spine now carries an internal flag, `reports_rent_from_other_property`, which holds wherever `ROYYR1` is positive, at a profit or a loss. The CGT stages read it alongside household residential property value and property income. It is not an engine input, and the release boundary drops it.

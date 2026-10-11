@@ -400,11 +400,12 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
-    # disability carriers and the salary-sacrifice pre-conversion pay
-    # carrier, and nothing else.
+    # disability carriers, the salary-sacrifice pre-conversion pay carrier
+    # and the landlord carrier, and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
+    from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -418,6 +419,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         set(UK_REVIEWED_EXPORT_EXCLUSIONS)
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
+        | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
@@ -550,17 +552,12 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # regional cells slice on the engine's total_income, which leaves out the
     # other investment income that income tax charges, and on policyengine-uk
     # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
-    # upstream in policyengine-uk's total_income (pe-uk#2174).
-    assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    }
-    deferral = register[
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    ]
-    assert deferral.approved_on == "2026-10-06"
-    assert deferral.expires_on == "2026-11-03"
-    assert "microcosm#1095" in deferral.adjudication
-    assert "pe-uk#2174" in deferral.reason
+    # upstream in policyengine-uk's total_income (pe-uk#2174). It is retired
+    # in turn with the third microcosm#1095 ports: the cell fits at +23.9 % on
+    # that head, back inside the bound, and the gate fails the deferral as
+    # stale. The upstream defect stands: the cell's design value is still 6.2
+    # times its target, so a later change can push it back over the bound.
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with

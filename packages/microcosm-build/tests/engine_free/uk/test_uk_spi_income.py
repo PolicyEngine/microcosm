@@ -94,6 +94,54 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
     )
 
 
+def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None:
+    """A redrawn row's gainful self-employment reads its drawn incomes alone."""
+
+    person = pd.DataFrame(
+        {
+            "employment_status": [
+                "FT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "FT_EMPLOYED",
+            ],
+            # Row 10's drawn profit no longer out-earns its pay. Rows 20 and 40
+            # keep a self-employed status the draw did not read: no profit, and
+            # a profit below pay, so neither is flagged. Rows 30 and 50 draw a
+            # profit above their pay, whatever the status. Row 60 is a base row
+            # whose flag stays.
+            "self_employment_income": [500.0, 0.0, 9_000.0, 3_000.0, 8_000.0, 0.0],
+            "employment_income": [20_000.0, 0.0, 4_000.0, 25_000.0, 1_000.0, 30_000.0],
+            "uc_is_in_gainful_self_employment": [True, True, False, True, False, True],
+        },
+        index=[10, 20, 30, 40, 50, 60],
+    )
+    spi_people = pd.Series([True, True, True, True, True, False], index=person.index)
+
+    result = spi_income._refresh_uc_gainful_self_employment(
+        person, spi_people=spi_people
+    )
+
+    assert result["uc_is_in_gainful_self_employment"].tolist() == [
+        False,
+        False,
+        True,
+        False,
+        True,
+        True,
+    ]
+    assert result["uc_is_in_gainful_self_employment"].dtype == bool
+    bare = pd.DataFrame({"employment_status": ["FT_EMPLOYED"]}, index=[1])
+    assert (
+        "uc_is_in_gainful_self_employment"
+        not in spi_income._refresh_uc_gainful_self_employment(
+            bare, spi_people=pd.Series([True], index=[1])
+        )
+    )
+
+
 def test_spi_uc_start_up_period_holds_only_while_the_row_stays_self_employed() -> None:
     """A redrawn row keeps its donor's start-up period only while self-employed."""
 

@@ -54,6 +54,7 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
 from tools.generate_uk_local_target_references import _support_floor_register_scope
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
+    TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
     _geography_pins,
@@ -64,7 +65,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1231
+ACTIVE_REFERENCE_COUNT = 1229
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -648,9 +649,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total and the dwp.pip claimant counts keep the GB
-    pin and stay held: activating them needs contract redesign (per-nation
-    repayment rows; an England-and-Wales PIP binding), not a pin change.
+    slc.repayments.devolved_total keeps the GB pin and stays held: activating
+    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    claimant counts are no targets now: they are England-and-Wales diagnostics
+    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -689,12 +691,7 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "E92000001"
     }
     assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
-    assert (
-        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K03000001"
-    )
-    assert (
-        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K03000001"
-    )
+    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -706,12 +703,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
             )
         )
 
+    # An exact-id pin overrides the substring rule: OBR's council tax row
+    # sums England, Scotland and Wales and carries Chronicle's UK stamp
+    # (microcosm#1095).
     substring_scotland = {
         str(target["target_id"])
         for target in contract["targets"]
         if "scotland" in haystack(target)
         and "northern" not in haystack(target)
         and "domestic_rates" not in haystack(target)
+        and str(target["target_id"]) not in TARGET_ID_GEOGRAPHY_PINS
     }
     # The by_area council-tax cells carry the same prefix pin, but they sit on
     # the local surface, where the roster (not the pin) fixes the geography.
@@ -734,14 +735,15 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
-    for target_id in (
-        "slc.repayments.devolved_total",
-        "dwp.pip.daily_living_standard_claimants",
-        "dwp.pip.daily_living_enhanced_claimants",
-    ):
-        assert (
-            membership["targets"][target_id]["status"] == "no_fact_at_or_before_period"
-        )
+    assert (
+        membership["targets"]["slc.repayments.devolved_total"]["status"]
+        == "no_fact_at_or_before_period"
+    )
+    assert not [
+        target_id
+        for target_id in membership["targets"]
+        if target_id.startswith("dwp.pip.")
+    ]
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -750,8 +752,8 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1231,
-        "no_fact_at_or_before_period": 7,
+        "active": 1229,
+        "no_fact_at_or_before_period": 5,
         "signed_excluded": 16,
     }
     assert membership["genuine_sum_residue"]
@@ -818,14 +820,14 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": 100,
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": 8,
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {
@@ -970,6 +972,16 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         "historical forecast/uprated" in differences["hmrc.cgt.gains_total"]["reason"]
     )
     assert differences["obr.capital_gains_tax"]["fixture_value"] == 21_801_546_197.09165
+    council_tax = differences["obr.council_tax"]
+    assert council_tax["kind"] == "calibration_drift"
+    assert "row 15" in council_tax["reason"] and "row 19" in council_tax["reason"]
+    national_insurance = differences["obr.ni"]
+    assert national_insurance["kind"] == "fixture_only"
+    assert "diagnostic provenance on obr.ni_employee" in national_insurance["reason"]
+    for rate in ("standard", "enhanced"):
+        caseload = differences[f"dwp.pip.daily_living_{rate}_claimants"]
+        assert caseload["kind"] == "fixture_only"
+        assert "diagnostic provenance on obr.pip" in caseload["reason"]
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (

@@ -476,6 +476,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # the identity receipts can reverse the stage's in-place rewrite of a
         # converted record's pay, and is no engine input.
         "salary_sacrifice_pre_conversion_pay",
+        # The landlord carrier (frs_spine.frs_reports_rent_from_other_property)
+        # that keeps loss-making landlords in the CGT residential signal; it is
+        # no engine input.
+        "reports_rent_from_other_property",
     ),
 }
 

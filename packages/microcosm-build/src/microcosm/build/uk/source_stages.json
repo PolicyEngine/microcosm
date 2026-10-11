@@ -229,7 +229,7 @@
     },
     {
      "kind": "map_columns",
-     "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095), and a tab with calendar-month awards but no annual-coded award refuses, since the threshold comes from that award; the stage evidence records the awards by period code, the threshold and the repaired count; is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit's UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records; CVPAY, the rent a boarder or lodger pays the householder, is not the payer's property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512)"
+     "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095), and a tab with calendar-month awards but no annual-coded award refuses, since the threshold comes from that award; the stage evidence records the awards by period code, the threshold and the repaired count; is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit's UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records; CVPAY, the rent a boarder or lodger pays the householder, is not the payer's property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512); uc_is_in_gainful_self_employment holds for a self-employed main job (EMPSTATI 3 or 4) whatever its profit, and for a side trade whose SEINCAM2 profit is above 0 and above INEARNS pay (UC Regs 2013 reg 64, ADM H4034, uk-data#525); reports_rent_from_other_property is an internal carrier, a positive ROYYR1 whether the letting made a profit or a loss (RENTPROF 2), which property_income counts as zero; the CGT stages read it as the landlord signal and the release drops it"
     },
     {
      "kind": "map_coded_amounts",
@@ -266,6 +266,7 @@
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
     "employment_income",
@@ -275,6 +276,7 @@
     "savings_interest_income",
     "dividend_income",
     "property_income",
+    "reports_rent_from_other_property",
     "maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
@@ -612,6 +614,11 @@
       "unconditional_below_age": 16,
       "full_time_education_through_age": 18
      },
+     "looked_after_child": {
+      "foster_child_code": 5,
+      "foster_parent_code": 9,
+      "below_age": 16
+     },
      "one_person_age_split": 65,
      "family_role_values": [
       "COUPLE_PARTNER",
@@ -644,12 +651,13 @@
     "relationship_to_head",
     "ons_family_role",
     "ons_family_index",
+    "is_looked_after_by_local_authority",
     "ons_household_type"
    ],
    "nonnegative_outputs": [
     "ons_family_index"
    ],
-   "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review."
+   "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review. It also sets is_looked_after_by_local_authority for a child-table member under 16 whose grid code toward an adult in their own benefit unit is foster child (5), or toward whom that adult records foster parent (9). The FRS 2024-25 question instructions (Benefit Unit Allocation) put foster children under 16 in the carer's benefit unit, so without the flag policyengine-uk's child tests (Universal Credit, Child Tax Credit, Pension Credit, Tax-Free Childcare, extended childcare and the legacy benefits) count them as the carer's own children. The flag follows the relationship code alone: few such children are recorded, and the carer's local-authority fostering allowance (ALLOW3) covers fewer still."
   },
   {
    "stage": "frs_employment",
@@ -965,11 +973,12 @@
     },
     {
      "kind": "aggregate_person_to_benunit",
-     "method": "any_adult_under_state_pension_age",
+     "method": "any_uc_claimant_aged_18_under_pension_credit_age",
      "consumed_only": true,
      "aggregates": {
       "uc_age_eligible": "age"
-     }
+     },
+     "role_column": "is_uc_claimant"
     },
     {
      "kind": "assign_binary_with_anchored_residual",
@@ -1070,7 +1079,7 @@
    "nonnegative_outputs": [
     "maximum_extended_childcare_hours_usage"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867)."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.122.2's is_uc_eligible; the engine lockstep test pins it and names the two engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095)."
   },
   {
    "stage": "frs_person_draws",
@@ -4420,7 +4429,8 @@
      "kind": "derive",
      "derived": {
       "is_uc_couple": "count(is_benunit_head OR is_parent OR (dependent_children == 0)) over benefit-unit members == 2",
-      "uc_reported_capital": "frs_benunit_capital",
+      "uc_property_capital_share": "(other_residential_property_value + non_residential_property_value) of the household x the unit's is_uc_claimant members / the household's is_uc_claimant members",
+      "uc_reported_capital": "frs_benunit_capital + uc_property_capital_share where frs_benunit_capital >= 0, else frs_benunit_capital",
       "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0",
       "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
       "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member"
@@ -4531,11 +4541,12 @@
     },
     {
      "kind": "aggregate_person_to_benunit",
-     "method": "any_adult_under_state_pension_age",
+     "method": "any_uc_claimant_aged_18_under_pension_credit_age",
      "consumed_only": true,
      "aggregates": {
       "uc_age_eligible": "age"
-     }
+     },
+     "role_column": "is_uc_claimant"
     },
     {
      "kind": "assign_binary_with_anchored_residual",
@@ -4567,12 +4578,12 @@
     "receives_benefits_in_own_right",
     "would_claim_uc"
    ],
-   "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in the Universal Credit age population claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. Contributory ESA, PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps."
+   "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in frs_take_up's Universal Credit population (a UC claimant or partner aged 18 to under Pension Credit qualifying age) claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. Contributory ESA, PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps."
   },
   {
    "stage": "uc_capital_coherence",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.",
+   "source": "Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel, plus each unit's share of its household's Wealth and Assets Survey property imputation.",
    "grain": "benunit",
    "artifacts": [],
    "operations": [
@@ -4621,8 +4632,10 @@
     {
      "kind": "derive",
      "derived": {
-      "uc_reported_capital": "frs_benunit_capital",
-      "pension_credit_reported_capital": "frs_benunit_capital",
+      "uc_property_capital_share": "(other_residential_property_value + non_residential_property_value) of the household x the unit's is_uc_claimant members / the household's is_uc_claimant members",
+      "pension_credit_property_capital_share": "(owned_land + other_residential_property_value + non_residential_property_value) of the household x the unit's at_or_over_pension_credit_qualifying_age members / the household's at_or_over_pension_credit_qualifying_age members",
+      "uc_reported_capital": "frs_benunit_capital + uc_property_capital_share where frs_benunit_capital >= 0 and NOT universal_credit_reported_anchor, else frs_benunit_capital",
+      "pension_credit_reported_capital": "frs_benunit_capital + pension_credit_property_capital_share where frs_benunit_capital >= 0, else frs_benunit_capital",
       "would_claim_uc": "would_claim_uc OR universal_credit_reported_anchor"
      }
     }
@@ -4635,7 +4648,7 @@
     "frs_benunit_capital",
     "would_claim_uc"
    ],
-   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh."
+   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.122.2 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. Universal Credit adds the household's other residential and non-residential property shared by the unit's claimants and partners (is_uc_claimant), and Pension Credit adds those and owned land shared by its members at or over Pension Credit qualifying age, as each engine proxy shares household capital. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it, and the property is imputed without that receipt and shared over every claimant or partner in the household; the other units of its household keep their own shares. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both."
   },
   {
    "stage": "pension_credit_take_up",
@@ -4648,16 +4661,20 @@
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "has_mixed_age_couple_pension_credit_saving"
-     ]
+     ],
+     "year_rule": "survey_year"
     },
     {
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "guarantee_credit",
       "savings_credit",
-      "is_pension_credit_eligible"
+      "is_pension_credit_eligible",
+      "pension_credit_assessable_capital",
+      "pension_credit_deemed_income"
      ],
-     "consumed_only": true
+     "consumed_only": true,
+     "year_rule": "calibration_year"
     },
     {
      "kind": "aggregate_person_to_benunit",
@@ -4686,7 +4703,9 @@
       }
      ],
      "weight_mapping": "household_to_benunit",
-     "residual_rate": "(rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]"
+     "residual_rate": "(rate * entitled - reporters) / (entitled - reporters), weighted, over Great Britain, clipped to [0, 1]; drawn for every entitled non-reporter",
+     "solve_scope": "great_britain",
+     "newly_entitled_rate_key": "pension_credit_newly_entitled"
     }
    ],
    "outputs": [
@@ -4695,7 +4714,7 @@
    "rewrites": [
     "would_claim_pc"
    ],
-   "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). It first stores the engine's own default for the SI 2019/37 mixed-age couple saving (has_mixed_age_couple_pension_credit_saving, pe-uk#1940), evaluated once at the survey-year period on the post-SPI receipts, so later model years do not re-derive it from a birth year that moves with the model year (uk-data#519). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible."
+   "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). It first stores the engine's own default for the SI 2019/37 mixed-age couple saving (has_mixed_age_couple_pension_credit_saving, pe-uk#1940), evaluated once at the survey-year period on the post-SPI receipts, so later model years do not re-derive it from a birth year that moves with the model year (uk-data#519). A second temporary engine materialization, at the release's calibration year as uk-data reads it (uk-data#510), gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible) and, for the receipt only, its assessable capital and deemed income (microcosm#1095); all are consumed only. Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. DWP's rates cover Great Britain, so E and R are Great Britain's and Northern Ireland's entitled units claim at the same r (uk-data#510). A unit with no entitlement claims if it reports, and otherwise at DWP's Savings Credit-only caseload take-up (37%, pension_credit_newly_entitled), the rate at which a unit claims once a reform or a later year entitles it (uk-data#510). The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces."
   },
   {
    "stage": "child_benefit_take_up",
@@ -5330,7 +5349,7 @@
      "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
      "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
      "stock_log_odds": 1.6,
-     "stock_signal": "household other residential property value above zero, or the person's property income above zero",
+     "stock_signal": "household other residential property value above zero, or the person's property income above zero, or the person reports rent from other property at a profit or a loss",
      "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
      "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
      "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",

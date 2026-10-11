@@ -372,7 +372,6 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
-      "hmrc.salary_sacrifice.it_relief_total": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.nics_relief_employee": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
@@ -442,7 +441,6 @@
       "obr.housing_benefit": "obr.efo_expenditure",
       "obr.income_tax": "obr.efo_receipts",
       "obr.jobseekers_allowance": "obr.efo_expenditure",
-      "obr.ni": "obr.efo_receipts",
       "obr.ni_employee": "obr.efo_receipts",
       "obr.ni_employer": "obr.efo_receipts",
       "obr.ni_self_employed": "obr.efo_receipts",
@@ -700,7 +698,6 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
-      "hmrc.salary_sacrifice.it_relief_total": "Income Tax relief total",
       "hmrc.salary_sacrifice.nics_relief_employee": "National Insurance contributions relief employee",
       "hmrc.salary_sacrifice.nics_relief_employer": "National Insurance contributions relief employer",
       "hmrc.salary_sacrifice.users_above_cap": "Users above cap",
@@ -770,7 +767,6 @@
       "obr.housing_benefit": "Housing benefit",
       "obr.income_tax": "Income tax",
       "obr.jobseekers_allowance": "Jobseekers allowance",
-      "obr.ni": "National Insurance contributions",
       "obr.ni_employee": "Employee National Insurance contributions",
       "obr.ni_employer": "Employer National Insurance contributions",
       "obr.ni_self_employed": "Self-employed National Insurance contributions",
@@ -922,26 +918,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.income_tax",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.ni",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.ni_total",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "obr/ni",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.ni",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
@@ -1138,7 +1114,7 @@
       "name": "obr.council_tax",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_total",
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -29196,7 +29172,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29221,7 +29197,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29246,7 +29222,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29271,7 +29247,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29296,7 +29272,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29321,7 +29297,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29346,7 +29322,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29371,7 +29347,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29396,7 +29372,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29421,7 +29397,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29446,7 +29422,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29471,7 +29447,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -29496,7 +29472,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -45119,25 +45095,6 @@
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_total",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_income_tax_relief_total",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "hmrc/salary_sacrifice_it_relief_total",
-      "family": "hmrc_salary_sacrifice",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.salary_sacrifice.it_relief_total",
-        "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
     }
   ]
 }

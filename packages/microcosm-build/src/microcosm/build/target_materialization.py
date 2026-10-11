@@ -50,6 +50,16 @@ _HALF_OPEN_LABEL = re.compile(
     re.IGNORECASE,
 )
 _UNDER_LABEL = re.compile(r"^\s*under\s*£\s*([\d,]+(?:\.\d+)?)\s*$", re.IGNORECASE)
+#: An opt-in reading of whole-pence amount bands. DWP publishes UC award bands
+#: as "£0.01 to £100.00", "£100.01 to £200.00", ..., "£2,500.01 or over": each
+#: band starts a penny above its predecessor's top, so the band is the
+#: upper-closed interval (label lower - £0.01, next label lower - £0.01] in
+#: source units, and model values are compared in whole pence, so an award of
+#: a penny a month lands in the bottom band (microcosm#1095). Where the top
+#: category is not bound, ``band_upper_bound`` closes the last bound band.
+WHOLE_PENCE_UPPER_CLOSED = "whole_pence_upper_closed"
+BAND_SEMANTICS = frozenset({WHOLE_PENCE_UPPER_CLOSED})
+_PENNY = 0.01
 _MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
 #: Provider kinds whose values are additionally masked by the binding's
@@ -574,6 +584,29 @@ def _band_bounds(
         if edge > lower:
             upper = edge
             break
+    semantics = _band_semantics(binding)
+    if semantics == WHOLE_PENCE_UPPER_CLOSED:
+        if "band_upper_bound_inclusive" in binding:
+            raise ValueError(
+                "whole_pence_upper_closed bands are closed above; declare no "
+                "band_upper_bound_inclusive"
+            )
+        factor = float(binding.get("band_period_factor", 1) or 1)
+        step = _PENNY * factor
+        closed_upper = upper - step
+        # A consumer may bind only the finite portion of a published
+        # histogram. band_upper_bound is then the closed top of the last bound
+        # band in source units, so that band does not absorb a separately
+        # published, unbound top-coded category.
+        if "band_upper_bound" in binding:
+            declared_upper = float(binding["band_upper_bound"]) * factor
+            if not math.isfinite(declared_upper) or declared_upper <= lower - step:
+                raise ValueError(
+                    "band_upper_bound requires a finite bound above the band's "
+                    "lower edge"
+                )
+            closed_upper = min(closed_upper, declared_upper)
+        return lower - step, closed_upper
     own_upper = _band_label_upper_edge(spec, binding)
     if own_upper is not None:
         if not own_upper > lower:
@@ -872,8 +905,28 @@ def _binding_mask(
     if band is not None:
         lower, upper = band
         banded = _column(adapter, entity, binding["groupby_variable"]).astype(float)
-        mask &= (banded >= lower) & (banded < upper)
+        if _band_semantics(binding) == WHOLE_PENCE_UPPER_CLOSED:
+            pence = np.rint(banded * 100.0)
+            mask &= pence > np.rint(lower * 100.0)
+            if math.isfinite(upper):
+                mask &= pence <= np.rint(upper * 100.0)
+        else:
+            mask &= (banded >= lower) & (banded < upper)
     return mask
+
+
+def _band_semantics(binding: Mapping[str, Any]) -> str | None:
+    """A binding's declared band reading; an undeclared value refuses."""
+
+    semantics = binding.get("band_semantics")
+    if semantics is None:
+        return None
+    if semantics not in BAND_SEMANTICS:
+        raise ValueError(
+            f"unknown band_semantics {semantics!r}; expected one of "
+            f"{sorted(BAND_SEMANTICS)}"
+        )
+    return str(semantics)
 
 
 def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:

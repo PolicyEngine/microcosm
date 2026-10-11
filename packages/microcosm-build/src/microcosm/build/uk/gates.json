@@ -785,9 +785,28 @@
         "threshold": 0.0,
         "capital_column": "uc_reported_capital",
         "carrier_column": "frs_benunit_capital",
-        "sentinel": -1.0
+        "sentinel": -1.0,
+        "property_shares": {
+          "uc_reported_capital": {
+            "sources": [
+              "other_residential_property_value",
+              "non_residential_property_value"
+            ],
+            "owners": "is_uc_claimant",
+            "units_reporting_universal_credit": "no_share"
+          },
+          "pension_credit_reported_capital": {
+            "sources": [
+              "owned_land",
+              "other_residential_property_value",
+              "non_residential_property_value"
+            ],
+            "owners": "at_or_over_pension_credit_qualifying_age"
+          }
+        },
+        "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. The reported-capital engine carrier is bounded below by its named -1 unavailable sentinel, may use that sentinel only where the FRS carrier is unavailable, and otherwise remains the exact same source value."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the unit's share of its household's countable property, re-derived here with the stage's own rule (microcosm#1095): UC shares other residential and non-residential property by claimants and partners (is_uc_claimant), and a unit that reports Universal Credit keeps its receipt and carries no share; Pension Credit shares those and owned land by members at or over Pension Credit qualifying age. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it."
     },
     {
       "id": "uk_support",
@@ -940,6 +959,8 @@
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
           "person.uc_is_in_startup_period",
+          "person.uc_is_in_gainful_self_employment",
+          "person.is_looked_after_by_local_authority",
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",

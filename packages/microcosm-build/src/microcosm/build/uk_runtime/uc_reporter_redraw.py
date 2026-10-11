@@ -30,8 +30,15 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
+    UC_PROPERTY_CAPITAL_OWNERS,
+    UC_PROPERTY_CAPITAL_SHARE,
+    UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    UC_PROPERTY_CAPITAL_SOURCES,
     _boolean_values,
     _household_to_benunit_weights,
+    recorded_capital_with_property,
+    uc_property_capital_share,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     UC_COUPLE_DEFINITION,
@@ -71,7 +78,13 @@ UC_REPORTER_NUMERIC_PREDICTORS = tuple(
 UC_REPORTER_TARGET = "universal_credit_reported_amount"
 UC_REPORTER_TEMPORARY_DERIVED = {
     "is_uc_couple": UC_COUPLE_DEFINITION,
-    "uc_reported_capital": "frs_benunit_capital",
+    # The screen reads the capital a unit records when it reports no
+    # Universal Credit, the carrier plus its property share, so a drawn SPI
+    # reporter does not land on a unit its property takes over the capital
+    # limit (microcosm#1095). uc_capital_coherence then records a reporter's
+    # carrier alone.
+    UC_PROPERTY_CAPITAL_SHARE: UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    "uc_reported_capital": UC_CAPITAL_WITH_PROPERTY_DEFINITION,
     "positive_pre_takeup_uc_award": (
         "max(0, uc_maximum_amount - uc_income_reduction) > 0"
     ),
@@ -184,6 +197,7 @@ def redraw_spi_reported_uc(
             "is_benunit_head",
             "is_parent",
             "age",
+            UC_PROPERTY_CAPITAL_OWNERS,
             UC_REPORTER_REDRAW_OUTPUT,
             *_PERSON_INCOME_COLUMNS,
         ),
@@ -202,7 +216,7 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region"),
+        ("household_id", "region", *UC_PROPERTY_CAPITAL_SOURCES),
         label="household",
     )
 
@@ -364,9 +378,12 @@ def _materialize_screen_inputs(
     household: pd.DataFrame,
 ) -> Mapping[str, np.ndarray]:
     temporary_benunit = benunit.copy()
-    temporary_benunit["uc_reported_capital"] = pd.to_numeric(
-        temporary_benunit["frs_benunit_capital"], errors="coerce"
-    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    temporary_benunit["uc_reported_capital"] = recorded_capital_with_property(
+        pd.to_numeric(
+            temporary_benunit["frs_benunit_capital"], errors="coerce"
+        ).to_numpy(dtype=np.float64, na_value=np.nan),
+        uc_property_capital_share(person, temporary_benunit, household),
+    )
     temporary = uk_national_frame(
         person=person,
         benunit=temporary_benunit,

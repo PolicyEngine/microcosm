@@ -1,0 +1,8 @@
+The Universal Credit take-up draw now runs over the benefit units policyengine-uk can pay Universal Credit to (uk-data#486, uk-data#524, microcosm#1095). These are units with a UC claimant or partner (`is_uc_claimant`) aged 18 or over and under Pension Credit qualifying age. Before, the draw took any unit with a member aged 18 to under State Pension age. That included a pensioner unit whose only younger member was an 18- or 19-year-old dependant. A dependant is neither claimant nor partner, so the engine never pays such a unit Universal Credit, yet the contract rate was spread over it.
+
+The draw, its SPI-channel redraw in `spi_benefit_coherence` and the `uk_take_up_signal` gate share one helper, so all three use the same population. Both stage manifests declare it as `any_uc_claimant_aged_18_under_pension_credit_age` with `role_column: is_uc_claimant`, and the code refuses a manifest that says otherwise. The take-up contract's population text for Universal Credit is re-signed; the rate is unchanged.
+
+The qualifying age is the State Pension age the engine's timetable sets for the cohort reaching it in the build year. That equals the engine's Pension Credit qualifying age at 2024 and 2025. The engine lockstep test compares the population with `is_uc_eligible`, with reported capital set to zero, for one-person units aged 14 to 90. It names the two engine cases the population does not mirror:
+
+- 16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, whom the engine includes;
+- mixed-age couples keeping Pension Credit under the SI 2019/37 saving, whom it excludes.

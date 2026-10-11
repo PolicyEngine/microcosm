@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
+    uc_gainful_self_employment,
     uc_trade_years,
     uk_frs_spine_seed_frame,
 )
@@ -725,9 +726,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {"kind": "aggregate_person_to_benunit"},
                         {
                             "kind": "aggregate_person_to_benunit",
-                            "method": "any_adult_under_state_pension_age",
+                            "method": (
+                                "any_uc_claimant_aged_18_under_pension_credit_age"
+                            ),
                             "consumed_only": True,
                             "aggregates": {"uc_age_eligible": "age"},
+                            "role_column": "is_uc_claimant",
                         },
                         {
                             "kind": "assign_binary_with_anchored_residual",
@@ -1214,6 +1218,16 @@ def test_property_income_matches_a_merge_of_the_raw_tabs(
     built = person.set_index("person_id")["property_income"]
     np.testing.assert_allclose(built.reindex(expected.index), expected)
     assert (built.drop(expected.index) == 0).all()
+    # The landlord carrier holds wherever ROYYR1 is positive, a loss included,
+    # though property_income counts that loss as zero.
+    landlord = pd.Series(
+        (raw.ROYYR1 > 0).to_numpy(),
+        index=(raw.SERNUM * 1000 + raw.PERSON).astype(int),
+    )
+    carrier = person.set_index("person_id")["reports_rent_from_other_property"]
+    assert carrier.dtype == bool
+    assert carrier.reindex(landlord.index).tolist() == landlord.tolist()
+    assert not carrier.drop(landlord.index).any()
 
 
 @pytest.mark.parametrize("code", [-1.0, -9.0])
@@ -3380,6 +3394,72 @@ class TestUCStartUpPeriod:
 
         with pytest.raises(KeyError, match="job.sejblong"):
             build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    assert person["uc_is_in_gainful_self_employment"].dtype == bool
+    return person.set_index("person_id")["uc_is_in_gainful_self_employment"].to_dict()
+
+
+class TestUCGainfulSelfEmployment:
+    """UC gainful self-employment from the main job and earnings (uk-data#525)."""
+
+    @staticmethod
+    def _oracle(main_job: bool, profit: float, pay: float) -> bool:
+        # Written out per person, independently of the vectorised rule.
+        if main_job:
+            return True
+        return profit > 0 and profit > pay
+
+    @pytest.mark.parametrize("main_job", [True, False])
+    @pytest.mark.parametrize(
+        ("profit", "pay"),
+        [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0), (2.0, 1.0), (1.0, 2.0)],
+    )
+    def test_the_rule_matches_its_truth_table(
+        self, main_job: bool, profit: float, pay: float
+    ) -> None:
+        flag = uc_gainful_self_employment([main_job], [profit], [pay])
+
+        assert flag.tolist() == [self._oracle(main_job, profit, pay)]
+
+    def test_a_side_trade_counts_only_when_it_out_earns_pay(self) -> None:
+        # ADM H4034 example 1: fewer self-employed hours but more profit.
+        # ADM H4035 example 2: the job earns more. A self-employed main job
+        # is gainful at a loss, which reaches this build floored at zero.
+        flags = uc_gainful_self_employment(
+            [False, False, False, True, True],
+            [140 * 52, 40 * 52, 10_000.0, 0.0, 0.0],
+            [80 * 52, 49.6 * 52, 10_000.0, 0.0, 50_000.0],
+        )
+
+        assert flags.tolist() == [True, False, False, True, True]
+
+    def test_the_spine_sets_it_from_the_main_job_and_a_side_trade(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        # Both fixture adults are neither employed nor self-employed (EMPSTATI
+        # 5), with SEINCAM2 3 below INEARNS 10.
+        assert _gainful_flags(tmp_path / "base", tables) == {
+            1001: False,
+            1002: False,
+            2001: False,
+        }
+        adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+        adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+        # Household 1: an employee whose side trade earns more than the job.
+        adult_1.update({"EMPSTATI": 1, "SEINCAM2": 20.0})
+        # Household 2: a self-employed main job at no profit.
+        adult_2.update({"EMPSTATI": 3, "SEINCAM2": 0.0})
+
+        assert _gainful_flags(tmp_path / "changed", tables) == {
+            1001: True,
+            1002: False,
+            2001: True,
+        }
 
 
 def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
