@@ -3641,7 +3641,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05: the receipts are a separate concept with their own variable)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within 2.5% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index."
         },
         "axiom": {
           "metric_name": "hmrc/property_income_income_band",
@@ -3657,8 +3657,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national index ignores (microcosm#1063, 2026-10-02). Property joins the employment, self-employment and private pension amount rows on María's ruling of 2026-10-11 (microcosm#1145 review): paired with the count rows' taxpayer_count_growth_by_total_income_band, the flat per-capita GDP index implied per-band mean profit moves of -13% to +11% between 2023 and 2025. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",

@@ -6,8 +6,8 @@ Aggregates and counts of 10 or more only. Scripts and licensed outputs live in `
 
 Regenerated from the pinned Chronicle feed 825406f on #1121's head (`c098fdcc4` when first measured, rebased to `692e8b7b3` with the values unchanged; policyengine-uk 2.122.2).
 
-- The 13 SPI Table 3.7 amount rows by total-income band compile to £31.78bn for 2025: the 2023-24 net amounts (£29.36bn) times the pinned per-capita GDP ratio 1.0826.
-- The incumbent fixture holds £55.78bn for the same rows, 1.9 times the SPI amounts. Example bands: £50,000 to £70,000 is £5.85bn against £10.26bn; £100,000 to £150,000 is £2.76bn against £4.85bn.
+- The 13 SPI Table 3.7 amount rows by total-income band first compiled to £31.78bn for 2025: the 2023-24 net amounts (£29.36bn) times the pinned per-capita GDP ratio 1.0826. On María's ruling of 2026-10-11 (the #1145 review) they move to the band index the count rows belong with, `hmrc.itl_2026.total_income_growth_by_total_income_band`: £33.60bn, with factors from 0.977 (£15,000 to 20,000) to 1.236 (£100,000 to 150,000). The arms before the final one bound the £31.78bn values.
+- The incumbent fixture holds £55.78bn for the same rows, 1.9 times the SPI amounts. Example bands on the band index: £50,000 to £70,000 is £6.56bn against £10.26bn; £100,000 to £150,000 is £3.15bn against £4.85bn.
 - Active national references: 1,231 → 1,244 (13 added, none changed). Signed-out references: 16 → 15. The local surface is unchanged.
 - #1121's re-derived uprating pins at 2.122.2 leave the per-capita GDP ratio, and so these values, exactly as on main.
 - The 13 new specs move the compiled register, so uk-candidate-eval's frozen scoring register needs a re-freeze before the next national solve.
@@ -34,7 +34,7 @@ Measured with `scripts/receipts_schedule_feasibility.py` on the A9 candidate's l
 
 - **A constant expense share of 0.40** gives receipts of £49.98bn and expenses of £19.99bn, but leaves the spine's lumps in the band counts: 0.073m landlords at £60,000 to £70,000 against PRIS's 0.030m, and 0.029m at £80,000 to £90,000 against 0.010m.
 - **A schedule matched on quantiles** maps each landlord's profit rank to the same rank of PRIS's receipts distribution and keeps receipts at least equal to profit. It reproduces all eleven band counts within 0.016m (the largest gap is £10,000 to £20,000: 0.835m against 0.851m). Its implied expense share has median 0.39, with 80% of landlords between 0.33 and 0.45. Its totals run above PRIS (receipts £51.46bn, expenses £21.47bn) because the top band's spread is assumed; the stage fits that spread to the totals.
-- So decision 7's band schedule is feasible with plausible shares. These figures use calibrated A9 weights; the stage runs on design weights, and the PRIS targets in C4 then hold the fit through calibration.
+- So decision 7's band schedule is feasible with plausible shares. These figures use calibrated A9 weights; the stage runs on design weights. C4 then bound PRIS as targets, which C8 reverts.
 
 ## C3. Landlords' receipts and finance costs on the licensed spine
 

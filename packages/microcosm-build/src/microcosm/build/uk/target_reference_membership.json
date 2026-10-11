@@ -4909,104 +4909,104 @@
       "name": "hmrc/property_income_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.23571428571429",
       "value_before_uprating": "2550000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.19599427753934",
       "value_before_uprating": "439000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.05",
       "value_before_uprating": "670000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "0.977178423236514",
       "value_before_uprating": "1690000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.15891089108911",
       "value_before_uprating": "1150000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.00296442687747",
       "value_before_uprating": "3820000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.21220604703247",
       "value_before_uprating": "1050000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.11899038461538",
       "value_before_uprating": "3800000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.21220604703247",
       "value_before_uprating": "765000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.11899038461538",
       "value_before_uprating": "3780000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.21466666666667",
       "value_before_uprating": "5400000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.22513812154696",
       "value_before_uprating": "474000000.0"
     },
     {
       "name": "hmrc/property_income_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "factor": "1.08262675352428",
+      "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "factor": "1.21466666666667",
       "value_before_uprating": "3770000000.0"
     },
     {
@@ -12874,12 +12874,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2760698221.4869194,
+          "resolved_value": 3151071428.571429,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9d10f6e51a5dcb04f54f9fae",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.23571428571429",
             "value_before_uprating": "2550000000.0"
           }
         },
@@ -12889,12 +12889,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 475273144.79715985,
+          "resolved_value": 525041487.8397711,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_51eeeeb41e0c6dc54bc0d407",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.19599427753934",
             "value_before_uprating": "439000000.0"
           }
         },
@@ -12904,12 +12904,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 725359924.861269,
+          "resolved_value": 703500000.0,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e177c50af86589dd859592e8",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.05",
             "value_before_uprating": "670000000.0"
           }
         },
@@ -12919,12 +12919,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1829639213.4560368,
+          "resolved_value": 1651431535.2697096,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_87ed04807ef839bd818e526d",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "0.977178423236514",
             "value_before_uprating": "1690000000.0"
           }
         },
@@ -12934,12 +12934,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1245020766.5529244,
+          "resolved_value": 1332747524.7524753,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5e148f28371c7b8c5d72e716",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.15891089108911",
             "value_before_uprating": "1150000000.0"
           }
         },
@@ -12949,12 +12949,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4135634198.462758,
+          "resolved_value": 3831324110.671937,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_a793597e38fe8f9240136d5e",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.00296442687747",
             "value_before_uprating": "3820000000.0"
           }
         },
@@ -12964,12 +12964,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 1136758091.2004962,
+          "resolved_value": 1272816349.3840985,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_968f0c586e0de9ec29bde5b5",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.21220604703247",
             "value_before_uprating": "1050000000.0"
           }
         },
@@ -12979,12 +12979,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4113981663.3922725,
+          "resolved_value": 4252163461.538461,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6a693f190800a2604ffd1c69",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.11899038461538",
             "value_before_uprating": "3800000000.0"
           }
         },
@@ -12994,12 +12994,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 828209466.4460759,
+          "resolved_value": 927337625.9798431,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_03b3c75a46af68646f0d8eb2",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.21220604703247",
             "value_before_uprating": "765000000.0"
           }
         },
@@ -13009,12 +13009,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4092329128.3217864,
+          "resolved_value": 4229783653.8461537,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_41f2ee883cc817a3f04d4b84",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.11899038461538",
             "value_before_uprating": "3780000000.0"
           }
         },
@@ -13024,12 +13024,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 5846184469.031124,
+          "resolved_value": 6559199999.999999,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_161cfda7cbd0fd9ad69ed477",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.21466666666667",
             "value_before_uprating": "5400000000.0"
           }
         },
@@ -13039,12 +13039,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 513165081.17050976,
+          "resolved_value": 580715469.6132597,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_16a6a0e6c9bbd738d853fda8",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.22513812154696",
             "value_before_uprating": "474000000.0"
           }
         },
@@ -13054,12 +13054,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4081502860.786544,
+          "resolved_value": 4579293333.333333,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9335b51ae0737d222433f03e",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-            "factor": "1.08262675352428",
+            "index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "factor": "1.21466666666667",
             "value_before_uprating": "3770000000.0"
           }
         }
@@ -29505,7 +29505,7 @@
       "family": "hmrc_spi",
       "status": "active_strict_band_pins",
       "active_reference_count": 182,
-      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins. The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts bind on their own variable (microcosm#1106, Mar\u00eda's ruling of 2026-10-05)."
+      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins. The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts are constructed on property_rental_income by the property_components stage and PRIS stays a diagnostic (microcosm#1106, Mar\u00eda's rulings of 2026-10-05 and 2026-10-08)."
     },
     {
       "family": "hmrc_itl",

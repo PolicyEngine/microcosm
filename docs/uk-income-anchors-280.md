@@ -59,7 +59,7 @@ membership carries the uprated value with its receipt.
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
   uses. Employment income follows `obr.average_earnings`, self-employment
-  `obr.per_capita.mixed_income`, dividends and property `obr.per_capita.gdp`,
+  `obr.per_capita.mixed_income`, dividends `obr.per_capita.gdp`,
   private pensions `obr.private_pension_index`, savings interest
   `ons.household_interest_income`; the state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
@@ -362,12 +362,17 @@ after the reorder were still falling 0.11 to 0.75 points).
 
 - The property-income amount rows are bound since microcosm#1106: the 13 SPI
   Table 3.7 net amounts bind unscaled on `property_income`, landlords' profit
-  after allowable expenses and before residential finance costs, and the
-  incumbent's x1.9 scaling is retired (María's ruling of 2026-10-05). The FRS
-  side is not done: the spine's FRS landlords hold rent from other property
-  (before tax, after the expenses on show card K6, which include mortgage
-  payments and loan interest) plus sub-letting rent as reported, which
-  SUBALLOW records as before or after expenses, so they sit below the SPI
-  concept and the binding leans on the SPI records and the weights.
+  after allowable expenses and before residential finance costs, uprated by
+  the band index the count rows' growth belongs with
+  (`hmrc.itl_2026.total_income_growth_by_total_income_band`, ruled
+  2026-10-11), and the
+  incumbent's x1.9 scaling is retired (María's ruling of 2026-10-05). On the
+  FRS side the `property_components` stage draws each FRS landlord's
+  restricted finance costs from the SPI tape and adds them back to the rent
+  from other property they report (ROYYR1, after the expenses on show card
+  K6, which include mortgage payments and loan interest), so the FRS concept
+  reaches the SPI's; the ruling with Max on that add-back is pending. The
+  mortgage capital the card also nets stays netted, and sub-letting rent
+  stays as reported, which SUBALLOW records as before or after expenses.
 - The ESA rows' migration residual and the SPI support channel's benefit fill
   (microcosm#840, #867, #869) are spine items.

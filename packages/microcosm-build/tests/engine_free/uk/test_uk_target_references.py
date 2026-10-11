@@ -545,8 +545,9 @@ def test_uk_target_references_bind_the_spi_net_property_amounts_unscaled() -> No
         for reference in references
     } == {
         (
-            "policyengine_uk_parameter:"
-            "gov.economic_assumptions.indices.obr.per_capita.gdp",
+            # The band index the count rows' growth belongs with (microcosm#1145
+            # review, María's ruling of 2026-10-11); dividends keep the flat index.
+            "hmrc.itl_2026.total_income_growth_by_total_income_band",
             "2023",
             2025,
         )
@@ -809,9 +810,11 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "which is what policyengine-uk's property_income means. The "
                 "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
                 "Property Rental Income Statistics' receipts before expenses "
-                "against this net amount, so it is retired; the receipts bind "
-                "on their own variable (microcosm#1106, María's ruling of "
-                "2026-10-05)."
+                "against this net amount, so it is retired; the receipts are "
+                "constructed on property_rental_income by the "
+                "property_components stage and PRIS stays a diagnostic "
+                "(microcosm#1106, María's rulings of 2026-10-05 and "
+                "2026-10-08)."
             ),
         },
         {
