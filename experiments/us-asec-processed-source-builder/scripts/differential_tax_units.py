@@ -1,25 +1,34 @@
 """Differential test: the builder's tax units against the archived construction.
 
     uv run python experiments/us-asec-processed-source-builder/scripts/differential_tax_units.py \\
-        --archived-python <archived loader checkout>/.venv/bin/python \\
-        --archived-root <archived loader checkout> \\
+        --archived-python <archived checkout>/.venv/bin/python \\
+        --archived-root <archived checkout at 9f177ddd> \\
+        --archived-policyengine-us <unpacked policyengine-us 1.729.0 wheel> \\
         --households 20000 --seed 20260928 \\
         --receipt experiments/us-asec-processed-source-builder/receipts/tax_unit_differential.json \\
-        [--fixture packages/microcosm-build/tests/fixtures/us_asec_tax_unit_golden_cases.csv --fixture-households 400]
+        [--fixture packages/microcosm-build/tests/fixtures/us_asec_tax_unit_golden_cases.csv]
 
 Generates seeded synthetic households (``household_cases.py``), then assigns
-tax units twice for each income year:
+tax units twice for each income year 2022-2025:
 
-* the archived loader's ``tax_unit_construction.construct_tax_units`` at
-  commit ``40314a75``, run in that checkout's own environment with the
-  rule helpers it imported (from the installed PolicyEngine-US);
+* the archived loader's ``tax_unit_construction.construct_tax_units`` (commit
+  ``40314a75``; ``9f177ddd`` leaves it unchanged), in an interpreter with the
+  loader's pandas 2.3.3. Its rule helpers come from
+  ``policyengine_us.tools.tax_unit_construction`` in the PolicyEngine-US
+  1.729.0 wheel, as in the environment that built the 2025 file. Both
+  packages' modules are loaded without their ``__init__`` files;
 * :func:`microcosm.build.us_runtime.asec_processed_source.construct_asec_tax_units`,
-  the builder's path (microunit), in Microcosm's environment.
+  the builder's path (microunit), in Microcosm's environment (pandas 3).
 
-It records per-year agreement of ``TAX_ID`` and role, row by row. With
-``--fixture`` it also writes the first ``--fixture-households`` households with
-the archived construction's ``TAX_ID`` and role per year: the golden cases the
-CI test ``test_us_asec_processed_source.py`` checks the builder against.
+It records per-year agreement of ``TAX_ID`` and role, row by row, and runs
+two precondition probes through both. With ``--fixture`` it writes golden
+cases for CI (``test_us_asec_processed_source.py``):
+- every household whose units change between years;
+- the lowest-numbered households with each tolerated spouse-pointer anomaly;
+- then the lowest-numbered households, up to ``--fixture-households``.
+
+Each case carries the archived construction's ``TAX_ID`` and role, computed
+on that subset.
 """
 
 from __future__ import annotations
@@ -45,13 +54,32 @@ from microcosm.build.us_runtime.asec_processed_source import (  # noqa: E402
 )
 
 YEARS = (2022, 2023, 2024, 2025)
+_ARCHIVED_POLICYENGINE_US = Path()
 
 _ARCHIVED_RUNNER = r"""
-import json, sys
-from importlib.metadata import version
+import hashlib, importlib, json, os, sys, types
+from pathlib import Path
 import pandas as pd
-from policyengine_us_data.datasets.cps.tax_unit_construction import construct_tax_units
-from policyengine_us_data.datasets.cps import tax_unit_rule_helpers as helpers
+# Load the two construction modules from the checkout, and the rule helpers
+# they import from the PolicyEngine-US wheel the loader ran with, without
+# running either package's __init__ files (which import the rest of each
+# package).
+package = Path.cwd() / "policyengine_us_data"
+wheel = Path(os.environ["ARCHIVED_POLICYENGINE_US"])
+for name, path in (
+    ("policyengine_us_data", package),
+    ("policyengine_us_data.datasets", package / "datasets"),
+    ("policyengine_us_data.datasets.cps", package / "datasets" / "cps"),
+    ("policyengine_us", wheel / "policyengine_us"),
+    ("policyengine_us.tools", wheel / "policyengine_us" / "tools"),
+):
+    module = types.ModuleType(name)
+    module.__path__ = [str(path)]
+    sys.modules[name] = module
+construct_tax_units = importlib.import_module(
+    "policyengine_us_data.datasets.cps.tax_unit_construction"
+).construct_tax_units
+helpers = importlib.import_module("policyengine_us_data.datasets.cps.tax_unit_rule_helpers")
 cases = pd.read_csv(sys.argv[1])
 out = pd.DataFrame(index=cases.index)
 if sys.argv[2] == "--probe":
@@ -68,7 +96,19 @@ for year in [int(value) for value in sys.argv[3].split(",")]:
 out.to_csv(sys.argv[2], index=False)
 print(json.dumps({
     "pandas": pd.__version__,
-    "policyengine_us": version("policyengine-us"),
+    "policyengine_us": next(
+        line.split(":", 1)[1].strip()
+        for path in wheel.glob("policyengine_us-*.dist-info/METADATA")
+        for line in path.read_text().splitlines()
+        if line.startswith("Version:")
+    ),
+    "policyengine_us_files_sha256": {
+        name: hashlib.sha256((wheel / "policyengine_us" / name).read_bytes()).hexdigest()
+        for name in (
+            "tools/tax_unit_construction.py",
+            "parameters/gov/irs/income/exemption/amount.yaml",
+        )
+    },
     "helpers_module": helpers.dependent_gross_income_limit.__module__,
     "limits": {year: helpers.dependent_gross_income_limit(int(year)) for year in sys.argv[3].split(",")},
 }))
@@ -89,6 +129,7 @@ def _run_archived(python: Path, root: Path, *args: str) -> dict:
                 and not key.startswith("UV_")
             },
             "PYTHONPATH": str(root),
+            "ARCHIVED_POLICYENGINE_US": str(_ARCHIVED_POLICYENGINE_US),
         },
         capture_output=True,
         text=True,
@@ -149,38 +190,55 @@ def _changed_partition_households(
     return changed
 
 
-def _anomalous_spouse_households(cases: pd.DataFrame) -> set[int]:
+def _anomalous_spouse_households(cases: pd.DataFrame) -> dict[str, set[int]]:
     """Households with a spouse pointer the construction tolerates but that
-    Census files never carry: one-sided, to an absent line, to oneself, or to
-    a member who is not married spouse-present."""
+    Census files never carry, by kind: to an absent line, to oneself, to a
+    member who is not married spouse-present, or one-sided."""
 
-    lines = set(zip(cases["PH_SEQ"], cases["A_LINENO"], strict=True))
     rows = {(row.PH_SEQ, row.A_LINENO): row for row in cases.itertuples(index=False)}
-    anomalous = set()
+    kinds: dict[str, set[int]] = {
+        "spouse_line_absent": set(),
+        "self_spouse_pointer": set(),
+        "spouse_not_married_spouse_present": set(),
+        "one_sided_spouse_pointer": set(),
+    }
     for row in rows.values():
         if row.A_MARITL not in (1, 2) or row.A_SPOUSE <= 0:
             continue
         spouse = rows.get((row.PH_SEQ, row.A_SPOUSE))
-        if (
-            (row.PH_SEQ, row.A_SPOUSE) not in lines
-            or row.A_SPOUSE == row.A_LINENO
-            or spouse.A_MARITL not in (1, 2)
-            or spouse.A_SPOUSE != row.A_LINENO
-        ):
-            anomalous.add(int(row.PH_SEQ))
-    return anomalous
+        if spouse is None:
+            kind = "spouse_line_absent"
+        elif spouse is row:
+            kind = "self_spouse_pointer"
+        elif spouse.A_MARITL not in (1, 2) or spouse.A_SPOUSE <= 0:
+            kind = "spouse_not_married_spouse_present"
+        elif spouse.A_SPOUSE != row.A_LINENO:
+            kind = "one_sided_spouse_pointer"
+        else:
+            continue
+        kinds[kind].add(int(row.PH_SEQ))
+    return kinds
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archived-python", type=Path, required=True)
     parser.add_argument("--archived-root", type=Path, required=True)
+    parser.add_argument(
+        "--archived-policyengine-us",
+        type=Path,
+        required=True,
+        help="Unpacked PolicyEngine-US wheel the loader ran with (1.729.0).",
+    )
     parser.add_argument("--households", type=int, default=20_000)
     parser.add_argument("--seed", type=int, default=20260928)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, default=None)
     parser.add_argument("--fixture-households", type=int, default=400)
+    parser.add_argument("--fixture-per-anomaly", type=int, default=20)
     args = parser.parse_args(argv)
+    global _ARCHIVED_POLICYENGINE_US
+    _ARCHIVED_POLICYENGINE_US = args.archived_policyengine_us.resolve()
 
     cases = generate_cases(args.households, args.seed)
     archived, archived_info = _archived_assignments(
@@ -266,12 +324,14 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(receipt, indent=1))
 
     if args.fixture is not None:
-        # Every household whose units change with the income limit or that
-        # carries a tolerated spouse-pointer anomaly, then the lowest-numbered
+        # Every household whose units change with the income limit, the
+        # lowest-numbered households with each kind of tolerated spouse-pointer
+        # anomaly (up to --fixture-per-anomaly each), then the lowest-numbered
         # households up to the fixture size. The archived construction runs
         # again on the subset, whose dense ids start from 1.
         chosen = set().union(*changed_households.values())
-        chosen |= _anomalous_spouse_households(cases)
+        for households in _anomalous_spouse_households(cases).values():
+            chosen |= set(sorted(households)[: args.fixture_per_anomaly])
         for household in sorted(cases["PH_SEQ"].unique()):
             if len(chosen) >= args.fixture_households:
                 break
