@@ -284,12 +284,133 @@ class, and 0.1M have no labor-force status (0).
 Both the signal gate and the anchor gate pass on each pool, before and after
 the PUF-support clone, and the clone conserves both totals.
 
+## Stacked pools
+
+The stacked pool (`tools/build_us_multispine_pool.py`) assembles ASEC and ACS
+households into one frame. Assembly gives each source half of ASEC's household
+mass (`DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES`), so the frame holds the
+population once and its ASEC rows carry half of it. Only those rows have the
+raw coverage columns.
+
+### The ASEC rows take their mass share of the anchor
+
+A pool source operator runs on the rows with raw CPS evidence (`PERIDNUM`), at
+pool weights. Left as it was, the stage would hold half the population's
+policyholders to the whole anchor and double every premium.
+
+The pool passes the stage `anchor_share`: the household mass of the rows it
+runs on over the pool's household mass, read from the live frame
+(`us_esi_premiums_household_mass_share`). The factor becomes
+`anchor x share / sum(w x raw)` over those rows' policyholders. Assembly
+multiplies every ASEC household weight by the same number, so this is the
+single-source factor: each ASEC person carries the dollars the base build
+gives them.
+
+The operator runs before the PUF clone, like the other measured ASEC mappings.
+The stage assigns one premium per source person and the clone copies it.
+
+### ACS rows
+
+ACS has no policyholder flag, payment status, coverage tier or firm size, so
+the stage cannot run there. The column enters the pool's QRF transfer as
+family `source_operator_esi_premiums`. Because the operator is pre-clone, the
+fill is the early gap-fill: the donors are ASEC rows before the PUF clone, so
+the model sees the measured CPS wage on the donor side and the measured ACS
+wage (`WAGP`) on the recipient side. A post-clone operator would have filled
+from PUF-detail clones, whose wages are PUF-imputed.
+
+The predictors are the transfer's fixed surface: age, sex and State always;
+wages, self-employment income, Social Security, retirement income, investment
+income, household head and tenure where both sources observe them. ACS also
+reports employer coverage (`HINS1`), class of worker (`COW`) and employment
+status (`ESR`). The pool's ACS mapping does not carry them, so the fill does
+not use them.
+
+### The transferred rows are held to the ASEC rows' scale
+
+Nothing in a QRF draw keeps a total. `with_us_esi_premium_pool_anchor` runs in
+the pool's derive stage, once every row carries the column. A row is
+source-derived if every raw coverage column is present and transferred if all
+are null; a row with only some is refused. On the transferred rows it:
+
+1. clears the premium where the person's source record (support clone 0)
+   reports no wages, because the column's universe is people employed by an
+   employer; then
+2. scales the rest by one factor so those rows carry the same weighted premium
+   per unit of household mass as the source-derived rows.
+
+It never rewrites a source-derived row. These hold for every pool
+(`tests/engine_free/us/test_us_esi_premiums_pool.py`, property-tested):
+
+- the pool-wide weighted column equals the source-derived rows' total divided
+  by their household mass share, which is the single-source column;
+- both sides carry the same weighted premium per unit of household mass;
+- a transferred person whose source record has no wages carries nothing, on
+  every support clone;
+- a pool already on that scale is returned unchanged.
+
+Equal totals per unit of mass on both sides also mean that calibration moving
+weight between sources does not move the pool total.
+
+**Assumption.** The anchor counts every policyholder, and ACS rows have no
+policyholder flag to price the non-employed ones from. The pool's
+anchor-universe total is the ASEC rows' total plus the transferred column over
+the ASEC rows' employed share of the anchor universe. That assumes employed
+policyholders carry the same share of employer premiums on the ACS half as on
+the ASEC half.
+
+**No post-transfer calibration.** The pool can match a transferred target's
+incidence and quantiles to the ASEC rows (`post_transfer_calibration.py`), and
+it binds the calibrated bytes through terminal validation, so a calibrated
+target cannot be rescaled afterwards. This column has no calibration spec: the
+scale to the ASEC rows' mass has the last word. The pool's by-origin battery
+still grades it.
+
+### Measured on the pinned inputs
+
+`experiments/us-esi-454/run_pool_fill_on_pinned_inputs.py` runs the part of
+the stacked pool that decides this column on the real inputs: the pooled
+2023-2025 ASEC, the ACS 2024 1-year PUMS, the pool's assembly on a household
+sample, the stage at the live mass share, the early gap-fill's weighted QRF
+for this family alone, the anchor operator, the by-origin battery and both
+gates. It skips the rest of the pool, and its fill runs without the tenure
+predictor a full build has. Target year 2024, sample seed 578.
+
+| | 1% of households | 5% of households |
+|---|---:|---:|
+| Person rows, ASEC / ACS | 4,177 / 34,293 | 21,133 / 171,381 |
+| ACS rows filled / left null | 34,293 / 0 | 171,381 / 0 |
+| People with a positive premium after the fill, ASEC / ACS | 24.6% / 22.9% | 22.6% / 22.0% |
+| ACS-over-ASEC incidence, after the fill / after the anchor | 0.933 / 0.930 | 0.975 / 0.969 |
+| Conditional quantile distance, after the fill / after the anchor | 0.072 / 0.169 | 0.047 / 0.077 |
+| Mean per person with a positive premium after the fill, ASEC / ACS | $11,741 / $11,741 | $12,608 / $12,614 |
+| Transferred rows cleared for no wages | 34 ($1.8B) | 255 ($2.9B) |
+| Scale factor on the other transferred rows | 1.102 | 1.047 |
+| Mean per person with a positive premium after the anchor, ASEC / ACS | $11,741 / $12,935 | $12,608 / $13,208 |
+| Pool column total | $947.3B | $924.7B |
+| Against the single-source column ($925.7B) | +2.3% | -0.1% |
+| By-origin battery, signal gate, anchor gate | pass | pass |
+
+The battery passes a monetary target whose incidence ratio is between 0.8 and
+1.25 and whose conditional quantile distance is at most 0.25.
+
+The fill reproduces ASEC's premium per holder and gives slightly fewer ACS
+people one. ACS rows also carry fewer weighted people than ASEC rows at equal
+household mass (160.2M against 162.6M in the 5% sample). The scale factor
+makes up both, so ACS holders end about 5% above ASEC holders. The factor
+falls as the donor sample grows. A full build has twenty times the donors of
+the 5% sample and was not run here.
+
+The stage holds the sampled ASEC rows' anchor universe to the anchor, so a
+sample's column total moves with that sample's employed share of the
+universe. That is why the two samples' totals differ from the full pool's.
+
 ## Gates
 
 | Gate | Where | Checks |
 |---|---|---|
-| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. |
-| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. |
+| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. On a pooled frame these proofs cover the rows with raw coverage columns; the other rows must carry the premium with a weighted positive share and mean within 0.5 to 2 times those rows'. |
+| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. On a pooled frame the total adds the transferred column at the source-derived rows' employed share, and the transferred rows' column per unit of household mass must stay within 0.8 to 1.25 times the source-derived rows'. |
 | `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
 | `assert_required_us_release_source_columns` | the L0/refit export (`l0_refit_export.export_us_l0_refit_h5`, run by `tools/export_us_l0_refit_h5.py`), unless `--allow-missing-source-columns` is passed | The column must be present and non-constant. |
 | reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
@@ -302,6 +423,13 @@ What the gates need, and what they do not catch:
   cannot be certified. Published release files carry raw ASEC person fields
   today (`PEIO1COW`, `PHIP_VAL`, `WSAL_VAL`, `NOW_MCAID`); a release path
   that dropped the restored columns would turn both gates red.
+- **A pooled frame is graded by row kind.** Rows with every raw coverage
+  column get the full recomputation. Rows with none are the ones a transfer
+  filled; the gates compare them with the first kind and cannot check them
+  against MEPS-IC cells. A row with only some of the columns fails both
+  gates. The pool tool does not run these gates: its anchor operator raises
+  if its own invariants fail, its by-origin battery grades the column's
+  distribution, and the release tool grades the pool as its base.
 - **The raw-mean band catches unit errors only.** The signal gate requires
   the unscaled share per holder to sit between $6k and $20k, which catches a
   cell table in the wrong units. A cell table that is 20% low passes: the
@@ -339,15 +467,19 @@ stage; the failures it waives are still written to that file.
 
 ## What this does not do
 
-- **The multispine pool.** `multispine_pool.py` runs its own operator chain on
-  CPS-source rows that carry only part of the stacked population's weight, so
-  scaling to a national total there needs its own design. Until then the
-  coverage and anchor gates are red on that lineage. The raw-stage operator
-  boundary already refuses a source frame that carries the output.
 - **ACS local releases.** An ACS spine pooled beside a donor that carries the
   input has it null on its ACS rows. `fill_reviewed_nulls` refuses that frame
   instead of default-filling it to zero, so this lineage does not build until
-  the input is assigned or transferred for every spine.
+  the input is assigned or transferred for every spine. The stacked pool's
+  fill does not reach it: that lane's ACS rows come from the legacy transfer
+  plan (`declared_acs_transfer_target_families`), which does not name the
+  column.
+- **ACS-native predictors for the fill.** The stacked pool fills ACS rows from
+  age, sex, State and income. It does not use ACS's own employer-coverage,
+  class-of-worker or employment-status items.
+- **A pool built from an older raw stage.** The pool reads the coverage
+  columns from the ASEC raw-stage artifact. One written before the columns
+  were restored lacks them, and the pool's ESI operator refuses it by name.
 - **A calibration target.** The column is the employed part of the NHE fact,
   so the fact cannot be compiled as a sum target on it. The target-parity
   manifest keeps the two `cms_nhe` ESI families as `deferred` reviewed
