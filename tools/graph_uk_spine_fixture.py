@@ -869,6 +869,9 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     # must reach zero or every non-user recipient would clip low.
     for source in BUS_FARE_LCFS_CODES:
         household[source] = np.where(rows.astype(int) % 3 == 0, 0.0, household[source])
+    # Other motor fuels (c72213): the level_road_fuel step nets the donor's own
+    # share of them from ONS 07.2.2 (microcosm#1113), so a few diaries buy some.
+    household["c72213"] = np.where(rows.astype(int) % 5 == 0, 0.5, 0.0)
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),

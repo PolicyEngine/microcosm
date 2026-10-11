@@ -1,0 +1,1629 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "desnz_road_fuel_by_vehicle.json",
+  "purpose": "DESNZ sub-national road transport fuel consumption (25 June 2026 workbook), UK totals by vehicle type and fuel in ktoe, calendar years 2022 to 2024: the cars share of each fuel's road use for the LCFS litres audit's per-fuel benchmark (microcosm#1113, PolicyEngine/chronicle#322).",
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 352549,
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0"
+  },
+  "selections": [
+    {
+      "label": "desnz_road_fuel_uk_by_vehicle_and_fuel",
+      "selector": {
+        "source_name": "desnz",
+        "source_concept": "desnz.road_transport.fuel_consumption",
+        "geography_id": "K02000001",
+        "period_type": "calendar_year",
+        "period_value": [
+          2022,
+          2023,
+          2024
+        ]
+      },
+      "row_count": 30
+    }
+  ],
+  "row_count": 30,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3177df322e70209b264c8e69",
+      "semantic_fact_key": "ledger_semantic_fact_v2_522c5e6e966e536a035a72a3",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.all_vehicles_all_fuels",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "all_vehicles_all_fuels",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "all_fuels",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "all_vehicles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 40108.93699794764
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d478fa6d0c85961b316f8c06",
+      "semantic_fact_key": "ledger_semantic_fact_v2_08a5860d6329b73bc2c296de",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.buses_and_coaches_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "buses_and_coaches_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "buses_and_coaches"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 919.1179587807651
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9727f943547ae0977ef3fdc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6d42ec5a6d8bd747e2b7c475",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.cars_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 10718.537925649329
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c9d249711a6ebed7e867fcf8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9918c4a87d8f441d09b77686",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.hgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 7270.335857779619
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b28e81c45d1d34cfeddde024",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bcc1fcf8d77742e970d37e0d",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.lgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 7082.325691484031
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96149cc6b8907e2266b09501",
+      "semantic_fact_key": "ledger_semantic_fact_v2_14e5a259664bf5e402b24e0e",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.cars_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 13783.459179880458
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9f4c44837ab444dce6c5e1b4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d27de2645dd5dc51f7542239",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.lgv_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 145.97469765079305
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0e6d1b6bc9c5567c7622579a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9686ca6f49fd9048c709cd75",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.motorcycles_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "motorcycles_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "motorcycles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 188.8585393082966
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc2f79875b76ee4213b0f8d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6a4134fbfabbb12cf05af0a1",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.lgv_lpg",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_lpg",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "lpg",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.103531988946173
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4bc576b96126224109659a96",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1a33be5fd9f1695d1584db90",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2022.k02000001.hgv_natural_gas",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_natural_gas",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2022",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "natural_gas",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.22361542540962204
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_97307b326cdab60ba250d548",
+      "semantic_fact_key": "ledger_semantic_fact_v2_45881ca908be1b6de2b8b383",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.all_vehicles_all_fuels",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "all_vehicles_all_fuels",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "all_fuels",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "all_vehicles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 39878.20310359735
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b7daf9d0c79d0aa98012d88b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8d9bd868561e29bfe3b0e8eb",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.buses_and_coaches_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "buses_and_coaches_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "buses_and_coaches"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 888.375782715515
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_150690f7c1ca005ad98e44c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69e05d3e693e1c00d1f4ede8",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.cars_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 10223.50594811775
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b5cbd927cc249b3c977cf04e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_882d117dd9d1deb577677a21",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.hgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 7050.954092068948
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_673fadc5ae832dfab513d22d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_625b50b951c39be0de9b850c",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.lgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 7051.437932832095
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_584bbce563bdcbe188c2fa5a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_525c78095986df2980bb55e4",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.cars_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 14333.754242622057
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_171f655132e3f991a7bcb149",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ecee05116aef46207d8ed4d",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.lgv_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 141.81873733262958
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78bf9bc5eb49bfc4b598e196",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6456181667d2c7a3f84c8b29",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.motorcycles_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "motorcycles_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "motorcycles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 187.89928932755384
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ceb3db4e36d90a94d8113fc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_317e75b9b98fd09889f333ea",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.lgv_lpg",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_lpg",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "lpg",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.15842605311858937
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_131e2e2436aac4b880f9ac56",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e1c0ae9bbab2d6226522a2bb",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2023.k02000001.hgv_natural_gas",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_natural_gas",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2023",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "natural_gas",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.298652527679633
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1c3752ed2cc45c708ff93a4b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc8998399d13f8bf92afe25e",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.all_vehicles_all_fuels",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "all_vehicles_all_fuels",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "all_fuels",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "all_vehicles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 39343.07844026484
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e29ed0eb8f6b5ee2bf4dcb7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e635c1dd7698e6c161687429",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.buses_and_coaches_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "buses_and_coaches_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "buses_and_coaches"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 880.649432681561
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_53ede5867bca38ba850afded",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4ae6305cfc5f05b2ecb31123",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.cars_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 9571.883358666924
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_02b65d2b87bdf2e5ad44888f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d57337bd9a311a9d634477a6",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.hgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 6902.162844500974
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1328b7b0e70a42bf1749e1e4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d73836f6339197d8190259e",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.lgv_diesel",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_diesel",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "diesel",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 7051.256712217175
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_699cd920a6c031a9af9fe877",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a336091f05ba44dc421912a6",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.cars_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "cars_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "cars"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 14605.695206681678
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76ab8c9e9e6075c5064a5e31",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e53412d28eed53c0ce53d26c",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.lgv_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 138.67363921583953
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45dbca724111ce8a61cc5ead",
+      "semantic_fact_key": "ledger_semantic_fact_v2_069dda1713c83536d895b787",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.motorcycles_petrol",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "motorcycles_petrol",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "biofuel_treatment": "includes_blended_biofuels",
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "petrol",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "motorcycles"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 192.19893899352886
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_983a8c21785b8bee7639706f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b79a18b765d63d78a35bba0b",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.lgv_lpg",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "lgv_lpg",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "lpg",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "lgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.21659373944247667
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e389f522fd91a2258530ee2b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bbb0cc3a0184ff73a0145cce",
+      "source_record_id": "desnz.road_transport.fuel_consumption.cy2024.k02000001.hgv_natural_gas",
+      "concept": "desnz.road_transport.fuel_consumption",
+      "measure_id": "hgv_natural_gas",
+      "unit": "ktoe",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_transport"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "2025-12"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.road_transport.fuel_consumption.cy2024",
+        "groupby_dimension": "desnz.road_transport.area",
+        "groupby_value_id": "k02000001",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "electric_vehicle_treatment": "excluded",
+        "estimate_basis": "spatial_estimates_without_dukes_normalisation",
+        "fuel": "natural_gas",
+        "geography_kind": "country",
+        "national_inventory_basis": "normalised_to_adjusted_dukes_fuel_sales",
+        "population_scope": "vehicles_travelling_in_area",
+        "road_type": "all_roads",
+        "vehicle_type": "hgv"
+      },
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Sub-national road transport fuel consumption statistics, 2005-2024",
+        "source_file": "subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx",
+        "source_sha256": "1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f",
+        "vintage": "2026_06_25_release_2005_2024",
+        "raw_r2_key": "raw/uk/desnz/desnz-road-transport-fuel-consumption-2024/2026/1b6d8596659ed9e4e6cb946b904f967a48d9eda175709c7f0b3801f87d0fc39f/subnational-road-transport-fuel-consumption-tables-2005-2024.xlsx"
+      },
+      "value": 0.3417135677224947
+    }
+  ]
+}

@@ -3,14 +3,14 @@
   "country": "uk",
   "scope": "uk_calibration",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+  "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
   "build": "build-bundle --suite uk -> build-consumer-artifact",
   "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v4"
   ],
   "consumer_fact_schema_sha256": "cc9efb90e9c73913bc76a89e9df435a9ca6ff49942e63dc8d2bf183c65a70224",
-  "fact_row_count": 344402,
-  "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
-  "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+  "fact_row_count": 352549,
+  "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+  "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0"
 }

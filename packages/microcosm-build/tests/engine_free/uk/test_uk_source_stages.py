@@ -620,6 +620,9 @@ class TestE3ManifestLockstep:
             "price_bus_journeys",
             "fold_into",
             "zero_when_false",
+            "redraw_zero_road_fuel",
+            "level_road_fuel",
+            "recompose_from_remainder",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -965,6 +968,8 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
             "price_domestic_energy": 0,
+            # The road-fuel incidence redraw (microcosm#1113).
+            "redraw_zero_road_fuel": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
