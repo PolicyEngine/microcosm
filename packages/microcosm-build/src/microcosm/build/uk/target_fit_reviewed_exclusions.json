@@ -1,13 +1,13 @@
 {
-  "schema_version": 2,
-  "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "exclusions": {
-    "hmrc/state_pension_income_band_50_000_to_70_000@2025": {
-      "reason": "Calibration-competition residual, not a data defect: the SPI state-pension amount band for total income GBP 50,000 to 70,000 (2023-24 Table 3.7, uprated by the new State Pension rate the engine pays) fitted at +23.4% on v21 and +27.6% on v21b (target GBP 5.26bn); the state-pension family sums 6.9% over its target because the engine pays every recipient the 2025-26 rate while the taxpayer counts by band fit within 1%, and this band carries the residual after the reserved income band donors moved the surrounding bands. Deferred four weeks while the state-pension amount anchor is scoped (PolicyEngine/chronicle#280 lane).",
-      "approved_by": "juaristi22",
-      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling D6 of 2026-09-23; income-anchor lane, PolicyEngine/chronicle#280)",
-      "approved_on": "2026-09-23",
-      "expires_on": "2026-10-21"
-    }
+ "schema_version": 2,
+ "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "exclusions": {
+  "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025": {
+   "reason": "The regional income-tax cells slice on policyengine-uk's total_income, which leaves out other_investment_income although income_tax charges it as savings interest, so an SPI record whose income is mostly other investment income sits in a low band with its whole income tax. Fewer than 10 such records sit in the West Midlands GBP 12,570-15,000 band: the cell's design value is 339.2m against the 55.1m target (6.1 times, and 6.0 times before the microcosm#1095 ports; every other region's cell is 0.6-1.1 times), and banded on total income including other investment income it falls in line with the other regions. The solver pulls the cell to +8.6% before the ports and +8.9% with the engine-free ports; policyengine-uk 2.122.2 lands it at +23.6% and the full ports at +27.4% (about 2 points of the last step come from CVPAY leaving property income). Deferred four weeks while policyengine-uk's total_income is corrected upstream to include other investment income (pe-uk#2174).",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1095 (the head and counterfactual arms of 2026-10-06 on the second ports PR)",
+   "approved_on": "2026-10-06",
+   "expires_on": "2026-11-03"
   }
+ }
 }

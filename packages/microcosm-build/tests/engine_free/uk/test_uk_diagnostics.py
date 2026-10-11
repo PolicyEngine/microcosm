@@ -31,6 +31,11 @@ from microcosm.calibrate import (
     diagnostics_payload,
     score_targets,
 )
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    DiagnosticsWriteFailure,
+    DiagnosticsWriteSuccess,
+)
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 _SPI_COLUMN = "household_is_spi_synthetic"
@@ -739,14 +744,17 @@ def test_payload_requires_the_exact_shipped_weight_vector() -> None:
 
 def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
     result, frame, registry, geography = _diagnostics_case()
-    path = write_uk_calibration_diagnostics(
+    path = tmp_path / "calibration_diagnostics.json"
+    outcome = write_uk_calibration_diagnostics(
         result,
-        tmp_path / "calibration_diagnostics.json",
+        path,
         frame,
         target_geography_levels=geography,
         target_registry=registry,
     )
 
+    assert isinstance(outcome, DiagnosticsWriteSuccess)
+    assert outcome.path == path
     assert json.loads(path.read_text(encoding="utf-8")) == (
         uk_calibration_diagnostics_payload(
             result,
@@ -755,21 +763,49 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
             target_registry=registry,
         )
     )
-    previous = path.read_bytes()
-    with pytest.raises(ValueError, match="Out of range float values"):
-        write_uk_calibration_diagnostics(
-            result,
-            path,
-            frame,
-            target_geography_levels=geography,
-            target_registry=registry,
-            build={"not_json": float("nan")},
-        )
-    assert path.read_bytes() == previous
+    invalid = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build={"not_json": object()},
+    )
+    assert isinstance(invalid, DiagnosticsWriteFailure)
+    assert invalid.error_code == "validation_error"
+    assert not path.exists()
     assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
 
 
-def test_writer_preserves_prior_bytes_when_atomic_replace_fails(
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf")],
+    ids=["nan", "positive-infinity", "negative-infinity"],
+)
+def test_writer_rejects_nested_non_finite_build_provenance(
+    tmp_path: Path,
+    value: float,
+) -> None:
+    result, frame, registry, geography = _diagnostics_case()
+    path = tmp_path / "calibration_diagnostics.json"
+    path.write_text("stale")
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build={"nested": [{"value": value}]},
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteFailure)
+    assert outcome.error_code == "validation_error"
+    assert not path.exists()
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+
+def test_writer_reports_canonical_atomic_replace_failure(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -781,18 +817,58 @@ def test_writer_preserves_prior_bytes_when_atomic_replace_fails(
     def fail_replace(_temporary, _output):
         raise OSError("seeded replace failure")
 
-    monkeypatch.setattr(Path, "replace", fail_replace)
-    with pytest.raises(OSError, match="seeded replace failure"):
-        write_uk_calibration_diagnostics(
-            result,
-            path,
-            frame,
-            target_geography_levels=geography,
-            target_registry=registry,
+    monkeypatch.setattr("microcosm.diagnostics.writer.os.replace", fail_replace)
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteFailure)
+    assert outcome.error_code == "io_error"
+    assert not path.exists()
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+
+def test_writer_delegates_a_typed_payload_to_the_canonical_writer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    result, frame, registry, geography = _diagnostics_case()
+    path = tmp_path / "calibration_diagnostics.json"
+    captured: dict[str, object] = {}
+
+    def canonical_writer(
+        diagnostics: CalibrationDiagnosticsV8,
+        destination: Path | str,
+    ) -> DiagnosticsWriteSuccess:
+        captured["diagnostics"] = diagnostics
+        captured["destination"] = Path(destination)
+        return DiagnosticsWriteSuccess(
+            status="available",
+            path=Path(destination),
+            schema_version=8,
+            sha256="a" * 64,
         )
 
-    assert path.read_bytes() == prior
-    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.diagnostics.write_typed_calibration_diagnostics",
+        canonical_writer,
+    )
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteSuccess)
+    assert isinstance(captured["diagnostics"], CalibrationDiagnosticsV8)
+    assert captured["destination"] == path
 
 
 def test_geography_level_vocabulary_includes_future_release_levels() -> None:
@@ -803,3 +879,109 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "local_authority",
         "constituency",
     )
+
+
+class TestSupportFamilyWeights:
+    """Folding support-split families back to one weight (microcosm#1045)."""
+
+    @staticmethod
+    def _household(copies: bool) -> pd.DataFrame:
+        from microcosm.build.uk_runtime.diagnostics import UK_SUPPORT_COPY_FLAG_COLUMN
+
+        # Root 1 split into three (ids 1, 11, 21); root 2 whole; the clone
+        # side (ids +100) repeats the pattern at half weight.
+        ids = [1, 2, 11, 21, 101, 102, 111, 121]
+        household = pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": [10.0, 30.0, 10.0, 10.0, 5.0, 15.0, 5.0, 5.0],
+                "source_household_id": [1, 2, 1, 1, 1, 2, 1, 1],
+                "household_support_channel": ["frs"] * 8,
+                "household_support_clone_index": [0] * 8,
+                "household_is_capital_gains_clone": [False] * 4 + [True] * 4,
+            }
+        )
+        if copies:
+            household[UK_SUPPORT_COPY_FLAG_COLUMN] = [
+                False,
+                False,
+                True,
+                True,
+                False,
+                False,
+                True,
+                True,
+            ]
+        return household
+
+    def test_families_sum_to_one_weight_per_root_on_each_clone_side(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        folded, receipt = uk_support_family_weights(self._household(copies=True))
+        assert sorted(folded.tolist()) == [15.0, 15.0, 30.0, 30.0]
+        assert receipt == {
+            "basis": "support_family_fold",
+            "key_columns": [
+                "source_household_id",
+                "household_support_channel",
+                "household_support_clone_index",
+                "household_is_capital_gains_clone",
+            ],
+            "geographic_clone_index_in_key": False,
+            "families": 4,
+            "support_copy_rows": 4,
+            "rows_folded": 4,
+        }
+
+    def test_geographic_clones_stay_apart_on_an_expanded_frame(self) -> None:
+        """Round 2 of the #1045 review: the dense line's K clones fold only
+        their own copies, never each other."""
+        from microcosm.build.uk_runtime.diagnostics import (
+            uk_support_family_geographic_clone_column,
+            uk_support_family_weights,
+        )
+
+        base = self._household(copies=True)
+        k = 3
+        clone_column = uk_support_family_geographic_clone_column()
+        expanded = pd.concat(
+            [
+                base.assign(
+                    household_id=base["household_id"] + 1_000 * clone,
+                    household_weight=base["household_weight"] / k,
+                    **{clone_column: clone},
+                )
+                for clone in range(k)
+            ],
+            ignore_index=True,
+        )
+        folded, receipt = uk_support_family_weights(expanded)
+        copies = int(expanded["household_is_cgt_support_copy"].sum())
+        assert receipt["geographic_clone_index_in_key"] is True
+        assert receipt["key_columns"][-1] == clone_column
+        assert receipt["families"] == len(expanded) - copies == 4 * k
+        assert receipt["rows_folded"] == copies == 4 * k
+        np.testing.assert_allclose(
+            sorted(folded.tolist()),
+            sorted([w / k for w in [15.0, 15.0, 30.0, 30.0] * k]),
+        )
+
+    def test_a_table_without_copies_folds_to_itself(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=False)
+        folded, receipt = uk_support_family_weights(household)
+        assert folded.tolist() == household["household_weight"].tolist()
+        assert receipt == {
+            "basis": "rows",
+            "families": 8,
+            "support_copy_rows": 0,
+            "rows_folded": 0,
+        }
+
+    def test_copies_without_the_lineage_key_refuse(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=True).drop(columns=["source_household_id"])
+        with pytest.raises(ValueError, match="source_household_id"):
+            uk_support_family_weights(household)

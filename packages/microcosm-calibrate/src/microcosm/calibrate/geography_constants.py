@@ -25,6 +25,9 @@ UK_GEOGRAPHY_ID_TO_LABEL: Mapping[str, str] = MappingProxyType(
     {
         "K02000001": "United Kingdom",
         "K03000001": "Great Britain",
+        # DWP's Winter Fuel Payment statistics from winter 2024-25 (Scotland
+        # pays its own Pension Age Winter Heating Payment).
+        "K04000001": "England and Wales",
         "E92000001": "England",
         "W92000004": "Wales",
         "S92000003": "Scotland",

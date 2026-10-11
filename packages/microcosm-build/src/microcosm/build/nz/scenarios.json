@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "country": "nz",
+  "method_card_row": "MC3",
+  "description": "The declared Accommodation Supplement scenario set (method card amendment MC3a): entitlement-tier scenarios S0-S5 branch from the shared AS version after calibration; calibration-tier variants V1-V3 branch before calibration and re-run it. Each non-central scenario changes exactly one knob from the central defaults. Bands are the minimum, S0 and the maximum of each gap table across every scenario, and each band bound names the scenario that set it.",
+  "status": "awaiting D1 (MC3a, MC8-MC12); S4's factor awaits Chronicle evidence",
+  "tiers": {
+    "entitlement": {
+      "branch_point": "nz.as"
+    },
+    "calibration": {
+      "branch_point": "nz.open"
+    }
+  },
+  "central_knobs": {
+    "rent_allocation": "reference_unit",
+    "asset_test": "on",
+    "area_column": "as_area",
+    "rent_stock_factor": 1.0,
+    "superannuitant_treatment": "exclude_and_count",
+    "aging_index": "central",
+    "beneficiary_assignment": "central"
+  },
+  "knob_domains": {
+    "rent_allocation": [
+      "reference_unit",
+      "per_adult_share"
+    ],
+    "asset_test": [
+      "on",
+      "off"
+    ],
+    "area_column": [
+      "as_area",
+      "as_area_alt"
+    ],
+    "rent_stock_factor": "a positive number; null only while status says it awaits evidence",
+    "superannuitant_treatment": [
+      "exclude_and_count",
+      "reg17_superannuitant_base_rate"
+    ],
+    "aging_index": [
+      "central",
+      "low",
+      "high"
+    ],
+    "beneficiary_assignment": [
+      "central",
+      "variant"
+    ]
+  },
+  "knob_method_card_rows": {
+    "rent_allocation": "MC8",
+    "asset_test": "MC10",
+    "area_column": "MC9",
+    "rent_stock_factor": "MC8",
+    "superannuitant_treatment": "MC11",
+    "aging_index": "MC5",
+    "beneficiary_assignment": "MC6"
+  },
+  "scenarios": [
+    {
+      "id": "S0",
+      "tier": "entitlement",
+      "method_card_row": "MC3",
+      "knobs": {},
+      "description": "central defaults: the central value of every MC3 band"
+    },
+    {
+      "id": "S1",
+      "tier": "entitlement",
+      "method_card_row": "MC10",
+      "knobs": {
+        "asset_test": "off"
+      },
+      "description": "asset test off: the Accommodation Supplement cash-assets input is set to 0 (upper bound)",
+      "input_overrides": [
+        {
+          "variable": "accommodation_supplement_cash_assets",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "tier": "entitlement",
+      "method_card_row": "MC8",
+      "knobs": {
+        "rent_allocation": "per_adult_share"
+      },
+      "description": "household rent split per adult share instead of allocated to the reference unit (upper sensitivity)"
+    },
+    {
+      "id": "S3",
+      "tier": "entitlement",
+      "method_card_row": "MC9",
+      "knobs": {
+        "area_column": "as_area_alt"
+      },
+      "description": "the alternative territorial authority to Accommodation Supplement area crosswalk (as_area_crosswalk.json alternative)"
+    },
+    {
+      "id": "S4",
+      "tier": "entitlement",
+      "method_card_row": "MC8",
+      "knobs": {
+        "rent_stock_factor": null
+      },
+      "description": "stock adjustment to MBIE lodged-bond rents",
+      "status": "awaiting Chronicle evidence on whether MBIE bond rents describe newly lodged bonds or the active stock; G8 writes the factor, or removes S4 if the rents are active stock"
+    },
+    {
+      "id": "S5",
+      "tier": "entitlement",
+      "method_card_row": "MC11",
+      "knobs": {
+        "superannuitant_treatment": "reg17_superannuitant_base_rate"
+      },
+      "description": "reg 17 superannuitant treatment, the alternative to the MC11 default. The override is the engine-calling bridge, which rewrites the base rate; a non-engine override would hand-compute policy (as_rate_bridge.json superannuitant_units)"
+    },
+    {
+      "id": "V1",
+      "tier": "calibration",
+      "method_card_row": "MC5",
+      "knobs": {
+        "aging_index": "low"
+      },
+      "description": "low aging index for the calibration references (MC5 ages IRD bands from TY2024 to TY2026-27 by a declared index)"
+    },
+    {
+      "id": "V2",
+      "tier": "calibration",
+      "method_card_row": "MC5",
+      "knobs": {
+        "aging_index": "high"
+      },
+      "description": "high aging index"
+    },
+    {
+      "id": "V3",
+      "tier": "calibration",
+      "method_card_row": "MC6",
+      "knobs": {
+        "beneficiary_assignment": "variant"
+      },
+      "description": "beneficiary assignment variant for the main-benefit and NZ Super receipt layer"
+    }
+  ],
+  "gap_conventions": {
+    "annualisation": {
+      "weeks_per_year": 52,
+      "method_card_row": "MC12",
+      "note": "the conformance harness uses 365/7 weeks (ops main run.py:168); the model states and uses 52"
+    },
+    "groupings": {
+      "method_card_row": "MC3",
+      "tables": [
+        "income_decile_by_family_type",
+        "beneficiary_superannuitant_other"
+      ]
+    },
+    "comparators": {
+      "method_card_row": "MC2",
+      "references": "holdout_references.json, holdout_use accommodation_supplement_dollar_comparator"
+    }
+  },
+  "keying_note": "Charter C2 (adding a scenario re-keys only the bands and package nodes) holds only if each scenario's graph nodes carry that scenario's own resolved knobs and a digest of its own entry, not this file's SHA-256."
+}

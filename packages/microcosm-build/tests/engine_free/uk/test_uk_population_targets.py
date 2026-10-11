@@ -40,7 +40,13 @@ BINDING_KINDS = {
     "parameter_gated_threshold",
     "baseline_flag_crosstab",
 }
-PROJECTION_FAMILIES = {"obr", "slc_borrowers", "scotgov_social_security", "hmrc_itl"}
+PROJECTION_FAMILIES = {
+    "obr",
+    "slc_borrowers",
+    "scotgov_social_security",
+    "hmrc_itl",
+    "dwp_benefit_expenditure",
+}
 NATIONAL_SELECTOR_KEYS = {
     "aggregate_fact_key",
     "source_name",
@@ -54,6 +60,7 @@ NATIONAL_SELECTOR_KEYS = {
     "period_type",
     "period_value",
     "layout_groupby_value_id",
+    "source_measure_id_by_opening_year",
 }
 LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
 POLICYENGINE_BINDING_KEYS = {
@@ -176,6 +183,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "calendar_year_average",
         "monthly_window_average",
         "monthly_window_sum_average",
+        "monthly_window_count_x_mean",
         "linear_combination",
         "scaled_by_ratio",
         "calendar_year_window",
@@ -185,7 +193,17 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 342
+    # 26 State Pension targets since microcosm#1069 c3; the OBR State Pension
+    # line became a diagnostic in c4; 14 Pension Credit caseload targets in c7;
+    # four SPI pension contribution band targets in c8; c9 adds the DWP employer
+    # and employee contribution totals and the salary-sacrifice amount and drops
+    # the salary-sacrifice users total; c10 adds two Attendance Allowance and
+    # three pension-age Housing Benefit caseload targets; the four Table 3.8
+    # contribution targets and the DWP employee total leave the fit again (their
+    # relief-mechanism and gross definitions do not match the engine's columns;
+    # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
+    # pension-age Housing Benefit spending.
+    assert len(resource["targets"]) == 392
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -199,10 +217,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 291
+    assert len(registry_scope) == 341
     assert len(profile_scope) == 51
-    assert target_ids[:291] == registry_scope
-    assert target_ids[291:] == profile_scope
+    assert target_ids[:341] == registry_scope
+    assert target_ids[341:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -215,8 +233,8 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 194
-    assert len(unmapped_declarations) == 97
+    assert len(mapped_target_ids) == 192
+    assert len(unmapped_declarations) == 149
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -335,7 +353,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 342
+    assert len(target_ids) == 392
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -427,6 +445,8 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain",
         "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share",
         "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
+        "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
     }
     allowed_operations = set(resource["allowed_value_operations"])
     for target in resource["targets"]:
@@ -801,7 +821,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 342
+    assert len(targets) == 392
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -882,7 +902,10 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
         "hmrc/capital_gains_band",
         "hmrc/capital_gains_by_age_band",
         "hmrc/capital_gains_by_region",
+        "hmrc/capital_gains_by_taxable_income_band",
         "hmrc/capital_gains_total",
+        "hmrc/cgt_badr_ir_qualifying_gains_by_band",
+        "hmrc/cgt_badr_ir_taxpayers_by_band",
         "hmrc/cgt_liability",
         "hmrc/cgt_liability_by_age_band",
         "hmrc/cgt_residential_property_gains",
@@ -891,6 +914,7 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
         "hmrc/cgt_taxpayers_band",
         "hmrc/cgt_taxpayers_by_age_band",
         "hmrc/cgt_taxpayers_by_region",
+        "hmrc/cgt_taxpayers_by_taxable_income_band",
     ]
     assert mapped["hmrc/capital_gains_total"] == "hmrc.cgt.gains_total"
     assert mapped["hmrc/cgt_taxpayers"] == "hmrc.cgt.taxpayers_total"

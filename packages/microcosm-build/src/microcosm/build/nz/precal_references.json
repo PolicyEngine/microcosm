@@ -1,0 +1,156 @@
+{
+  "country": "nz",
+  "reference_set": "precal",
+  "description": "New Zealand v0 pre-calibration references: destination distributions for the transport quantile maps (earnings, rents, liquid assets), territorial-authority population for the atomic geography support, and the MSD recipient counts that calibrate the take-up draws (MC6). They are read before weight calibration and are kept apart from target_references.json so that adding a calibration target does not re-run transport. Every row is an unactivated placeholder.",
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "target_references": [
+    {
+      "name": "ird_wage_salary_people_by_band",
+      "ledger_selector": {
+        "source_name": "ird_wage_salary_statistics",
+        "source_measure_id": "individuals_by_wage_salary_band",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "people",
+      "filter": "wage_salary_band_indicator",
+      "period": 2024,
+      "family": "earnings",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_candidate_column_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC4",
+        "precal_use": "employment_income_quantile_map_bands"
+      },
+      "notes": "IRD wage and salary bands are the destination distribution for the employment-income quantile map (MC4), not a weight-calibration target. Each band needs a destination-NZD indicator and source-period bridge."
+    },
+    {
+      "name": "mbie_bond_rents_by_territorial_authority",
+      "ledger_selector": {
+        "source_name": "mbie_tenancy_bond_rents",
+        "source_measure_id": "rent_distribution_by_ta_bedrooms_dwelling_type",
+        "geography_level": "territorial_authority"
+      },
+      "entity": "household",
+      "measure": "rent",
+      "period": null,
+      "family": "housing_costs",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_month_pin_and_stock_evidence",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Business, Innovation and Employment",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC8",
+        "precal_use": "rent_quantile_map_bands"
+      },
+      "notes": "MBIE tenancy bond rents by territorial authority, bedrooms and dwelling type (targets doc H3) are the destination distribution for the within-region rent quantile map. Chronicle pins the month and records whether the rents describe newly lodged bonds or the active stock; that evidence decides scenario S4. Period is null until the harvest pins the month.",
+      "filter": "rent_band_indicator"
+    },
+    {
+      "name": "stats_nz_household_financial_net_worth_distribution",
+      "ledger_selector": {
+        "source_name": "stats_nz_household_net_worth",
+        "source_measure_id": "household_financial_assets_distribution",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "liquid_financial_assets",
+      "period": null,
+      "family": "wealth",
+      "metadata": {
+        "activation_status": "requires_new_chronicle_package_and_harvested_cell_references",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC10",
+        "precal_use": "liquid_assets_quantile_map_bands"
+      },
+      "notes": "Stats NZ household net worth statistics, financial-asset distribution: the destination for the household-level liquid-asset quantile map (MC10a); members are rescaled pro rata and the unit sum feeds the Accommodation Supplement cash-asset test. The Chronicle package does not yet exist (6 Oct plan B6 part 2). Period is null until the release vintage is named.",
+      "filter": "financial_asset_band_indicator"
+    },
+    {
+      "name": "stats_nz_population_by_territorial_authority",
+      "ledger_selector": {
+        "source_name": "stats_nz_population_estimates",
+        "source_measure_id": "estimated_resident_population_by_territorial_authority",
+        "geography_level": "territorial_authority"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "pre_calibration",
+        "geography_vintage": "ta_2025",
+        "reference_set": "precal",
+        "method_card_row": "MC9",
+        "precal_use": "atomic_geography_support"
+      },
+      "notes": "Territorial-authority resident population (targets doc S7) builds the population-weighted territorial authority by Accommodation Supplement area support with as_area_crosswalk.json. It is a support weight, not a weight-calibration target."
+    },
+    {
+      "name": "msd_main_benefit_recipients_by_program_age",
+      "ledger_selector": {
+        "source_name": "msd_quarterly_benefit_facts",
+        "source_measure_id": "main_benefit_recipients_by_program_age",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_main_benefit",
+      "period": "2026-03",
+      "family": "main_benefits",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC6",
+        "precal_use": "take_up_draw_calibration"
+      },
+      "notes": "Count-only administrative cells constrain an explicit receipt/take-up layer. They must never be bound to Axiom full-entitlement outputs or used to force entitlement dollars to equal actual expenditure."
+    },
+    {
+      "name": "msd_nz_super_veterans_pension_recipients",
+      "ledger_selector": {
+        "source_name": "msd_nz_super_veterans_pension_facts",
+        "source_measure_id": "nz_super_veterans_pension_recipients",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_nz_super_or_veterans_pension",
+      "period": "2025-06",
+      "family": "superannuation",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC6",
+        "precal_use": "take_up_draw_calibration"
+      },
+      "notes": "Recipient stock is a receipt-state target, not an entitlement-output target. Expenditure is validation evidence and stays outside the calibration manifest."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}

@@ -39,6 +39,7 @@ import hashlib
 import json
 import posixpath
 import re
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -137,7 +138,12 @@ class LatestPointer:
             object.__setattr__(self, "revision", self.release_id)
 
 
-def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) -> dict:
+def latest_pointer_payload(
+    release_id: str,
+    *,
+    updated_at: str | None = None,
+    calibration_diagnostics_available: bool = True,
+) -> dict:
     """The ``latest.json`` payload for ``release_id``.
 
     Paths are derived from the release contract — the pointer names exactly
@@ -157,6 +163,8 @@ def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) ->
         "paths": {
             filename.removesuffix(".json"): f"releases/{release_id}/{filename}"
             for filename in required_release_files(release_id)
+            if calibration_diagnostics_available
+            or filename != "calibration_diagnostics.json"
         },
     }
 
@@ -183,6 +191,7 @@ def line_pointer_payload(
     line: str,
     revision: str,
     updated_at: str | None = None,
+    calibration_diagnostics_available: bool = True,
 ) -> dict:
     """Build a schema-1 per-line pointer naming an immutable revision."""
     line_pointer_path(line)
@@ -205,14 +214,21 @@ def line_pointer_payload(
             "a per-cut tag in that release's line family."
         )
     return {
-        **latest_pointer_payload(release_id, updated_at=updated_at),
+        **latest_pointer_payload(
+            release_id,
+            updated_at=updated_at,
+            calibration_diagnostics_available=calibration_diagnostics_available,
+        ),
         "line": line,
         "revision": revision,
     }
 
 
 def latest_evidence_pointer_payload(
-    release_id: str, *, updated_at: str | None = None
+    release_id: str,
+    *,
+    updated_at: str | None = None,
+    calibration_diagnostics_available: bool = True,
 ) -> dict:
     """The ``latest-evidence.json`` payload for ``release_id``.
 
@@ -221,7 +237,11 @@ def latest_evidence_pointer_payload(
     that lands on the wrong file sees the tier immediately.
     """
     return {
-        **latest_pointer_payload(release_id, updated_at=updated_at),
+        **latest_pointer_payload(
+            release_id,
+            updated_at=updated_at,
+            calibration_diagnostics_available=calibration_diagnostics_available,
+        ),
         "tier": RELEASE_TIER_EVIDENCE,
     }
 
@@ -249,6 +269,7 @@ class PreparedRelease:
     root_artifacts: dict[str, str]
     line: str | None
     pointer_path: str
+    calibration_diagnostics_available: bool
 
 
 def prepare_release(
@@ -358,9 +379,27 @@ def prepare_release(
             "without a tag would leave no published revision."
         )
     artifact_root = Path(artifact_root) if artifact_root is not None else None
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    diagnostics_declaration = release_manifest.get("calibration_diagnostics")
+    calibration_diagnostics_available = not (
+        isinstance(diagnostics_declaration, Mapping)
+        and diagnostics_declaration.get("status") == "failed"
+    )
+    if not calibration_diagnostics_available:
+        warnings.warn(
+            "Publishing a dataset whose calibration diagnostics generation failed: "
+            f"{diagnostics_declaration.get('error_code')}: "
+            f"{diagnostics_declaration.get('message')}",
+            stacklevel=2,
+        )
 
     if role == NATIONAL_DEFAULT_DATASET_ROLE:
-        contract_files = required_release_files(release_id)
+        contract_files = tuple(
+            filename
+            for filename in required_release_files(release_id)
+            if calibration_diagnostics_available
+            or filename != "calibration_diagnostics.json"
+        )
     else:
         # A non-default release's directory IS its bundle: publishing a
         # subset would leave a remote release that fails its own role
@@ -482,6 +521,7 @@ def prepare_release(
         root_artifacts=root_artifacts,
         line=line,
         pointer_path=pointer_path,
+        calibration_diagnostics_available=calibration_diagnostics_available,
     )
 
 
@@ -604,7 +644,13 @@ def publish_release(
     if api is None:
         api = _hf_api()
     if evidence:
-        payload = latest_evidence_pointer_payload(release_id, updated_at=updated_at)
+        payload = latest_evidence_pointer_payload(
+            release_id,
+            updated_at=updated_at,
+            calibration_diagnostics_available=(
+                prepared.calibration_diagnostics_available
+            ),
+        )
         pointer_label = "evidence release"
     elif prepared.line is not None:
         payload = line_pointer_payload(
@@ -612,10 +658,19 @@ def publish_release(
             line=prepared.line,
             revision=prepared.tag,
             updated_at=updated_at,
+            calibration_diagnostics_available=(
+                prepared.calibration_diagnostics_available
+            ),
         )
         pointer_label = f"{prepared.line} line"
     else:
-        payload = latest_pointer_payload(release_id, updated_at=updated_at)
+        payload = latest_pointer_payload(
+            release_id,
+            updated_at=updated_at,
+            calibration_diagnostics_available=(
+                prepared.calibration_diagnostics_available
+            ),
+        )
         pointer_label = "release"
     if create_tag and not callable(getattr(api, "create_tag", None)):
         raise TypeError(
@@ -1082,6 +1137,8 @@ def _read_pointer(repo_id: str, api, *, pointer_path: str) -> dict:
     expected_paths = latest_pointer_payload(str(release_id), updated_at="")["paths"]
     observed_paths = {str(key): value for key, value in paths.items()}
     missing_paths = sorted(set(expected_paths) - set(observed_paths))
+    if missing_paths == ["calibration_diagnostics"]:
+        missing_paths = []
     unexpected_paths = sorted(set(observed_paths) - set(expected_paths))
     malformed_paths = sorted(
         key

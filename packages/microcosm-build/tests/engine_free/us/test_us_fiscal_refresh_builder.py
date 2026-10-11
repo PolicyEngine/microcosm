@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -92,6 +93,72 @@ def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> N
         "target_materialization_cache_dir",
         "legacy_pe_flat_h5",
     }
+
+
+def test_telemetry_attempt_id_is_available_before_release_inputs_are_loaded() -> None:
+    builder = _load_builder_module()
+    timestamp = datetime(2026, 10, 5, 12, 30, tzinfo=UTC)
+
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id="staged-attempt", release_id="release"),
+            timestamp=timestamp,
+        )
+        == "staged-attempt"
+    )
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id=None, release_id="release"),
+            timestamp=timestamp,
+        )
+        == "release"
+    )
+    generated = builder._telemetry_run_id(
+        SimpleNamespace(staging_run_id=None, release_id=None),
+        timestamp=timestamp,
+    )
+    assert generated.startswith("populace-us-build-20261005T123000Z-")
+    assert len(generated.rsplit("-", 1)[-1]) == 8
+
+
+def test_us_emitter_starts_before_dirty_worktree_refusal(monkeypatch) -> None:
+    builder = _load_builder_module()
+    calls = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            calls.append(("stage", stage_id, details))
+
+        def fail(self, error, **details):
+            calls.append(("failed", type(error).__name__, details))
+
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+        ),
+    )
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", lambda args, argv: None)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+
+    def start_emitter(**run):
+        calls.append(("started", run))
+        return FakeEmitter()
+
+    monkeypatch.setattr(builder, "start_local_telemetry_emitter_service", start_emitter)
+
+    with pytest.raises(SystemExit, match="dirty git worktree"):
+        builder.main([])
+
+    assert calls[0][0] == "started"
+    assert calls[0][1]["run_id"] == "observed-run"
+    assert calls[1][0:2] == ("stage", "preflight")
+    assert calls[2][0:2] == ("failed", "SystemExit")
 
 
 @pytest.mark.parametrize(
@@ -5748,12 +5815,20 @@ def test_release_calibration_diagnostics_include_gate_failures(
     builder = _load_builder_module()
     captured: dict[str, object] = {}
 
-    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+    def fake_write_calibration_diagnostics(
+        result, path, *, target_registry, build, target_surface
+    ):
         captured["result"] = result
         captured["path"] = path
         captured["target_registry"] = target_registry
         captured["build"] = build
-        return path
+        captured["target_surface"] = target_surface
+        return SimpleNamespace(
+            status="available",
+            path=path,
+            schema_version=8,
+            sha256="d" * 64,
+        )
 
     monkeypatch.setattr(
         builder, "write_calibration_diagnostics", fake_write_calibration_diagnostics
@@ -5770,6 +5845,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
 
     builder._write_release_calibration_diagnostics(
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         release_dir=tmp_path,
         registry=registry,
         base_dataset_sha256="base-sha",
@@ -5787,6 +5863,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
     )
 
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
+    assert captured["target_surface"] == {"sha256": "b" * 64, "n_targets": 1}
     build = captured["build"]
     assert build["base_dataset_sha256"] == "base-sha"
     assert build["target_loss_weighting"].endswith("_cap_100pct")
@@ -5875,6 +5952,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
     builder._write_release_calibration_diagnostics(
         result=result,
+        target_surface=builder.target_surface_payload(result),
         release_dir=tmp_path,
         registry=registry,
         base_dataset_sha256=builder._sha256(base_h5),
@@ -5961,6 +6039,128 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
         )
 
 
+def _run_dry_run_release(
+    builder,
+    monkeypatch,
+    *,
+    captured: dict[str, object],
+    out: Path,
+    report_path: Path,
+    mode: str,
+    full_commit: str,
+) -> None:
+    """Drive a ``--dry-run-gates-report`` run through main() (the harness's
+    ``dry_run*`` modes) and check where it stops and what it hands on."""
+
+    recorded: dict[str, object] = {}
+
+    def recording_checks(args, **kwargs):
+        # The checks themselves are tested on real frames in
+        # test_us_release_gate_dry_run.py; this harness's frame is a fake.
+        recorded.update(kwargs, args=args)
+        return [
+            builder.CheckResult(
+                name="fixture_check",
+                status="AT_RISK",
+                summary="fixture",
+                at_risks=("fixture risk [dry-run-check-sentinel]",),
+            )
+        ]
+
+    def refuse_materialization(*args, **kwargs):
+        raise AssertionError("a dry run must stop before target materialization")
+
+    if mode != "dry_run_bad_register":
+        monkeypatch.setattr(builder, "_release_dry_run_checks", recording_checks)
+    monkeypatch.setattr(
+        builder, "_load_or_materialize_target_frame", refuse_materialization
+    )
+    # A dry run records a dirty worktree rather than refusing it.
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+
+    # A dry run leaves main() through SystemExit with the report's exit code;
+    # a build still returns None.
+    with pytest.raises(SystemExit) as dry_run_exit:
+        builder.main()
+    exit_code = dry_run_exit.value.code
+
+    payload = json.loads(report_path.read_text())
+    assert payload["kind"] == "us_release_dry_run"
+    assert builder._ACTIVE_DRY_RUN is None
+    # Nothing past the stop point ran, and nothing but the report was written.
+    assert "materialize_frame" not in captured
+    assert "l0_args" not in captured
+    assert "checkpoint_write" not in captured
+    assert not out.exists()
+    inputs = payload["inputs"]
+    assert inputs["git_dirty"] is True
+    # The stop point's time is taken before any grading.
+    if mode == "dry_run_refusal":
+        assert inputs["seconds_to_stop_point"] is None
+    else:
+        assert inputs["seconds_to_stop_point"] <= inputs["seconds_elapsed"]
+        assert inputs["grading_seconds"] >= 0
+    argv = inputs["release_argv"]
+    assert argv[argv.index("--dry-run-gates-report") + 1] == str(report_path)
+    if mode == "dry_run_refusal":
+        assert exit_code == 1
+        assert payload["status"] == "FAIL"
+        (check,) = payload["checks"]
+        assert check["name"] == "pre_solve_refusal"
+        assert "[dry-run-refusal-sentinel]" in check["failures"][0]
+        assert recorded == {}
+        return
+    if mode == "dry_run_bad_register":
+        # Review finding 1: a bad register is the register's certain failure,
+        # graded alongside every other check, not a pre-solve refusal.
+        assert exit_code == 1
+        names = [check["name"] for check in payload["checks"]]
+        assert "pre_solve_refusal" not in names
+        assert "dry_run_evaluation_error" not in names
+        assert len(names) == 11
+        (tail,) = [c for c in payload["checks"] if c["name"] == "qrf_tail_register"]
+        assert tail["status"] == "FAIL"
+        assert "no_such_register.json" in tail["failures"][0]
+        assert "terminal gates" in tail["failures"][0]
+        register = inputs["registers"]["qrf_tail_concentration"]
+        assert register["path"].endswith("no_such_register.json")
+        assert register["error"].startswith("FileNotFoundError")
+        return
+    assert exit_code == 2
+    assert payload["status"] == "AT_RISK"
+    assert [check["name"] for check in payload["checks"]] == ["fixture_check"]
+    # The stop point hands on the very frame it digested.
+    assert recorded["base_frame"] is captured["staged_digest_frames"][-1]
+    assert inputs["staged_frame_sha256"] == "staged-frame-sentinel"
+    assert inputs["base_h5"]["sha256"] == "base-sha"
+    assert inputs["build_commit"] == full_commit
+    assert inputs["target_frame_checkpoint"] == {"enabled": False}
+    assert inputs["calibration_path"] in {"full_pool", "l0_selection"}
+    assert inputs["registers"]["qrf_tail_concentration"]["entries"] == 0
+    assert set(recorded["pre_solve_gates"]) == {
+        "target_profile_gate",
+        "base_population_gate",
+        "health_input_gate",
+        "immigration_gate",
+        "hours_worked_gate",
+        "snap_take_up_gate",
+        "eligibility_inputs_gate",
+        "pregnancy_gate",
+        "reported_coverage_vintage_gate",
+        "snap_discretionary_exemption_gate",
+    }
+    degenerate = recorded["degenerate_input_gate"]
+    if mode == "dry_run_degraded":
+        # Batched, not raised: the run reached the stop point with the
+        # failing gate in hand.
+        assert degenerate.passed is False
+        assert degenerate.failures == (
+            "keogh_distributions flattened [degenerate-sentinel]",
+        )
+    else:
+        assert degenerate.passed is True
+
+
 def _run_green_register_release(
     builder,
     monkeypatch,
@@ -6009,16 +6209,6 @@ def _run_green_register_release(
             "policyengine-core": "3.26.11",
             "policyengine-us": "2.2.1",
             "torch": "2.12.0",
-        },
-    )
-    monkeypatch.setattr(
-        builder,
-        "diagnostics_payload",
-        lambda result, *, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "e" * 64, "n_targets": 1},
         },
     )
     reference_frame = object()
@@ -6263,6 +6453,10 @@ def _run_green_register_release(
         "qrf_tail_register_green_skipped_smoke",
         "stored_input_refused",
         "stored_input_premise",
+        "dry_run",
+        "dry_run_degraded",
+        "dry_run_refusal",
+        "dry_run_bad_register",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -6325,6 +6519,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``stored_input_premise``: the green run, except that the written H5 does
     not earn the gate's verdict. The run must abort with the premise failure
     after the write and before any post-export scorer opens the file.
+    ``dry_run``: the ``merge`` run with ``--dry-run-gates-report`` from a dirty
+    worktree. main() must stop at the staged frame's digest: no target
+    materialization, no solve, nothing under ``--out``, no telemetry. It must
+    hand the dry-run checks the very frame it digested and return the
+    report's exit code.
+    ``dry_run_degraded``: the dry run with a failing degenerate-input gate,
+    which on a green build raises before the solve. In a dry run it batches,
+    so the stop point still grades every register with that failure on record.
+    ``dry_run_refusal``: the degenerate-input evaluation itself crashes before
+    the stop point. main() must turn the refusal into the report's certain
+    failure (exit 1), not a traceback.
+    ``dry_run_bad_register``: the dry run with a QRF tail register path that
+    does not exist, through the real stop-point grading (nothing stubbed). The
+    report must keep every graded check and name the register as a certain
+    qrf_tail_register failure, never as a pre-solve refusal.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
@@ -6344,6 +6553,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         *stored_input_modes,
     }
     clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
+    dry_run_modes = {
+        "dry_run",
+        "dry_run_degraded",
+        "dry_run_refusal",
+        "dry_run_bad_register",
+    }
+    dry_run_report = tmp_path / "dry-run" / "gates.json"
     checkpoint_run = terminal_mode == "target_frame_checkpoint"
     # Outside ``out``, so the no-H5-under-out sweep below still pins that a
     # failed run leaves no release artifact.
@@ -6387,6 +6603,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         problem=SimpleNamespace(targets=()),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
         l0_lambda=0.2,
         n_nonzero=2,
         frame=SimpleNamespace(n=lambda entity: 2),
@@ -6578,6 +6795,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
         if terminal_mode == "qrf_tail_register_green_skipped_smoke":
             argv.append("--skip-reform-coverage-smoke")
+    if terminal_mode in dry_run_modes:
+        argv += ["--dry-run-gates-report", str(dry_run_report)]
+    if terminal_mode == "dry_run_bad_register":
+        argv += [
+            "--qrf-tail-concentration-exclusions",
+            str(tmp_path / "no_such_register.json"),
+        ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
@@ -6611,6 +6835,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             run_id = "live-telemetry-test"
             repo_id = "policyengine/populace-us-staging"
             uploads_succeeded = 3
+            staging_bundle = object()
+            staging_opt_out_reason = None
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
@@ -6643,7 +6869,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         live_telemetry = LiveTelemetry()
         monkeypatch.setattr(
             builder,
-            "_staging_telemetry",
+            "_build_progress",
             lambda *args, **kwargs: live_telemetry,
         )
     if terminal_mode in {
@@ -8097,7 +8323,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # superseding the specific missing-leaf diagnosis. The degraded-mode
         # append must carry BOTH lines to the single terminal batch while the
         # run continues through the solve (the #547/#548 evidence contract).
-        if terminal_mode == "retirement":
+        if terminal_mode == "dry_run_refusal":
+            raise RuntimeError("fixture evaluation crash [dry-run-refusal-sentinel]")
+        if terminal_mode in {"retirement", "dry_run_degraded"}:
             return builder.GateResult(
                 name="degenerate_input_signal",
                 passed=False,
@@ -8140,7 +8368,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"] = kwargs
         return real_write_release_diagnostics(**kwargs)
 
-    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+    def fake_write_calibration_diagnostics(
+        result, path, *, target_registry, build, target_surface
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -8162,9 +8392,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 allow_nan=False,
             )
         )
-        return path
+        return SimpleNamespace(
+            status="available",
+            path=path,
+            schema_version=8,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    monkeypatch.setattr(
+        builder,
+        "target_surface_payload",
+        lambda result: {
+            "sha256": "e" * 64,
+            "n_targets": 0 if prepared_pool else 1,
+        },
+    )
     if terminal_mode == "puf_tail":
         # The real receipt type, so ``_main``'s exact-k branch that drops the
         # calibration frames before the export (microcosm#956) runs here.
@@ -8196,13 +8439,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 failures=("fixture PUF own-tail donor missing",),
                 details={"status": "failed"},
             ),
-        )
-        monkeypatch.setattr(
-            builder,
-            "diagnostics_payload",
-            lambda result, *, target_registry: {
-                "target_surface": {"sha256": "e" * 64, "n_targets": 0}
-            },
         )
 
     def fake_l0_refit_weights(frame, refit_result):
@@ -8358,6 +8594,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_build_parameter_reform",
         lambda changes: tuple(sorted(changes)),
     )
+
+    if terminal_mode in dry_run_modes:
+        _run_dry_run_release(
+            builder,
+            monkeypatch,
+            captured=captured,
+            out=out,
+            report_path=dry_run_report,
+            mode=terminal_mode,
+            full_commit=harness_full_commit,
+        )
+        return
 
     if green_run:
         _run_green_register_release(
@@ -8662,8 +8910,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             # The retry line carries the written artifact's sha256 — the
             # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
             # by the failure itself (sol round 2, new minor).
-            import hashlib
-
             written_sha = hashlib.sha256(
                 (release_dir / "us_ssi_take_up.json").read_bytes()
             ).hexdigest()
@@ -11520,13 +11766,8 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     result = SimpleNamespace(
@@ -11541,6 +11782,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         ),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
@@ -11557,6 +11799,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=registry,
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(
@@ -11708,6 +11951,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         ),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
@@ -11722,6 +11966,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=FakeRegistry(),
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(
@@ -11731,6 +11976,61 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         ),
         default_dataset={"method": "dense_no_l0", "sparse": False},
     )
+
+
+def test_build_manifests_records_diagnostics_failure_without_a_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-diagnostics-failure"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.32.5",
+            "policyengine-us": "2.2.1",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "target_surface_payload",
+        lambda result: (_ for _ in ()).throw(
+            AssertionError("manifest generation must reuse the supplied target surface")
+        ),
+    )
+    failure = SimpleNamespace(
+        status="failed",
+        expected_schema_version=8,
+        error_code="validation_error",
+        message="Target hierarchy is incomplete.",
+    )
+
+    builder._build_manifests(
+        diagnostics_outcome=failure,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["calibration_diagnostics"] == {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    assert "calibration_diagnostics" not in manifest["artifacts"]
+    assert not (release_dir / "calibration_diagnostics.json").exists()
 
 
 def _gate_failed_exact_k_inputs(builder):
@@ -11898,13 +12198,8 @@ def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     builder._build_manifests(
@@ -11949,13 +12244,8 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
     selection_receipt = {
         "k": 57_240,
@@ -12060,16 +12350,6 @@ def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
         },
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
-    monkeypatch.setattr(
-        builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
-    )
     return release_id, release_dir, artifact_root
 
 
@@ -12293,11 +12573,14 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     monkeypatch.setattr(
         builder,
         "write_calibration_diagnostics",
-        lambda result, path, *, target_registry, build: builds.append(build),
+        lambda result, path, *, target_registry, build, target_surface: builds.append(
+            build
+        ),
     )
     gate = SimpleNamespace(passed=True, failures=(), details={})
     kwargs = dict(
         result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         release_dir=tmp_path,
         registry=TargetRegistry((), country="us"),
         base_dataset_sha256="base-sha",
@@ -12605,13 +12888,8 @@ def test_build_manifests_records_selection_source_provenance(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     selection_source = {
@@ -12679,13 +12957,8 @@ def test_build_manifests_selection_source_absent_by_default(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     builder._build_manifests(
@@ -12730,13 +13003,8 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
@@ -12757,6 +13025,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
         diagnostics=tuple(diagnostics),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
@@ -12771,6 +13040,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=FakeRegistry(),
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(
@@ -13120,7 +13390,28 @@ def test_us_release_id_guard() -> None:
         raise AssertionError("Expected non-US release id to fail.")
 
 
-def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeypatch):
+class _TestEmitter:
+    available = True
+
+    def __init__(self) -> None:
+        self.events = []
+
+    def transition_stage(self, stage, **details):
+        self.events.append(("stage", stage, details))
+
+    def transition_calibration_progress(self, event):
+        self.events.append(("calibration", event))
+
+    def fail(self, error):
+        self.events.append(("failed", error))
+
+    def complete(self):
+        self.events.append(("completed",))
+
+
+def test_staging_bundle_defaults_on_and_no_staging_disables_files(
+    tmp_path, monkeypatch
+):
     module = _load_builder_module()
 
     # The parser defaults staging uploads ON (overridable by env).
@@ -13152,20 +13443,51 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
             staging_upload_interval_seconds=60.0,
         )
 
-    telemetry = module._staging_telemetry(
-        namespace(no_staging=False), release_root=tmp_path, release_id="rel-1"
+    progress = module._build_progress(
+        namespace(no_staging=False),
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
     )
-    assert telemetry is not None
-    assert telemetry.run_id == "rel-1"
-    assert telemetry.repo_id is None
+    assert progress.run_id == "rel-1"
+    assert progress.staging_bundle is not None
+    assert progress.repo_id is None
 
-    # --no-staging wins even when a staging destination is configured.
-    assert (
-        module._staging_telemetry(
-            namespace(no_staging=True), release_root=tmp_path, release_id="rel-1"
-        )
-        is None
+    # --no-staging disables files without disabling hosted progress.
+    progress = module._build_progress(
+        namespace(no_staging=True),
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
     )
+    assert progress.staging_bundle is None
+    assert progress.staging_opt_out_reason == "--no-staging"
+
+
+def test_hosted_progress_survives_staging_bundle_failure() -> None:
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+
+    class FailingBundle:
+        def stage(self, *args, **kwargs):
+            raise OSError("staging disk unavailable")
+
+    progress = module._BuildProgress(
+        run_id="rel-1",
+        emitter=emitter,
+        staging_bundle=FailingBundle(),
+    )
+
+    with pytest.raises(OSError, match="staging disk unavailable"):
+        progress.stage("target_compilation", batches=4)
+
+    assert emitter.events == [
+        (
+            "stage",
+            "target_compilation",
+            {"status": "running", "message": None, "batches": 4},
+        )
+    ]
 
 
 def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
@@ -13215,7 +13537,7 @@ def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
         def fail(self, error):
             recorded.append(error)
 
-    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", Telemetry())
     monkeypatch.setattr(
         module,
         "_main",
@@ -13235,7 +13557,7 @@ def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) 
         def fail(self, error):
             raise RuntimeError("telemetry itself is broken")
 
-    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", ExplodingTelemetry())
     monkeypatch.setattr(
         module,
         "_main",
@@ -13248,7 +13570,7 @@ def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) 
     assert "could not record the staging run as failed" in capsys.readouterr().err
 
 
-def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
     module = _load_builder_module()
     args = SimpleNamespace(
         no_staging=False,
@@ -13258,15 +13580,24 @@ def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
     )
-    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
-    assert module._ACTIVE_TELEMETRY is not None
+    first = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
+    )
+    assert module._ACTIVE_PROGRESS is first
+    assert first.staging_bundle is not None
 
     args.no_staging = True
-    assert (
-        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
-        is None
+    second = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-2",
+        emitter=_TestEmitter(),
     )
-    assert module._ACTIVE_TELEMETRY is None
+    assert module._ACTIVE_PROGRESS is second
+    assert second.staging_bundle is None
 
 
 def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
@@ -13281,6 +13612,8 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
         run_id = "rel-1"
         repo_id = "policyengine/populace-us-staging"
         uploads_succeeded = 7
+        staging_bundle = object()
+        staging_opt_out_reason = None
 
     assert module._staging_manifest_block(Delivered()) == {
         "enabled": True,
@@ -13293,6 +13626,8 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
         run_id = "rel-2"
         repo_id = None
         uploads_succeeded = 0
+        staging_bundle = object()
+        staging_opt_out_reason = None
 
     block = module._staging_manifest_block(Undelivered())
     assert block["enabled"] is True
@@ -13300,7 +13635,7 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
     assert block["repo_id"] is None
 
 
-def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
     module = _load_builder_module()
     args = SimpleNamespace(
         no_staging=False,
@@ -13312,7 +13647,12 @@ def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None
     )
 
     with pytest.raises(ValueError, match="no destination"):
-        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+        module._build_progress(
+            args,
+            release_root=tmp_path,
+            release_id="rel-1",
+            emitter=_TestEmitter(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -14519,7 +14859,7 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
         allow_concentration=allow,
         terminal_gate_failures=failures,
         release_dir=tmp_path,
-        telemetry=builder._TerminalBatchTelemetry(recorder, failures),
+        telemetry=builder._TerminalBatchProgress(recorder, failures),
     )
     return register_failures, recorder
 
@@ -16543,3 +16883,37 @@ def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
         main_source
     )
     assert '"soi-congressional-district-2022",' not in main_source
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "expected_status"),
+    [(None, "completed"), (0, "completed"), (1, "failed"), (2, "failed")],
+)
+def test_main_reports_actual_dry_run_outcome(
+    monkeypatch, exit_code, expected_status
+) -> None:
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    builder = _load_builder_module()
+    emitter = FakeTelemetryEmitter(TelemetryRun("dry-run", "US", "us_fiscal_refresh"))
+    emitter.transition_stage("validation")
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", emitter)
+    monkeypatch.setattr(builder, "_ACTIVE_PROGRESS", None)
+    monkeypatch.setattr(builder, "_main", lambda argv: exit_code)
+
+    if exit_code is None:
+        builder.main([])
+    else:
+        with pytest.raises(SystemExit) as result:
+            builder.main([])
+        assert result.value.code == exit_code
+
+    run_events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert len(run_events) == 1
+    assert run_events[0]["status"] == expected_status
+    assert emitter.events[1]["status"] == expected_status
+    assert not emitter.available
+    if expected_status == "failed":
+        assert str(exit_code) in run_events[0]["message"]
+        assert run_events[0]["details"]["failure_class"] == "build_failure"

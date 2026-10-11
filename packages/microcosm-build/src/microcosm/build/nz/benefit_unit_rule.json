@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "country": "nz",
+  "method_card_row": "MC7",
+  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. The unit id family.family_id and the membership person.person_family_id are structural graph columns: the graph executor counts each entity's id column and each person-table membership column as structural (microcosm.graph.executor._structural_columns, executor.py lines 636-643) and rejects a non-structural node that declares one as an output (_validate_population_declaration, executor.py lines 1550-1573). family.family_household_id, the unit's link to its household, is not structural; it is an ordinary family column. The planned shared transport CREATE kernel (packages G4 and G5a) is to build the units from the donor concept pointers, refusing ambiguous or cross-household units. Family weights are never stored: each unit inherits its household's weight through the Frame.",
+  "status": "awaiting D1 (MC7; the dependent-child rule is spec data under amendment MC11a, which is proposed and also awaits D1)",
+  "entity": "family",
+  "engine_entity": "Family",
+  "parent_entity": "household",
+  "membership_columns": {
+    "family_id": "family.family_id",
+    "family_household_id": "family.family_household_id",
+    "person_family_id": "person.person_family_id"
+  },
+  "pointer_concepts": {
+    "partner": "partner_person_id",
+    "parents": [
+      "parent_1_person_id",
+      "parent_2_person_id"
+    ],
+    "household_reference_person": "reference_person_id",
+    "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919"
+  },
+  "composition": [
+    {
+      "member": "adult",
+      "rule": "each person who is not a dependent child anchors exactly one unit unless they join a partner's unit"
+    },
+    {
+      "member": "partner",
+      "rule": "a co-resident partner (partner_person_id, a symmetric pointer) joins the adult's unit; partners always share a unit"
+    },
+    {
+      "member": "dependent_child",
+      "rule": "a dependent child joins the unit of its co-resident parent parent_1_person_id; a lone co-resident parent is always parent 1 (the pointer definition, concepts.py lines 892-901; the pointer checks flag parent_2_person_id without parent_1_person_id as parent_order, concepts.py _check_pointers), so parent_2_person_id never chooses the unit"
+    },
+    {
+      "member": "other_adult",
+      "rule": "every other adult in the household, including boarders and flatmates, forms their own unit"
+    }
+  ],
+  "dependent_child": {
+    "age_limit_years": null,
+    "candidate_age_limit_years": 18,
+    "candidate_basis": "UNVERIFIED proposal. The Social Security Act 2018 definitions of \"child\" and \"dependent child\" were not read in this lane. The hub confirms the statutory text before D1; the CREATE kernel must refuse a null age_limit_years.",
+    "partnered_person_is_dependent_child": false,
+    "rulespec_encoding": "None at rulespec-nz 8dc2507: nz/statutes/common/relationships.yaml has status deferred and rules: [], and main_benefits/entitlement.yaml encodes only sole_parent_dependent_child_age_limit for the sole-parent test. When rulespec-nz encodes the definition, the CREATE kernel is to read it from there and this block is to be deleted."
+  },
+  "child_without_coresident_parent": {
+    "central": "household_reference_person_unit",
+    "status": "proposed default for D1; the kernel is to refuse when the reference person is themselves a dependent child"
+  },
+  "refusals": [
+    "a unit whose members span two households",
+    "a parent or partner pointer to a person outside the household",
+    "an asymmetric partner pointer",
+    "a dependent child in a household with no adult"
+  ],
+  "open_cases": [
+    "a person under the age limit who has a co-resident child of their own (teen parent): adult or dependent child is a D1 call",
+    "a child whose two co-resident parents are not partners: the rule above places the child with parent 1"
+  ],
+  "invariants": [
+    "every person is in exactly one unit",
+    "every unit has at least one adult",
+    "partners share a unit",
+    "every dependent child shares a unit with a parent or the reference person",
+    "units nest in households",
+    "sum of family weights equals the sum over households of household weight times units in the household"
+  ],
+  "unit_attributes": {
+    "note": "Unit attributes the planned unit-attributes node (transport.unit_attributes@1, package G5a) is to emit on the family entity, for the reg 17/18 bridge and the group encode to read. The bridge's adults_in_couple multiplier (as_rate_bridge.json) is not declared here yet; the bridge kernels (package G7) are to settle it.",
+    "columns": {
+      "family.family_type": "category of the MC7 unit: single, couple, sole parent, couple with children",
+      "family.n_dependent_children": "count of dependent children in the unit",
+      "family.is_sole_parent": "single adult with at least one dependent child",
+      "family.is_partnered": "the unit contains a partnered couple",
+      "family.is_single": "the unit has one adult (not family.is_partnered)",
+      "family.youngest_dependent_child_age": "age of the youngest dependent child; 0 when there is none"
+    }
+  }
+}

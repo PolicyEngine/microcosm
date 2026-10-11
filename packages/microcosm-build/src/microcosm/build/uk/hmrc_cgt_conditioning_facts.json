@@ -6,7 +6,7 @@
   "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation draws from and conditions on and the size-band donor stage weights by: Table 3 individuals by size of gain crossed with taxable income (the joint the amounts are drawn from: 10 gain bands x 6 income bands, the all-incomes row totals, the all-gains column totals and the grand total; cells too small to publish are absent), Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
   "consumers": [
     "uk_runtime.hmrc_capital_gains",
-    "uk_runtime.cgt_structure"
+    "uk_runtime.cgt_support"
   ],
   "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
@@ -16,12 +16,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "5324aa27a7698eef97b38a7924a36b3a1f97c137",
+    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 287024,
-    "facts_sha256": "e5baacd48ab32be197268ef3ef25dfb3a04b4a03d394ca3a6f22b8f15fa9e8d6",
-    "manifest_sha256": "c479426724efa0a79ad2ebaf4ca0b5487fc307f0499d6150dacdc4e6d665cdff"
+    "fact_row_count": 344402,
+    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
   },
   "selections": [
     {

@@ -1,0 +1,4294 @@
+{
+ "concept_inputs": {
+  "fact:household.mortgage_interest": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_owner_weekly_required_payments"
+   }
+  ],
+  "fact:household.mortgage_principal": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_owner_weekly_required_payments"
+   }
+  ],
+  "fact:household.reference_person_id": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_two_or_more_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_owner_weekly_required_payments"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_sole_parent"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_weekly_rent_paid"
+   }
+  ],
+  "fact:household.rent": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_weekly_rent_paid"
+   }
+  ],
+  "fact:household.tenure": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_costs_are_homeownership"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_accommodation_costs"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_rent_paid_to_kainga_ora"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing"
+   }
+  ],
+  "fact:person.age": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_two_or_more_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_sole_parent"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+    "name": "caregiver_age_years"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+    "name": "childcare_assistance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_person_age_years"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_person_age_years"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_person_is_sole_parent"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+    "name": "in_work_tax_credit_allowed_children_count"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+    "name": "in_work_tax_credit_person_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "jobseeker_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "jobseeker_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+    "name": "nz_super_person_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_caring_for_dependent_children_under_age_limit"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_is_mother_or_father_or_child_regarded_as_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_has_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_student_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_caring_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_caring_applicant_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_applicant_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_dependent_children_count"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+    "name": "wff_dependent_children_principal_caregiver_count"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+    "name": "wff_person_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_person_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_age_years"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child_for_part6_rates"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_is_parent_or_step_parent_of_dependent_child"
+   }
+  ],
+  "fact:person.dividend_income": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+    "name": "rwt_gross_interest_and_dividends"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.education_enrollment": [
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_student_in_recognised_full_time_tertiary_course"
+   }
+  ],
+  "fact:person.employment_income": [
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_earnings_for_earners_levy"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_employee_earnings_for_low_self_employed_formula"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+    "name": "income_tax_employment_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/kiwisaver/contributions.yaml",
+    "name": "kiwisaver_gross_salary_or_wages"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+    "name": "payroll_donation_person_is_employee"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+    "name": "ppl_employees_average_weekly_earnings"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/student_loan/repayments.yaml",
+    "name": "student_loan_weekly_earnings"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_blind_average_weekly_earnings"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_blind_beneficiary_employed"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_beneficiary_personal_earnings"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.enrolled_full_time": [
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_student_in_recognised_full_time_tertiary_course"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "jobseeker_full_time_student"
+   }
+  ],
+  "fact:person.farm_self_employment_income": [
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_earnings_for_earners_levy"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_self_employed_earnings_for_earners_levy"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+    "name": "family_scheme_activity_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+    "name": "income_tax_activity_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.has_disability": [
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_requires_ongoing_support_for_everyday_functions"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_capacity_restricted_by_health_condition_injury_or_disability"
+   }
+  ],
+  "fact:person.interest_income": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+    "name": "rwt_gross_interest_and_dividends"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.legal_marital_status": [
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_marriage_or_civil_union_dissolved"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_spouse_or_partner_died"
+   }
+  ],
+  "fact:person.liquid_financial_assets": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_cash_assets"
+   }
+  ],
+  "fact:person.nonfarm_self_employment_income": [
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_earnings_for_earners_levy"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/acc/earners_levy.yaml",
+    "name": "acc_self_employed_earnings_for_earners_levy"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+    "name": "family_scheme_activity_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+    "name": "income_tax_activity_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.parent_1_person_id": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_two_or_more_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_sole_parent"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+    "name": "childcare_assistance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_person_is_sole_parent"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+    "name": "in_work_tax_credit_allowed_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "jobseeker_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_caring_for_dependent_children_under_age_limit"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_is_mother_or_father_or_child_regarded_as_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_has_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_caring_applicant_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_dependent_children_count"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+    "name": "wff_dependent_children_principal_caregiver_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child_for_part6_rates"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_is_parent_or_step_parent_of_dependent_child"
+   }
+  ],
+  "fact:person.parent_2_person_id": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_two_or_more_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_sole_parent"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+    "name": "childcare_assistance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_person_is_sole_parent"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+    "name": "in_work_tax_credit_allowed_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "jobseeker_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_dependent_children_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_caring_for_dependent_children_under_age_limit"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_is_mother_or_father_or_child_regarded_as_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_has_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "supported_living_caring_applicant_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_dependent_children_count"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+    "name": "wff_dependent_children_principal_caregiver_count"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_has_dependent_children"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_has_dependent_child_for_part6_rates"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_is_parent_or_step_parent_of_dependent_child"
+   }
+  ],
+  "fact:person.partner_person_id": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_has_two_or_more_dependent_children"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_in_relationship"
+   },
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_sole_parent"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+    "name": "community_services_card_person_married_or_partnered"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+    "name": "disability_allowance_person_in_relationship"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+    "name": "has_relationship_partner"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_in_relationship"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+    "name": "nz_super_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "sole_parent_is_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_has_partner"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/regulations/student_allowances/core.yaml",
+    "name": "student_allowance_lives_with_partner"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_single"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+    "name": "young_person_is_in_relationship"
+   }
+  ],
+  "fact:person.private_pension_income": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.public_pension_income": [
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+    "name": "independent_earner_tax_credit_receives_new_zealand_superannuation"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+    "name": "main_benefit_receiving_new_zealand_superannuation"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+    "name": "nz_super_receives_or_becomes_entitled"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_receiving_new_zealand_superannuation"
+   }
+  ],
+  "fact:person.rental_income": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_relevant_weekly_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "jobseeker_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "main_benefit_income_test_assessable_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "sole_parent_support_total_income"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+    "name": "supported_living_payment_total_income"
+   }
+  ],
+  "fact:person.take_up_seed": [
+   {
+    "entity": "Person",
+    "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+    "name": "charitable_or_public_benefit_gift_refund_application_made"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+    "name": "winter_energy_payment_valid_election_not_to_receive_in_force"
+   }
+  ]
+ },
+ "covered_count": 89,
+ "covered_inputs": [
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_earnings_for_earners_levy"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_employee_earnings_for_low_self_employed_formula"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_self_employed_earnings_for_earners_levy"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_cash_assets"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_costs_are_homeownership"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_has_accommodation_costs"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_has_dependent_children"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_has_two_or_more_dependent_children"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_in_relationship"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_owner_weekly_required_payments"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_relevant_weekly_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_rent_paid_to_kainga_ora"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_sole_parent"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_weekly_rent_paid"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "caregiver_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_refund_application_made"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_dependent_children_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_dependent_children_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_married_or_partnered"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_student_in_recognised_full_time_tertiary_course"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_dependent_children_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_person_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_person_in_relationship"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_person_is_sole_parent"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_requires_ongoing_support_for_everyday_functions"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_activity_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "has_relationship_partner"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "in_work_tax_credit_allowed_children_count"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_activity_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_employment_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_receives_new_zealand_superannuation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_full_time_student"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_has_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_dependent_children_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_total_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/kiwisaver/contributions.yaml",
+   "name": "kiwisaver_gross_salary_or_wages"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "main_benefit_income_test_assessable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "main_benefit_receiving_new_zealand_superannuation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_has_dependent_children"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_in_relationship"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_person_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_receives_or_becomes_entitled"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_person_is_employee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_employees_average_weekly_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "name": "rwt_gross_interest_and_dividends"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_caring_for_dependent_children_under_age_limit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_is_mother_or_father_or_child_regarded_as_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_is_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_marriage_or_civil_union_dissolved"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_spouse_or_partner_died"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "sole_parent_support_total_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_has_children"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_has_partner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_lives_with_partner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_student_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/student_loan/repayments.yaml",
+   "name": "student_loan_weekly_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_blind_average_weekly_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_blind_beneficiary_employed"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_capacity_restricted_by_health_condition_injury_or_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_caring_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_caring_applicant_has_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_applicant_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_beneficiary_personal_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_dependent_children_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_total_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_dependent_children_principal_caregiver_count"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_has_dependent_children"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_person_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_receiving_new_zealand_superannuation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_single"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_valid_election_not_to_receive_in_force"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_has_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_has_dependent_child_for_part6_rates"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_is_in_relationship"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_is_parent_or_step_parent_of_dependent_child"
+  }
+ ],
+ "engine": "axiom:nz",
+ "engine_version": "6fe181fc4c65763150fe97501ef3443774e64869",
+ "input_count": 668,
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
+ "structural_inputs": [],
+ "uncovered_inputs": [
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_agreed_weekly_compensation_purchased_annual_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_earners_levy_maximum_earnings"
+  },
+  {
+   "entity": "Invoice",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_invoice_includes_earners_levy"
+  },
+  {
+   "entity": "Invoice",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_invoice_issued_to_self_employed_person_for_acc_act_purposes"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_loss_of_potential_earnings_cannot_work_for_six_months_or_more"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_loss_of_potential_earnings_current_income_below_lpe_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_loss_of_potential_earnings_injured_before_18_or_in_full_time_study_training"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_loss_of_potential_earnings_no_longer_in_full_time_study_or_training"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_loss_of_potential_earnings_turned_18"
+  },
+  {
+   "entity": "Invoice",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_self_employed_invoice_acc_levy_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_self_employed_more_than_30_hours_per_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "name": "acc_self_employed_purchases_weekly_compensation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/payroll/deductions.yaml",
+   "name": "acc_standard_earners_levy_including_gst"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_weekly_compensation_cannot_do_usual_work_due_to_injury"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_weekly_compensation_employed_or_self_employed_or_shareholder_employee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_weekly_compensation_income_while_recovering"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_weekly_compensation_is_full_time_earner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/acc/weekly_compensation.yaml",
+   "name": "acc_weekly_compensation_pre_injury_weekly_earnings"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_additional_resident_in_social_housing"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_area_let_to_nonresidents"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_base_rate_weekly_amount"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_boarder"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_business_use_area"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_joint_owner_with_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_non_beneficiary"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_owner_weekly_payment_share"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_partner_receiving_accommodation_supplement"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_residential_care_funded_under_residential_care_act"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_resides_in_area_1"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_resides_in_area_2"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_resides_in_area_3"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_section_68_joint_tenant_exception_applies"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_self_contained_area_let_to_residents"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_social_housing_weekly_contributions_paid"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_total_premises_area"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_weekly_board_and_lodgings_paid"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_weekly_boarder_payments_received"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_weekly_contributions_received_from_additional_residents"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_weekly_rent_received_from_other_residents"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "adjusted_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "annual_taxable_income_for_other_income_route"
+  },
+  {
+   "entity": "Child",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "best_start_abatement_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "best_start_child_age_and_birth_date_requirement"
+  },
+  {
+   "entity": "Child",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "best_start_child_care_fraction"
+  },
+  {
+   "entity": "Child",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "best_start_entitlement_days"
+  },
+  {
+   "entity": "Child",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "best_start_family_scheme_income_for_relationship_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "best_start_parent_allowance_or_childrens_pension_for_child"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "best_start_parental_leave_or_preterm_baby_payment_for_child_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "best_start_parental_tax_credit_for_child"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "best_start_person_is_principal_caregiver_for_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "care_proportion"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "caregiver_is_not_a_parent_of_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "caregiver_is_principal_or_temporary_caregiver"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "caregiver_resident_and_present_12_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_has_payroll_donation_credit_for_gift"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_absentee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_company"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_excluded_trustee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_maori_authority"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_public_authority"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_claimant_is_unincorporated_body"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_is_debt_forgiveness"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_is_money"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_is_subscription"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_is_testamentary"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_recipient_listed_in_schedule_32"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_recipient_on_commissioner_list"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_recipient_statutory_description_without_list"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_refund_application_in_time_or_special_circumstances"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_refund_information_provided"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_requirements_of_ld1_met"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_subscription_confers_membership_rights"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_taxable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "charitable_or_public_benefit_gift_total_gifts_made"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "child_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "child_annual_income_other_than_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_accommodation_operated_by_approved_voluntary_organisation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_certificate_certifies_child_with_serious_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_certificate_from_medical_practitioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_certificate_from_nurse_practitioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_certificate_practitioner_acting_within_scope"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_cared_for_by_parent_or_guardian_during_school_holidays_or_weekends"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_cared_for_in_home_of_principal_or_temporary_ob_or_ucb_caregiver"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_examined_by_prescribed_health_practitioner_nominated_by_msd"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_has_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_is_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_needs_constant_care_and_attention"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_acc_weekly_compensation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_benefit_under_social_security_act"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_disability_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_orphans_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_unsupported_childs_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_veterans_support_childrens_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_child_receives_veterans_support_pension_or_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_expected_constant_care_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_likely_to_need_constant_care_permanently"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_msd_requires_medical_certificate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_msd_requires_medical_examination"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_no_principal_or_temporary_ob_or_ucb_caregiver_for_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_parent_or_guardian_required_to_contribute_to_accommodation_cost"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_person_has_care_and_control_of_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_person_is_principal_or_temporary_ob_or_ucb_caregiver_for_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_requires_frequent_bodily_function_attention"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_requires_regular_supervision_to_avoid_substantial_danger"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/child_disability_allowance/core.yaml",
+   "name": "child_disability_allowance_requires_substantially_more_attention_or_supervision"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "child_expenditure_table_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "child_is_dependent_child_of_caregiver"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "child_is_resident_and_present_in_nz"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "child_tax_credit_for_entitlement_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_also_cares_for_other_child_in_hospital_or_with_disability_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_engaged_in_approved_activity"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_has_serious_disability_or_illness_certificate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_in_shift_employment_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_is_principal_or_temporary_ob_or_ucb"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_needs_childcare_hours_per_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_travelling_for_shift_employment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_caregiver_travelling_to_approved_activity"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_child_age_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_child_attending_school"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_child_disability_allowance_payable"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_child_has_no_other_caregiver"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_child_is_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_flat_fee_enrolled_hours"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_home_based_top_up_exception_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_household_income_before_tax"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_other_caregiver_cannot_care_for_good_reason"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_other_caregiver_engaged_in_approved_activity"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_other_government_funding_amount_per_hour"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_other_government_funding_purchases_childcare_hour"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_periodic_flat_fee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_periodic_flat_fee_payable"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_placekeeping_hourly_fee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_programme_participation_hours_per_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_regulation_28_absence_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_requested_hours_per_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_stated_actual_hourly_fee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_third_party_flat_fee_payment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_assistance_third_party_hourly_fee_payment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_subsidy_child_days_after_fifth_birthday"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_subsidy_cohort_entry_eligibility_period_active"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_subsidy_cohort_entry_intended"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "childcare_subsidy_granted_for_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_entitled_to_be_in_new_zealand_indefinitely"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_good_character"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_intends_to_reside_in_new_zealand"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_section_8_minimum_days_in_any_qualifying_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_section_8_total_days_in_qualifying_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_under_16_or_child_of_citizen_by_descent"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/citizenship/by_grant.yaml",
+   "name": "citizenship_by_grant_understands_basic_english"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "claimant_is_natural_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "combined_child_support_weekly_payments"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "combined_weekly_income_excluding_child_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "commissioner_may_use_most_recent_return"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_entitled_to_be_in_new_zealand_indefinitely_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_new_zealand_citizen_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_ordinarily_resident_in_new_zealand_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_residence_class_visa_holder_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_temporary_entry_class_visa_holder_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/common/residence.yaml",
+   "name": "common_unlawfully_resident_or_present_in_new_zealand_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_accommodation_supplement"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_emergency_benefit_instead_of_listed_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_jobseeker_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_sole_parent_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_supported_living_payment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_young_parent_payment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_applied_for_and_entitled_to_youth_payment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_child_disability_allowance_payable_for_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_family_adult_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_family_size"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_financial_means_assessed_under_residential_care_and_disability_support_services_act"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_ordinarily_resident_in_new_zealand"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_orphans_benefit_payable_for_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_age_would_entitle_another_person_to_family_assistance_credit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_eligible_for_supergold_card"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_is_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_is_dependent_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_person_is_superannuitant"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_raw_family_credit_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_raw_family_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_raw_superannuation_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_received_family_assistance_credit_in_preceding_tax_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_receives_current_family_assistance_credit_instalments"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_receives_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_receiving_residential_care_disability_services_funded_under_pae_ora"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_receiving_veterans_support_weekly_compensation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_receiving_veterans_support_weekly_income_compensation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_single_person_living_alone"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_spouse_or_partner_eligible_only_by_young_parent_payment_route"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_spouse_or_partner_is_eligible_for_community_services_card"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_spouse_or_partner_is_veteran_to_whom_veterans_support_act_section_162_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_spouse_or_partner_receives_grandparented_nz_super_or_veterans_pension_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_spouse_or_partner_receiving_residential_care_disability_services_funded_under_pae_ora"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_tenant_of_social_housing"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "name": "community_services_card_unsupported_childs_benefit_payable_for_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "dependent_child_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_application_declined_only_because_duration_under_six_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_contracted_care_services_costs_funded_under_residential_care_and_disability_support_services_act"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_expected_disability_duration_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_health_or_disability_insurance_weekly_reduction"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_later_satisfies_or_has_satisfied_six_month_duration"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_life_expectancy_less_than_six_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_medical_exam_by_medical_practitioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_medical_exam_by_nurse_practitioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_medical_exam_practitioner_acting_within_scope"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_medical_examination_required_person_examined_by_msd_appointee"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_msd_requires_medical_examination"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_receives_acc_entitlement_for_same_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_receives_analogous_overseas_disability_payment_for_same_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_receives_veterans_support_disablement_pension_or_entitlement_for_same_disability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_receiving_main_benefit_under_social_security_act"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_requires_ongoing_supervision_or_treatment_by_health_practitioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_residential_care_costs_funded_under_pae_ora_act"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_residential_requirement_met"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_section_87_weekly_reduction_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_six_month_duration_not_determinable_but_reasonably_possible"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_weekly_income_for_income_test"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_weekly_ongoing_additional_disability_expenses"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_weekly_other_assistance_for_disability_expenses"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "name": "disability_allowance_would_otherwise_have_been_eligible_from_original_application"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "entitled_to_in_work_tax_credit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "exempt_from_filing_two_years_and_no_reportable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "family_breakdown_leaves_no_parent_able_to_care_or_support"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_activity_deductions"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_attributed_fringe_benefits_fbt_liability"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_attributed_fringe_benefits_taxable_value"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_base_income_excluding_mb3_to_mb13_adjustments"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_dependent_child_voting_interest"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_dividends"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_main_income_equalisation_deposits"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_main_income_equalisation_refunds"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_net_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_person_voting_interest"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_close_company_relevant_major_shareholders"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_commissioner_excludes_non_settlor_trust_payment"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_controlling_shareholder_voting_interest"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_dependent_child_principal_caregivers_count"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_dependent_child_relevant_amounts"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_employee_salary_or_wages"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_employment_income_foregone_for_motor_vehicle"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_exempt_pension_or_annuity_amount"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_income_period_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_non_settlor_trust_payment"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_other_payments_not_excluded"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_retirement_scheme_distribution_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_short_term_charge_facility_value_excluding_fbt"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_short_term_charge_facility_value_including_fbt"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_spouse_or_partner_nonresident_foreign_sourced_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_superannuation_distribution_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trust_settlors_alive_count"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_beneficiary_income_vested_or_paid"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_company_dividends"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_company_main_income_equalisation_deposits"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_company_main_income_equalisation_refunds"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_company_net_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_company_voting_interest"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_main_income_equalisation_deposits"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_main_income_equalisation_refunds"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "name": "family_scheme_trustee_net_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "family_tax_credit_eldest_dependent_child_care_units"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "family_tax_credit_entitlement_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "family_tax_credit_subsequent_dependent_child_care_units"
+  },
+  {
+   "entity": "Supply",
+   "module": "nz/statutes/gst/rate.yaml",
+   "name": "gst_exclusive_amount"
+  },
+  {
+   "entity": "Import",
+   "module": "nz/statutes/gst/rate.yaml",
+   "name": "gst_imported_goods_delivered_to_new_zealand_address"
+  },
+  {
+   "entity": "Import",
+   "module": "nz/statutes/gst/rate.yaml",
+   "name": "gst_imported_goods_outside_new_zealand_at_supply"
+  },
+  {
+   "entity": "Import",
+   "module": "nz/statutes/gst/rate.yaml",
+   "name": "gst_imported_goods_value"
+  },
+  {
+   "entity": "Supply",
+   "module": "nz/statutes/gst/rate.yaml",
+   "name": "gst_inclusive_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "has_filed_return_for_income_year_including_quarter"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "has_other_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "has_reportable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/immigration/residence.yaml",
+   "name": "immigration_entitled_to_be_in_new_zealand_indefinitely_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/immigration/residence.yaml",
+   "name": "immigration_new_zealand_citizen_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/immigration/residence.yaml",
+   "name": "immigration_residence_class_visa_holder_input"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/immigration/residence.yaml",
+   "name": "immigration_temporary_entry_class_visa_holder_input"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_allowed_paye_income_payment"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_birth_absence_weeks"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_business_income_from_profit_activity"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_exclusive_care_fraction"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_financially_dependent"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_new_zealand_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_present_in_new_zealand_for_entitlement_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_tax_credit_received_for_period_ending_2006_03_31"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_child_treated_financially_dependent_by_payments"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_close_company_derives_gross_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_currently_meets_fifth_requirement"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_days_since_last_met_fifth_requirement"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_earner_in_relation_to_close_company"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_earner_major_shareholder_in_close_company"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_entitled_to_parental_tax_credit_for_child"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_full_time_earner_income_at_incapacity"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_incapacity_suffered_between_2006_01_01_and_2006_03_31"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_normally_earner"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_normally_full_time_earner"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_new_zealand_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_or_partner_receives_basic_and_independent_circumstances_grants"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_or_partner_receives_main_benefit"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_or_partner_receives_parent_allowance_or_childrens_pension"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_present_in_new_zealand_continuous_months"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_resident_under_yd1_on_credit_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_spouse_or_partner_transitional_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_person_transitional_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_personal_service_rehabilitation_payment_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_rd3b_or_rd3c_income"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_weekly_compensation_paid_for_incapacity"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "in_work_tax_credit_weekly_periods"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_work_reduced_or_stopped_due_to_child_birth"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "in_work_tax_credit_would_have_been_eligible_under_legacy_formula"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_activity_deductions"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_amount_is_excluded_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_amount_is_exempt_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_amount_is_income_under_ordinary_concepts"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_amount_is_income_under_part_c_specific_provision"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_amount_is_non_residents_foreign_sourced_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_annual_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_available_tax_loss"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_basic_tax_liability_on_taxable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_business_expenditure_or_loss_for_deriving_assessable_and_excluded_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_business_expenditure_or_loss_for_deriving_assessable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_business_expenditure_or_loss_for_deriving_excluded_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_credits_available_to_satisfy_liability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_deductions_allocated_to_corresponding_income_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_employment_deductions"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_excluded_income_allocated_to_corresponding_income_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_exempt_income_allocated_to_corresponding_income_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_assessable_and_excluded_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_assessable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_employment_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_excluded_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_exempt_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_non_resident_passive_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_incurred_deriving_non_residents_foreign_sourced_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_is_capital_nature"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_expenditure_or_loss_is_private_or_domestic"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_liability_before_credits"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_liability_if_person_had_no_schedular_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_non_residents_foreign_sourced_income_allocated_to_corresponding_income_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_period_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_period_days"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_period_fortnights"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_period_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/income_interfaces.yaml",
+   "name": "income_tax_period_weeks"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_person_has_schedular_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_schedular_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_schedular_income_deductions"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_schedular_income_tax_liability"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_specific_rule_supplements_general_permission"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_total_income_allocated_to_corresponding_income_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "name": "income_tax_total_tax_withheld_from_annual_gross_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "incurs_licensed_ece_fees_for_enrolled_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_entitled_to_or_receives_wff_tax_credit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_net_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_partner_entitled_to_and_receives_wff_tax_credit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_partner_receives_overseas_like_wff_tax_credit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_period_whole_months"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_person_is_natural_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_receives_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_receives_overseas_like_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_receives_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "independent_earner_tax_credit_resident_in_new_zealand"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "is_caregiver_of_child_enrolled_with_licensed_ece"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "is_resident_in_nz"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_available_for_and_seeking_full_time_employment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_has_no_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_health_condition_injury_or_disability_limits_capacity_to_seek_or_undertake_work"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_in_full_time_employment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_income_less_than_zero_rate_cutout"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_losing_earnings_through_health_condition_or_injury"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_section_25_discretionary_student_eligibility"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_living_with_parent"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_partner_receives_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_transferred_2013_no_dependent_children"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "jobseeker_support_youngest_dependent_child_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_taken_reasonable_steps_to_find_full_time_employment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_temporary_income_reduces_rate_to_zero_but_otherwise_entitled"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_unemployed_due_to_strike"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_unemployed_or_on_leave_for_employment_related_training"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_willing_and_able_to_undertake_full_time_employment"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "jobseeker_would_satisfy_available_for_work_but_for_work_test_exemption_circumstances"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/payroll/deductions.yaml",
+   "name": "kiwisaver_employee_deduction"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/kiwisaver/contributions.yaml",
+   "name": "kiwisaver_selected_employee_contribution_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "licensed_ece_fees_payable_for_quarter"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "living_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "main_benefit_receiving_another_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "main_benefit_receiving_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "minimum_annual_rate"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_adjusted_income_tax_liability"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_amount_paid"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_amount_received"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_full_time_earner_weeks"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_scheme_income_attributable_to_full_time_weeks"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "minimum_family_tax_credit_weekly_periods"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "msd_childcare_earnings_disregard_allowed"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "multi_group_allowance"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "name": "no_parent_able_to_care_due_to_death_disappearance_or_disablement"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "number_of_children_in_child_support_group"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_absent_from_hospital_days"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_birth_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_born_on_or_before_30_june_of_birth_year"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_elected_weekly_compensation_instead_of_superannuation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_has_spouse_or_partner_receiving_specified_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_hospital_rate_previously_reduced"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_hospitalisation_weeks"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_living_alone"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_ordinarily_resident_in_new_zealand_on_application"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_overseas_application_residence_exception_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_patient_in_hospital"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_pre_1991_alternative_rate_case"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_principal_residence_is_qualifying_accommodation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_resident_present_since_age_20_new_zealand_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_resident_present_since_age_20_total_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_resident_present_since_age_50_total_years"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_residential_care_funder_pays_contracted_care"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_saved_non_qualifying_spouse_rate_eligible_under_schedule_1aa_clause_7"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_shares_residence_with_person_at_least_adult_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_spouse_or_partner_also_hospitalised_more_than_unaffected_weeks"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_spouse_or_partner_in_long_term_residential_care_hospital_or_rest_home"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_spouse_or_partner_maximum_partnered_specified_benefit_rate_with_spouse_receiving_super"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "name": "nz_super_spouse_or_partner_maximum_single_specified_benefit_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "oscar_subsidy_granted_for_child"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "name": "oscar_subsidy_school_holiday_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "other_parents_child_support_income_amount"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "parental_tax_credit_additional_abatement"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "parental_tax_credit_child_exclusive_care_fraction"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "parental_tax_credit_for_entitlement_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "partner_tax_credit_income_for_quarter"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/payroll/deductions.yaml",
+   "name": "paye_income_tax_on_taxable_portion_of_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_amount_transferred_from_pay_to_donee_organisation"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_employer_files_employment_income_information_electronically"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_employer_offers_payroll_giving"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_employment_income_information_received_by_commissioner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_particulars_corrected"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_particulars_incorrect"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_person_chose_donation_from_pay"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_returned_to_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_statutory_or_legal_requirements_satisfied"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_tax_for_pay_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_tax_obligations_satisfied"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_total_donations_for_pay_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "name": "payroll_donation_transferred_to_ineligible_recipient"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/investment/pie.yaml",
+   "name": "pie_taxable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/investment/pie.yaml",
+   "name": "pir_has_notified_pie_scheme_of_pir"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/investment/pie.yaml",
+   "name": "pir_notified_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_employee_is_eligible"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_entitlement_already_transferred"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_recipient_average_weekly_earnings"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_recipient_is_primary_carer"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_recipient_is_spouse_or_partner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_requested"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "name": "ppl_transfer_requested_weeks"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "quarterly_reportable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "relationship_partner_is_couples_claimant_for_quarter"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "name": "rwt_holder_has_exemption_certificate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "name": "rwt_holder_has_notified_rwt_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "name": "rwt_holders_prescribed_tax_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "name": "rwt_notified_rate"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "name": "separated_with_no_partner_at_quarter_end"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_continuous_residence_years_after_citizen_or_resident"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_continuous_residence_years_before_application"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_new_zealand_citizen"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_only_temporary_entry_class_visa_holder"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_ordinarily_resident_in_new_zealand_on_application"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_ordinarily_resident_in_reciprocity_country"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_refugee_or_protected_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_regulations_treat_person_as_meeting_residence_requirement"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_residence_class_visa_holder"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_section_205_override_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "social_security_unlawfully_resident_or_present_in_new_zealand"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_living_apart_and_lost_or_lacks_partner_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_lost_regular_support_due_to_partner_sentence_conditions"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_receiving_sole_parent_support"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_split_care_court_order_exception_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_split_care_entitlement_allocated_to_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_split_care_situation_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "sole_parent_support_personal_earnings_used_for_childcare"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "sole_parent_youngest_dependent_child_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_dependent_students_count"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_is_independent_circumstances"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_lives_at_parental_home"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_parent1_annual_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_parent2_annual_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_parents_living_apart"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_partner_age"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_partner_eligible_for_grant"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_partner_enrolled_more_than_half_full_time"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_partner_personal_income_for_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_partner_receives_grant"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "name": "student_allowance_student_personal_income_for_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/payroll/deductions.yaml",
+   "name": "student_loan_annual_deduction"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/student_loan/repayments.yaml",
+   "name": "student_loan_repayment_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_blind_other_weekly_amounts_from_all_sources"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_cared_person_is_spouse_or_partner"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_cared_person_would_otherwise_receive_institutional_care"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_caring_payment_already_granted"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_caring_required_full_time_care_at_home"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_caring_temporary_continuation_days"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_open_employment_trial_agreed_with_msd"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_open_employment_trial_weeks"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_caring"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_payment_granted_for_restricted_work_capacity"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_partner_receives_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_partnered_long_term_residential_care_halving_applies"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_restricted_or_blind"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "name": "supported_living_payment_totally_blind"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_regular_open_employment_capacity_hours_per_week"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_restricted_capacity_or_blindness_self_inflicted_to_qualify"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_restricting_condition_expected_to_continue_required_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_terminal_condition"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "name": "supported_living_totally_blind"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+   "name": "taxable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/child_support/core_formula.yaml",
+   "name": "total_annual_formula_amount"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/investment/pie.yaml",
+   "name": "two_year_lookback_combined_pie_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/income_tax/investment/pie.yaml",
+   "name": "two_year_lookback_taxable_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/rma_district_plans/wellington_city/supermarket_zoning.yaml",
+   "name": "wcc_proposed_supermarket_gfa_m2"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/regulations/rma_district_plans/wellington_city/supermarket_zoning.yaml",
+   "name": "wcc_supermarket_zone"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_care_is_temporary"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_caregiver_is_body_of_persons"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_caregiver_is_disqualifying_residence_or_institution_operator_or_employee"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_caregiver_is_spouse_or_partner_of_non_electing_transitional_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_caregiver_lives_apart_from_another_qualifying_person_for_child"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_child_exclusive_care_fraction_for_family_or_best_start_credit"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_child_new_zealand_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_child_present_in_new_zealand_for_entitlement_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_commissioner_considers_primary_day_to_day_care"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_credit_child_age"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_credit_child_attending_school_or_tertiary"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_credit_child_financially_independent"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_dependent_child_status_stopped_except_first_or_last_day"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "wff_family_credit_abatement_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "name": "wff_family_scheme_income_for_relationship_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_meets_qualifying_criteria_each_day"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_entitled_to_emergency_benefit"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_new_zealand_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_present_in_new_zealand_continuous_months"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_resident_under_yd1_on_credit_days"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_spouse_or_partner_transitional_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_person_transitional_resident"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_principal_caregiver_status_changed_except_first_or_last_day"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_protected_family_tax_credit_status_changed_except_first_or_last_day"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_relationship_period_main_benefit_received"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_relationship_period_parent_allowance_or_childrens_pension_received"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_spouse_or_partner_combined_entitlement_allocated_to_person"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_spouse_or_partner_combined_entitlement_applies"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_spouse_or_partner_started_or_stopped_during_entitlement_period"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "name": "wff_tax_credit_composition_changed_except_first_or_last_day"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_absence_days_do_not_affect_section_72_eligibility"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_absence_days_during_winter_period"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_absent_from_new_zealand"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_disability_or_chronic_condition_residential_care_partly_funded"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_income_based_ltr_care_contribution_below_maximum"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_partnered_rate_and_partner_determined_entitled"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_payment_would_be_payable_but_for_absence"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_qualifying_benefit_payable"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_qualifying_benefit_reduced_to_long_term_hospital_rate_and_payment_terminated_after_review"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_rcdss_50_plus_single_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_rcdss_qualifying_person"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_receiving_main_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_receiving_veterans_pension"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "name": "winter_energy_payment_residential_care_cost_contribution_redirected_from_benefit"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_child_support_weekly_payments"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_currently_with_specified_beneficiary"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_has_never_been_in_relationship"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_has_no_or_minimum_income"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_has_parental_support_gap"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_is_study_ready"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_living_with_or_supported_by_parent_or_guardian"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_meets_residential_requirement"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "name": "young_person_weekly_income_excluding_child_support"
+  }
+ ],
+ "unknown_inputs": [],
+ "unmapped_concepts": {
+  "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
+  "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",
+  "fact:person.realized_capital_gains": "rulespec-nz at 6fe181f has no input for gains on disposals: no rule mentions gains, disposals or the bright-line test, and the only capital input, income_tax_expenditure_or_loss_is_capital_nature (income_tax/core/taxable_income.yaml, s DA 2), classifies expenditure for the general deduction limitation.",
+  "fact:person.sex": "rulespec-nz at 6fe181f has no sex- or gender-dependent input: none of the 668 dense-surface input names or 40 module YAMLs mention sex, gender, male, female, man, woman, wife or husband, and the only related hit, sole_parent_is_mother_or_father_or_child_regarded_as_child (social_security/main_benefits/entitlement.yaml), tests parenthood, which this mapping binds to the parent_of_coresident_child role.",
+  "fact:person.usual_weekly_hours": "rulespec-nz at 6fe181f has no input that takes hours worked: the work-hours inputs are threshold statuses no transform can compute from hours, namely acc_self_employed_more_than_30_hours_per_week (regulations/acc/earners_levy.yaml, reg 6, which also needs self-employment hours alone), jobseeker_in_full_time_employment (main_benefits/entitlement.yaml, s 21), acc_weekly_compensation_is_full_time_earner and the Family-level in_work_tax_credit_normally_full_time_earner; the remaining hours_per_week inputs are childcare, programme-participation or work-capacity hours.",
+  "fact:person.weeks_worked": "rulespec-nz at 6fe181f has no input the concept determines: the closest, in_work_tax_credit_weekly_periods (Family, income_tax/family_scheme/tax_credits.yaml, s MD 10(2)), counts weeks in which the person or their partner meets the earner requirement, which needs the union of two partners' work weeks that no group rule gives (reference_member drops a working partner; sum_over_members double-counts and adds children's weeks), and minimum_family_tax_credit_weekly_periods and minimum_family_full_time_earner_weeks count only weeks as a full-time earner."
+ }
+}

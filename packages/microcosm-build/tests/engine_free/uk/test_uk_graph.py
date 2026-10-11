@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+import hashlib
+
+from microcosm.graph import graph_schema, orrery_document
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -33,29 +37,27 @@ def test_uk_expand_contract_rejects_unknown_source_ids() -> None:
         patch(_expand_population(), _expand_node(), _expand_result(bad_source=True))
 
 
-def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
+def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 32 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # 35 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
     # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
-    # spi_income_band_donors stages, and the SPI housing shell; the two named
-    # exclusions are the certified-pair alternatives, not steps of this pipeline.
-    assert len(expected) == 34
-    assert UK_SPINE_EXCLUSIONS == {
-        "frs_hmrc_retained_leaves",
-        "hmrc_spi_income",
-    }
+    # (PolicyEngine/chronicle#280) spi_income_band_donors stages, the #1012
+    # spi_housing_shell, the #1003 was_lisa, the microcosm#1069
+    # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
+    # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
+    # are retired (#901), so the manifest roster is the graph roster.
+    # microcosm#1063 also adds cgt_residential_split after the anchor, and
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw.
+    assert len(expected) == 39
+    assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
-    assert not (UK_SPINE_EXCLUSIONS & ids)
+    assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
     root_dtypes = {
         (owned.entity, owned.column): owned.dtype
         for owned in graph.node("create_uk_frs").outputs
@@ -69,11 +71,7 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
 def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     compiled = compile_graph(uk_spine_graph(spec))
     stage_order = tuple(node_id for node_id in compiled.order if node_id in expected)
 
@@ -110,6 +108,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert {source.name for source in graph.sources} == {
         "frs",
         "was",
+        "was_person",
         "nts_household",
         "nts_individual",
         "nts_trip",
@@ -125,6 +124,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "lcfs_household",
         "lcfs_person",
     )
+    assert graph.node("was_lisa").sources == ("was", "was_person")
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",
         "hmrc_income",
@@ -191,6 +191,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
         "frs_education_grant_split",
         "frs_brma",
         "was_wealth",
+        "was_lisa",
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
@@ -227,6 +228,62 @@ def test_uk_graph_json_round_trip_is_canonical() -> None:
 
     assert graph_from_json(serialized) == graph
     assert graph_to_json(graph_from_json(serialized)) == serialized
+
+
+def test_uk_spine_exports_complete_orrery_document() -> None:
+    compiled = compile_graph(uk_spine_graph())
+    schema = graph_schema(compiled)
+    materialized_claims = [
+        binding
+        for binding in schema["input_bindings"]
+        if binding["kind"] == "materialized_expand_output"
+    ]
+
+    document = orrery_document(compiled, title="UK spine")
+    nodes = {node["id"]: node for node in document["nodes"]}
+    materialized_reads = [
+        edge
+        for edge in document["edges"]
+        if edge["kind"] == "declared_read"
+        and edge["data"]["read_kind"] == "materialized_expand_output"
+    ]
+    expected_reads = {
+        (
+            binding["node"],
+            binding["population"],
+            binding["entity"],
+            binding["column"],
+            binding["provider"],
+            binding["declared_in"],
+            binding["rows"],
+        )
+        for binding in materialized_claims
+    }
+    actual_reads = {
+        (
+            nodes[edge["target"]]["label"],
+            nodes[edge["source"]]["data"]["population"],
+            nodes[edge["source"]]["data"]["entity"],
+            nodes[edge["source"]]["data"]["column"],
+            nodes[edge["source"]]["data"]["provider"],
+            nodes[edge["source"]]["data"]["declared_in"],
+            edge["data"]["rows"],
+        )
+        for edge in materialized_reads
+    }
+
+    assert materialized_claims
+    assert actual_reads == expected_reads
+    assert document["schemaVersion"] == "graph-explorer/v1"
+    summary = document["metadata"]["microcosm"]
+    assert summary["graph_sha256"] == schema["graph_sha256"]
+    assert (
+        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
+    )
+    assert summary["counts"]["operations"] == len(schema["graph"]["nodes"])
+    assert summary["counts"]["fields"] == len(schema["fields"])
+    assert "graph" not in summary
+    assert document["metadata"]["truncated"] is False
 
 
 def test_conserve_rejects_a_mass_shift_across_household_sizes() -> None:
@@ -274,8 +331,8 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
     graph = uk_spine_graph(load_country_spec("uk"))
 
     assert graph.node("spi_support_channel").mass == "declared"
+    assert graph.node("cgt_support_split").mass == "conserve"
     assert graph.node("cgt_incidence_clone").mass == "conserve"
-    assert graph.node("cgt_band_donors").mass == "free"
     assert graph.node("cgt_incidence_anchor").mass == "conserve"
     assert graph.node("cgt_incidence_anchor").params["expand_cells"] == ()
     assert "cgt_incidence_anchor.owned" not in {node.id for node in graph.nodes}

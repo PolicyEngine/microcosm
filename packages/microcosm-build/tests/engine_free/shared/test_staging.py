@@ -1,13 +1,18 @@
+import inspect
 import json
 
 import microcosm.build.staging as staging_module
-from microcosm.build.staging import StagingTelemetry
+from microcosm.build.staging import StagingRunBundleWriter
 from microcosm.build.staging_storage import BestEffortUploadSession
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 
 V1_FIXTURE = _TEST_PATHS.tests / "fixtures" / "staging" / "v1"
+
+
+def test_staging_run_bundle_writer_has_no_emitter_dependency() -> None:
+    assert "emitter" not in inspect.signature(StagingRunBundleWriter).parameters
 
 
 class FakeApi:
@@ -26,8 +31,8 @@ class FakeApi:
         return None
 
 
-def test_staging_telemetry_writes_local_progress(tmp_path) -> None:
-    telemetry = StagingTelemetry(
+def test_staging_run_bundle_writer_writes_local_progress(tmp_path) -> None:
+    telemetry = StagingRunBundleWriter(
         run_id="run-a",
         candidate_release_id="populace-us-2024-abc-20260618T000000Z",
         run_dir=tmp_path / "run-a",
@@ -51,9 +56,9 @@ def test_staging_telemetry_writes_local_progress(tmp_path) -> None:
     assert len(events) >= 3
 
 
-def test_staging_telemetry_uploads_repo_paths(tmp_path) -> None:
+def test_staging_run_bundle_writer_uploads_repo_paths(tmp_path) -> None:
     api = FakeApi()
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="run-b",
         candidate_release_id="populace-us-2024-def-20260618T000000Z",
         run_dir=tmp_path / "run-b",
@@ -96,7 +101,7 @@ def test_runs_index_keeps_existing_runs(tmp_path) -> None:
         def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
             return str(existing)
 
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="newer",
         candidate_release_id="populace-us-2024-new-20260620T000000Z",
         run_dir=tmp_path / "newer",
@@ -120,7 +125,7 @@ def test_upload_failures_never_raise_and_disable_after_three(tmp_path, capsys):
         def hf_hub_download(self, **kwargs):
             raise RuntimeError("401 Unauthorized")
 
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="run-1",
         candidate_release_id="run-1",
         run_dir=tmp_path / "run",
@@ -143,7 +148,7 @@ def test_upload_failures_never_raise_and_disable_after_three(tmp_path, capsys):
 
 def test_uploads_succeeded_counts_files_that_reached_the_repo(tmp_path):
     api = FakeApi()
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="run-c",
         candidate_release_id="run-c",
         run_dir=tmp_path / "run-c",
@@ -162,7 +167,7 @@ def test_blank_path_prefix_falls_back_to_the_default(tmp_path):
     # A blank or slash-only prefix would put run files at the repo root, where
     # the dashboard's runs/<run_id> paths cannot find them.
     for blank in ("", "   ", "/", " / "):
-        telemetry = StagingTelemetry(
+        telemetry = StagingRunBundleWriter(
             run_id="run-e",
             candidate_release_id="run-e",
             run_dir=tmp_path / "run-e",
@@ -173,7 +178,7 @@ def test_blank_path_prefix_falls_back_to_the_default(tmp_path):
 
 
 def test_path_prefix_is_trimmed_but_otherwise_respected(tmp_path):
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="run-f",
         candidate_release_id="run-f",
         run_dir=tmp_path / "run-f",
@@ -184,7 +189,7 @@ def test_path_prefix_is_trimmed_but_otherwise_respected(tmp_path):
 
 
 def test_uploads_succeeded_is_zero_for_a_local_only_run(tmp_path):
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="run-d",
         candidate_release_id="run-d",
         run_dir=tmp_path / "run-d",
@@ -215,7 +220,7 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
             raise FileNotFoundError
 
     run_dir = tmp_path / "v1-us-fixture"
-    telemetry = StagingTelemetry(
+    telemetry = StagingRunBundleWriter(
         run_id="v1-us-fixture",
         candidate_release_id="populace-us-2024-v1-fixture",
         run_dir=run_dir,

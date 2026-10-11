@@ -1,0 +1,3186 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_child_benefit_statistics.json",
+  "purpose": "HMRC Child Benefit statistics, annual release at August 2025, United Kingdom: the percentage of eligible children for whom Child Benefit is claimed, opted-out families included, by single year of age and for all ages (Table 15, May 2025 reference month); families registered, families in payment and families opted out of payment because of the High Income Child Benefit Charge; children registered; children in payment and children in opted-out families by single year of age. Consumed by the child_benefit_take_up stage, which draws family claims to the claim rates by age and opt-outs to the opted-out share of registered families, and reports the frame's families and children in payment beside the published ones (microcosm#1063).",
+  "consumers": [
+    "uk_runtime.child_benefit_take_up"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 344402,
+    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+  },
+  "selections": [
+    {
+      "label": "claim_rate_of_eligible_children_by_age_may_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+        "source_measure_id": "claim_rate",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-05"
+        ]
+      },
+      "row_count": 21
+    },
+    {
+      "label": "families_registered_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.families_registered_for_child_benefit",
+        "source_measure_id": "families_registered",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 1
+    },
+    {
+      "label": "families_in_payment_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.families_in_receipt_of_child_benefit_payments",
+        "source_measure_id": "families_in_payment",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 1
+    },
+    {
+      "label": "families_opted_out_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.families_opted_out_of_child_benefit_payment",
+        "source_measure_id": "families_opted_out_claimant_all",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 1
+    },
+    {
+      "label": "children_registered_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.children_registered_for_child_benefit",
+        "source_measure_id": "children_registered",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 1
+    },
+    {
+      "label": "children_in_payment_by_age_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+        "source_measure_id": "children_in_payment_united_kingdom",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 21
+    },
+    {
+      "label": "children_in_opted_out_families_by_age_august_2025",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+        "source_measure_id": "children_opted_out_united_kingdom",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-08"
+        ]
+      },
+      "row_count": 21
+    }
+  ],
+  "row_count": 67,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_79e409495cd4974828e3decc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_45c6a0d680a425984964b172",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_0.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_0",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 0,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 446265
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_503a92a21e799d1ddac56e9d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c62466e8adab89161ed2f36f",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_1.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_1",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 1,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 499555
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b2f8c74fdb5eadc8ae206a0a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7760aac3b961fdd2c90da778",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_10.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_10",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 10,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 673440
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fecb531149442b6982ad203",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c6b9a910e1d157ad59c64d70",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_11.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_11",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 11,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 677790
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_07c80577f2ae68c9e5e89868",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7aec3e1c88b8b0a8e298b08d",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_12.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_12",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 12,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 696090
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c54a020d12467bb0e6ab2c17",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0085aa8c63cf3555f5c1e8d",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_13.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_13",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 13,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 721200
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1071283ee9985d7620a85604",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d403b33fe74e495de75b5f8",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_14.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_14",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 14,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 724780
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d63d491a1dbbbf9dced574e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a269829431f132879222d557",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_15.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 15,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 716575
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_db2d4704651f2ea949acfb34",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0c38ba5ae9c8c0712943b2a5",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_16.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 16,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 704790
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_613486a04f7a006b88db0f9c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_31c9be3a70ccd8b9ad1a3475",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_17.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_17",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 17,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 555640
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a97e56df6ce74898eaf8f0b9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1b411d8c2f48a8ebac188de5",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_18.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_18",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 18,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 479675
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c619a9b259227285e4c1b0c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_04fe98b7e1f5e9c401627018",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_19.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_19",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 19,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 95335
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c35cfaa5ddc3f806c0f0dff6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ab0edf246beba50ed666b9f8",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_2.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 2,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 514875
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_64ffbb62ea267173c9b3fd50",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e525560fd05573cdab1732ba",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_3.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_3",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 3,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 549135
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_578c59920b56b0dd9cc0f2ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aca3c93f85f0aad0cffe5212",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_4.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_4",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 4,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 554760
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5248846992a90d6c149b36fb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_70030ca4c518bf7fd0eea82a",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_5.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 5,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 576155
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1bec5dc07709aac653782a94",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3bd63f079209dad8fcbc6c65",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_6.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_6",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 6,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 602215
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a030cd57855750abe07e71c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_907d520618de5de8a4752068",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_7.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_7",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 7,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 623920
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e789b41c9a6d7a8b88993cb0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b2e7ca01d65c653a348ebd0e",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_8.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_8",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 8,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 648010
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ceff5759e25e209d9a5285d9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64a3c097dfa5a98652c05918",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.age_9.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_9",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 9,
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 670530
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2a2115c74ce179bc2d1483ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f4c8b43ae43b3523228e564c",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08.all_ages.children_in_payment_united_kingdom",
+      "concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+      "measure_id": "children_in_payment_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_payment_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "child_age": "All ages",
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 11730730
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f4bebe196a7f7307e0c454be",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0a27057d7d3590b83b95a4e",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_registered.month2025_08.united_kingdom.children_registered",
+      "concept": "hmrc.children_registered_for_child_benefit",
+      "measure_id": "children_registered",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_registered.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_status",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "payment_status": "registered"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 12730410
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c77d8aae3c71630c14d57395",
+      "semantic_fact_key": "ledger_semantic_fact_v2_78719fb8899064d4b6073e90",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_0.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_0",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 0,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 9770
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_72363d43cca06d1f4ec616fc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b270e3fcf005561593dc22b7",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_1.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_1",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 1,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 16985
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b63f36e8a573893543c604d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3a3632616cada0d6a1db2e3b",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_10.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_10",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 10,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 63975
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_194a3f458865b8806195bc71",
+      "semantic_fact_key": "ledger_semantic_fact_v2_021dcf5bbaa90b06921fec79",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_11.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_11",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 11,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 65770
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f8e6193a8fb9ecefc3c95ffb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2cdba01321c4777daecb347e",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_12.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_12",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 12,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 72930
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5f4f001b7e5d7df453f0f91d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_464fd7a715750d31ecb189a7",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_13.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_13",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 13,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 92660
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6c57fbe3c3a965ad2c25c10b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3fbeea13d75accb625281f55",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_14.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_14",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 14,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 94905
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca1b3044e6ee4ad40ffedd73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_66a7ce8fb0add45b9a23f0f8",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_15.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 15,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 93890
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7c8456924d700de30802e9ba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cc7f53f2b1e75dab75aa8db9",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_16.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 16,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 92800
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_aec8480730b986d3f8d8c9ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_da3c511d41a0954e897dd956",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_17.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_17",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 17,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 24590
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7f9e51b30f222e29a1eb2ad9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fa2675e5dabb9e0ea9f97a19",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_18.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_18",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 18,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 25735
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cac141d5ca9c9a1d63fa9990",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d2c4261aad02daf86a374524",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_19.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_19",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 19,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 1105
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d011cf2fc0cb95a9ed1206c8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9f1fda5fd0c3cb6a49a8ee2c",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_2.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 2,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 21480
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fc30316768b734512ea2a80c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_33a1803623598570d4d31510",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_3.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_3",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 3,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 27150
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0f5b302cf27dfee19ffc6d8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_616f56f9d0cc37ec70a95a5b",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_4.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_4",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 4,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 33930
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d20c1d8bcfbe35b88d81f41",
+      "semantic_fact_key": "ledger_semantic_fact_v2_84adba98f5e25cdcf69ad096",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_5.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 5,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 39995
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a0a33724586363f7f28ecff6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1973ae2f8b47617327359702",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_6.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_6",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 6,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 48375
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dfd4d217494d05b2733e359c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_554e7f49069e2c5fd8341bfd",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_7.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_7",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 7,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 53275
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0fd042e9f166f23b7d6d3237",
+      "semantic_fact_key": "ledger_semantic_fact_v2_23e9d94987660bf0113606fe",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_8.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_8",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 8,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 58445
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_884f5ad68a46caa7a98e3b03",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2cde16dc993a00d9fd747883",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.age_9.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_9",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 9,
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 61915
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_452103727fef41a179e3b894",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c63a36027d953f5bdd016d58",
+      "source_record_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08.all_ages.children_opted_out_united_kingdom",
+      "concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+      "measure_id": "children_opted_out_united_kingdom",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "child_in_child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.children_in_opted_out_families_by_single_year_of_age.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "child_age": "All ages",
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 999680
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27f26b9f974df083550d5b9c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a1ef077ef4534a750d87eb7",
+      "source_record_id": "hmrc.child_benefit.aug2025.families_in_payment.month2025_08.united_kingdom.families_in_payment",
+      "concept": "hmrc.families_in_receipt_of_child_benefit_payments",
+      "measure_id": "families_in_payment",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "family",
+        "role": "child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.families_in_payment.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_status",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "payment_status": "in_payment"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 6867695
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0f562aa196b46cd26de2eb08",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a1ba9be6269019713601a08d",
+      "source_record_id": "hmrc.child_benefit.aug2025.families_opted_out_by_claimant_sex.month2025_08.united_kingdom.families_opted_out_claimant_all",
+      "concept": "hmrc.families_opted_out_of_child_benefit_payment",
+      "measure_id": "families_opted_out_claimant_all",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "family",
+        "role": "child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.families_opted_out_by_claimant_sex.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_claimant_sex",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "claimant_sex": "all",
+        "payment_status": "opted_out"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 684635
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_49f5f7c1dae7a183ce6989ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6c91363f893bd078687a9723",
+      "source_record_id": "hmrc.child_benefit.aug2025.families_registered.month2025_08.united_kingdom.families_registered",
+      "concept": "hmrc.families_registered_for_child_benefit",
+      "measure_id": "families_registered",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "family",
+        "role": "child_benefit_family"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.families_registered.month2025_08",
+        "groupby_dimension": "hmrc.child_benefit_status",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "payment_status": "registered"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 7552330
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2fb8d5dbb3f0063e2aa86bb1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3e0c9a6c3f1796cb2af083c",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_0.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_0",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 0
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 68.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9da327d00cd0c3f4d2d09c3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0ecf043e211635f2e169fc88",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_1.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_1",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 1
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 76.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9463a511e71824b2b8109bf1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8fd4c5401d1c341e38fd757b",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_10.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_10",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 10
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 92.10000000000001
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_555cbd7ea49d368345a223cc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_108474417d2760bc85cac3d5",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_11.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_11",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 11
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 92.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a2f48fe342f4285e88829325",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6699260893b6881d7800132e",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_12.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_12",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 12
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 94.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bfba8866621d25aa7e2a25ec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5e9e387dc53a31a875c5709d",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_13.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_13",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 13
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 96.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_47b41c16162dff7c783900c8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a376d9448e331c2699484e2",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_14.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_14",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 14
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 96.39999999999999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe44b4a70745aaf0dc43ffb8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_20c088e169b1f7e356687ce2",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_15.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 15
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 96.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6d9574d7c3c2871936ee050c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c4574d61347e6d3cef42ec92",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_16.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 16
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 89.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5fe0474042ba683982af7e17",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b32de577d9286372f967dcfa",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_17.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_17",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 17
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 75.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c649ebbdb0edf114254d8014",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4f9f1d19d6eb6ec29d89db59",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_18.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_18",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 18
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 76.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_146f43e1c72a0804c841e1c7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64c53054bc2a973b13ae1432",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_19.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_19",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 19
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 49.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1af023442d69ea844c5a639a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9937677d28e67b855de2aadd",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_2.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 2
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 79
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_368ac4145abfdad71df67202",
+      "semantic_fact_key": "ledger_semantic_fact_v2_20e0e4d3c469b147887207cb",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_3.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_3",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 3
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 81
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8d43570474001508e7d886f6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dde5f895e9255537e39b00e4",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_4.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_4",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 4
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 81.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c8ea4160e9db8486b6b8e5a0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ecd85f5c2a7e32e1a15dd297",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_5.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 5
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 84.39999999999999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7fd4c81d64cdb31ea4fb57ca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dda3bd5e79611b0f6d2f6a70",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_6.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_6",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 6
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 86.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e58f0b4e7e4fc1409262d32",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0a2596bfd371bdf8751dc438",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_7.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_7",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 7
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 89.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2a67c2e0be7d5c49857180d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3b15d5abcf1df0010188930d",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_8.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_8",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 8
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 90.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_91bc2fb4cbdb14a39afc5ec4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ef8d1f0f5edd77423d9ed9a2",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.age_9.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "age_9",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "child_age": 9
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 91.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3b25fa0f0fa99b6c60d824e0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_142c1cc432d5cbe3d458a905",
+      "source_record_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05.all_ages.claim_rate",
+      "concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+      "measure_id": "claim_rate",
+      "unit": "percent",
+      "aggregation": "rate",
+      "entity": {
+        "name": "person",
+        "role": "child_eligible_for_child_benefit"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.child_benefit.aug2025.claim_rate_of_eligible_children_by_age.month2025_05",
+        "groupby_dimension": "hmrc.child_benefit_child_age",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "child_age": "All ages"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Child Benefit Statistics: Annual Release, data at August 2025, main tables",
+        "source_file": "Child_Benefit_August_2025_Main_Tables.ods",
+        "source_sha256": "c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d",
+        "vintage": "august_2025",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-child-benefit-august-2025/2025/c610f9509901f21efc28b76d24fae01c43d281b6867a14f28b6847d0e16cc69d/Child_Benefit_August_2025_Main_Tables.ods"
+      },
+      "value": 86.6
+    }
+  ]
+}

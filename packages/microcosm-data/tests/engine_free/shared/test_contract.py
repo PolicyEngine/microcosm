@@ -89,7 +89,17 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
     "SPI-channel-exclusive columns are comparable only through per-reference "
     "reviewed exclusions."
 )
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
+# The committed per-reference register (microcosm#1063 c9): the policy payloads
+# sealed into the input-mass evidence digest.
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "dfe_education_spending": {
+        "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
+        "approved_on": "2026-10-02",
+        "expires_on": "2027-04-02",
+    },
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -117,19 +127,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "d0090b7214ade3fc64d2e4b78cbf8027031997d48bfb1ee1f94c3f4917d1a562"
+    "6be9d4f71cc00815c9ad2c93f0d58f42d7c3ba6417cb8a2ab31ad9bf4c8f73ea"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c795750a8cf244ef21d02661459ba6d4cd7e015df1b82f891db25f261272537e"
+    "8e635a5f341d304b87f277a68c15e1069972836c8858ed69115b972bf6d70b67"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "83fb2c65ff3c5858b148bb6982d4d2b2fe8f92ce44bfa2b88a44f45adc64c7c3"
+    "fea3ba9ad91bd163cd08542872e1bb7627716cb6e4579f6f87de5c8cf83b5eea"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
+    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -150,6 +160,8 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
         "stage_health",
         "transferred",
@@ -178,12 +190,20 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_cgt_incidence_clone_mass": (
+    "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
+    "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
+    "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
         None,
     ),
-    "uk_stage_cgt_band_donors_support": (
+    "uk_stage_cgt_residential_split_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_incidence_clone_mass": (
         "stage_health",
         "transferred",
         None,
@@ -553,6 +573,60 @@ def _calibration_diagnostics() -> dict:
             ),
         ],
     }
+
+
+def _schema_8_calibration_diagnostics() -> dict:
+    diagnostics = _calibration_diagnostics()
+    targets = diagnostics["targets"]
+    diagnostics.update(
+        schema_version=8,
+        l0_lambda=0.0,
+        n_nonzero=2,
+        n_records=2,
+        initial_loss=1.0,
+        final_loss=0.5,
+        fraction_within_10pct=1.0,
+        effective_sample_size=2.0,
+        realized_max_weight_ratio=1.0,
+        top_1pct_weight_share=0.5,
+        past_cap_census=None,
+        diagnostic_warnings=[],
+    )
+    diagnostics["target_surface"]["n_targets"] = len(targets)
+    diagnostics["target_surface"]["constraint_matrix"] = {
+        "rows": len(targets),
+        "columns": 2,
+        "nnz": len(targets),
+    }
+    diagnostics["target_registry"]["n_specs"] = len(targets)
+    for row in targets:
+        row["registry"].update(se=None, signed=False, notes="")
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "Population",
+                "provider_id": "fixture",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [
+                {
+                    "id": "sex",
+                    "label": "Sex",
+                    "value_id": "female",
+                    "value_label": "Female",
+                }
+            ],
+            "target": {
+                "id": row["target_name"],
+                "label": "Fixture target",
+            },
+        }
+    return diagnostics
 
 
 def additional_critical_credit_rows() -> list[dict]:
@@ -1174,17 +1248,23 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "spi_benefit_coherence",
         "uc_capital_coherence",
+        "pension_credit_take_up",
+        "child_benefit_take_up",
         "uc_deduction_attributes",
+        "cgt_support_split",
         "cgt_incidence_clone",
-        "cgt_band_donors",
         "hmrc_cgt_gains_spine",
+        "cgt_residential_split",
         "salary_sacrifice",
         "student_loans",
         "age_tail",
     ]
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
@@ -1197,8 +1277,12 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_pension_credit_take_up": "pension_credit_take_up",
+        "uk_stage_child_benefit_take_up": "child_benefit_take_up",
+        "uk_stage_cgt_support_split_mass": "cgt_support_split",
+        "uk_stage_cgt_residential_split_mass": "cgt_residential_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
-        "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
@@ -3767,34 +3851,7 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
 
 
 def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
-    for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "Population",
-                "provider_id": "fixture",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [
-                {
-                    "id": "sex",
-                    "label": "Sex",
-                    "value_id": "female",
-                    "value_label": "Female",
-                }
-            ],
-            "target": {
-                "id": row["target_name"],
-                "label": "Fixture target",
-            },
-        }
+    diagnostics = _schema_8_calibration_diagnostics()
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3805,25 +3862,28 @@ def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
     validate_release_dir(release_dir)
 
 
-def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
+def test_explicit_diagnostics_failure_does_not_block_national_release(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_8_always_uses_shared_validation(release_dir: Path) -> None:
+    diagnostics = _schema_8_calibration_diagnostics()
     for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "",
-                "provider_id": "another-provider",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [],
-            "target": {"id": "wrong", "label": "Fixture target"},
-        }
+        row["hierarchy"]["category"]["label"] = " "
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3835,9 +3895,9 @@ def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "hierarchy.category.label must be a non-empty string" in failures
-    assert "hierarchy.category.provider_id must equal" in failures
-    assert "hierarchy.target.id must equal" in failures
+    assert "does not satisfy the shared schema" in failures
+    assert "hierarchy.category.label" in failures
+    assert "non-whitespace" in failures
 
 
 def test_schema_7_rejects_an_empty_target_label(release_dir: Path) -> None:

@@ -110,6 +110,25 @@ _ESA_CUBE_ROWS = (
     "dwp.esa_contrib_claimants",
     "dwp.esa_income_claimants",
 )
+
+#: microcosm#1069: the resident State Pension level replaces the OBR line in
+#: the fit (ruling R4); the exact OBR forecast stays as diagnostic provenance.
+_OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast "
+    "out of the fit: it counts Great Britain plus pensioners paid abroad and "
+    "leaves out Northern Ireland, a different quantity from the resident level "
+    "the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as "
+    "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
+_STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
+_STATE_PENSION_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
+    "Britain) and DfC (Northern Ireland) on the four quarterly points inside "
+    "calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by "
+    "sex by type, area by type and weekly amount band by type. The frozen fixture "
+    "has no State Pension caseload or resident-level row."
+)
 _INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
 
 _CGT_OBSERVED_RATIONALES = {
@@ -168,15 +187,22 @@ _CGT_NEW_ROW_PREFIXES = (
     "hmrc/capital_gains_band_10000",
     "hmrc.cgt.residential_property_taxpayers",
     "hmrc.cgt.residential_property_gains",
+    "hmrc.cgt.badr_ir_taxpayers_by_band.",
+    "hmrc.cgt.badr_ir_qualifying_gains_by_band.",
+    "hmrc.cgt.taxpayers_by_taxable_income_band.",
+    "hmrc.cgt.gains_by_taxable_income_band.",
 )
 _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
     "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
     "FY2024-25 individual rows by age band (Table 6), by country and region "
     "on the individuals basis via the Table 1 share (Table 5), and the "
-    "size-of-gain bands the incumbent never carried (Table 2.1a), and the "
+    "size-of-gain bands the incumbent never carried (Table 2.1a), the "
     "residential property taxpayers and gains on the individuals basis via "
-    "the Table 8b share (Table 8a). The frozen incumbent fixture has no "
-    "equivalent row (microcosm#725, #467)."
+    "the Table 8b share (Table 8a), the Business Asset Disposal Relief and "
+    "Investors' Relief claimants and qualifying gains by band of qualifying "
+    "gain (Table 4.1), and the all-gains taxpayers and gains by band of the "
+    "engine's CGT taxable income (Table 3). The frozen incumbent fixture has "
+    "no equivalent row (microcosm#725, #467, #1014)."
 )
 
 _UC_PAID_WINDOW_NAMES = frozenset(
@@ -586,6 +612,13 @@ def _add_signed_rationale_notes(
             row["reason"] = _WELSHGOV_COUNTRY_BASIS_RATIONALE
         elif name.startswith("welshgov.council_tax_stock.band_i"):
             row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
+        elif name == "obr.state_pension" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
+        elif (
+            name.startswith(_STATE_PENSION_PREFIXES)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _STATE_PENSION_LEDGER_ONLY_RATIONALE
         elif fixture_resource != "registry_parity_fixture_2025.json":
             continue
         elif name in _CGT_OBSERVED_RATIONALES:

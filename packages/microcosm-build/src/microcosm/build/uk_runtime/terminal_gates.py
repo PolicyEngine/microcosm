@@ -62,6 +62,7 @@ __all__ = [
     "uk_default_degenerate_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
+    "uk_export_candidate_columns",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
     "uk_qrf_tail_concentration_gate",
@@ -73,7 +74,7 @@ __all__ = [
     "uk_cgt_projection_entrants_gate",
 ]
 
-UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024"
+UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024_25"
 # The label names the pinned reference artifact exactly: the 2024-25 line's
 # published enhanced_frs_2024_25.h5 (no separate "recalibrated" variant
 # exists at this vintage; the June report strings keep their own label).
@@ -165,28 +166,58 @@ UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
 UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.child_benefit_opts_out",
     "benunit.frs_benunit_capital",
+    "benunit.has_mixed_age_couple_pension_credit_saving",
+    "benunit.liable_for_share_of_household_rent",
+    "benunit.pension_credit_reported_capital",
     "benunit.uc_deduction_combination",
     "benunit.uc_deduction_random_draw",
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
     "benunit.would_claim_uc_childcare",
+    "household.atomic_area_basis",
+    "household.atomic_area_code",
+    "household.atomic_area_system",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
     "household.cash_isa",
-    "household.clone_index",
+    # #1045: the CGT support split's family copy count.
+    "household.cgt_support_copies",
+    "household.cgt_support_copy_index",
+    # #1063: the residential split's arm flag and index.
+    "household.household_is_cgt_residential_clone",
+    "household.cgt_residential_clone_index",
+    "household.household_clone_index",
+    # microcosm#1114: the three area codes leave every artifact under the
+    # consumers' names (geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS); the
+    # ladder names never reach an artifact and uk_export_candidate_columns
+    # translates them before this list is compared.
     "household.constituency_code_oa",
     "household.consumer_debt",
+    # microcosm#932: the five nation-native aliases of the atomic assignment
+    # (output_area_code, data_zone_code, intermediate_zone_code,
+    # super_data_zone_code, district_electoral_area_code) never reach an
+    # artifact: graph_terminal._tables drops them at the single-year export
+    # boundary. They are listed because the full-build export-surface gate
+    # reads the graph frame's in-memory columns (full_gates.py,
+    # ``parity_evidence.candidate_columns``) before that boundary, and would
+    # otherwise flag them as unreviewed extras (the F8 gap on #932).
+    "household.data_zone_code",
+    "household.district_electoral_area_code",
     "household.electricity_consumption",
     "household.gas_consumption",
+    "household.geography_household_key",
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
-    "household.household_is_cgt_band_donor",
+    "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
+    # #1003: the WAS Lifetime ISA stage's household total and person cells.
+    "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
     "household.spi_income_band_donor_lower_bound",
+    "household.intermediate_zone_code",
     "household.la_code_oa",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
@@ -200,34 +231,43 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.num_vehicles",
     "household.oa_code",
     "household.ons_household_type",
+    "household.output_area_code",
     "household.private_pension_wealth",
     "household.property_purchased",
     "household.rail_usage",
     "household.region_code_oa",
     "household.stocks_and_shares_isa",
-    "person.aa_category",
+    "household.super_data_zone_code",
     "person.a_and_e_visits",
+    "person.aa_category",
     "person.admitted_patient_visits",
     "person.age_started_or_accepted_current_education_or_training",
     "person.attends_private_school_random_draw",
     "person.capital_gains_asset_type",
+    "person.capital_gains_badr",
     "person.capital_gains_residential_property",
+    "person.cgt_residential_probability",
     "person.bus_in_london_trips",
     "person.bus_pass_eligible",
     "person.care_hours",
     "person.charitable_investment_gifts",
     "person.dla_m_category",
     "person.dla_sc_category",
+    "person.employment_sector",
     "person.esa_health_condition_proxy",
     "person.esa_support_group_proxy",
-    "person.employment_sector",
     "person.gift_aid",
+    "person.has_lifetime_isa",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+    "person.is_blind",
+    "person.is_claimant_or_partner",
+    "person.is_hbai_dependent_child",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
+    "person.lifetime_isa_balance",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
@@ -239,6 +279,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.pip_dl_category",
     "person.pip_m_category",
     "person.receives_benefits_in_own_right",
+    "person.rent_paid_as_boarder",
+    "person.rent_paid_as_lodger",
     "person.relationship_to_head",
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
@@ -246,10 +288,68 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
+    "person.uc_is_in_startup_period",
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
     "person.person_is_spi_income_band_carrier",
+    # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
+    # enhanced-FRS incumbent never carried is allow-listed rather than
+    # dropped, so the release candidate ships the spine's own surface. The
+    # certifier rehearsal R5 on the 2026-09-30 build named them: the source
+    # and support-channel lineage of the three entities, the council tax
+    # family (#934), the reported-benefit inputs the take-up stages read
+    # (the five internal disability carriers are not among them: they leave
+    # at the release boundary, UK_RELEASE_EXPORT_DROPPED_COLUMNS),
+    # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
+    # housing fields, the two raw FRS codes the spine fences
+    # (ossben_identifiable_subset, srp_regular_code5) and
+    # other_investment_income. Only incapacity_benefit_reported is dropped
+    # (UK_REVIEWED_EXPORT_EXCLUSIONS).
+    "benunit.benunit_source_id",
+    "benunit.benunit_support_channel",
+    "benunit.benunit_support_clone_index",
+    "benunit.dependent_children",
+    "household.council_tax_rebate",
+    "household.council_tax_reported",
+    "household.council_tax_single_adult_raw",
+    "household.household_source_id",
+    "household.household_support_channel",
+    "household.household_support_clone_index",
+    "household.num_bedrooms",
+    "household.source_household_id",
+    "household.source_household_key",
+    "household.source_year",
+    "household.subrent",
+    "person.disabled_students_allowance_eligible_expenses",
+    "person.free_school_breakfasts",
+    "person.hmrc_spi_assessable_income",
+    "person.hmrc_spi_employed_income",
+    "person.hmrc_spi_employment_benefits",
+    "person.hmrc_spi_employment_expenses",
+    "person.hmrc_spi_incapacity_benefit_income",
+    "person.hmrc_spi_miscellaneous_employment_income",
+    "person.hmrc_spi_other_income",
+    "person.hmrc_spi_other_social_security_income",
+    "person.hmrc_spi_pay",
+    "person.hmrc_spi_state_pension_income",
+    "person.hmrc_spi_taxable_termination_pay",
+    "person.hmrc_spi_total_earned_income",
+    "person.hmrc_spi_total_investment_income",
+    "person.hmrc_spi_unemployment_benefit_income",
+    "person.is_in_approved_training",
+    "person.ossben_identifiable_subset",
+    "person.other_investment_income",
+    "person.person_source_id",
+    "person.person_support_channel",
+    "person.person_support_clone_index",
+    "person.srp_regular_code5",
+    "benunit.benunit_clone_index",
+    "person.person_clone_index",
+    "household.itl1_code",
+    "household.itl2_code",
+    "household.itl3_code",
+    "household.ward_code",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -291,6 +391,35 @@ def uk_default_target_fit_reviewed_exclusions() -> Mapping[str, UKReviewedExclus
             None, resource=UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
         )
     )
+
+
+def uk_export_candidate_columns(frame: Any) -> set[str]:
+    """The ``entity.column`` surface a frame exports, as the gate reads it.
+
+    Structural id columns are not exported content (microcosm#1063 c9: the
+    certifier rehearsal listed every id as an unreviewed extra), and the
+    frame's household weights live beside the tables, so the surface carries
+    ``household.household_weight`` explicitly, as the enhanced-FRS reference
+    does.
+    """
+
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
+    columns: set[str] = set()
+    for entity in frame.entities:
+        structural = _STRUCTURAL_COLUMNS.get(str(entity), frozenset())
+        for column in frame.table(entity).columns:
+            if column in structural:
+                continue
+            # microcosm#1114: the frame holds the ladder names; the artifact
+            # carries the consumers' names, which is what the surface compares.
+            if str(entity) == "household":
+                column = UK_EXPORT_AREA_CODE_COLUMNS.get(str(column), column)
+            columns.add(f"{entity}.{column}")
+    columns.add(f"household.{_WEIGHT_COLUMN}")
+    return columns
 
 
 def _entity_tables(dataset: Any) -> tuple[tuple[str, pd.DataFrame], ...]:
@@ -355,6 +484,7 @@ def uk_degenerate_release_surface_gate(
     *,
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     now: date | None = None,
+    dropped_at_export: Mapping[str, Iterable[str]] | None = None,
 ) -> GateResult:
     """Reject every all-null, all-zero, or constant nonstructural column.
 
@@ -369,6 +499,14 @@ def uk_degenerate_release_surface_gate(
     exclusions = coerce_reviewed_exclusions(
         reviewed_exclusions, label="UK degenerate-surface"
     )
+    # Columns the release boundary drops before writing: a gate fed the
+    # pre-export frame skips them, exactly as the certifier never sees them
+    # on the exported H5; the skipped names are recorded in the details.
+    dropped = {
+        entity: frozenset(str(column) for column in columns)
+        for entity, columns in (dropped_at_export or {}).items()
+    }
+    skipped_at_export: list[str] = []
     present: set[str] = set()
     live: dict[str, dict[str, object]] = {}
     excluded: dict[str, dict[str, object]] = {}
@@ -378,6 +516,9 @@ def uk_degenerate_release_surface_gate(
         structural = _STRUCTURAL_COLUMNS[entity]
         for column in table.columns:
             if column in structural:
+                continue
+            if column in dropped.get(entity, frozenset()):
+                skipped_at_export.append(f"{entity}.{column}")
                 continue
             checked += 1
             name = f"{entity}.{column}"
@@ -478,6 +619,7 @@ def uk_degenerate_release_surface_gate(
         failures=tuple(failures),
         details={
             "columns_checked": checked,
+            "dropped_at_export": sorted(skipped_at_export),
             "findings": dict(sorted(live.items())),
             "all_null_columns": by_kind["all_null"],
             "all_zero_columns": by_kind["all_zero"],
@@ -614,21 +756,56 @@ def uk_zero_weight_strata_gate(
     )
 
 
+def _family_evaluation(
+    weights: Sequence[float] | np.ndarray,
+    family_weights: Sequence[float] | np.ndarray | None,
+    family_fold: Mapping[str, object] | None,
+) -> tuple[dict[str, int | float | None], dict[str, object]]:
+    """The summary a weight gate evaluates and the details it reports.
+
+    The row-level summary is always reported at the top level (the release
+    diagnostics restate it). When family-folded weights are supplied, the
+    gate evaluates on their summary instead: each support-split root with its
+    copies summed is the quantity the June certification measured on a frame
+    without copies, so the fence reads weight dispersion, not the number of
+    copies (microcosm#1045 review).
+    """
+
+    summary = uk_weight_summary(weights)
+    if family_weights is None:
+        return summary, {**summary, "evaluated_on": "row_weights"}
+    family_summary = uk_weight_summary(family_weights)
+    return family_summary, {
+        **summary,
+        "evaluated_on": "family_folded_weights",
+        "family_folded": {**family_summary, **dict(family_fold or {})},
+    }
+
+
 def uk_weight_ess_gate(
     weights: Sequence[float] | np.ndarray,
     *,
     minimum_ess_fraction: float,
+    family_weights: Sequence[float] | np.ndarray | None = None,
+    family_fold: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Require the shipped household weights to retain effective support."""
+    """Require the shipped household weights to retain effective support.
+
+    With ``family_weights`` the fraction is evaluated on the support-family
+    fold (see :func:`_family_evaluation`); the row-level summary is reported
+    beside it.
+    """
 
     minimum = float(minimum_ess_fraction)
     if not math.isfinite(minimum) or not 0.0 < minimum <= 1.0:
         raise ValueError("minimum_ess_fraction must be finite and in (0, 1].")
-    summary = uk_weight_summary(weights)
-    fraction = float(summary["ess_fraction"])
+    evaluated, details = _family_evaluation(weights, family_weights, family_fold)
+    fraction = float(evaluated["ess_fraction"])
     if fraction < minimum:
+        basis = " (family-folded)" if family_weights is not None else ""
         failures = (
-            f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",
+            f"ESS fraction{basis} {fraction:.6g} is below the reviewed minimum "
+            f"{minimum:.6g}.",
         )
     else:
         failures = ()
@@ -636,7 +813,7 @@ def uk_weight_ess_gate(
         name="weight_ess",
         passed=not failures,
         failures=failures,
-        details={**summary, "minimum_ess_fraction": minimum},
+        details={**details, "minimum_ess_fraction": minimum},
     )
 
 
@@ -644,16 +821,23 @@ def uk_weight_ratio_gate(
     weights: Sequence[float] | np.ndarray,
     *,
     maximum_max_to_median_ratio: float,
+    family_weights: Sequence[float] | np.ndarray | None = None,
+    family_fold: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Backstop a shipped-weight max/positive-median concentration blowout."""
+    """Backstop a shipped-weight max/positive-median concentration blowout.
+
+    With ``family_weights`` the ratio is evaluated on the support-family fold
+    (see :func:`_family_evaluation`); the row-level summary is reported
+    beside it.
+    """
 
     maximum = float(maximum_max_to_median_ratio)
     if not math.isfinite(maximum) or maximum <= 0.0:
         raise ValueError(
             "maximum_max_to_median_ratio must be finite and strictly positive."
         )
-    summary = uk_weight_summary(weights)
-    raw_ratio = summary["max_to_median_positive_weight"]
+    evaluated, details = _family_evaluation(weights, family_weights, family_fold)
+    raw_ratio = evaluated["max_to_median_positive_weight"]
     failures: tuple[str, ...]
     if raw_ratio is None:
         failures = (
@@ -662,9 +846,10 @@ def uk_weight_ratio_gate(
         )
     else:
         ratio = float(raw_ratio)
+        basis = " (family-folded)" if family_weights is not None else ""
         failures = (
             (
-                f"Max/positive-median weight ratio {ratio!r} exceeds the "
+                f"Max/positive-median weight ratio{basis} {ratio!r} exceeds the "
                 f"reviewed maximum {maximum!r}.",
             )
             if ratio > maximum
@@ -674,7 +859,7 @@ def uk_weight_ratio_gate(
         name="weight_ratio",
         passed=not failures,
         failures=failures,
-        details={**summary, "maximum_max_to_median_ratio": maximum},
+        details={**details, "maximum_max_to_median_ratio": maximum},
     )
 
 

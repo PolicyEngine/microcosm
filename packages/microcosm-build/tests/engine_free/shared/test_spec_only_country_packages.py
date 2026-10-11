@@ -161,6 +161,37 @@ def test__given_greenfield_country_packages__then_armenia_uses_the_typed_schema(
     }
 
 
+def test__given_greenfield_country_packages__then_new_zealand_uses_the_typed_schema() -> (
+    None
+):
+    # Given
+    country_roots = {root.name: root for root in _country_package_roots()}
+
+    # When
+    new_zealand = country_roots["nz"]
+    manifest = json.loads(
+        (new_zealand / "country_package.json").read_text(encoding="utf-8")
+    )
+    resource_kinds = {row["kind"] for row in manifest["resources"]}
+    legacy_paths = {
+        row["path"] for row in manifest["resources"] if row["kind"] == "legacy_json"
+    }
+
+    # Then
+    assert manifest["schema_version"] == 1
+    assert resource_kinds == ALLOWED_COUNTRY_RESOURCE_KINDS & {
+        "bundle",
+        "catalogs",
+        "geography",
+        "legacy_json",
+        "sources",
+        "spine",
+        "vintages",
+    }
+    assert all(PurePosixPath(path).suffix == ".json" for path in legacy_paths)
+    assert not (COUNTRY_PACKAGE_ROOT / "nz_runtime").exists()
+
+
 def test__given_country_specs__then_no_python_entrypoints_are_declared() -> None:
     # Given
     specs = [
@@ -315,9 +346,10 @@ def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bo
     )
     # A Ledger fact identity (``ledger.aggregate_fact.v2:<hex>``) is content
     # addressing data, never an entrypoint; the colon separates the key kind
-    # from its digest and the digest can happen to start with a letter.
+    # from its digest and the digest can happen to start with a letter. A
+    # diagnostic reference pins the same identity as its ``ledger_fact_key``.
     ledger_fact_identity = (
-        key == "aggregate_fact_key"
+        key in {"aggregate_fact_key", "ledger_fact_key"}
         and isinstance(value, str)
         and re.fullmatch(r"ledger\.[a-z_]+\.v\d+:[0-9a-f]{24}", value) is not None
     )

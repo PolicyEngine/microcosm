@@ -33,8 +33,27 @@ _TEST_PATHS = paths_for("microcosm-build")
             {"household", "person"},
         ),
         (
+            "nz",
+            2026,
+            {
+                "family.family_household_id",
+                "family.family_id",
+                "household.household_id",
+                "household.household_weight",
+                "person.age",
+                "person.donor_country_code",
+                "person.person_family_id",
+                "person.person_household_id",
+                "person.person_id",
+                "person.region_code",
+                "person.sex",
+                "person.support_stratum",
+            },
+            {"family", "household", "person"},
+        ),
+        (
             "uk",
-            2023,
+            2025,
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -76,6 +95,7 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
 def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None:
     am = compile_spec(load_bundle("am"))
     be = compile_spec(load_bundle("be"))
+    nz = compile_spec(load_bundle("nz"))
     uk = compile_spec(load_bundle("uk"))
 
     assert am.resource("spine")["support_roles"] == [
@@ -83,6 +103,9 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
     ]
     assert be.resource("spine")["support_roles"] == [
         {"id": "silc_base", "kind": "none"}
+    ]
+    assert nz.resource("spine")["support_roles"] == [
+        {"id": "populace_us_donor_base", "kind": "none"}
     ]
     assert uk.resource("spine")["support_roles"] == [
         {
@@ -99,6 +122,10 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
         "assign": "kernel:clone_assign_communes",
         "validate": "kernel:be_commune_geography_gate",
     }
+    assert nz.resource("geography")["assignment"]["kernels"] == {
+        "assign": "kernel:assign_nz_regions",
+        "validate": "kernel:nz_region_geography_gate",
+    }
     assert uk.resource("geography")["assignment"]["kernels"] == {
         "assign": "kernel:assign_uk_geography_ladder",
         "validate": "kernel:uk_geography_ladder_gate",
@@ -109,14 +136,18 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
     country_contract_ids = {
         "am_community_geography_gate",
         "assign_am_marz",
+        "assign_nz_regions",
         "clone_assign_communities",
         "load_populace_us_support_pool",
         "silc_load",
         "clone_assign_communes",
         "be_commune_geography_gate",
         "load_uk_national_frame",
+        "nz_region_geography_gate",
+        "build_uk_frs_spine",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
+        "load_uk_atomic_area_support",
     }
 
     assert country_contract_ids == F0_CONTRACT_ONLY_KERNEL_IDS
@@ -173,6 +204,35 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
         "gates.json",
         "geography_spine.json",
         "release_contract.json",
+        "source_stages.json",
+        "target_references.json",
+    }
+
+
+def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
+    spec = load_country_spec("nz")
+
+    assert spec.sources is not None
+    assert tuple(spec.sources.stage_map()) == ("load_populace_us_support_pool",)
+    assert spec.geography_spine is not None
+    assert spec.geography_spine.geography_spine.stage == "assign_nz_regions"
+    assert spec.gates is not None
+    assert spec.release_contract is not None
+    assert not spec.release_contract.artifact_repo_private
+    assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "as_area_crosswalk.json",
+        "as_rate_bridge.json",
+        "axiom_input_closure.json",
+        "axiom_rules_bindings.json",
+        "benefit_unit_rule.json",
+        "currency_bridge.json",
+        "export_contract.json",
+        "gates.json",
+        "geography_spine.json",
+        "holdout_references.json",
+        "precal_references.json",
+        "release_contract.json",
+        "scenarios.json",
         "source_stages.json",
         "target_references.json",
     }
@@ -282,6 +342,33 @@ def test_am_smoke_build_refuses_without_harvests_and_stage_bindings() -> None:
         match=(
             r"missing \['load_populace_us_support_pool', 'assign_am_marz', "
             r"'clone_assign_communities'\].*There are no stubs or fallbacks"
+        ),
+    ):
+        country_stage_plan(spec, {})
+
+
+def test_nz_smoke_build_refuses_without_evidenced_inputs_and_stage_bindings() -> None:
+    """A valid spec package must not turn missing NZ runtime bindings into stubs."""
+
+    spec = load_country_spec("nz")
+    compiled = compile_spec(spec.resolved_spec)
+    assert compiled.spec_binding.country == "nz"
+    assert not compiled.producer_graph.present
+    assert compiled.nodes == ()
+
+    stages = spec.sources.stage_map()
+    assert {
+        artifact["kind"]
+        for artifact in stages["load_populace_us_support_pool"].artifacts
+    } == {"public_microdata"}
+    build_package = _TEST_PATHS.package / "src/microcosm/build"
+    assert not (build_package / "nz_runtime").exists()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"missing \['load_populace_us_support_pool', 'assign_nz_regions'\].*"
+            r"There are no stubs or fallbacks"
         ),
     ):
         country_stage_plan(spec, {})

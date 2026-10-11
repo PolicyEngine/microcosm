@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1124
+ACTIVE_REFERENCE_COUNT = 1231
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -229,6 +229,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_window",
         "linear_combination",
         "monthly_window_average",
+        "monthly_window_count_x_mean",
         "monthly_window_sum_average",
         "scaled_by_ratio",
     ]
@@ -749,18 +750,19 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1124,
+        "active": 1231,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 13,
+        "signed_excluded": 16,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
     outcomes = membership["fanout_family_outcomes"]
     (cgt_outcome,) = [entry for entry in outcomes if entry["family"] == "hmrc_cgt"]
-    # 24 age-band rows, 24 region-tier cells and 24 size-of-gain rows
-    # (microcosm#725, #467).
+    # 24 age-band rows, 24 region-tier cells, 24 size-of-gain rows
+    # (microcosm#725, #467), 16 Table 4.1 BADR/IR band rows and 12 Table 3
+    # taxable-income margin rows (microcosm#1014).
     assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
-    assert cgt_outcome["active_reference_count"] == 74
+    assert cgt_outcome["active_reference_count"] == 102
     assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
@@ -858,10 +860,33 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "the same publication."
             ),
         },
+        {
+            "family": "dwp_state_pension",
+            "status": "active_english_region_and_amount_band_fanout",
+            # 18 English-region cells and 19 weekly amount bands: the empty new
+            # State Pension £40-£60 band is signed out (microcosm#1069).
+            "active_reference_count": 37,
+            "signed_rationale": (
+                "The State Pension recipients by type fan out over the nine "
+                "English regions (Scotland and Wales are their own rows, since "
+                "DWP publishes no Northern Ireland cell for a twelve-area tier) "
+                "and over DWP's weekly amount bands, whose 'all' margin is a "
+                "total row the detail measure pin leaves out; the empty new "
+                "State Pension £40-£60 band is signed out (microcosm#1069)."
+            ),
+        },
     ]
     rationales = membership["signed_exclusion_rationales"]
     cgt_rows = [entry for entry in rationales if entry["family"] == "hmrc_cgt"]
     assert [(entry["target_id"], entry["row"]) for entry in cgt_rows] == [
+        (
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band.individuals_total",
+        ),
+        (
+            "hmrc.cgt.badr_ir_taxpayers_by_band",
+            "hmrc.cgt.badr_ir_taxpayers_by_band.individuals_total",
+        ),
         ("hmrc.cgt.gains_by_age_band", "hmrc.cgt.gains_by_age_band.age_0_to_15"),
         ("hmrc.cgt.gains_by_gain_band", "hmrc/capital_gains_band_0"),
         ("hmrc.cgt.tax_by_age_band", "hmrc.cgt.tax_by_age_band.age_0_to_15"),
@@ -872,7 +897,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         ("hmrc.cgt.taxpayers_by_gain_band", "hmrc/cgt_taxpayers_band_0"),
     ]
     assert all(entry["status"] == "signed_excluded" for entry in cgt_rows)
-    assert [entry for entry in rationales if entry["family"] != "hmrc_cgt"] == [
+    pension_rows = [
+        entry for entry in rationales if entry["family"] == "dwp_state_pension"
+    ]
+    assert [(entry["target_id"], entry["row"]) for entry in pension_rows] == [
+        (
+            "dwp.state_pension.recipients_new_by_weekly_amount",
+            "dwp.state_pension.recipients_new_by_weekly_amount."
+            "40_00_to_under_60_00__new_state_pension",
+        )
+    ]
+    assert "no record on the frame" in pension_rows[0]["signed_rationale"]
+    assert [
+        entry
+        for entry in rationales
+        if entry["family"] not in {"hmrc_cgt", "dwp_state_pension"}
+    ] == [
         {
             "family": "hmrc_spi",
             "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -1480,7 +1520,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 50
+    assert len(two_level) == 52
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1557,8 +1597,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows.
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 573
+    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows, and
+    # 18 English-region State Pension cells (microcosm#1069).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 591
     # The twelve ONS cells of a band sum to the retired UK row of the same
     # publication (the 0-9 band: 7,553,013 at mid-2024).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
@@ -1621,6 +1662,36 @@ def test_cgt_band_fanout_row_without_incumbent_name_takes_the_declared_form() ->
     )
     # With no incumbent names at all the same form applies.
     assert _fanout_name(declared, fact, {}) == "hmrc/capital_gains_band_3000"
+
+
+def test_dimension_value_fanout_naming_names_rows_by_their_sole_dimension() -> None:
+    # HMRC CGT Table 3's all-gains margin: every row sits at layout value
+    # all_gains and differs only in its taxable-income band (microcosm#1014).
+    target = {
+        "target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "fanout_row_naming": "dimension_value",
+        "bindings": {
+            "policyengine": {"metric_name": "hmrc/cgt_taxpayers_by_taxable_income_band"}
+        },
+    }
+
+    def fact(dimensions):
+        return {"dimensions": dimensions, "layout": {"groupby_value_id": "all_gains"}}
+
+    assert _fanout_name(
+        target, fact({"cgt_taxable_income_band": "income_125140_to_199999"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.income_125140_to_199999")
+    # Without the rule every margin row would take the shared layout value.
+    undeclared = {k: v for k, v in target.items() if k != "fanout_row_naming"}
+    assert _fanout_name(
+        undeclared, fact({"cgt_taxable_income_band": "income_0_to_37699"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.all_gains")
+    for dimensions in (
+        {},
+        {"cgt_taxable_income_band": "income_0_to_37699", "taxpayer_type": "all"},
+    ):
+        with pytest.raises(ValueError, match="by their dimension value"):
+            _fanout_name(target, fact(dimensions), {})
 
 
 def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:

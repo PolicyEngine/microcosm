@@ -10,7 +10,7 @@ row-wise local geography.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -45,6 +45,10 @@ SPI_PRIOR_MASS_CHANGE_REASON = (
     "Allocate 50% of certified UK national household prior mass to the "
     "rebuilt 2022-23 SPI support channel; total national mass is conserved."
 )
+#: The allocation stratum that separates households with a member at or over
+#: State Pension age (microcosm#1069). It is derived for the allocation only and
+#: never written to the frame.
+SPI_PENSION_AGE_STRATUM_COLUMN = "household_has_state_pension_age_member"
 
 SPI_INCOME_COMPONENT_COLUMNS = (
     "employment_income",
@@ -190,6 +194,9 @@ class UKSPISupportResult:
     mass_log: tuple[MassChangeRecord, ...] = ()
     replaced_spi_households: int = 0
     spi_prior_mass_share: float = 0.0
+    pension_age_spi_prior_mass_share: float | None = None
+    state_pension_age: int | None = None
+    pension_age_allocation: Mapping[str, float] | None = None
 
     @property
     def n_spi_households(self) -> int:
@@ -458,8 +465,19 @@ def build_uk_spi_support_channel(
     zero_weight_declarations: (
         Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]]
     ) = (),
+    pension_age_share: float | None = None,
+    state_pension_age: int | None = None,
 ) -> UKSPISupportResult:
-    """Stack the E7 SPI support channel and allocate prior mass by stratum."""
+    """Stack the E7 SPI support channel and allocate prior mass by stratum.
+
+    With ``pension_age_share`` the strata also split households with a member
+    at or over ``state_pension_age`` from the rest, and the SPI channel takes
+    that share of the pension-age strata's mass (``spi_prior_mass_share`` of
+    the others). Every adult in an SPI household carries a taxpayer's income,
+    and the channel's households are drawn unweighted with one weight per
+    region, so without the split the channel holds more pension-age mass than
+    the FRS design gives pension-age households (microcosm#1069).
+    """
 
     if not isinstance(input_weight_kind, WeightKind):
         raise TypeError("input_weight_kind must be a WeightKind.")
@@ -475,6 +493,19 @@ def build_uk_spi_support_channel(
     stratum_columns = tuple(str(column) for column in strata_columns)
     if not stratum_columns or any(not column for column in stratum_columns):
         raise ValueError("strata_columns must contain non-empty column names.")
+    if pension_age_share is not None:
+        pension_share = float(pension_age_share)
+        if not np.isfinite(pension_share) or not 0.0 < pension_share < 1.0:
+            raise ValueError("pension_age_share must be finite and in (0, 1).")
+        if not isinstance(state_pension_age, int) or state_pension_age <= 0:
+            raise ValueError(
+                "pension_age_share needs a positive integer state_pension_age."
+            )
+        if SPI_PENSION_AGE_STRATUM_COLUMN in stratum_columns:
+            raise ValueError(
+                f"{SPI_PENSION_AGE_STRATUM_COLUMN} is derived by the allocation; "
+                "do not pass it as a stratum column."
+            )
 
     stacked = create_uk_spi_support_tables(
         person=person,
@@ -495,13 +526,49 @@ def build_uk_spi_support_channel(
                 "UK SPI support pre-clone zero-weight gate failed: "
                 f"{list(gate.failures)}."
             )
-    return _allocate_spi_prior_mass(
+    if pension_age_share is None:
+        return _allocate_spi_prior_mass(
+            stacked,
+            spi_prior_mass_share=share,
+            input_weight_kind=input_weight_kind,
+            mass_log=mass_log,
+            strata_columns=stratum_columns,
+        )
+    pension_age = _households_with_member_at_or_over(
+        stacked.person, stacked.household, age=int(state_pension_age)
+    )
+    flagged = replace(
         stacked,
+        household=stacked.household.assign(
+            **{SPI_PENSION_AGE_STRATUM_COLUMN: pension_age}
+        ),
+    )
+    allocated = _allocate_spi_prior_mass(
+        flagged,
         spi_prior_mass_share=share,
         input_weight_kind=input_weight_kind,
         mass_log=mass_log,
-        strata_columns=stratum_columns,
+        strata_columns=(*stratum_columns, SPI_PENSION_AGE_STRATUM_COLUMN),
+        pension_age_share=float(pension_age_share),
     )
+    return replace(
+        allocated,
+        household=allocated.household.drop(columns=[SPI_PENSION_AGE_STRATUM_COLUMN]),
+        state_pension_age=int(state_pension_age),
+    )
+
+
+def _households_with_member_at_or_over(
+    person: pd.DataFrame, household: pd.DataFrame, *, age: int
+) -> np.ndarray:
+    """True where a household has a member aged ``age`` or over."""
+
+    _require_columns(person, ("person_household_id", "age"), label="person")
+    ages = pd.to_numeric(person["age"], errors="coerce")
+    if ages.isna().any():
+        raise ValueError("person.age must be numeric to form the pension-age strata.")
+    members = set(person.loc[ages.ge(age), "person_household_id"])
+    return household["household_id"].isin(members).to_numpy(dtype=bool)
 
 
 def fill_support_channel_from_source(
@@ -579,7 +646,8 @@ def fill_support_channel_from_source(
 
 
 def _coerce_zero_weight_declarations(
-    declarations: Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]],
+    declarations: Sequence[UKZeroWeightStratumDeclaration]
+    | Sequence[Mapping[str, Any]],
 ) -> tuple[UKZeroWeightStratumDeclaration, ...]:
     materialized: list[UKZeroWeightStratumDeclaration] = []
     for declaration in declarations:
@@ -779,6 +847,7 @@ def _allocate_spi_prior_mass(
     input_weight_kind: WeightKind,
     mass_log: tuple[MassChangeRecord, ...],
     strata_columns: tuple[str, ...],
+    pension_age_share: float | None = None,
 ) -> UKSPISupportResult:
     household = result.household.copy()
     channels = household[support_channel_column("household")]
@@ -803,11 +872,9 @@ def _allocate_spi_prior_mass(
         dropna=False,
     )
     stratum_base_mass = grouped["_base_mass"].transform("sum").to_numpy(dtype=float)
-    stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(
-        dtype=np.int64
-    )
-    unrepresented_base = base_mask & (stratum_base_mass > 0.0) & (
-        stratum_spi_count == 0
+    stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(dtype=np.int64)
+    unrepresented_base = (
+        base_mask & (stratum_base_mass > 0.0) & (stratum_spi_count == 0)
     )
     if unrepresented_base.any():
         examples = (
@@ -831,11 +898,23 @@ def _allocate_spi_prior_mass(
             "mass and a positive support quota."
         )
 
+    pension_age = (
+        household[SPI_PENSION_AGE_STRATUM_COLUMN].to_numpy(dtype=bool)
+        if pension_age_share is not None
+        else np.zeros(len(household), dtype=bool)
+    )
+    household_share = np.where(
+        pension_age,
+        spi_prior_mass_share if pension_age_share is None else pension_age_share,
+        spi_prior_mass_share,
+    )
     final_weights = np.zeros_like(pre_weights)
-    final_weights[base_mask] = pre_weights[base_mask] * (1.0 - spi_prior_mass_share)
+    final_weights[base_mask] = pre_weights[base_mask] * (
+        1.0 - household_share[base_mask]
+    )
     final_weights[spi_mask] = (
         stratum_base_mass[spi_mask]
-        * spi_prior_mass_share
+        * household_share[spi_mask]
         / stratum_spi_count[spi_mask]
     )
 
@@ -859,8 +938,21 @@ def _allocate_spi_prior_mass(
         old_total=old_total,
         new_total=allocated_weights.total,
         declared_factor=1.0,
-        reason=_spi_prior_mass_change_reason(spi_prior_mass_share),
+        reason=_spi_prior_mass_change_reason(
+            spi_prior_mass_share, pension_age_share=pension_age_share
+        ),
     )
+    pension_age_allocation = None
+    if pension_age_share is not None:
+        final = allocated_weights.values
+        pension_age_allocation = {
+            "pension_age_households": int((pension_age & base_mask).sum()),
+            "pension_age_spi_households": int((pension_age & spi_mask).sum()),
+            "pension_age_prior_mass": float(pre_weights[pension_age].sum()),
+            "pension_age_spi_mass": float(final[pension_age & spi_mask].sum()),
+            "other_prior_mass": float(pre_weights[~pension_age].sum()),
+            "other_spi_mass": float(final[~pension_age & spi_mask].sum()),
+        }
     return UKSPISupportResult(
         person=result.person,
         benunit=result.benunit,
@@ -870,6 +962,8 @@ def _allocate_spi_prior_mass(
         household_weight_kind=WeightKind.IMPORTANCE,
         mass_log=(*mass_log, allocation_record),
         spi_prior_mass_share=spi_prior_mass_share,
+        pension_age_spi_prior_mass_share=pension_age_share,
+        pension_age_allocation=pension_age_allocation,
     )
 
 
@@ -996,7 +1090,17 @@ def _positive_float_from_bits(bits: int) -> float:
     return float(np.asarray(bits, dtype=np.uint64).view(np.float64))
 
 
-def _spi_prior_mass_change_reason(share: float) -> str:
+def _spi_prior_mass_change_reason(
+    share: float, *, pension_age_share: float | None = None
+) -> str:
+    if pension_age_share is not None:
+        return (
+            f"Allocate {share:.12g} of certified UK national household prior mass "
+            "in households without, and "
+            f"{pension_age_share:.12g} in households with, a member at or over "
+            "State Pension age to the rebuilt 2022-23 SPI support channel; total "
+            "national mass is conserved."
+        )
     if np.isclose(share, DEFAULT_SPI_PRIOR_MASS_SHARE, rtol=0.0, atol=0.0):
         return SPI_PRIOR_MASS_CHANGE_REASON
     return (
@@ -1177,6 +1281,7 @@ __all__ = [
     "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
+    "SPI_PENSION_AGE_STRATUM_COLUMN",
     "SPI_PRIOR_MASS_CHANGE_REASON",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",

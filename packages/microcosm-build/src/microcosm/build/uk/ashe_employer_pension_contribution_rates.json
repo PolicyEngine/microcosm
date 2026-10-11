@@ -1,0 +1,4118 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "ashe_employer_pension_contribution_rates.json",
+  "purpose": "ONS ASHE 2024 workplace pension tables: the share of jobs in each employer contribution band (full pay) by pension type and sector, all industries (Table P10), and jobs by pension type and sector (Table P2). Consumed by the FRS HMRC spine-leaves stage, which draws each employer-scheme member's employer contribution rate for their scheme type and sector (microcosm#1069 c9, R6).",
+  "consumers": [
+    "uk_runtime.employer_pension_contributions"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 344402,
+    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+  },
+  "selections": [
+    {
+      "label": "ashe_p10_employer_rate_band_share_full_pay_by_type_and_sector",
+      "selector": {
+        "source_name": "ons",
+        "source_concept": "ons.workplace_pension_employer_contribution_band_share",
+        "geography_id": "K02000001",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2024"
+        ],
+        "dimensions": [
+          "contribution_basis",
+          "employer_contribution_rate_band",
+          "pension_type",
+          "sector",
+          "sic2007_section",
+          "sic2007_summary_category"
+        ],
+        "dimension_values": {
+          "contribution_basis": "full_pay",
+          "sic2007_section": "all",
+          "sic2007_summary_category": "all"
+        }
+      },
+      "row_count": 68
+    },
+    {
+      "label": "ashe_p2_jobs_by_type_and_sector",
+      "selector": {
+        "source_name": "ons",
+        "source_concept": "ons.workplace_pension_jobs_by_type",
+        "geography_id": "K02000001",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2024"
+        ],
+        "dimensions": [
+          "pension_type",
+          "sector",
+          "sic2007_section",
+          "sic2007_summary_category",
+          "weekly_earnings_band"
+        ],
+        "dimension_values": {
+          "sic2007_section": "all",
+          "sic2007_summary_category": "all",
+          "weekly_earnings_band": "all"
+        }
+      },
+      "row_count": 13
+    }
+  ],
+  "row_count": 81,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93c0cdb16a77b0b81b59f540",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60586902e9dd81987b452fdf",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__all_pension_types.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 5.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eefa99a3a5fdcc3983efb156",
+      "semantic_fact_key": "ledger_semantic_fact_v2_62d99c5b4019188ae8683a5d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__all_pension_types.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 5.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ce0ebb782764efc07c2aadb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_221f2158d0f9620786e9399c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.private_sector__all_pension_types.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_803e0f9848bece059795731a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d4e5a501a983b3f01fc6f0d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__all_pension_types.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1216210b2ec6b7997e467f8d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aa6dec806a6f8745f4746789",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__all_pension_types.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 28.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8cfe946485ce77a0061ae53e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ab1755f3314da7d04d43fbe4",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__all_pension_types.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a001a3e905400d9b01baf361",
+      "semantic_fact_key": "ledger_semantic_fact_v2_743bb8299fd68234a7fdefe6",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__all_pension_types.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "all",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 48.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a31d9e670950dc7f9120acb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d35bf969c372973e0f731a8e",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__defined_benefit.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 3.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1862003590801261b1caedd4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9dd70da7e66ee03578cc7139",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__defined_benefit.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 19.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18407118c82d979d52f81aac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f1f044ef18c8e061c4e6c24",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.private_sector__defined_benefit.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 7.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_46f6ce1ff44e94d67792d345",
+      "semantic_fact_key": "ledger_semantic_fact_v2_244d4848fc5fc2d53eb2094c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__defined_benefit.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 11.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7e2bd273b45315e79a081c7d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e7a8552ca0da66aac84f21eb",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__defined_benefit.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 18.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0adcc1eb328379cd4aa7dded",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1981b1c2ddbc1bc8222efd56",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__defined_benefit.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 5.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4cb1415c8b69672913193a39",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d35d536f9222ca08c179f79",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__defined_benefit.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 34.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f1e93f5efb1e63b0e720cf59",
+      "semantic_fact_key": "ledger_semantic_fact_v2_399b35a22bc0bd500598eca4",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__defined_contribution.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 6.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ead155b7c4b46fbb809edf97",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4589b9ed81e6537d6f1225b2",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__defined_contribution.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 4.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bb71c29d73d028536f804305",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd41a6bce05da8fec8ef75b1",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.private_sector__defined_contribution.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7a2ecb366ad58d4d1b97dccb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5f359d7efc69fbbca51b05b",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__defined_contribution.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_556c513fa47866299dd4100c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fb80870f6152fdca5b424564",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__defined_contribution.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 23.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_044abe3d6eab0d3e1b82295b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ec4d895986500bfef15cc525",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__defined_contribution.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 8.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fb0d06b00163204f667ab27e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f7aa5e95a878af2dd503384c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__defined_contribution.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 54.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fb9bee84fba03efce7a6a06",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f43c64d108d7b2fa479e3bdd",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__group_personal_pension.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 4.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c35510ba1b3ed2f0370fbad2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b6c83182427335941b39f16",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__group_personal_pension.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 3.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7dd42732996af44074b5057a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a3446d5f662dd301955ea057",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.private_sector__group_personal_pension.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d4226e6982cbbeba004660ec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c6699f23c7440abcadc52a45",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__group_personal_pension.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_869faf29ed63489db9de1499",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6a9074bd247ceb582cd209c3",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__group_personal_pension.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 38.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_863b02300ce178c5016a4ad4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_272ffcc03a7f956ecd084552",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__group_personal_pension.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 8.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ef9561d1d4936bf816f832be",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0659b2d56d0c997d8db35274",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__group_personal_pension.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 42.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f9ffbb4b15752976242022ae",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3ae713c73cabacf58d6be777",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__group_self_invested_personal_pension.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 6.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_408ed671e319763dfddb3fba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9bb3d5d6d20e2fefba937506",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__group_self_invested_personal_pension.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78f8d635f39f449faf785df5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9141d01577378803c2dc9986",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__group_self_invested_personal_pension.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_690cd04f82a4d2e61ef746ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_700210e1c6c567096b3a3f51",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__group_self_invested_personal_pension.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 50.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d76db16b72cf91dfef98aad3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_df0a7cb12af06184358517c8",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__group_self_invested_personal_pension.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 10.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_593763a4a3d9100460c6ed4b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9f2dec853b3ecde19949c5d4",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__group_self_invested_personal_pension.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_self_invested_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 25.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4eb7f7ae6fca6ac2f5bdbb53",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0d048518603576191847709c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.private_sector__group_stakeholder_pension.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 4.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_51008f70bd9e7a08ae14e8e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd15b4b76f448e606bcd1e5c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.private_sector__group_stakeholder_pension.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18cdc8a730e53eee3f39147c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fbf82bc90847ce6eb013bbb0",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.private_sector__group_stakeholder_pension.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e6f422abfd5b482d437dd23",
+      "semantic_fact_key": "ledger_semantic_fact_v2_26e28198818863246a24479d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.private_sector__group_stakeholder_pension.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed1c74c4fb62487bff5d9284",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e05614625f83c8675d020b3d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.private_sector__group_stakeholder_pension.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 31.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_555bc67ada97c92d980444f9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bea5a7f8f2bc87519848bb01",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.private_sector__group_stakeholder_pension.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 7.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d4afa05f95e24b4640cba6f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_33cc58f20e4c7e7d59a354ce",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.private_sector__group_stakeholder_pension.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "private_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 51.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a70912e85589f081326cbd5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cc8727b007a74ac2aa6d1923",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.public_sector__all_pension_types.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 3.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b159f0edd912c721024e7aff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1fd199a6c4d9d49f6375ece2",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.public_sector__all_pension_types.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 24.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_60258ea975fcb87b7e37d92e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b11e598d36ae718de3bedf51",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.public_sector__all_pension_types.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 20.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_661d88cca65062ec5246370d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f283e70a6ca8003f1d47db3",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.public_sector__all_pension_types.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 44.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_085b86ea42916e42f02797cd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3853f10b0351b63b1813478a",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.public_sector__all_pension_types.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 3.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_737967496debae64b2f8d993",
+      "semantic_fact_key": "ledger_semantic_fact_v2_13d5c6d192f736145700c543",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.public_sector__all_pension_types.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8751ffc413b2311e6a90a40e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3be083bc40e6f336c497ef90",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.public_sector__all_pension_types.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__all_pension_types",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "all",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_514ac3d611d5028170ec83e9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3e63db2d7a60e2de1c1b0811",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.public_sector__defined_benefit.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 2.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_032e14f588e2ca9d076c22b7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7ed127744b54a6374730cc02",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.public_sector__defined_benefit.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 24.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_100f6c8a7b68f50c9612859b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5c4d5412dcacfd09584988f4",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.public_sector__defined_benefit.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 21.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1072ec1d11d78c7dfe8615f6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_351dddd71376a5a912414b3d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.public_sector__defined_benefit.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 45.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6d031f385600112f9d67c363",
+      "semantic_fact_key": "ledger_semantic_fact_v2_adf5bbba775807ac00ba22d4",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.public_sector__defined_benefit.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 3.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c48511c056eca7abaa7b0322",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8bf63d89df1c2444e695c4bd",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.public_sector__defined_benefit.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 1.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca96a50564191af127164dbd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_77f8be38e38552254119dd71",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.public_sector__defined_benefit.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_benefit",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 0.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f9aaa7625b7cdec3ba5c9b4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_30f5845b37cb82cf51f531e6",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024.public_sector__defined_contribution.share_10_to_12",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_10_to_12",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.10_to_12.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "10% to < 12%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 5.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d853091242a4b1c2bebbf0b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60d4d1ff82621ebd28b17e59",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024.public_sector__defined_contribution.share_12_to_15",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_12_to_15",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.12_to_15.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "12% to < 15%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 28.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4ff9a6a870e96b7d1eda9e14",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a56116481c154fc0534a239c",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.public_sector__defined_contribution.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 14.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ac7835dcb10fe3eb5fd0c4a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5439e52b90f7bc816c00d9d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.public_sector__defined_contribution.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 34.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c51b95d8242cfab813513e47",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9a4bc96b864d975abaad4083",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.public_sector__defined_contribution.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 5.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bfe1dc6c3940dfdfcd462462",
+      "semantic_fact_key": "ledger_semantic_fact_v2_182a69fce0301d56938fb7dc",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024.public_sector__defined_contribution.share_8_to_10",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_8_to_10",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.8_to_10.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "8% to < 10%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 4.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9e266ea44a900612c7514d0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d385e3a9137faee4feba6f5d",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024.public_sector__defined_contribution.share_under_4",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_under_4",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.under_4.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__defined_contribution",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "Under 4%",
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 6.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f13e8f31e733ee6e1ed16dc8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a8171c71c0e8077be3877250",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.public_sector__group_personal_pension.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "group_personal_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 9.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d0b32f08c0eee49ccdd9f7aa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9f3001fcda29f05a91ebb107",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.public_sector__group_personal_pension.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "group_personal_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 69
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2fc0f6b619665f24b6e00c8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_550c292b32a3aaa3a78335b2",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.public_sector__group_personal_pension.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_personal_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "group_personal_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 7.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ee6c688295a52a91256776e1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2931210730faef5cb2b9b0a3",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024.public_sector__group_stakeholder_pension.share_15_to_20",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_15_to_20",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.15_to_20.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "15% to < 20%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 16
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d2f1767704fefd41fc75b3e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_973a4717669ee95e3f492447",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024.public_sector__group_stakeholder_pension.share_20_and_over",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_20_and_over",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.20_and_over.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "20% and over",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 47.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0cb733c9921fe77de6497685",
+      "semantic_fact_key": "ledger_semantic_fact_v2_672d26aa1ceb0f19b91aa09b",
+      "source_record_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024.public_sector__group_stakeholder_pension.share_4_to_8",
+      "concept": "ons.workplace_pension_employer_contribution_band_share",
+      "measure_id": "share_4_to_8",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p10.full_pay.4_to_8.share.cy2024",
+        "groupby_dimension": "ons.ashe_industry_pension_type",
+        "groupby_value_id": "public_sector__group_stakeholder_pension",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "contribution_basis": "full_pay",
+        "employer_contribution_rate_band": "4% to < 8%",
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P10: employer pension contribution bands (full pay) by pension type and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp10.zip!P10 estimates - Employer pension contributions (percentage of full pay) by pension type and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "1fed33447de0187a1d4171ed44428ff7cad1aa41771c7f93faacf3a2746486fd",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-employer-contribution-bands-by-industry-2024-full-pay/2026/1bc4baaf70a278f44d753db84148fda975572d892a13b48ef3a97f28082f3aa1/2024provisionalp10.zip"
+      },
+      "value": 12.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9b05bce12ad1cc14f7824d37",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c4621358c9471e84adfdebb1",
+      "source_record_id": "ons.ashe_pensions_2024.p2.defined_benefit.jobs.cy2024.private_sector__all_earnings.jobs_defined_benefit",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_defined_benefit",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.defined_benefit.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "defined_benefit",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 1333000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d6772fffa68209be2b9b71c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d380c1e2cb93c489b724c4ed",
+      "source_record_id": "ons.ashe_pensions_2024.p2.defined_contribution.jobs.cy2024.private_sector__all_earnings.jobs_defined_contribution",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_defined_contribution",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.defined_contribution.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "defined_contribution",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 7729000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f0144d278ac6c54fe9a13fef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d968962341b6b86e05798290",
+      "source_record_id": "ons.ashe_pensions_2024.p2.group_personal_pension.jobs.cy2024.private_sector__all_earnings.jobs_group_personal_pension",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_group_personal_pension",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.group_personal_pension.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "group_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 3688000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b7f1bb32436c7de5e286e8b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_369d2543fbec562d14fdc2f9",
+      "source_record_id": "ons.ashe_pensions_2024.p2.group_self_invested_personal_pension.jobs.cy2024.private_sector__all_earnings.jobs_group_self_invested_personal_pension",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_group_self_invested_personal_pension",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.group_self_invested_personal_pension.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "group_self_invested_personal_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 343000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0edf34c7dbc43a36e02441b0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_796a16c18aa33bac8c322fa5",
+      "source_record_id": "ons.ashe_pensions_2024.p2.group_stakeholder_pension.jobs.cy2024.private_sector__all_earnings.jobs_group_stakeholder_pension",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_group_stakeholder_pension",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.group_stakeholder_pension.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 1034000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_349f905a44cb69d085f6b0ce",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54859c92504958fd5feb3a8d",
+      "source_record_id": "ons.ashe_pensions_2024.p2.no_pension_provision.jobs.cy2024.private_sector__all_earnings.jobs_no_pension_provision",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_no_pension_provision",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.no_pension_provision.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "no_pension_provision",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 3815000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0051ad6094432ec4282e8035",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1f0556bc3b97450b5f315733",
+      "source_record_id": "ons.ashe_pensions_2024.p2.unknown_pension_provision.jobs.cy2024.private_sector__all_earnings.jobs_unknown_pension_provision",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_unknown_pension_provision",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.unknown_pension_provision.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "private_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "unknown_pension_provision",
+        "sector": "Private",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 202000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3651fcaad6c0d680fd60a502",
+      "semantic_fact_key": "ledger_semantic_fact_v2_17cd0b6ac1ecba27bb9c1f05",
+      "source_record_id": "ons.ashe_pensions_2024.p2.defined_benefit.jobs.cy2024.public_sector__all_earnings.jobs_defined_benefit",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_defined_benefit",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.defined_benefit.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "defined_benefit",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 5711000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27f771ae67513d37545bf6da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_49118ecc890c835d0accf810",
+      "source_record_id": "ons.ashe_pensions_2024.p2.defined_contribution.jobs.cy2024.public_sector__all_earnings.jobs_defined_contribution",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_defined_contribution",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.defined_contribution.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "defined_contribution",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 723000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_50ee88372612f6d2b2d8ce2a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce776160a7cea41abd0095f9",
+      "source_record_id": "ons.ashe_pensions_2024.p2.group_personal_pension.jobs.cy2024.public_sector__all_earnings.jobs_group_personal_pension",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_group_personal_pension",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.group_personal_pension.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "group_personal_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 102000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e94cbdc1955823fab4ab5842",
+      "semantic_fact_key": "ledger_semantic_fact_v2_924c33da43623720470068fe",
+      "source_record_id": "ons.ashe_pensions_2024.p2.group_stakeholder_pension.jobs.cy2024.public_sector__all_earnings.jobs_group_stakeholder_pension",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_group_stakeholder_pension",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.group_stakeholder_pension.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "group_stakeholder_pension",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 43000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eca63750497c6b5ad79fee20",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dda69ccbb2179197d4b8539f",
+      "source_record_id": "ons.ashe_pensions_2024.p2.no_pension_provision.jobs.cy2024.public_sector__all_earnings.jobs_no_pension_provision",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_no_pension_provision",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.no_pension_provision.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "no_pension_provision",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 729000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c1d3f2c28d5032cb3aceb4ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ff1ecfa656a856cce1f88911",
+      "source_record_id": "ons.ashe_pensions_2024.p2.unknown_pension_provision.jobs.cy2024.public_sector__all_earnings.jobs_unknown_pension_provision",
+      "concept": "ons.workplace_pension_jobs_by_type",
+      "measure_id": "jobs_unknown_pension_provision",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "employee_job"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.ashe_pensions_2024.p2.unknown_pension_provision.jobs.cy2024",
+        "groupby_dimension": "ons.ashe_industry_weekly_earnings",
+        "groupby_value_id": "public_sector__all_earnings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "pension_type": "unknown_pension_provision",
+        "sector": "Public",
+        "sic2007_section": "all",
+        "sic2007_summary_category": "all",
+        "weekly_earnings_band": "all"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "ASHE pension tables P2: pension membership by pension type, earnings and SIC2007 industry, 2024 provisional",
+        "source_file": "2024provisionalp2.zip!P2 estimates - Pension membership by pension type, earnings and SIC2007 industry - 2024 PROV.xlsx",
+        "source_sha256": "de6dfc4cf078f520f1fb4f8cb6d0ac53432507a6c91132dbb5d958c99a45a354",
+        "vintage": "ashe_pension_tables_2024_provisional",
+        "raw_r2_key": "raw/uk/ons/ons-ashe-pension-membership-by-industry-earnings-2024/2026/c47ddacb924b23198f8e12bd0915a35ab683597ca1fee1ba5d3cb52868bb43d4/2024provisionalp2.zip"
+      },
+      "value": 52000
+    }
+  ]
+}

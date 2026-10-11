@@ -13,12 +13,14 @@ from microcosm.build.ledger_targets import (
     apply_ledger_target_profile,
     compile_ledger_target_references,
     constraint_bound_shadowing_dimensions,
+    fact_matches_selector,
     hierarchy_seed_from_catalog,
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
     reference_fact_selectors,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
+    selector_field_is_supported,
     target_spec_from_ledger_reference,
 )
 from microcosm.calibrate import (
@@ -4945,3 +4947,177 @@ def test__given_a_malformed_window_reference__then_it_is_refused(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         _cy_window_reference(**overrides)
+
+
+def _per_year_measure_facts():
+    # DWP's benefit expenditure tables give each fiscal year its own measure.
+    return [
+        _cy_window_fact(
+            key=f"{measure}_{year}",
+            value=value,
+            opening_year=year,
+            measure_id=f"{measure}_{year}",
+            assertion="observation" if year < 2025 else "source_projection",
+            period_type="fiscal_year",
+        )
+        for measure, values in (
+            ("expenditure", {2023: 6.25, 2024: 6.85, 2025: 7.11, 2026: 7.27}),
+            ("caseload", {2024: 1.104, 2025: 1.109}),
+        )
+        for year, value in values.items()
+    ]
+
+
+_PER_YEAR_MEASURE_SELECTOR = {
+    "source_name": "irs_soi",
+    "geography_level": "country",
+    "geography_id": "0100000US",
+    "source_measure_id_by_opening_year": {
+        "2024": "expenditure_2024",
+        "2025": "expenditure_2025",
+    },
+}
+
+
+def test__given_a_year_to_measure_map__then_calendar_year_window_reads_one_series() -> (
+    None
+):
+    registry = compile_ledger_target_references(
+        _per_year_measure_facts(),
+        [_cy_window_reference(ledger_selector=_PER_YEAR_MEASURE_SELECTOR)],
+        country="uk",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * 6.85 + 0.75 * 7.11)
+    assert spec.metadata["ledger_calendar_year_window_series"] == "1"
+    assert spec.metadata["ledger_value_formula"] == (
+        "3/12 * FY2024 + 9/12 * FY2025 (the months to the end of calendar year 2025)"
+    )
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert {year: member["fact_key"] for year, member in members.items()} == {
+        "2024": "ledger.aggregate_fact.v2:expenditure_2024",
+        "2025": "ledger.aggregate_fact.v2:expenditure_2025",
+    }
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+
+
+def test__given_per_year_measures_without_the_map__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Each year's measure is its own series, so neither carries both years.
+    selector = {
+        key: value
+        for key, value in _PER_YEAR_MEASURE_SELECTOR.items()
+        if key != "source_measure_id_by_opening_year"
+    }
+
+    with pytest.raises(ValueError, match="from one series; found \\[2024, 2025\\]"):
+        compile_ledger_target_references(
+            _per_year_measure_facts(),
+            [_cy_window_reference(ledger_selector=selector)],
+            country="uk",
+        )
+
+
+def test__given_a_year_to_measure_map__then_a_fact_matches_only_its_own_year() -> None:
+    facts = {
+        (fact["layout"]["measure_id"], fact["period"]["value"]): fact
+        for fact in _per_year_measure_facts()
+    }
+    # A measure stamped at another year matches no entry of the map.
+    misdated = {
+        **facts[("expenditure_2025", 2025)],
+        "period": {
+            "type": "fiscal_year",
+            "value": 2024,
+        },
+    }
+
+    assert selector_field_is_supported("source_measure_id_by_opening_year")
+    assert fact_matches_selector(
+        facts[("expenditure_2024", 2024)], _PER_YEAR_MEASURE_SELECTOR
+    )
+    assert fact_matches_selector(
+        facts[("expenditure_2025", 2025)], _PER_YEAR_MEASURE_SELECTOR
+    )
+    assert not fact_matches_selector(misdated, _PER_YEAR_MEASURE_SELECTOR)
+    assert not fact_matches_selector(
+        facts[("expenditure_2026", 2026)], _PER_YEAR_MEASURE_SELECTOR
+    )
+    assert not fact_matches_selector(
+        facts[("caseload_2025", 2025)], _PER_YEAR_MEASURE_SELECTOR
+    )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"source_measure_id": "expenditure_2025"},
+            "declares both 'source_measure_id'",
+        ),
+        (
+            {
+                "source_measure_id_by_opening_year": {
+                    "FY2024": "expenditure_2024",
+                    "2025": "expenditure_2025",
+                }
+            },
+            "four-digit opening year",
+        ),
+        ({"source_measure_id_by_opening_year": {}}, "non-empty mapping"),
+        ({"source_concept": ["a", "b"]}, "list-valued series key"),
+    ],
+)
+def test__given_a_malformed_year_to_measure_map__then_the_window_refuses(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _cy_window_reference(
+            ledger_selector={**_PER_YEAR_MEASURE_SELECTOR, **overrides}
+        )
+
+
+def test__given_a_map_of_other_years__then_calendar_year_window_refuses_at_resolution() -> (
+    None
+):
+    reference = _cy_window_reference(
+        ledger_selector={
+            **_PER_YEAR_MEASURE_SELECTOR,
+            "source_measure_id_by_opening_year": {
+                "2023": "expenditure_2023",
+                "2024": "expenditure_2024",
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="reads the years opening in \\[2024, 2025\\]"):
+        compile_ledger_target_references(
+            _per_year_measure_facts(), [reference], country="uk"
+        )
+
+
+def test__given_a_mapped_window_restamped_to_another_year__then_it_defers() -> None:
+    # A compile restamps references to its own period (the 2023 parity
+    # receipt); the map then names no year the window reads, so the row has
+    # no fact at or before the period, the way any unpublished year defers.
+    reference = replace(
+        _cy_window_reference(ledger_selector=_PER_YEAR_MEASURE_SELECTOR), period=2023
+    )
+
+    with pytest.raises(ValueError, match="at or before target period"):
+        compile_ledger_target_references(
+            _per_year_measure_facts(), [reference], country="uk"
+        )
+
+
+def test__given_a_year_to_measure_map_outside_a_window__then_reference_refuses() -> (
+    None
+):
+    with pytest.raises(
+        ValueError, match="composes the years of a calendar_year_window"
+    ):
+        _cy_window_reference(
+            ledger_selector=_PER_YEAR_MEASURE_SELECTOR, value_operation="identity"
+        )

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import copy
-import hashlib
 import json
 from pathlib import Path
 
@@ -12,7 +10,7 @@ from microcosm.build.source_manifest import (
     FORBIDDEN_SOURCE_DEPENDENCIES,
     SourceManifest,
 )
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.frame import Frame
 from microcosm.graph import compile_graph
 from test_support.paths import paths_for
@@ -21,7 +19,6 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 ROOT = _TEST_PATHS.repository
 UK_PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build/uk"
-FROZEN_SOURCE_STAGES = UK_PACKAGE / "hmrc_income_source_stages.json"
 CANONICAL_SOURCE_STAGES = UK_PACKAGE / "source_stages.json"
 E3_STAGE_NAMES = [
     "frs_employment",
@@ -44,6 +41,8 @@ E4_STAGE_NAMES = [
 ]
 E5_STAGE_NAMES = [
     "was_wealth",
+    # #1003: the Lifetime ISA holdings read the was_wealth household draws.
+    "was_lisa",
     "regional_property_uprating",
 ]
 E6_STAGE_NAMES = [
@@ -64,18 +63,30 @@ HOUSING_SHELL_STAGE_NAMES = [
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
+SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
+    "spi_benefit_coherence",
+]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
+]
+PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
+    "pension_credit_take_up",
+]
+CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
+    "child_benefit_take_up",
 ]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
 E8_STAGE_NAMES = [
+    "cgt_support_split",
     "cgt_incidence_clone",
-    "cgt_band_donors",
     "hmrc_cgt_gains_spine",
-    "hmrc_cgt_asset_type_spine",
     "cgt_incidence_anchor",
+    # microcosm#1063: the residential split carries the flag as weight and
+    # the asset-type stage types its arms, so both run after the anchor.
+    "cgt_residential_split",
+    "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -91,15 +102,13 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
+    *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+    *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
-    "frs_hmrc_retained_leaves",
-    "hmrc_spi_income",
 ]
-FROZEN_SOURCE_STAGES_SHA256 = (
-    "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea"
-)
 
 
 def _load_json(path: Path) -> dict:
@@ -111,11 +120,7 @@ def _identity(frame: Frame) -> Frame:
 
 
 def _uk_graph_stage_names(spec) -> list[str]:
-    manifest_stages = {
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    }
+    manifest_stages = {stage.stage for stage in spec.sources.stages}
     return [
         node_id
         for node_id in compile_graph(uk_spine_graph(spec)).order
@@ -127,20 +132,6 @@ def _assert_no_forbidden_dependency(value: object) -> None:
     text = json.dumps(value, sort_keys=True).lower()
     for dependency in FORBIDDEN_SOURCE_DEPENDENCIES:
         assert dependency not in text
-
-
-def _expected_reviewed_source() -> str:
-    return (
-        "PolicyEngine licensed UKDS mirror (private Hugging Face repository), "
-        "spi_2022_23.zip"
-    )
-
-
-def _rephrase_stage2_predictor_note(value: str) -> str:
-    return value.replace(
-        "policyengine-" + "uk-data frs_only.py",
-        "the incumbent UK data build's frs_only.py",
-    )
 
 
 class TestUKSourceStagesManifest:
@@ -171,25 +162,27 @@ class TestUKSourceStagesManifest:
     def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
         # uc_reporter_redraw stays after the donor stages: its engine screen
         # reads the WAS capital proxy where the FRS capital answer is missing.
+        # The CGT block opens with the support split (microcosm#1045).
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("hmrc_spi_income_spine") + 1 : names.index(
-                "cgt_incidence_clone"
-            )
+            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
+            *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+            *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
     def test_age_tail_runs_immediately_after_frs_spine(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
-        spine = [stage["stage"] for stage in canonical["stages"][:-2]]
+        spine = [stage["stage"] for stage in canonical["stages"]]
 
         assert spine[1] == "age_tail"
 
@@ -204,97 +197,13 @@ class TestUKSourceStagesManifest:
             assert "age" not in stage.outputs, stage.stage
             assert "age" not in stage.rewrites, stage.stage
 
-    def test_e8_block_is_final_and_the_certified_pair_stays_last(self) -> None:
-        # The E8 stages stay contiguous at the end of the spine, while the
-        # certified pair stays at [-2:] (the frozen-copy lockstep test reads
-        # them from there). age_tail is now the post-frs_spine block, before
-        # every stage that conditions on age.
+    def test_e8_block_is_final_and_all_stages_are_canonical(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
-
-        assert names[-2:] == ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
-        spine = names[:-2]
-        start = spine.index(E8_STAGE_NAMES[0])
-        assert spine[start : start + len(E8_STAGE_NAMES)] == E8_STAGE_NAMES
-        assert spine[start + len(E8_STAGE_NAMES) :] == []
-
-    def test_copy_is_lockstep_with_frozen_original_except_citation_rewrites(
-        self,
-    ) -> None:
-        frozen = _load_json(FROZEN_SOURCE_STAGES)
-        canonical = _load_json(CANONICAL_SOURCE_STAGES)
-        frozen_stage = frozen["stages"][0]
-        stage1, stage2 = canonical["stages"][-2:]
-
-        expected_operations = copy.deepcopy(frozen_stage["operations"])
-        predictor_note = expected_operations[6]["reviewed_absent_predictors"][
-            "other_investment_income"
-        ]
-        expected_operations[6]["reviewed_absent_predictors"][
-            "other_investment_income"
-        ] = _rephrase_stage2_predictor_note(predictor_note)
-        # FRS retained leaves now come from the FRS 2024-25 spine while the
-        # frozen HMRC fact surface stays byte-pinned.
-        expected_operations[1]["source_vintage"] = "2024-25"
-        expected_operations[1]["mapped_build_period"] = 2024
-        # Signed period re-map (#723) for materialized HMRC SPI facts.
-        expected_operations[7]["mapped_build_period"] = 2024
-        expected_operations[7]["period_mapping"] = "latest_published_tax_year"
-
-        assert stage1["operations"] + stage2["operations"] == expected_operations
-        _assert_no_forbidden_dependency(
-            stage2["operations"][4]["reviewed_absent_predictors"][
-                "other_investment_income"
-            ]
-        )
-
-        expected_artifacts = copy.deepcopy(frozen_stage["artifacts"])
-        expected_artifacts[0]["reviewed_source"] = _expected_reviewed_source()
-        # Signed period re-map (#723): the ODS source surface remains the
-        # frozen 2023-24 file, but the canonical manifest declares that it is
-        # replayed against build period 2024.
-        expected_artifacts[1]["mapped_build_period"] = 2024
-        expected_artifacts[1]["period_mapping"] = "latest_published_tax_year"
-        # Declared output-name correction (licensed-data acceptance finding):
-        # the frozen original listed the SPI concept "state_pension", but the
-        # stage writes the auxiliary column SPI_HMRC_STATE_PENSION_INCOME_COLUMN
-        # ("hmrc_spi_state_pension_income") — the model input state_pension is
-        # formula-owned and never a frame column here. Outputs became
-        # load-bearing when country_stage_plan compiled them into
-        # StagePlan.produces, so the copy declares the persisted truth. The
-        # operation payloads keep the concept name unchanged.
-        expected_outputs = [
-            "hmrc_spi_state_pension_income" if name == "state_pension" else name
-            for name in frozen_stage["outputs"]
-        ]
-        assert stage2["outputs"] == expected_outputs
-        assert stage2["grain"] == frozen_stage["grain"]
-        assert stage2["artifacts"] == expected_artifacts
-        _assert_no_forbidden_dependency(stage2["artifacts"])
-        _assert_no_forbidden_dependency(stage2["notes"])
-
-    def test_frozen_original_bytes_are_pinned(self) -> None:
-        digest = hashlib.sha256(FROZEN_SOURCE_STAGES.read_bytes()).hexdigest()
-
-        assert digest == FROZEN_SOURCE_STAGES_SHA256
-
-    def test_country_stage_plan_assembles_two_certified_uk_national_stages(
-        self,
-    ) -> None:
-        spec = load_country_spec("uk")
-        plan = country_stage_plan(
-            spec,
-            {
-                "frs_hmrc_retained_leaves": _identity,
-                "hmrc_spi_income": _identity,
-            },
-            stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
-        )
-
-        assert [stage.name for stage in plan.stages] == [
-            "frs_hmrc_retained_leaves",
-            "hmrc_spi_income",
-        ]
+        start = names.index(E8_STAGE_NAMES[0])
+        assert names[start:] == E8_STAGE_NAMES
+        assert "frs_hmrc_retained_leaves" not in names
+        assert "hmrc_spi_income" not in names
 
     def test_country_stage_plan_assembles_spine_plan(self) -> None:
         spec = load_country_spec("uk")
@@ -311,7 +220,7 @@ class TestUKSourceStagesManifest:
     @pytest.mark.parametrize(
         "implementations, match",
         [
-            ({"frs_hmrc_retained_leaves": _identity}, "missing"),
+            ({"frs_spine": _identity}, "missing"),
             (
                 {
                     "frs_spine": _identity,
@@ -326,6 +235,7 @@ class TestUKSourceStagesManifest:
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
                     "was_wealth": _identity,
+                    "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "lcfs_consumption": _identity,
@@ -337,19 +247,21 @@ class TestUKSourceStagesManifest:
                     "hmrc_spi_income_spine": _identity,
                     "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
+                    "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "pension_credit_take_up": _identity,
+                    "child_benefit_take_up": _identity,
                     "uc_deduction_attributes": _identity,
+                    "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
-                    "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
-                    "hmrc_cgt_asset_type_spine": _identity,
                     "cgt_incidence_anchor": _identity,
+                    "cgt_residential_split": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
-                    "frs_hmrc_retained_leaves": _identity,
-                    "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
                 },
                 "Unknown stage implementation",
@@ -380,14 +292,17 @@ class TestDeclaredOutputsAreWrittenColumns:
     """
 
     def test_stage1_outputs_are_exactly_the_retained_leaf_columns(self) -> None:
-        from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+        from microcosm.build.uk_runtime.frs_hmrc_source import (
             FRS_HMRC_RETAINED_LEAF_COLUMNS,
         )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
-        stage1 = stages["frs_hmrc_retained_leaves"]
-        assert stage1.outputs == tuple(FRS_HMRC_RETAINED_LEAF_COLUMNS)
+        stage1 = stages["frs_hmrc_spine_leaves"]
+        assert stage1.outputs == (
+            *FRS_HMRC_RETAINED_LEAF_COLUMNS,
+            "employer_pension_contributions",
+        )
 
     def test_e3_outputs_are_backed_by_runtime_written_columns(self) -> None:
         from microcosm.build.uk_runtime.etb_services import (
@@ -440,6 +355,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS,
             UC_DEDUCTION_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.was_lisa import (
+            UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_LISA_OUTPUT_COLUMNS,
+        )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_OUTPUT_COLUMNS,
@@ -478,6 +397,11 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["was_wealth"].nonnegative_outputs
             == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["was_lisa"].outputs == UK_WAS_LISA_OUTPUT_COLUMNS
+        assert (
+            stages["was_lisa"].nonnegative_outputs
+            == UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS
         )
         assert stages["uc_deduction_attributes"].outputs == UC_DEDUCTION_OUTPUT_COLUMNS
         assert (
@@ -534,11 +458,16 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert not (set(income.outputs) & set(income.rewrites))
 
     def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
-        from microcosm.build.uk_runtime.cgt_structure import (
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
-            HOUSEHOLD_IS_CGT_CLONE,
+        from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         )
-        from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
 
         stages = load_country_spec("uk").sources.stage_map()
 
@@ -547,16 +476,19 @@ class TestDeclaredOutputsAreWrittenColumns:
             "capital_gains",
         )
         assert stages["cgt_incidence_clone"].rewrites == ("capital_gains",)
-        assert stages["cgt_band_donors"].outputs == (
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
-            "capital_gains",
+        assert stages["cgt_support_split"].outputs == (
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
         )
-        assert stages["cgt_band_donors"].rewrites == ("capital_gains",)
+        assert stages["cgt_support_split"].rewrites == ()
         assert stages["hmrc_cgt_gains_spine"].outputs == ("capital_gains",)
         assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
         assert stages["salary_sacrifice"].outputs == (
             SALSAC_OUTPUT,
             "employee_pension_contributions",
+            "employment_income",
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
         assert stages["student_loans"].outputs == ("student_loan_plan",)
 
@@ -652,6 +584,16 @@ class TestE3ManifestLockstep:
             "allocate_within_group_waterfall",
             "record_mass_conservation_receipt",
         ]
+        assert [op.kind for op in stages["was_lisa"].operations] == [
+            "clean_was_lisa_donor",
+            "materialize_rules_engine_predictors",
+            "impute_lifetime_isa_ownership",
+            "impute_lifetime_isa_balance",
+            "support_clip",
+            "cap_lifetime_isa_to_financial_wealth",
+            "aggregate_person_to_household",
+            "record_mass_conservation_receipt",
+        ]
         assert [op.kind for op in stages["regional_property_uprating"].operations] == [
             "uprate_to_regional_reference",
             "record_mass_conservation_receipt",
@@ -700,7 +642,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
-            "derive",
+            "draw_employer_pension_contributions_from_rate_bands",
         ]
         assert [op.kind for op in stages["spi_support_channel"].operations] == [
             "stack_zero_weight_donors",
@@ -710,10 +652,11 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["hmrc_spi_income_spine"].operations] == [
             "verify_pinned_hmrc_source_pair",
             "strict_read_private_table",
+            "draw_spi_donor_ages_by_population",
             "fit_weighted_qrf_stage1",
             "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
-            "redraw_columns_from_fitted_qrf",
+            "zero_pension_age_reports_below_state_pension_age",
             "materialize_hmrc_income_bands_fail_closed",
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",
@@ -739,8 +682,8 @@ class TestE3ManifestLockstep:
             "clone_records",
             "draw_capital_gains_prior_from_banded_quantiles",
         ]
-        assert [op.kind for op in stages["cgt_band_donors"].operations] == [
-            "stack_band_donor_households"
+        assert [op.kind for op in stages["cgt_support_split"].operations] == [
+            "split_top_wealth_support_households"
         ]
         assert [op.kind for op in stages["spi_income_band_donors"].operations] == [
             "stack_income_band_donor_households"
@@ -788,7 +731,11 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.etb_services import (
             UK_ETB_SERVICES_OUTPUT_COLUMNS,
         )
-        from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
+        from microcosm.build.uk_runtime.etb_vat import (
+            UK_ETB_FAMILY_ROLE_COUNTS,
+            UK_ETB_VAT_ENGINE_PREDICTORS,
+            UK_ETB_VAT_PREDICTORS,
+        )
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
             DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES,
@@ -881,6 +828,10 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            == UK_ETB_VAT_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -894,7 +845,7 @@ class TestE3ManifestLockstep:
         )
         assert set(
             stages["etb_services"].operations[2].parameters["derived_predictors"]
-        ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
+        ) == {*UK_ETB_SERVICES_EDUCATION_COUNTS, *UK_ETB_FAMILY_ROLE_COUNTS}
         assert (
             tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
@@ -945,9 +896,15 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
-    def test_e5_debt_segment_predictors_lockstep(self) -> None:
+    def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS,
+            UK_WAS_DERIVED_TOTALS,
+            UK_WAS_DRAWN_ONLY_COLUMNS,
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+            UK_WAS_NET_FINANCIAL_LIABILITIES,
+            UK_WAS_STRATIFIED_TARGETS,
+            UK_WAS_TENURE_PREDICTORS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_PREDICTORS,
         )
 
@@ -956,15 +913,35 @@ class TestE3ManifestLockstep:
         qrf = stages["was_wealth"].operations[2]
 
         assert qrf.kind == "fit_weighted_qrf_chain"
-        assert tuple(qrf.parameters["debt_segment_predictors"]) == (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS
-        )
-        # The extra predictor belongs to the debt segment only: the shared
-        # base list, and so E5's first three segments, are unchanged.
-        assert not set(UK_WAS_DEBT_SEGMENT_PREDICTORS) & set(
-            qrf.parameters["predictors"]
-        )
         assert tuple(qrf.parameters["predictors"]) == UK_WAS_WEALTH_PREDICTORS
+        # Tenure enters every segment as the four-way flags (microcosm#1063);
+        # the engine's is_renting, which omits housing-association renters, is
+        # no predictor of the stage.
+        assert set(UK_WAS_TENURE_PREDICTORS) <= set(qrf.parameters["predictors"])
+        assert "is_renting" not in qrf.parameters["predictors"]
+        assert "debt_segment_predictors" not in qrf.parameters
+        assert {
+            target: tuple(categories)
+            for target, categories in qrf.parameters["stratified_targets"].items()
+        } == dict(UK_WAS_STRATIFIED_TARGETS)
+        declared = {
+            total: tuple(components)
+            for total, components in qrf.parameters["derived_totals"].items()
+        }
+        assert declared.pop("net_financial_wealth") == (
+            "gross_financial_wealth",
+            *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
+        )
+        assert declared == dict(UK_WAS_DERIVED_TOTALS)
+        assert tuple(qrf.parameters["internal_components"]) == (
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS
+        )
+        # The chain order names every output and every drawn-only column (the
+        # internal components, the dropped share-like component and the
+        # main-residence mortgage) exactly once.
+        assert sorted(qrf.parameters["chain_order"]) == sorted(
+            {*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS}
+        )
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")
@@ -997,10 +974,15 @@ class TestE3ManifestLockstep:
         stages = {stage.stage: stage for stage in spec.sources.stages}
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
-        assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
         # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
-        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 44
-        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 43
+        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44
+        assert stages["hmrc_spi_income_spine"].operations[5].parameters["seed"] == 43
+        # The donor age draw and the State Pension age guard take no seed of
+        # their own: ages draw on the stage-1 seed, the guard is deterministic
+        # (microcosm#1069).
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[2].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[6].parameters
         assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
@@ -1009,7 +991,9 @@ class TestE3ManifestLockstep:
         stages = load_country_spec("uk").sources.stage_map()
 
         assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
-        assert stages["cgt_band_donors"].operations[0].parameters["seed"] == 1
+        # The support split is deterministic: no seed, no salt (microcosm#1045).
+        assert "seed" not in stages["cgt_support_split"].operations[0].parameters
+        assert "salt" not in stages["cgt_support_split"].operations[0].parameters
         assert (
             stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )
@@ -1075,7 +1059,7 @@ class TestE3ManifestLockstep:
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
-        stage2 = stages["hmrc_spi_income"]
+        stage2 = stages["hmrc_spi_income_spine"]
         written = (
             set(SPI_INCOME_IMPUTATION_COLUMNS)
             | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
@@ -1106,6 +1090,9 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     from microcosm.build.uk_runtime.regional_uprating import (
         UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
     )
+    from microcosm.build.uk_runtime.was_lisa import (
+        UK_WAS_LISA_MASS_CONSERVATION_REASON,
+    )
     from microcosm.build.uk_runtime.was_wealth import (
         UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
     )
@@ -1115,6 +1102,7 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     stages = spec.sources.stage_map()
     expected = {
         "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "was_lisa": UK_WAS_LISA_MASS_CONSERVATION_REASON,
         "regional_property_uprating": (
             UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
         ),
