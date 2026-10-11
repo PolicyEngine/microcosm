@@ -72,9 +72,8 @@
    "status": "required"
   },
   "employer_sponsored_insurance_premiums": {
-   "issue": "PolicyEngine/microcosm#32",
-   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 197-271 and 1575-1581 requires NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL; datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs consumed by the hermetic --asec-h5 build contain PHIP_VAL but omit all three required NOW_* fields, so the retired owner/payment/plan-type derivation cannot execute. has_esi and NOW_GRP are not semantically valid substitutes.",
-   "status": "reviewed_exclusion"
+   "note": "Employer share of the premium for employed current ESI policyholders (PolicyEngine/microcosm#454), written by the meps_esi_premiums base-builder stage from Census ASEC NOW_OWNGRP / NOW_HIPAID / NOW_GRPFTYP2 / PEMLR / NOEMP (restored from the pinned Census person files) and MEPS-IC tier x firm-size x State cells, scaled over every policyholder to CMS NHE Table 24. A release must persist it: CBO household market income (gov.household.cbo_market_income_additions) and every ESI-to-wages reform bind through it. Required with NO reviewed exclusion; absent on pre-#454 bases by construction — the intended red gate until a base built with the stage ships. The release also holds the anchor-universe total to the anchor (us_esi_premiums_anchor_gate).",
+   "status": "required"
   },
   "employment_income_before_lsr": {
    "status": "required"
@@ -550,8 +549,8 @@
   }
  },
  "counts": {
-  "required": 167,
-  "reviewed_exclusion": 7,
+  "required": 168,
+  "reviewed_exclusion": 6,
   "total": 174
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -567,6 +566,22 @@
   "vintage": "2024"
  },
  "reform_coverage_probes": [
+  {
+   "binding_inputs": [
+    "employer_sponsored_insurance_premiums"
+   ],
+   "budget_measure": "cbo_household_market_income",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "employer_sponsored_insurance_premium_neutralization",
+   "issue": "PolicyEngine/microcosm#454",
+   "min_abs_effect": 500000000000.0,
+   "name": "Employer-sponsored insurance premium neutralization",
+   "neutralized_variable": "employer_sponsored_insurance_premiums",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US 2.2.1 adds employer_sponsored_insurance_premiums to CBO household market income through gov.household.cbo_market_income_additions, its only consumer, so neutralizing it lowers cbo_household_market_income by the weighted employer-premium total: about $926 billion at 2024 (the employed policyholders' part of CMS NHE Table 24's $1,047.0 billion, the meps_esi_premiums anchor; the stage measured $925.7 billion over 74.0 million weighted employed policyholders on the default 2023-2025 pool, before calibration). The floor sits at about half of that. A structural zero means the column was dropped or the stage never ran."
+  },
   {
    "binding_inputs": [
     "self_employment_income_last_year"

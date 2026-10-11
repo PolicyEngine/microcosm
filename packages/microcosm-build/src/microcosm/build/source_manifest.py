@@ -87,6 +87,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_energy_subsidy",
         "derive_education_inputs",
         "derive_eligibility_inputs",
+        "derive_employer_sponsored_insurance_premiums",
         "derive_hours_worked",
         "derive_housing_tenure_inputs",
         "derive_immigration_status",

@@ -198,3 +198,43 @@ the Census recode.
   Census recode restored, `A_EXPRRP == 13` now appears in every vintage, but
   it still conflates partners and roommates, so the exclusion's conclusion
   stands.
+
+## Columns added for the ESI premium stage (#454)
+
+Added 2026-10-10. The `meps_esi_premiums` stage
+(`docs/us-esi-employer-premiums.md`) reads six Census person columns that
+**none** of the four pinned inputs carries, the 2024 and 2025 files included,
+so the restoration appends them for every pooled vintage and never has an
+input copy to verify against.
+
+| column | restored | reader |
+|---|---|---|
+| `NOW_OWNGRP` | yes | `esi_premiums._esi_person_codes` → the current employment-based policyholder |
+| `NOW_HIPAID` | yes | same → employer paid all, some or none of the premium |
+| `NOW_GRPFTYP2` | yes | same → coverage tier (family, self plus one, self-only) |
+| `NOW_GRPFTYP` | yes | same → cross-checked against `NOW_GRPFTYP2` |
+| `PEMLR` | yes | same → employed at interview |
+| `NOEMP` | yes | same → employer size band |
+
+The reviewed domains are the Census API codebooks for survey years 2023 to
+2026 (`api.census.gov/data/<year>/cps/asec/mar/variables/<column>.json`),
+which are identical across the four years for each column. The data also
+carry `PEMLR == 0` (children and Armed Forces), which the codebooks omit, so
+the `PEMLR` domain is 0 to 7.
+
+Observed in the pinned person members (rows, by exact `PERIDNUM` join):
+
+| income year | member | persons | policyholders (`NOW_OWNGRP` 1) | `NOW_HIPAID` all / some / none | `NOW_GRPFTYP2` family / self plus one / self-only | employed (`PEMLR` 1-2) |
+|---|---|---:|---:|---|---|---:|
+| 2022 | `pppub23.csv` | 146,133 | 39,838 | 8,470 / 27,889 / 3,479 | 10,677 / 7,652 / 21,509 | 68,695 |
+| 2023 | `pppub24.csv` | 144,265 | 39,161 | 7,843 / 28,047 / 3,271 | 10,393 / 7,386 / 21,382 | 68,511 |
+| 2024 | `pppub25.csv` | 142,125 | 38,554 | 7,748 / 27,378 / 3,428 | 10,176 / 7,228 / 21,150 | 67,436 |
+| 2025 | `pppub26.csv` | 134,729 | 36,185 | 7,449 / 25,717 / 3,019 | 9,623 / 6,806 / 19,756 | 63,429 |
+
+In every member the payment-status and tier counts sum to the policyholder
+count, and everyone else carries 0 in both. The stage refuses a frame where
+that does not hold.
+
+The older note that the 2024 and 2025 inputs "carry all 18" `NOW_*` recodes
+counts the coverage-type recodes reviewed for #720. `NOW_OWNGRP`,
+`NOW_HIPAID`, `NOW_GRPFTYP` and `NOW_GRPFTYP2` were never among them.

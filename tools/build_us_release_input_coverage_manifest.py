@@ -113,6 +113,20 @@ _RECEIPT_INPUT_NOTE_TAIL = (
 # from today's artifacts is the intended red gate (the #368 SSI-asset
 # pattern, extended by #462 to the capital-gain-distributions route).
 POST_REFERENCE_COLUMN_NOTES = {
+    "employer_sponsored_insurance_premiums": (
+        "Employer share of the premium for employed current ESI policyholders "
+        "(PolicyEngine/microcosm#454), written by the meps_esi_premiums "
+        "base-builder stage from Census ASEC NOW_OWNGRP / NOW_HIPAID / "
+        "NOW_GRPFTYP2 / PEMLR / NOEMP (restored from the pinned Census person "
+        "files) and MEPS-IC tier x firm-size x State cells, scaled over every "
+        "policyholder to CMS NHE Table 24. A release must persist it: CBO "
+        "household market income (gov.household.cbo_market_income_additions) "
+        "and every ESI-to-wages reform bind through it. Required with NO "
+        "reviewed exclusion; absent on pre-#454 bases by construction — the "
+        "intended red gate until a base built with the stage ships. The "
+        "release also holds the anchor-universe total to the anchor "
+        "(us_esi_premiums_anchor_gate)."
+    ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
@@ -229,6 +243,8 @@ EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
 
+ESI_PREMIUM_INPUTS = ("employer_sponsored_insurance_premiums",)
+
 PRIOR_YEAR_INCOME_INPUTS = (
     "self_employment_income_last_year",
     "previous_year_income_available",
@@ -300,6 +316,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *WIC_CLAIM_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
+    *ESI_PREMIUM_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
@@ -347,6 +364,32 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "employer_sponsored_insurance_premium_neutralization",
+        "name": "Employer-sponsored insurance premium neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "employer_sponsored_insurance_premiums",
+        "budget_measure": "cbo_household_market_income",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["employer_sponsored_insurance_premiums"],
+        "min_abs_effect": 500_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US 2.2.1 adds employer_sponsored_insurance_premiums "
+            "to CBO household market income through "
+            "gov.household.cbo_market_income_additions, its only consumer, so "
+            "neutralizing it lowers cbo_household_market_income by the "
+            "weighted employer-premium total: about $926 billion at 2024 (the "
+            "employed policyholders' part of CMS NHE Table 24's $1,047.0 "
+            "billion, the meps_esi_premiums anchor; the stage measured $925.7 "
+            "billion over 74.0 million weighted employed policyholders on the "
+            "default 2023-2025 pool, before calibration). The floor sits at "
+            "about half of that. A structural zero means the column was "
+            "dropped or the stage never ran."
+        ),
+        "issue": "PolicyEngine/microcosm#454",
+    },
     {
         "id": "prior_year_self_employment_neutralization",
         "name": "Prior-year self-employment support neutralization",

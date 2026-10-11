@@ -1718,6 +1718,115 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "anchor": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "row": {
+         "type": "string"
+        },
+        "sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "table": {
+         "type": "string"
+        },
+        "values": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "number"
+         }
+        }
+       },
+       "required": [
+        "row",
+        "sha256",
+        "source",
+        "table",
+        "values"
+       ]
+      },
+      "anchor_universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "cells_resource": {
+       "type": "string"
+      },
+      "cells_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "government_cell_aging": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "kind": {
+       "const": "derive_employer_sponsored_insurance_premiums"
+      },
+      "no_contribution_share": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "other_policyholder_cell": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "payment_column": {
+       "type": "string"
+      },
+      "payment_rule": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "scaling": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "sector_column": {
+       "type": "string"
+      },
+      "size_column": {
+       "type": "string"
+      },
+      "suppressed_cell_fallback": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "tier_column": {
+       "type": "string"
+      },
+      "universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      }
+     },
+     "required": [
+      "anchor",
+      "anchor_universe",
+      "cells_resource",
+      "cells_sha256",
+      "government_cell_aging",
+      "kind",
+      "no_contribution_share",
+      "other_policyholder_cell",
+      "payment_column",
+      "payment_rule",
+      "scaling",
+      "sector_column",
+      "size_column",
+      "suppressed_cell_fallback",
+      "tier_column",
+      "universe"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "employment_allocation_flag": {
        "type": "string"
       },

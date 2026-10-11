@@ -265,6 +265,20 @@ from microcosm.build.us_runtime.energy_subsidy import (
     us_energy_subsidy_summary,
     with_us_energy_subsidy_input,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS,
+    US_ESI_PREMIUMS_OUTPUT_COLUMNS,
+    US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
+    US_ESI_PREMIUMS_STAGE_NAME,
+    derive_us_employer_esi_premiums_from_manifest,
+    load_meps_ic_esi_premium_cells,
+    us_esi_premiums_anchor_gate,
+    us_esi_premiums_signal_gate,
+    us_esi_premiums_stage_spec,
+    us_esi_premiums_summary,
+    with_us_esi_premium_inputs,
+)
 from microcosm.build.us_runtime.farm_business_income import (
     FARM_BUSINESS_INCOME_ARCHIVED_CPS_FARM_INCOME_URL,
     FARM_BUSINESS_INCOME_ARCHIVED_DERIVATION_URL,
@@ -1351,6 +1365,18 @@ __all__ = [
     "us_energy_subsidy_stage_spec",
     "us_energy_subsidy_summary",
     "with_us_energy_subsidy_input",
+    "US_ESI_EMPLOYER_PREMIUM_COLUMN",
+    "US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ESI_PREMIUMS_OUTPUT_COLUMNS",
+    "US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS",
+    "US_ESI_PREMIUMS_STAGE_NAME",
+    "derive_us_employer_esi_premiums_from_manifest",
+    "load_meps_ic_esi_premium_cells",
+    "us_esi_premiums_anchor_gate",
+    "us_esi_premiums_signal_gate",
+    "us_esi_premiums_stage_spec",
+    "us_esi_premiums_summary",
+    "with_us_esi_premium_inputs",
     "CHILD_SUPPORT_ARCHIVED_PUF_IMPUTATION_URL",
     "CHILD_SUPPORT_ARCHIVED_PUF_OUTPUTS_URL",
     "CHILD_SUPPORT_EXPENSE_ARCHIVED_DERIVATION_URL",
@@ -2135,10 +2161,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "structurally impossible under StagePlan."
         ),
     ),
-    "meps_esi_premiums": DonorSpec(
-        survey="MEPS-IC",
+    US_ESI_PREMIUMS_STAGE_NAME: DonorSpec(
+        survey="MEPS-IC + CPS ASEC current employment-based coverage",
         source="https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
-        notes="Employer-sponsored insurance premium parameters.",
+        notes=(
+            "Current ESI policyholders take the MEPS-IC employer share of "
+            "their tier x firm-size x State (or government census-division) "
+            "cell, scaled over every policyholder to CMS NHE Table 24 and "
+            "written for the employed ones (microcosm #454). Deterministic; "
+            "shared by support clones."
+        ),
     ),
     "aca_marketplace_inputs": DonorSpec(
         survey="CPS ASEC + CMS Marketplace Open Enrollment PUFs",
@@ -2501,7 +2533,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SSI_TAKE_UP_STAGE_NAME,
     "sipp_tips",
     "org_wages",
-    "meps_esi_premiums",
+    US_ESI_PREMIUMS_STAGE_NAME,
     "mortgage_conversion",
     "vehicle_assets",
     US_VOLUNTARY_FILING_STAGE_NAME,

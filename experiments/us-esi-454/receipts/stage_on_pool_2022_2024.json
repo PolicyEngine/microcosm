@@ -1,0 +1,630 @@
+{
+ "anchor_gate": {
+  "details": {
+   "anchor": {
+    "coverage": "active employees, COBRA enrollees and retirees of private, federal and State and local employers",
+    "row": "Employer Contribution to Private Health Insurance Premiums",
+    "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+    "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
+    "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+    "values": {
+     "2023": 975700000000,
+     "2024": 1047000000000
+    }
+   },
+   "anchor_universe_employer_total": 1047000000000.0,
+   "anchor_value": 1047000000000.0,
+   "cross_check": {
+    "label": "Private group health insurance",
+    "line": 17,
+    "published": "2026-09-30",
+    "relation": "second estimate of the same concept: employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+    "series": "B4923C",
+    "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+    "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
+    "table": "NIPA Table 7.8 Supplements to Wages and Salaries by Type",
+    "values": {
+     "2023": 923195000000,
+     "2024": 977034000000,
+     "2025": 1027929000000
+    }
+   },
+   "cross_check_ratio": 1.0716106092520834,
+   "employed_share_band": [
+    0.8,
+    0.95
+   ],
+   "employed_share_of_anchor_universe": 0.8824300567320681,
+   "employer_premium_by_sector": {
+    "federal": 38621718711.29335,
+    "private": 711190949595.6248,
+    "state_and_local": 174091601091.55725
+   },
+   "employer_premium_mean_per_positive_person": 12475.548691763059,
+   "employer_premium_positive_persons": 74057205.19599111,
+   "employer_premium_total": 923904269398.4752,
+   "other_policyholder_employer_total": 123095730601.5247,
+   "private_active_cross_check": {
+    "employer_premium_private_sector": 711190949595.6248,
+    "meps_ic_private_active_employer_total": 668573745863.8779,
+    "ratio": 1.0637434598582394
+   },
+   "relative_error": 0.0,
+   "relative_tolerance": 0.05,
+   "scale_factor": 1.034460355190118,
+   "time_period": 2024,
+   "weighted_employed_policyholders": 79790597.17620382,
+   "weighted_other_policyholders": 13156453.970184255,
+   "weighted_policyholders": 92947051.14638808
+  },
+  "failures": [],
+  "passed": true
+ },
+ "by_vintage": {
+  "2022": {
+   "employer_premium_positive_persons": 24684189.26891587,
+   "employer_premium_total": 310331531290.6173,
+   "mean_per_positive_person": 12572.077126365637,
+   "weighted_persons": 108650789.68666667
+  },
+  "2023": {
+   "employer_premium_positive_persons": 24692526.63040858,
+   "employer_premium_total": 307546511529.20874,
+   "mean_per_positive_person": 12455.044237978813,
+   "weighted_persons": 108650789.68666664
+  },
+  "2024": {
+   "employer_premium_positive_persons": 24680489.296666663,
+   "employer_premium_total": 306026226578.64923,
+   "mean_per_positive_person": 12399.520240467073,
+   "weighted_persons": 108650789.68666667
+  }
+ },
+ "inputs": [
+  {
+   "census_archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+   "census_person_member": "pppub23.csv",
+   "census_person_member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+   "h5": "census_cps_2022.h5",
+   "h5_sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+   "income_year": 2022
+  },
+  {
+   "census_archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+   "census_person_member": "pppub24.csv",
+   "census_person_member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+   "h5": "census_cps_2023.h5",
+   "h5_sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+   "income_year": 2023
+  },
+  {
+   "census_archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+   "census_person_member": "pppub25.csv",
+   "census_person_member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+   "h5": "census_cps_2024.h5",
+   "h5_sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+   "income_year": 2024
+  }
+ ],
+ "issue": "PolicyEngine/microcosm#454",
+ "other_policyholder_sensitivity": {
+  "as_built_other_priced_as_active": {
+   "employer_premium_total": 923904269398.4752,
+   "mean_per_positive_person": 12475.548691763057
+  },
+  "bea_anchor_all_on_employed": {
+   "employer_premium_total": 977034000000.0001,
+   "mean_per_positive_person": 13192.963431637698
+  },
+  "bea_anchor_other_priced_as_active": {
+   "employer_premium_total": 862164168049.1594,
+   "mean_per_positive_person": 11641.867469444152
+  },
+  "other_65_plus_priced_at_half": {
+   "employer_premium_total": 946325497990.1058,
+   "mean_per_positive_person": 12778.304224223311
+  },
+  "other_not_priced_all_anchor_on_employed": {
+   "employer_premium_total": 1047000000000.0,
+   "mean_per_positive_person": 14137.71958081773
+  },
+  "raw_other_65_plus_share_of_other": 0.4030440846499319,
+  "weighted_other_policyholders_65_plus": 5861452.143127043,
+  "weighted_other_policyholders_by_pemlr": {
+   "0": 106424.49450739344,
+   "1": 1425715.020176738,
+   "2": 81652.39084999224,
+   "3": 221253.36609046787,
+   "4": 770435.206337095,
+   "5": 7347264.321874038,
+   "6": 986297.5838004182,
+   "7": 2217411.586548111
+  }
+ },
+ "person_rows": 432523,
+ "pool_census_person_columns": [
+  {
+   "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+   "columns_added": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT",
+    "NOW_OWNGRP",
+    "NOW_HIPAID",
+    "NOW_GRPFTYP",
+    "NOW_GRPFTYP2",
+    "PEMLR",
+    "NOEMP"
+   ],
+   "columns_verified_equal": [],
+   "income_year": 2022,
+   "joined_person_rows": 146133,
+   "member": "pppub23.csv",
+   "member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+   "member_values": {
+    "A_ENRLW": {
+     "0": 74477,
+     "1": 11613,
+     "2": 60043
+    },
+    "A_EXPRRP": {
+     "1": 38440,
+     "10": 2799,
+     "11": 132,
+     "12": 1735,
+     "13": 4312,
+     "14": 919,
+     "2": 18399,
+     "3": 11887,
+     "4": 16284,
+     "5": 43805,
+     "7": 2792,
+     "8": 2765,
+     "9": 1864
+    },
+    "A_FTPT": {
+     "0": 134520,
+     "1": 10164,
+     "2": 1449
+    },
+    "NOEMP": {
+     "0": 72947,
+     "1": 13820,
+     "2": 10422,
+     "3": 4923,
+     "4": 8424,
+     "5": 3859,
+     "6": 31738
+    },
+    "NOW_CHAMPVA": {
+     "1": 260,
+     "2": 145873
+    },
+    "NOW_GRPFTYP": {
+     "0": 106295,
+     "1": 18329,
+     "2": 21509
+    },
+    "NOW_GRPFTYP2": {
+     "0": 106295,
+     "1": 10677,
+     "2": 7652,
+     "3": 21509
+    },
+    "NOW_HIPAID": {
+     "0": 106295,
+     "1": 8470,
+     "2": 27889,
+     "3": 3479
+    },
+    "NOW_IHSFLG": {
+     "1": 687,
+     "2": 145446
+    },
+    "NOW_MCAID": {
+     "1": 28184,
+     "2": 117949
+    },
+    "NOW_MIL": {
+     "1": 3882,
+     "2": 142251
+    },
+    "NOW_NONM": {
+     "1": 8666,
+     "2": 137467
+    },
+    "NOW_OTHMT": {
+     "1": 275,
+     "2": 145858
+    },
+    "NOW_OWNGRP": {
+     "0": 67360,
+     "1": 39838,
+     "2": 38935
+    },
+    "NOW_VACARE": {
+     "1": 1271,
+     "2": 144862
+    },
+    "PEMLR": {
+     "0": 29948,
+     "1": 66156,
+     "2": 2539,
+     "3": 408,
+     "4": 2064,
+     "5": 22286,
+     "6": 5332,
+     "7": 17400
+    },
+    "PTOTVAL": {
+     "negative_rows": 66,
+     "nonzero_rows": 102532
+    }
+   }
+  },
+  {
+   "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+   "columns_added": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT",
+    "NOW_OWNGRP",
+    "NOW_HIPAID",
+    "NOW_GRPFTYP",
+    "NOW_GRPFTYP2",
+    "PEMLR",
+    "NOEMP"
+   ],
+   "columns_verified_equal": [],
+   "income_year": 2023,
+   "joined_person_rows": 144265,
+   "member": "pppub24.csv",
+   "member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+   "member_values": {
+    "A_ENRLW": {
+     "0": 72991,
+     "1": 11620,
+     "2": 59654
+    },
+    "A_EXPRRP": {
+     "1": 37875,
+     "10": 2763,
+     "11": 147,
+     "12": 1752,
+     "13": 4387,
+     "14": 968,
+     "2": 18376,
+     "3": 11652,
+     "4": 16147,
+     "5": 42756,
+     "7": 2661,
+     "8": 2854,
+     "9": 1927
+    },
+    "A_FTPT": {
+     "0": 132645,
+     "1": 10174,
+     "2": 1446
+    },
+    "NOEMP": {
+     "0": 70794,
+     "1": 13932,
+     "2": 10549,
+     "3": 4902,
+     "4": 8667,
+     "5": 3820,
+     "6": 31601
+    },
+    "NOW_CHAMPVA": {
+     "1": 335,
+     "2": 143930
+    },
+    "NOW_GRPFTYP": {
+     "0": 105104,
+     "1": 17779,
+     "2": 21382
+    },
+    "NOW_GRPFTYP2": {
+     "0": 105104,
+     "1": 10393,
+     "2": 7386,
+     "3": 21382
+    },
+    "NOW_HIPAID": {
+     "0": 105104,
+     "1": 7843,
+     "2": 28047,
+     "3": 3271
+    },
+    "NOW_IHSFLG": {
+     "1": 651,
+     "2": 143614
+    },
+    "NOW_MCAID": {
+     "1": 26367,
+     "2": 117898
+    },
+    "NOW_MIL": {
+     "1": 4318,
+     "2": 139947
+    },
+    "NOW_NONM": {
+     "1": 8435,
+     "2": 135830
+    },
+    "NOW_OTHMT": {
+     "1": 331,
+     "2": 143934
+    },
+    "NOW_OWNGRP": {
+     "0": 67555,
+     "1": 39161,
+     "2": 37549
+    },
+    "NOW_VACARE": {
+     "1": 1178,
+     "2": 143087
+    },
+    "PEMLR": {
+     "0": 28915,
+     "1": 66185,
+     "2": 2326,
+     "3": 410,
+     "4": 2225,
+     "5": 22025,
+     "6": 5335,
+     "7": 16844
+    },
+    "PTOTVAL": {
+     "negative_rows": 59,
+     "nonzero_rows": 102389
+    }
+   }
+  },
+  {
+   "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+   "columns_added": [
+    "NOW_OWNGRP",
+    "NOW_HIPAID",
+    "NOW_GRPFTYP",
+    "NOW_GRPFTYP2",
+    "PEMLR",
+    "NOEMP"
+   ],
+   "columns_verified_equal": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT"
+   ],
+   "income_year": 2024,
+   "joined_person_rows": 142125,
+   "member": "pppub25.csv",
+   "member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+   "member_values": {
+    "A_ENRLW": {
+     "0": 72079,
+     "1": 11445,
+     "2": 58601
+    },
+    "A_EXPRRP": {
+     "1": 37382,
+     "10": 2659,
+     "11": 134,
+     "12": 1734,
+     "13": 4257,
+     "14": 844,
+     "2": 18380,
+     "3": 11334,
+     "4": 15918,
+     "5": 42053,
+     "7": 2570,
+     "8": 2876,
+     "9": 1984
+    },
+    "A_FTPT": {
+     "0": 130680,
+     "1": 10014,
+     "2": 1431
+    },
+    "NOEMP": {
+     "0": 69665,
+     "1": 13465,
+     "2": 10406,
+     "3": 4884,
+     "4": 8547,
+     "5": 3763,
+     "6": 31395
+    },
+    "NOW_CHAMPVA": {
+     "1": 368,
+     "2": 141757
+    },
+    "NOW_GRPFTYP": {
+     "0": 103571,
+     "1": 17404,
+     "2": 21150
+    },
+    "NOW_GRPFTYP2": {
+     "0": 103571,
+     "1": 10176,
+     "2": 7228,
+     "3": 21150
+    },
+    "NOW_HIPAID": {
+     "0": 103571,
+     "1": 7748,
+     "2": 27378,
+     "3": 3428
+    },
+    "NOW_IHSFLG": {
+     "1": 685,
+     "2": 141440
+    },
+    "NOW_MCAID": {
+     "1": 24844,
+     "2": 117281
+    },
+    "NOW_MIL": {
+     "1": 4413,
+     "2": 137712
+    },
+    "NOW_NONM": {
+     "1": 8486,
+     "2": 133639
+    },
+    "NOW_OTHMT": {
+     "1": 312,
+     "2": 141813
+    },
+    "NOW_OWNGRP": {
+     "0": 66737,
+     "1": 38554,
+     "2": 36834
+    },
+    "NOW_VACARE": {
+     "1": 1270,
+     "2": 140855
+    },
+    "PEMLR": {
+     "0": 28155,
+     "1": 65222,
+     "2": 2214,
+     "3": 408,
+     "4": 2422,
+     "5": 22064,
+     "6": 5081,
+     "7": 16559
+    },
+    "PTOTVAL": {
+     "negative_rows": 75,
+     "nonzero_rows": 101163
+    }
+   }
+  }
+ ],
+ "pooled_income_years": [
+  2022,
+  2023,
+  2024
+ ],
+ "puf_support_clone": {
+  "anchor_gate": {
+   "anchor_universe_employer_total": 1047000000000.0002,
+   "employer_premium_total": 923904269398.4753,
+   "failures": [],
+   "passed": true
+  },
+  "person_rows": 865046,
+  "signal_gate": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "seconds": 35.4,
+ "seed": 0,
+ "signal_gate": {
+  "failures": [],
+  "passed": true
+ },
+ "summary": {
+  "anchor": {
+   "coverage": "active employees, COBRA enrollees and retirees of private, federal and State and local employers",
+   "row": "Employer Contribution to Private Health Insurance Premiums",
+   "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+   "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
+   "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+   "values": {
+    "2023": 975700000000,
+    "2024": 1047000000000
+   }
+  },
+  "anchor_universe_employer_total": 1047000000000.0,
+  "cells_sha256": "29a5502abbd921e70007d6bcec8ed1ae065b309cacfa80f49f9bc4dd9a28ec93",
+  "clone_disagreement_source_persons": 0,
+  "cross_check": {
+   "label": "Private group health insurance",
+   "line": 17,
+   "published": "2026-09-30",
+   "relation": "second estimate of the same concept: employer contributions for active and retired employees (BEA State Personal Income methodology, December 2025, paragraphs 3.18-3.19)",
+   "series": "B4923C",
+   "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
+   "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
+   "table": "NIPA Table 7.8 Supplements to Wages and Salaries by Type",
+   "values": {
+    "2023": 923195000000,
+    "2024": 977034000000,
+    "2025": 1027929000000
+   }
+  },
+  "employed_share_of_anchor_universe": 0.8824300567320681,
+  "employer_premium_by_sector": {
+   "federal": 38621718711.29335,
+   "private": 711190949595.6248,
+   "state_and_local": 174091601091.55725
+  },
+  "employer_premium_by_tier": {
+   "employee_plus_one": 199685222296.09024,
+   "family": 393209175914.58295,
+   "single": 331009871187.80206
+  },
+  "employer_premium_mean_per_positive_person": 12475.548691763059,
+  "employer_premium_outside_universe_rows": 0,
+  "employer_premium_positive_persons": 74057205.19599111,
+  "employer_premium_positive_share": 0.2272025370134953,
+  "employer_premium_total": 923904269398.4752,
+  "employer_premium_where_employer_pays_none_rows": 0,
+  "employer_premium_without_raw_share_rows": 0,
+  "meps_ic_private_active_employer_total": {
+   "2024": 668573745863.8779,
+   "2025": 714391090330.8774
+  },
+  "negative_rows": 0,
+  "nonfinite_rows": 0,
+  "other_policyholder_employer_total": 123095730601.5247,
+  "raw_anchor_universe_total": 1012121919169.708,
+  "raw_employer_share_band": [
+   6000.0,
+   20000.0
+  ],
+  "raw_employer_share_mean_per_positive_person": 12059.958246993665,
+  "raw_employer_share_total": 893126802552.6951,
+  "raw_over_published_employer_mean": 1.030960994318845,
+  "scale_factor": 1.034460355190118,
+  "scale_factor_spread": 0.0,
+  "source_columns_missing": [],
+  "weighted_employed_policyholders": 79790597.17620382,
+  "weighted_employed_policyholders_by_payment": {
+   "all": 15092018.672620341,
+   "none": 5733391.980212707,
+   "some": 58965186.52337077
+  },
+  "weighted_other_policyholders": 13156453.970184255,
+  "weighted_other_policyholders_with_employer_share": 10825941.266066976,
+  "weighted_policyholders": 92947051.14638808
+ },
+ "target_year": 2024
+}
