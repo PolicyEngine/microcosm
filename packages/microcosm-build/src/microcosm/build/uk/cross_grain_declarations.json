@@ -661,7 +661,19 @@
       "relation": "subset",
       "part": "ons.population.age_0_9_by_region",
       "whole": "ons.population.uk_total",
-      "reason": "The region-tier age bands 0-9 to 80-89 sum to the UK total less the 90-and-over population, which no band binds; parts <= whole (same MYE edition)."
+      "other_parts": [
+        "ons.population.age_10_19_by_region",
+        "ons.population.age_20_29_by_region",
+        "ons.population.age_30_39_by_region",
+        "ons.population.age_40_49_by_region",
+        "ons.population.age_50_59_by_region",
+        "ons.population.age_60_69_by_region",
+        "ons.population.age_70_79_by_region",
+        "ons.population.age_80_89_by_region",
+        "ons.population.female_90_plus",
+        "ons.population.male_90_plus"
+      ],
+      "reason": "The nine region-tier age bands (0-9 to 80-89) and the two 90-and-over rows are disjoint and together are every usual resident, so their sum is tested against the UK total: parts <= whole (same MYE edition). On the pinned feed the sum equals the total."
     },
     {
       "targets": [

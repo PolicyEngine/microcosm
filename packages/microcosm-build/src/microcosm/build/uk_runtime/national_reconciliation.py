@@ -413,64 +413,156 @@ def uk_fanout_sum_controls(
     return controls
 
 
+#: The widest rounding allowance a subset relation may declare: two of the
+#: publisher's tables of one total, each rounded on its own.
+UK_SUBSET_MAX_EXCESS = 0.02
+
+
 def assert_uk_subset_relations(
     national_registry: TargetRegistry,
     *,
     local_surface: pd.DataFrame | None = None,
     declarations: Mapping[str, Any] | None = None,
+    local_target_ids: frozenset[str] | set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Refuse a declared part that exceeds its whole on the compiled surface.
 
     A ``subset`` relation lets two overlapping targets stand unreconciled
     because the part is bounded by the whole. Declared alone it only silences
     the static overlap check, so an infeasible pair would compile; this tests
-    it on the values the solve binds. The whole is every cell of its target in
-    the full compiled register (a banded total sums its bands, a region-tier
-    target its cells). A national part is summed the same way; a local part
-    is tested at each grain on its own. A relation whose part or whole is not
-    bound here has nothing to test and is receipted as skipped.
+    it on the values the solve binds.
+
+    * The whole is every cell of its target in the full compiled register (a
+      banded total sums its bands, a region-tier target its cells).
+    * The part is summed the same way. ``other_parts`` names further targets
+      that are disjoint from it and from one another: the test is on their
+      sum, so nine age bands and the two 90-and-over rows are tested together
+      against the UK total, where one band alone could never breach it.
+    * Where the part and the whole both carry cells at one geography, the
+      part is tested there too.
+    * A local part is tested at each local grain on its own.
+
+    ``max_excess`` is a rounding allowance, refused above
+    ``UK_SUBSET_MAX_EXCESS``. A relation is skipped, with its reason, only
+    when a register binds neither side (a narrowed test or diagnostic
+    register) or when the part is local and this loader has no local surface.
+    One side bound and the other not is refused: the relation would stand
+    untested. ``local_target_ids`` defaults to the contract's local targets.
     """
 
+    from microcosm.build.uk_runtime.ledger_targets import _uk_contract_targets
+
     declared = declarations or load_uk_cross_grain_declarations()
-    national_totals: dict[str, float] = {}
-    for spec in national_registry.specs:
-        target_id = _contract_target_id(spec)
-        national_totals[target_id] = national_totals.get(target_id, 0.0) + float(
-            spec.value
+    if local_target_ids is None:
+        local_target_ids = set(_uk_contract_targets(national_only=False)) - set(
+            _uk_contract_targets(national_only=True)
         )
+    national: dict[str, dict[str, float]] = {}
+    for spec in national_registry.specs:
+        cells = national.setdefault(_contract_target_id(spec), {})
+        geography_id = str(
+            spec.metadata.get("geography_id")
+            or spec.metadata.get("ledger_geography_id")
+            or ""
+        )
+        cells[geography_id] = cells.get(geography_id, 0.0) + float(spec.value)
     local_totals: dict[str, dict[str, float]] = {}
     if local_surface is not None and len(local_surface):
         grouped = local_surface.groupby(["contract_target_id", "area_type"])["value"]
         for (target_id, area_type), total in grouped.sum().items():
             local_totals.setdefault(str(target_id), {})[str(area_type)] = float(total)
+
     receipts: list[dict[str, Any]] = []
     breaches: list[str] = []
+    untested: list[str] = []
     for relation in declared.get("relations", ()):
         if relation.get("relation") != "subset":
             continue
         part, whole = str(relation["part"]), str(relation["whole"])
+        other_parts = [str(value) for value in relation.get("other_parts", ())]
+        parts = [part, *other_parts]
         max_excess = float(relation.get("max_excess", 0.0))
-        whole_total = national_totals.get(whole)
-        parts = (
-            {"national": national_totals[part]}
-            if part in national_totals
-            else local_totals.get(part, {})
-        )
-        if whole_total is None or not parts:
-            receipts.append({"part": part, "whole": whole, "status": "skipped"})
+        if not 0.0 <= max_excess <= UK_SUBSET_MAX_EXCESS:
+            raise ValueError(
+                f"UK subset relation {part!r} in {whole!r} declares max_excess "
+                f"{max_excess!r}; a rounding allowance sits in "
+                f"[0, {UK_SUBSET_MAX_EXCESS}] (microcosm#1123)."
+            )
+        identity = {"part": part, "whole": whole}
+        if other_parts:
+            identity["other_parts"] = other_parts
+        bound_national = [target_id for target_id in parts if target_id in national]
+        bound_local = [target_id for target_id in parts if target_id in local_totals]
+        if whole not in national and not bound_national and not bound_local:
+            receipts.append(
+                {**identity, "status": "skipped", "reason": "neither side is bound"}
+            )
             continue
-        for grain, part_total in sorted(parts.items()):
-            ceiling = whole_total * (1.0 + max_excess)
-            holds = part_total <= ceiling * (1.0 + _CLOSURE_RTOL)
+        if (
+            whole in national
+            and not bound_national
+            and not bound_local
+            and local_surface is None
+            and all(target_id in local_target_ids for target_id in parts)
+        ):
             receipts.append(
                 {
-                    "part": part,
-                    "whole": whole,
+                    **identity,
+                    "status": "skipped",
+                    "reason": "the part is local and this loader has no local surface",
+                }
+            )
+            continue
+        missing = [
+            target_id
+            for target_id in (whole, *parts)
+            if target_id not in national and target_id not in local_totals
+        ]
+        if whole not in national or missing or (bound_national and bound_local):
+            untested.append(
+                f"{part} in {whole} (unbound here: {missing or [whole]})"
+                if missing or whole not in national
+                else f"{part} in {whole} (parts at both national and local grain)"
+            )
+            continue
+        whole_cells = national[whole]
+        whole_total = math.fsum(whole_cells.values())
+        ceiling = whole_total * (1.0 + max_excess) * (1.0 + _CLOSURE_RTOL)
+        if bound_national:
+            part_cells: dict[str, float] = {}
+            for target_id in parts:
+                for geography_id, value in national[target_id].items():
+                    part_cells[geography_id] = part_cells.get(geography_id, 0.0) + value
+            totals = {"national": math.fsum(part_cells.values())}
+            shared = sorted(set(part_cells) & set(whole_cells))
+        else:
+            grains = sorted(
+                {grain for target_id in parts for grain in local_totals[target_id]}
+            )
+            totals = {
+                grain: math.fsum(
+                    local_totals[target_id].get(grain, 0.0) for target_id in parts
+                )
+                for grain in grains
+            }
+            part_cells, shared = {}, []
+        for grain, part_total in sorted(totals.items()):
+            holds = part_total <= ceiling
+            over = [
+                geography_id
+                for geography_id in shared
+                if part_cells[geography_id]
+                > whole_cells[geography_id] * (1.0 + max_excess) * (1.0 + _CLOSURE_RTOL)
+            ]
+            receipts.append(
+                {
+                    **identity,
                     "grain": grain,
                     "part_total": part_total,
                     "whole_total": whole_total,
                     "max_excess": max_excess,
-                    "status": "holds" if holds else "breached",
+                    "geographies_tested": len(shared),
+                    "status": "holds" if holds and not over else "breached",
                 }
             )
             if not holds:
@@ -478,6 +570,18 @@ def assert_uk_subset_relations(
                     f"{part} ({grain}) sums to {part_total!r}, above {whole} at "
                     f"{whole_total!r}"
                 )
+            breaches.extend(
+                f"{part} at {geography_id} is {part_cells[geography_id]!r}, above "
+                f"{whole} there at {whole_cells[geography_id]!r}"
+                for geography_id in over
+            )
+    if untested:
+        raise ValueError(
+            "UK subset relation(s) cannot be tested on this surface: "
+            + "; ".join(untested)
+            + ". A relation with one side unbound would stand untested: bind "
+            "both sides or drop the declaration (microcosm#1123)."
+        )
     if breaches:
         raise ValueError(
             "UK subset relation(s) breached on the compiled surface: "

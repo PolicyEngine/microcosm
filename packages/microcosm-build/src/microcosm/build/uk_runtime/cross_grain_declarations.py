@@ -394,10 +394,15 @@ def uk_cross_grain_coverage_violations(
             str(relation.get("part")),
             str(relation.get("whole")),
         } != set(targets)
+        other_parts = relation.get("other_parts", ())
+        malformed_other_parts = (
+            relation.get("relation") != "subset" and "other_parts" in relation
+        ) or not isinstance(other_parts, (list, tuple))
         if (
             len(targets) != 2
             or relation.get("relation") not in _RELATION_KINDS
             or malformed_subset
+            or malformed_other_parts
         ):
             violations.append(
                 {
@@ -407,7 +412,7 @@ def uk_cross_grain_coverage_violations(
                 }
             )
             continue
-        for target_id in targets:
+        for target_id in (*targets, *(str(value) for value in other_parts)):
             known(target_id, "relations")
         declared_pairs.add(tuple(sorted(targets)))
     for left, right in uk_cross_grain_overlap_candidates(contract, declared):
