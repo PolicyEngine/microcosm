@@ -29,6 +29,11 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_PREMIUMS_OUTPUT_COLUMNS,
+    US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
+    US_ESI_PREMIUMS_WAGE_COLUMN,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
@@ -113,6 +118,7 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_medicare_take_up_input",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_esi_premium_inputs",
     "with_us_pregnancy_inputs",
     "with_us_wic_claim_input",
     "impute_us_housing_assistance_to_puf_support",
@@ -136,6 +142,7 @@ _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_relationship_inputs",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_esi_premium_inputs",
 )
 
 _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
@@ -187,6 +194,8 @@ def _overlap_person_table() -> pd.DataFrame:
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+    "with_us_esi_premium_inputs": "esi_premiums_at_pool_share",
+    "with_us_esi_premium_pool_anchor": "anchor_esi_premiums_with_receipt",
     "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
 }
 
@@ -340,6 +349,16 @@ def _real_pre_clone_source_frame() -> Frame:
             "WICYN": [0, 1, 2, 0],
             "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],
             "SPM_TENMORTSTATUS": [3, 3, 3, 3],
+            # Each parent is an employed private-sector ESI policyholder
+            # whose employer pays some or all of a family premium; the
+            # children are outside the coverage universe.
+            "NOW_OWNGRP": [1, 0, 1, 0],
+            "NOW_HIPAID": [2, 0, 1, 0],
+            "NOW_GRPFTYP": [1, 0, 1, 0],
+            "NOW_GRPFTYP2": [1, 0, 2, 0],
+            "PEMLR": [1, 0, 1, 0],
+            "NOEMP": [6, 0, 2, 0],
+            "PEIO1COW": [4, 0, 4, 0],
         }
     )
     tables = {
@@ -737,7 +756,6 @@ def _producer_dtype_source_frame() -> Frame:
     person["RESNSS2"] = 0
     person["SS_YN"] = 2
     person["SSI_YN"] = 2
-    person["PEIO1COW"] = 0
     person["A_MJOCC"] = 0
     person["PEAFEVER"] = 2
     person["ED_VAL"] = [0.0, 500.0, 0.0, 1_000.0]
@@ -1034,6 +1052,37 @@ def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
     }
 
 
+def _with_esi_premium_pool_surface(frame: Frame) -> Frame:
+    """Give a fixture pool the ESI premium surface the derive stage requires.
+
+    ASEC-channel rows carry the raw ASEC fields the stage reads and a CPS
+    record id; every other row holds a transferred premium and neither.
+    Everyone has the same premium, and wages unless the fixture already sets
+    them.
+    """
+
+    person = frame.table("person").copy()
+    asec = person["person_support_channel"].eq("asec").to_numpy()
+    for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS:
+        if column != "state_fips":
+            person[column] = np.where(asec, 1.0, np.nan)
+    record_ids = (
+        person["PERIDNUM"].astype(object)
+        if "PERIDNUM" in person
+        else "cps-" + person["person_source_id"].astype(str)
+    )
+    person["PERIDNUM"] = record_ids.where(asec & pd.notna(record_ids), None)
+    if person.loc[asec, "PERIDNUM"].isna().any():
+        person.loc[asec, "PERIDNUM"] = "cps-" + person.loc[
+            asec, "person_source_id"
+        ].astype(str)
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        person[column] = 100.0
+    if US_ESI_PREMIUMS_WAGE_COLUMN not in person:
+        person[US_ESI_PREMIUMS_WAGE_COLUMN] = 1_000.0
+    return _replace_person(frame, person)
+
+
 def _qbi_ready_derive_frame() -> Frame:
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
@@ -1048,7 +1097,7 @@ def _qbi_ready_derive_frame() -> Frame:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
-    return _replace_person(frame, person)
+    return _with_esi_premium_pool_surface(_replace_person(frame, person))
 
 
 class _FakeEngine:

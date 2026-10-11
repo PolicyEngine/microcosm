@@ -1,0 +1,199 @@
+{
+  "acs_inputs": {
+    "sha256": {
+      "household": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0",
+      "person": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894"
+    },
+    "vintage": 2024
+  },
+  "acs_wage_universe": {
+    "eligible_acs_person_rows": 145870,
+    "in_universe_null_rows": 0,
+    "rule_id": "acs_2024_pums_wagp_age_15_plus",
+    "structurally_absent_person_rows": 25511
+  },
+  "after_anchor": {
+    "by_origin_battery": {
+      "comparisons": {
+        "person/source_operator_esi_premiums/employer_sponsored_insurance_premiums[clone_0]": {
+          "legs": {
+            "negative": {
+              "acs_incidence": 0.0,
+              "asec_incidence": 0.0,
+              "nonzero_rows": {
+                "acs": 0,
+                "asec": 0
+              },
+              "status": "absent_on_both_origins"
+            },
+            "positive": {
+              "acs_incidence": 0.2184835885438439,
+              "asec_incidence": 0.22553394294415505,
+              "incidence_ratio_acs_over_asec": 0.9687392757459266,
+              "nonzero_rows": {
+                "acs": 35037,
+                "asec": 4564
+              },
+              "quantile_envelope_distance": 0.07732000596898936
+            }
+          },
+          "metric": "monetary_sign_separated",
+          "status": "tested"
+        }
+      },
+      "failures": [],
+      "passed": true
+    },
+    "sides": {
+      "employer_sponsored_insurance_premiums": {
+        "acs": {
+          "mean_per_positive_person": 13208.106704583106,
+          "positive_rows_without_wages": 0,
+          "positive_share": 0.2184835885438439,
+          "positive_weight_without_wages_share": 0.0,
+          "rows": 171381,
+          "weighted_persons": 160226262.33596113,
+          "weighted_total": 462373665675.62024
+        },
+        "cps": {
+          "mean_per_positive_person": 12608.252877926678,
+          "positive_rows_without_wages": 31,
+          "positive_share": 0.22553394294415505,
+          "positive_weight_without_wages_share": 0.006924132748017103,
+          "rows": 21133,
+          "weighted_persons": 162602144.0098466,
+          "weighted_total": 462373665675.6201
+        }
+      }
+    }
+  },
+  "anchor": 1047000000000.0,
+  "anchor_gate": {
+    "failures": [],
+    "passed": true
+  },
+  "asec_inputs": [
+    {
+      "census_person_member": "pppub24.csv",
+      "census_person_member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+      "h5": "census_cps_2023.h5",
+      "h5_sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+      "income_year": 2023
+    },
+    {
+      "census_person_member": "pppub25.csv",
+      "census_person_member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+      "h5": "census_cps_2024.h5",
+      "h5_sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+      "income_year": 2024
+    },
+    {
+      "census_person_member": "pppub26.csv",
+      "census_person_member_sha256": "f78920699bf671cc211cb720ff8c6274392524a22138aedaf9e3954f91ba4334",
+      "h5": "census_cps_2025.h5",
+      "h5_sha256": "4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58",
+      "income_year": 2025
+    }
+  ],
+  "before_anchor": {
+    "by_origin_battery": {
+      "comparisons": {
+        "person/source_operator_esi_premiums/employer_sponsored_insurance_premiums[clone_0]": {
+          "legs": {
+            "negative": {
+              "acs_incidence": 0.0,
+              "asec_incidence": 0.0,
+              "nonzero_rows": {
+                "acs": 0,
+                "asec": 0
+              },
+              "status": "absent_on_both_origins"
+            },
+            "positive": {
+              "acs_incidence": 0.21987895665248253,
+              "asec_incidence": 0.22553394294415505,
+              "incidence_ratio_acs_over_asec": 0.9749262296492871,
+              "nonzero_rows": {
+                "acs": 35292,
+                "asec": 4564
+              },
+              "quantile_envelope_distance": 0.04681415503153391
+            }
+          },
+          "metric": "monetary_sign_separated",
+          "status": "tested"
+        }
+      },
+      "failures": [],
+      "passed": true
+    },
+    "sides": {
+      "employer_sponsored_insurance_premiums": {
+        "acs": {
+          "mean_per_positive_person": 12614.037909664165,
+          "positive_rows_without_wages": 255,
+          "positive_share": 0.21987895665248253,
+          "positive_weight_without_wages_share": 0.006346073903033663,
+          "rows": 171381,
+          "weighted_persons": 160226262.33596113,
+          "weighted_total": 444397391663.02527
+        },
+        "cps": {
+          "mean_per_positive_person": 12608.252877926678,
+          "positive_rows_without_wages": 31,
+          "positive_share": 0.22553394294415505,
+          "positive_weight_without_wages_share": 0.006924132748017103,
+          "rows": 21133,
+          "weighted_persons": 162602144.0098466,
+          "weighted_total": 462373665675.6201
+        }
+      }
+    }
+  },
+  "cps_household_mass_share": 0.4999999999999999,
+  "gap_fill_targets": {
+    "person/source_operator_esi_premiums/employer_sponsored_insurance_premiums": {
+      "authorized_null_rows": 171381,
+      "imputed_rows": 171381,
+      "residual_null_rows": 0,
+      "unmodeled_rows": 0
+    }
+  },
+  "issue": "PolicyEngine/microcosm#454",
+  "n_estimators": 100,
+  "pool_anchor": {
+    "cleared_rows": {
+      "employer_sponsored_insurance_premiums": 255
+    },
+    "cleared_weighted_total": {
+      "employer_sponsored_insurance_premiums": 2942930463.319238
+    },
+    "employer_premium_total": 924747331351.2404,
+    "pool_employer_premium_target": 924747331351.2405,
+    "scale_factor": 1.0473870043561544,
+    "source_employer_premium_total": 462373665675.6201,
+    "source_household_mass_share": 0.4999999999999999,
+    "source_rows": 21133,
+    "status": "scaled",
+    "transferred_employer_premium_target": 462373665675.62036,
+    "transferred_employer_premium_total_before": 441454461199.70605,
+    "transferred_household_mass_share": 0.5000000000000001,
+    "transferred_rows": 171381,
+    "transferred_rows_reset_to_source_record": {
+      "employer_sponsored_insurance_premiums": 0
+    },
+    "transferred_rows_without_source_wages": 88169,
+    "wage_column": "employment_income_before_lsr"
+  },
+  "pool_employer_premium_total": 924747331351.2404,
+  "pool_over_single_source_minus_one": -0.0010423165607768015,
+  "sample_fraction": 0.05,
+  "sample_seed": 578,
+  "seconds": 92.54829929198604,
+  "signal_gate": {
+    "failures": [],
+    "passed": true
+  },
+  "single_source_employer_premium_total": 925712216525.0378,
+  "target_year": 2024
+}

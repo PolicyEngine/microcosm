@@ -51,7 +51,7 @@ def test_us_typed_closure_has_exact_inventory_counts(
     typed_resources: dict[str, Any],
     typed_result: TypedClosureResult,
 ) -> None:
-    assert len(typed_result.columns) == 176
+    assert len(typed_result.columns) == 177
     assert len(typed_result.artifacts) == 84
     assert len(typed_result.scopes) == 7
     assert Counter(artifact.kind for artifact in typed_result.artifacts) == {

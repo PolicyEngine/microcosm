@@ -18,6 +18,10 @@ from microcosm.graph import (
 from .capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
+from .esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
+)
 from .multispine_pool import (
     POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
     POOL_RANDOM_SEED,
@@ -119,6 +123,20 @@ _ROOT_CELLS = (
         "float64",
     ),
     *_QBI_ROOT_CELLS,
+    # The ESI premium pool anchor reads the premium, the raw ASEC coverage
+    # fields (null on transferred rows) and wages; the provenance columns it
+    # also reads are declared above.
+    _Cell("person", US_ESI_EMPLOYER_PREMIUM_COLUMN, "float64"),
+    *_cells(
+        "person",
+        (
+            column
+            for column, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items()
+            if provision
+            in ("assembled_raw_asec_source_evidence", "assembled_native_person_input")
+        ),
+        "float64",
+    ),
     *_take_up_cells("person", include_eitc=False),
     *_cells(
         "person",
@@ -195,6 +213,7 @@ _PREPARE_OUTPUTS = (
 )
 _DERIVE_OUTPUTS = (
     *_PREPARE_OUTPUTS,
+    _Cell("person", US_ESI_EMPLOYER_PREMIUM_COLUMN, "float64"),
     *(
         _Cell(
             "person",

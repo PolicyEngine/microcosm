@@ -155,6 +155,11 @@ by_origin_battery
    particular, the pinned ACS rent artifact trains `with_us_housing_inputs`,
    which materializes `pre_subsidy_rent` on ASEC; native ACS `RNTP`/`GRNTP`
    remain predictors and are not relabeled as that model input.
+   The ESI premium stage (`with_us_esi_premium_inputs`, microcosm#454) also
+   runs here. Its factor is set against the anchor times the share of the
+   stack's household mass those CPS/ASEC rows carry, so each ASEC person
+   takes the employer premium a single-source build assigns, and the early
+   fill then sees measured wages on both origins.
    Targets produced only by the later PUF pass or late source producers are
    excluded from this early authority surface. No population operator selects
    behavior from the source-channel labels.
@@ -321,7 +326,22 @@ by_origin_battery
    rejects a stale source asset/config even when every engine and sampling pin
    is otherwise identical.
 8. Schedule-D preparation, deterministic derivation, seeded inputs, and
-   batched simulation run on the transferred stack. QBI reconciliation uses
+   batched simulation run on the transferred stack. Between Schedule-D
+   completion and QBI reconciliation the derive stage runs
+   `with_us_esi_premium_pool_anchor`. On rows without the raw ASEC coverage
+   columns it gives every support clone its clone-0 record's transferred
+   employer premium, clears it where that record has zero wages, then scales
+   the rest by one factor so those rows carry the same weighted premium per
+   unit of household mass as the rows the stage derived. It never rewrites a
+   source-derived row. It tells the two kinds of row apart by whether the raw
+   columns are present, corroborated by the CPS record id (`PERIDNUM`), not
+   by a source channel: a CPS record without the columns is refused. A
+   transferred record with a missing wage is refused too; the late ACS
+   earnings-universe producer has already written the explicit zeros below
+   age 15. The stack-wide total is then the source-derived total divided by
+   its household mass share. The receipt
+   (`derive.pool_derivation.esi_premium_pool_anchor`) records that share, the
+   rows reset and cleared, and the factor. QBI reconciliation uses
    the same source declaration: it fails on any in-universe self-employment
    null and preserves the receipted ACS under-15 base self-employment zero in
    every clone role. That narrow source exception does not suppress independent QBI
@@ -357,7 +377,7 @@ by_origin_battery
    boundaries.
 9. A fresh `us_stacked_completeness` gate proves every declared input is
    observed or has exact source-by-role absence authority. The terminal
-   `us_by_origin_battery` then evaluates all 134 declared targets (114 person,
+   `us_by_origin_battery` then evaluates all 135 declared targets (115 person,
    12 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
    immutable live-digested per-column metric registry. Metric choice never
    dispatches from physical dtype. A digest-bound structural-absence rule may
@@ -965,7 +985,7 @@ and valid. Neither receipt authorizes an upstream null.
 
 | Boundary | Hard requirement | Stacked 1% supplier | Can an upstream insufficient-support/unmodeled state starve it? |
 |---|---|---|---|
-| Early gap-fill handoff | Donors observe every declared target; every recipient null is filled except the exact ACS group-quarters rent rule. Nonstructural `unmodeled_rows` and residual nulls are forbidden. | The pre-clone ASEC source operators supply 48 early targets to the two ASEC-to-ACS directions. | No accepted starvation remains. A nonstructural residual fails before cloning; literal `insufficient_support` is not an early-transfer outcome. |
+| Early gap-fill handoff | Donors observe every declared target; every recipient null is filled except the exact ACS group-quarters rent rule. Nonstructural `unmodeled_rows` and residual nulls are forbidden. | The pre-clone ASEC source operators supply 49 early targets to the two ASEC-to-ACS directions. | No accepted starvation remains. A nonstructural residual fails before cloning; literal `insufficient_support` is not an early-transfer outcome. |
 | Clone attachment | Input rows are all clone 0; the seeded whole-household selection, lineage, pair weights, fraction, and seed agree exactly. | The completed gap-filled stack and the attachment sampler. | A permitted structural rent null is copied with its authority. Any other early residual has already failed. |
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
@@ -977,12 +997,13 @@ and valid. Neither receipt authorizes an upstream null.
 | Fit-weight audit | Every primary and post-PUF QRF fit receipts its resolved entity weight kind, and the collected fit records pass the weights audit before a transferred checkpoint can exist. | Calibrated household weights mapped by the frame to each modeled entity. | No. A missing, inconsistent, or manually substituted weight declaration fails before checkpoint emission. |
 | Tail preservation | Tail manifest, support decisions, attached descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The schema-v2 tail manifest and support receipt bound during the PUF pass and projected into both terminal gates. | A support receipt cannot authorize mutation. Any byte or identity change in an attached status, any descendant for a skipped status, or any receipt change fails. |
 | Schedule-D derive | Both transferred parent columns are finite for every person and align to every tax unit. Bounded late-transfer groups do not write this leaf; the whole-pool tax-unit derive is its sole canonical owner. | Completed late transfer plus tail replacements. | No. A residual would fail late transfer first and derive again by name. |
+| ESI premium anchor | Every row carries a finite, nonnegative employer premium. Each row is source-derived (every raw ASEC coverage column and a CPS record id present) or transferred (all null), and no household mixes the two. Every transferred person's clone-0 record reports a finite wage. Transferred rows that hold household mass hold premium mass on people whose source record has wages. | The pre-clone ESI operator on ASEC rows, the early gap-fill on ACS rows, the clone, which copies one value per source person, and the late ACS earnings-universe producer, which writes the explicit wage zeros below age 15. | No. A null premium, a row with only some raw columns, a CPS record without them, a missing wage, or a weighted transferred side with nothing to scale raises by name; nothing is defaulted and no source-derived cell is rewritten. |
 | QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; every independent archived QBI identity holds. The declared surface includes the base self-employment rewrite and binds pre/post digests. Its exact receipt is recomputed and authenticated at every persisted and publication boundary. | PUF/source detail plus ACS/ASEC native self-employment. Raw under-15 ACS `SEMP` remains structurally blank; mapped `self_employment_income_before_lsr` is a named, receipted universe zero. | No silent starvation. Every mapped ACS under-15 base value is held at its receipted universe zero across clone roles; all derived QBI cells remain in scope, and an in-universe null, forged receipt, or non-kernel output fails. |
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
 | Simulated checkpoint pair and resume | The persistent input-only frame and temporary evaluation frame must share exact assembly provenance; SSI exists only on the evaluation half. The live QBI receipt must authenticate the persistent frame at emission, durable write/load, and resume. | Derived/seeded persistent inputs plus the separately materialized SSI evaluation output. | No. A forged QBI receipt, altered persistent value, invalid SSI binding, or mismatched pair invalidates the simulated checkpoint and falls back only to an independently valid earlier stage. |
-| Terminal completeness | All 134 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 134-target terminal surface. |
-| By-origin battery | All 134 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
+| Terminal completeness | All 135 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 49 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 135-target terminal surface. |
+| By-origin battery | All 135 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
 | Manifest construction and canonical publication closure | Legacy and stacked builders reauthenticate QBI live output, canonical stacked authority, terminal-gate receipts, H5/diagnostics run IDs, and artifact digests before readiness can be asserted. | The validated persistent pool, immutable stage receipts, terminal gate snapshot, and atomically staged publication files. | No. Construction rejects forged or wrong-route receipts; publication begins with a non-ready tombstone, and only one fully authenticated run can replace it with a ready manifest. |
 
 The audit leaves no generic “receipted but null” path into a hard consumer.
@@ -1053,7 +1074,7 @@ cannot bypass late-DAG validation:
    The gate batches all failures and controls the manifest's simulation-ready
    status.
 
-On the retiring path, the 23-operator pool contract registry makes clone
+On the retiring path, the 25-operator pool contract registry makes clone
 placement total and executable. Adding an operator without a phase
 declaration, or calling one in an undeclared phase, fails before the kernel
 runs:
@@ -1067,6 +1088,7 @@ runs:
 | Medicare take-up | post | Rowwise carry/completion is clone-safe. |
 | Housing inputs | pre | Rent is drawn once per source household and then cloned unchanged. |
 | Eligibility inputs | pre | Raw `PH_SEQ`/`A_LINENO` parent pointers would count every cloned child twice, and `PH_SEQ` collides between the ASEC and ACS spines, so the stage runs on the CPS-evidence projection. Its `parent_1_id`/`parent_2_id` outputs name a `person_id`, so the support clone shifts them with the rest of the person id surface ([microcosm#884](https://github.com/PolicyEngine/microcosm/issues/884)). |
+| ESI premiums | pre | One premium per source person from MEPS-IC cells, with the factor set at the CPS rows' share of pool household mass; the clone copies it unchanged. |
 | Pregnancy | post | Stable source-identity hashes share draws across clones. |
 | WIC | post | Remapped family grouping and source-identity draws are clone-safe. |
 | Housing assistance | post | The QRF intentionally replaces only the PUF support role. |
@@ -1082,6 +1104,7 @@ runs:
 | Immigration | post | Source-keyed draws preserve equality across clones. |
 | Education | post | Deterministic rowwise derivation follows PUF tuition imputation. |
 | Schedule-D completion | post | Transferred tax-unit parents exist only on the physically cloned pool. |
+| ESI premium pool anchor | post | Runs once every row is filled: transferred employer premiums take their clone-0 record's draw, are cleared for people whose source record has zero wages, and are scaled to the source rows' total per unit of household mass. |
 | QBI reconciliation | post | All-or-nothing identities reconcile the post-transfer PUF detail surface. |
 
 The ASEC checkpoint remains the operator-untouched `raw_source_mapping`
@@ -1142,7 +1165,7 @@ source ingestion and faithful schema harmonization
     -> derive
     -> seed take-up and other stochastic inputs
     -> simulate
-    -> completeness gate plus 134-target by-origin battery
+    -> completeness gate plus 135-target by-origin battery
     -> emit input-only pool, receipts, and terminal Logbook row
 ```
 

@@ -557,6 +557,11 @@ metric_registry:
   clone_index: 0
   metric: boolean_incidence
 - entity: person
+  family: source_operator_esi_premiums
+  column: employer_sponsored_insurance_premiums
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
   family: source_operator_hours_worked
   column: weekly_hours_worked_before_lsr
   clone_index: 0

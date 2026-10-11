@@ -2730,6 +2730,11 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             ),
             (
                 "person",
+                "source_operator_esi_premiums",
+                "employer_sponsored_insurance_premiums",
+            ),
+            (
+                "person",
                 "source_operator_hours_worked",
                 "weekly_hours_worked_before_lsr",
             ),
@@ -3539,22 +3544,59 @@ def _authority_receipt(
     }
 
 
+#: Target families the pool gained after the canonical v11 authority. The
+#: attested schema-9 pools were sealed before them, so the v11 reconstruction
+#: those pools are scored against leaves them out.
+_POST_V11_AUTHORITY_TARGET_FAMILIES: frozenset[tuple[str, str]] = frozenset(
+    {("person", "source_operator_esi_premiums")}
+)
+
+
+def _without_post_v11_target_families(surface: TargetFamilies) -> TargetFamilies:
+    """Drop the families a v11 authority could not have declared."""
+
+    return {
+        entity: {
+            family: tuple(targets)
+            for family, targets in families.items()
+            if (entity, family) not in _POST_V11_AUTHORITY_TARGET_FAMILIES
+        }
+        for entity, families in surface.items()
+    }
+
+
 def _legacy_stacked_authority_receipt() -> dict[str, object]:
     """Reconstruct the canonical v11 authority for attested schema-9 scoring."""
 
     authority = _make_stacked_authority(
         authority_id=_STACKED_AUTHORITY_ID,
         version=11,
-        gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
-        post_puf_transfer_surface=(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR),
-        post_puf_puf_producer_surface=(
+        gap_fill_plan=tuple(
+            replace(
+                direction,
+                target_families=_without_post_v11_target_families(
+                    direction.target_families
+                ),
+            )
+            for direction in _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR
+        ),
+        post_puf_transfer_surface=_without_post_v11_target_families(
+            _CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR
+        ),
+        post_puf_puf_producer_surface=_without_post_v11_target_families(
             _CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR
         ),
-        post_puf_source_producer_surface=(
+        post_puf_source_producer_surface=_without_post_v11_target_families(
             _CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR
         ),
-        declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
-        metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+        declared_surface=_without_post_v11_target_families(
+            _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
+        ),
+        metric_registry={
+            key: metric
+            for key, metric in _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR.items()
+            if key[:2] not in _POST_V11_AUTHORITY_TARGET_FAMILIES
+        },
         joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
         support_profile=_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR,
         late_producer_schedule=legacy_us_late_producer_schedule_receipt(),
@@ -8979,9 +9021,9 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 134
-    or len(set(_canonical_surface_keys)) != 134
-    or len(_canonical_early_transfer_keys) != 48
+    len(_canonical_surface_keys) != 135
+    or len(set(_canonical_surface_keys)) != 135
+    or len(_canonical_early_transfer_keys) != 49
     or len(_canonical_late_transfer_keys) != 70
     or len(_canonical_late_puf_producer_keys) != 43
     or len(_canonical_late_source_producer_keys) != 29
@@ -8992,7 +9034,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 119
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -9012,9 +9054,9 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 134-target terminal surface and metric registry; "
+        "Canonical stacked authority must partition the exact 119-target "
+        "transfer surface into 49 early gap-fill and 70 post-PUF targets "
+        "inside an exact 135-target terminal surface and metric registry; "
         "the late surface must be exactly covered by 43 PUF-clone and 29 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
@@ -13406,7 +13448,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 134-column canonical registry. The explicit test-authority seam
+    immutable 135-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -13460,7 +13502,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 134-target plus joint by-origin battery."""
+    """Run the canonical 135-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,

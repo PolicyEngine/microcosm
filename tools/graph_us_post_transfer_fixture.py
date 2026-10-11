@@ -16,6 +16,11 @@ import numpy as np
 import pandas as pd
 
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
+    US_ESI_PREMIUMS_WAGE_COLUMN,
+)
 from microcosm.build.us_runtime.graph import us_post_transfer_graph, us_registry
 from microcosm.build.us_runtime.multispine_pool import (
     derive_multispine_pool_inputs,
@@ -59,13 +64,14 @@ _DEFAULT_OUTPUT = (
     / "us_post_transfer"
 )
 _POOL_TOOL_TEST = (
-    _REPOSITORY
-    / "packages"
-    / "microcosm-build"
-    / "tests"
-    / "test_us_multispine_pool_tool.py"
+    _REPOSITORY / "test_support" / "microcosm_build" / "us_multispine_pool_tool.py"
 )
 _SAMPLE_SEED = 578
+ESI_RAW_EVIDENCE_COLUMNS = tuple(
+    column
+    for column, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items()
+    if provision == "assembled_raw_asec_source_evidence"
+)
 _SOURCE_HOUSEHOLDS = 100
 
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
@@ -74,6 +80,7 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
 _STRATA_SOURCE_COORDINATE = "person.__stratum__"
 _EXPECTED_COLUMNS = (
     "person.schedule_d_capital_gain_distributions",
+    "person.employer_sponsored_insurance_premiums",
     "tax_unit.takes_up_eitc",
     "person.ssi",
 )
@@ -137,6 +144,9 @@ def _write_root_csv(
 
 
 def _pool_tool_test_helpers() -> ModuleType:
+    # The helpers import ``test_support`` by its repository-root package name.
+    if str(_REPOSITORY) not in sys.path:
+        sys.path.insert(0, str(_REPOSITORY))
     name = "graph_us_post_transfer_pool_tool_test_helpers"
     spec = importlib.util.spec_from_file_location(name, _POOL_TOOL_TEST)
     if spec is None or spec.loader is None:
@@ -216,6 +226,19 @@ def _post_transfer_prerequisites(frame: Frame) -> Frame:
     person.loc[person.index[0], "qualified_reit_and_ptp_income"] = 3.0
     person.loc[person.index[0], "w2_wages_from_qualified_business"] = 100.0
     person.loc[person.index[0], "unadjusted_basis_qualified_property"] = 200.0
+
+    # ESI premiums: the ASEC row is an employed policyholder whose premium the
+    # stage assigned; the ACS row carries a premium the transfer drew and no
+    # raw coverage fields, so the derive stage's pool anchor rescales it.
+    asec = person["person_support_channel"].astype(str).eq("asec").to_numpy()
+    if asec.sum() != 1:
+        raise RuntimeError("Expected one ASEC and one ACS sampled spine row.")
+    for column in ESI_RAW_EVIDENCE_COLUMNS:
+        # The coverage codes and the CPS record id mark the row the stage
+        # derived; the anchor reads only whether they are present.
+        person[column] = np.where(asec, 1.0, np.nan)
+    person[US_ESI_PREMIUMS_WAGE_COLUMN] = np.where(asec, 50_000.0, 40_000.0)
+    person[US_ESI_EMPLOYER_PREMIUM_COLUMN] = np.where(asec, 8_000.0, 6_000.0)
 
     # EITC is deliberately absent so seed owns a genuinely produced flag.
     # Every other contract cell is a dense incumbent and therefore exercises

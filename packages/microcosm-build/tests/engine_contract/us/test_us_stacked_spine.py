@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_stacked_spine.py."""
 
 # ruff: noqa: F403, F405
+from test_support.microcosm_build.us_multispine_pool import (
+    _with_esi_premium_pool_surface,
+)
 from test_support.microcosm_build.us_stacked_spine import *
 
 
@@ -77,7 +80,7 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
     assert len(all_child) == 2
     assert all_child[list(predictions)].eq(0.0).all().all()
 
-    derived = derive_multispine_pool_inputs(finalized)
+    derived = derive_multispine_pool_inputs(_with_esi_premium_pool_surface(finalized))
     derived_person = derived.frame.table("person")
     qbi_receipt = derived.receipt["qbi_input_reconciliation"]
 

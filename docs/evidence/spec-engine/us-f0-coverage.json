@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "f002c79cc4a9296d34573d9c259eea0058f06e999630752ae3396395333889eb",
   "field_usage": {
-    "authored_normative_field_count": 32436,
+    "authored_normative_field_count": 32477,
     "claim_count": 49,
     "claims": [
       {
@@ -33,8 +33,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 797,
-        "pointer_sha256": "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        "pointer_count": 802,
+        "pointer_sha256": "eaf3cc45daebdba940e20e7bf2c995e7fc0bd5219935a963e7fca60c87111409",
         "rationale": null,
         "relative_sink_prefix": "/battery_contract",
         "source_prefix": "/authored/spec~1battery.yaml",
@@ -136,8 +136,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1673,
-        "pointer_sha256": "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        "pointer_count": 1683,
+        "pointer_sha256": "85c679eb6be3331c9eabe066688790b328286b04921dbe56740fc6c1c2b68d01",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -334,8 +334,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1769,
-        "pointer_sha256": "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        "pointer_count": 1793,
+        "pointer_sha256": "8b68e86393793c1830ba8ab57d274b167d758873ae54e94342d725103ed5689d",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -349,7 +349,7 @@
         "mode": "front_end_validation",
         "pointer_class": "family_concept_validation",
         "pointer_count": 52,
-        "pointer_sha256": "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
+        "pointer_sha256": "58b1a3460b01856ac57133224c16192ee26ee9b42a82be526f33834e86f0de2a",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -530,8 +530,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 88,
-        "pointer_sha256": "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        "pointer_count": 90,
+        "pointer_sha256": "3407a3521ac3720d2b4a90bfe31b6856ba8a71173609a40f79115e2acae32557",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
@@ -722,8 +722,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 8614,
-        "pointer_sha256": "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        "pointer_count": 8743,
+        "pointer_sha256": "c4a7ba2589f2ed17cab5697197fbfa528a736692d23f6932405cdf4fe5d45454",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/generated_authorities",
@@ -772,21 +772,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42216,
-    "consumed_field_count": 42216,
+    "configuration_field_count": 42386,
+    "consumed_field_count": 42386,
     "generation0_effect_counts": {
-      "legacy_behavior": 38530,
-      "no_generation0_effect": 3686
+      "legacy_behavior": 38690,
+      "no_generation0_effect": 3696
     },
     "mode_counts": {
-      "compiler_semantic": 27717,
+      "compiler_semantic": 27727,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14042
+      "legacy_behavior": 14202
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "e8d32da2dbdaa015cb4eb363084c66cf509a93dde76cd473113750120dcaef80",
-    "resolved_binding_field_count": 9780,
+    "pointer_inventory_sha256": "6528cd3fccca59895d28cfda9b0f8d4268ffbd8dafdebe0c3e8d76ddd0ade93e",
+    "resolved_binding_field_count": 9909,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -798,8 +798,8 @@
     "counts": {
       "adapter_surfaces": 13,
       "authority_components": 9,
-      "early_families": 13,
-      "early_targets": 48,
+      "early_families": 14,
+      "early_targets": 49,
       "itemization_batches": 5,
       "itemization_targets": 37,
       "late_groups": 19,
@@ -814,7 +814,7 @@
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
-      "resolved_references": 334,
+      "resolved_references": 335,
       "seed_owner_bindings": 112,
       "seed_owner_rows": 54,
       "seed_sites": 53,
@@ -828,7 +828,7 @@
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
       "typed_artifacts": 84,
-      "typed_columns": 176,
+      "typed_columns": 177,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -964,15 +964,15 @@
           "legacy_adapter.imputation.gap_fill_plan"
         ],
         "expected": {
-          "families": 13,
-          "sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-          "targets": 48
+          "families": 14,
+          "sha256": "69ecea17171ba40d46bc26e35f0cf8c3636f4cb27e51f84572b60e94c3b01370",
+          "targets": 49
         },
         "failures": [],
         "observed": {
-          "families": 13,
-          "families_sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-          "targets": 48
+          "families": 14,
+          "families_sha256": "69ecea17171ba40d46bc26e35f0cf8c3636f4cb27e51f84572b60e94c3b01370",
+          "targets": 49
         },
         "status": "covered"
       },
@@ -992,7 +992,7 @@
         "expected": "complete ordered early family and transfer authority projections",
         "failures": [],
         "observed": {
-          "families_sha256": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd"
+          "families_sha256": "69ecea17171ba40d46bc26e35f0cf8c3636f4cb27e51f84572b60e94c3b01370"
         },
         "status": "covered"
       },
@@ -1010,11 +1010,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7"
+          "sha256": "2c93d98926a267a05b9c339b087d14cca9c0dd7eb19fe5954d140a1b202454aa"
         },
         "failures": [],
         "observed": {
-          "sha256": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7"
+          "sha256": "2c93d98926a267a05b9c339b087d14cca9c0dd7eb19fe5954d140a1b202454aa"
         },
         "status": "covered"
       },
@@ -1285,7 +1285,7 @@
       },
       "producer_outputs_exact": {
         "bundle_home_match_counts": {
-          "/imputation/families/*/targets": 33,
+          "/imputation/families/*/targets": 34,
           "/imputation/producer_graph/nodes/*/outputs": 38
         },
         "bundle_homes": [
@@ -1840,11 +1840,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+          "sha256": "5d0c9e0c8626e7d5e8ab3f65f9a6b4ce0a15d64aceac4da02ca67b2b879c623c"
         },
         "failures": [],
         "observed": {
-          "sha256": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+          "sha256": "5d0c9e0c8626e7d5e8ab3f65f9a6b4ce0a15d64aceac4da02ca67b2b879c623c"
         },
         "status": "covered"
       },
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "e2a40490a6b705bab15bf2e7dff8eea4d7841ad70d3b7858874778d4e4829021"
+          "sha256": "03987d2ccf871324910457f699b750773cc60044591180ec269f7fb89ae55b25"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "e2a40490a6b705bab15bf2e7dff8eea4d7841ad70d3b7858874778d4e4829021"
+          "sha256": "03987d2ccf871324910457f699b750773cc60044591180ec269f7fb89ae55b25"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "fa02861d576da88cc771651aa309fb87bd8ac9427157b4175bced510f20d6d4d"
+          "sha256": "949c6d450e78f08cb92765b487e6e5c2269481e4ef21a0949005fa41eaa83e8d"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "a1e98deaa1f5a451c7d0e1f380a7bf50a82b0cbc94753b885b7cf9a11e7d0005"
+      "spec_sha256": "e4b8c7ec593721baede44aa2c43271d49d26a509f5a43d94ad10c9f02fb0f874"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "a1e98deaa1f5a451c7d0e1f380a7bf50a82b0cbc94753b885b7cf9a11e7d0005"
+    "spec_sha256": "e4b8c7ec593721baede44aa2c43271d49d26a509f5a43d94ad10c9f02fb0f874"
   },
   "status": "pass"
 }

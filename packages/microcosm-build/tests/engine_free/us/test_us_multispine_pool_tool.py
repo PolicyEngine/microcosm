@@ -971,8 +971,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # publication: the checkpoint identity carries policyengine_us_version,
         # and the pool engine contracts it binds were re-derived for 2.2.1.
         # pool_h5 and agreement above are unchanged, so only the identity
-        # surface moved, not the pool content.
-        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
+        # surface moved, not the pool content. Adding the ESI premium source
+        # and derive operators (#454) moved the same checkpoint identities
+        # again, and nothing else in the manifest.
+        "manifest": "17e82d2765decabb44b5c71faf66a5f1cb1e20837c2a7149f800479c559a1367",
     }
 
 

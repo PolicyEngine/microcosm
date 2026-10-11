@@ -35,3 +35,44 @@ These are pre-calibration figures at pooled ASEC weights. They are evidence
 about the stage, not about a release:
 `packages/microcosm-build/tests/engine_free/us/test_us_esi_premiums.py` pins
 the figures the docs and registers quote to these files.
+
+## The stacked pool's fill
+
+`run_pool_fill_on_pinned_inputs.py` runs the part of the stacked ASEC + ACS
+pool that decides the column: it pools the same ASEC inputs, builds the ACS
+2024 1-year frame from the pinned PUMS archives, samples households and
+assembles the stacked spine as the pool tool does, runs the stage on the
+CPS-source rows at their live mass share, fills the ACS rows with the pool's
+early gap-fill (the real weighted QRF, for this family alone), writes the ACS
+wage zeros below age 15 with the pool's earnings-universe producer, runs
+`with_us_esi_premium_pool_anchor`, and grades the result with the pool's
+by-origin battery and both gates.
+
+```
+uv run python experiments/us-esi-454/run_pool_fill_on_pinned_inputs.py \
+    --asec-h5 2023=<census_cps_2023.h5> --asec-h5 2024=<census_cps_2024.h5> \
+    --asec-h5 2025=<census_cps_2025.h5> \
+    --census-person-dir ~/.cache/microcosm/cps/asec_education \
+    --acs-household-zip <csv_hus.zip> --acs-person-zip <csv_pus.zip> \
+    --sample-fraction 0.05 --sample-seed 578
+```
+
+`--acs-frame-checkpoint <path>` caches the ACS frame between runs. With the
+cache, about five minutes at 5%.
+
+| Receipt | Sample |
+|---|---|
+| `receipts/pool_fill_2023_2025_f001.json` | 1% of households, seed 578 |
+| `receipts/pool_fill_2023_2025_f005.json` | 5% of households, seed 578 |
+
+Each receipt records the input digests, the rows filled, the ACS wage
+universe counts, the anchor operator's receipt (rows reset and cleared, scale
+factor, totals before and after), the
+by-origin battery's comparison before and after the anchor, weighted totals
+and incidence by origin, and both gate verdicts. Receipts hold aggregates
+only.
+
+It is not a pool build. It skips geography, the other pre-clone operators,
+the PUF pass and the other late producers, and its fill runs without the
+tenure predictor. `test_us_esi_premiums_pool.py` pins the figures
+`docs/us-esi-employer-premiums.md` quotes to these files.
