@@ -564,9 +564,10 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # other investment income that income tax charges, and on policyengine-uk
     # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
     # upstream in policyengine-uk's total_income (pe-uk#2174). It is retired
-    # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
-    # to +23.4 % across the C3 and final arms, inside the bound, and the gate
-    # fails the deferral as stale.
+    # in turn with the third microcosm#1095 ports: the cell fits at +23.9 % on
+    # that head, back inside the bound, and the gate fails the deferral as
+    # stale. The upstream defect stands: the cell's design value is still 6.2
+    # times its target, so a later change can push it back over the bound.
     assert register == {}
 
 
