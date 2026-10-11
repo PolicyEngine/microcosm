@@ -32,8 +32,8 @@ The four PUF files are restricted IRS microdata. They were read from a local fol
   | `datasets/puf/uprate_puf.py` | `uprate_puf_42ed5d45.py.txt` | `ab806fdd9f4c05366e1859150b082b71ece9d1666e2d292c2266a335df105e9b` |
   | `utils/uprating.py` | `utils_uprating_42ed5d45.py.txt` | `688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a` |
   | `storage/calibration_targets/soi_targets.csv` | `soi_targets_42ed5d45.csv.gz` (hash of the uncompressed file) | `0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb` |
-- `receipts/puf_donor_factor_audit.json`; `receipts/release_puf_channel_cost.json` (national rows and summaries) with `receipts/release_puf_channel_cost_targets.csv.gz` (all 2,955 rows); `receipts/issue_tables.md`; `receipts/property_tests.txt`.
-- `proposal/rebase_reference.py`, `proposal/test_rebase_properties.py`: a standalone statement of the proposed rebase and Hypothesis tests of its invariants. They sit outside `testpaths` and do not run in CI.
+- `receipts/puf_donor_factor_audit.json`; `receipts/release_puf_channel_cost.json` (national rows and summaries) with `receipts/release_puf_channel_cost_targets.csv.gz` (all 2,955 rows); `receipts/issue_tables.md`; `receipts/property_tests.txt`; `receipts/mutation_check.txt`.
+- `proposal/rebase_reference.py`, `proposal/test_rebase_properties.py`: a standalone statement of the proposed rebase and Hypothesis tests of its invariants. They sit outside `testpaths` and do not run in CI. `proposal/mutation_check.py` seeds six faults in the reference and checks that a test catches each (`receipts/mutation_check.txt`).
 
 ## Reproducing
 
@@ -60,6 +60,10 @@ python -I scripts/release_puf_channel_cost.py \
 
 ```bash
 uv run pytest docs/evidence/us-puf-donor-uprating/proposal/test_rebase_properties.py
+```
+
+```bash
+uv run python docs/evidence/us-puf-donor-uprating/proposal/mutation_check.py
 ```
 
 The donor audit takes about a minute and 6 GB; the release decomposition about 20 seconds.

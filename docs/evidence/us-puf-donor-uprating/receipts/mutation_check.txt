@@ -1,0 +1,6 @@
+rebase does not divide out the carried factor: caught by test_rebase_ages_the_source_value_once
+the stage accepts an already rebased donor: caught by test_a_rebased_donor_refuses_a_second_rebase
+the positive leg is applied to every value: caught by test_sign_split_legs_follow_their_own_series
+verification always passes: caught by test_verify_gate_rejects_any_perturbed_record
+non-qualified dividends are not clipped at zero: caught by test_dividends_add_up_and_stay_nonnegative
+untouched columns are changed: caught by test_untouched_columns_and_determinism
