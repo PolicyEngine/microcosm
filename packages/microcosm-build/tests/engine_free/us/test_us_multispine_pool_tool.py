@@ -1044,6 +1044,8 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # Legacy materializer version 4 similarly changes only checkpoint
         # identity metadata here, invalidating pre-fix finalized checkpoints
         # that skipped the CPS-reported Social Security restoration on resume.
+        # Adding the ESI premium source and derive operators (#454) moved the
+        # same checkpoint identities again, and nothing else in the manifest.
         "manifest": "7037ca123fc822856db26bfaf13a44e5e2abee127d4c096aae70b69d31c99bdb",
     }
 

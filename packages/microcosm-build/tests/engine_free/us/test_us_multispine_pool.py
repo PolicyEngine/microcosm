@@ -595,6 +595,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "person",
         "source_operator_cps_carried",
     )
+    assert owners["employer_sponsored_insurance_premiums"] == (
+        "person",
+        "source_operator_esi_premiums",
+    )
     assert POOL_OPERATOR_CONTRACTS["derive_us_cps_carried_inputs"].phases == (
         "pre_clone",
     )
@@ -603,10 +607,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 118
+    assert len(target_names) == 119
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "c792f12f0ef34f8a2ca9f16e68f5b306391eed56f120cda247bf778a95118c15"
+        == "fc2ee6977017febbf653d50034d74f5bf782a133bbc0861aadc0354418ba07a8"
     )
 
 
@@ -625,7 +629,7 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     puf_producers = keys(pool_post_puf_puf_producer_target_families())
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
-    assert len(early) == 48
+    assert len(early) == 49
     assert len(late) == 70
     assert early.isdisjoint(late)
     assert early | late == full
@@ -661,13 +665,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 142
+    assert len(surface) == len(by_name) == 143
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 118,
+            "pool_transfer_target_families": 119,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 17,
@@ -864,6 +868,21 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "schedule_d_capital_gain_distributions"),
             ("tax_unit", "tax_unit_id"),
         },
+        "with_us_esi_premium_pool_anchor": {
+            ("person", "employer_sponsored_insurance_premiums"),
+            *{
+                ("person", column)
+                for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS
+                if column != "state_fips"
+            },
+            ("person", "employment_income_before_lsr"),
+            ("person", "person_source_id"),
+            ("person", "person_support_clone_index"),
+            ("person", "person_household_id"),
+            ("person", "<resolved_weight>"),
+            ("household", "household_id"),
+            ("household", "<resolved_weight>"),
+        },
         "with_us_qbi_input_reconciliation": {
             *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
             ("person", "self_employment_income_before_lsr"),
@@ -1027,14 +1046,14 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
     }
     assert Counter(entry.provision for entry in projection) == Counter(
         {
-            "materialized_pool_input_surface": 122,
+            "materialized_pool_input_surface": 123,
             "seed_stage_program_contract": 17,
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 763,
+            "declared_absent_engine_input": 762,
             "unprovisioned_source_input": 1,
         }
     )
@@ -1071,9 +1090,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1059
+    assert len(manifest) == 1074
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 992}
+        {"derive": 49, "seed": 33, "simulate": 992}
     )
     assert len(
         {
@@ -1086,9 +1105,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1059
+    assert receipt["entry_count"] == 1074
     assert receipt["stage_counts"] == {
-        "derive": 34,
+        "derive": 49,
         "seed": 33,
         "simulate": 992,
     }
@@ -1126,7 +1145,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 118
+    assert len(targets) == 119
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1151,7 +1170,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 118
+    assert len(targets) == 119
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -1168,13 +1187,13 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 122
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
     assert calls["primary_puf_qrf.fit"] > 0
     assert calls["primary_puf_qrf.predict"] > 0
-    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
+    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 23
 
 
 def test_object_backed_is_female_becomes_nullable_before_production_transfer_fit(
@@ -1945,9 +1964,12 @@ def test_real_preclone_prefix_runs_before_physical_clone(
         "relationship_inputs",
         "housing_inputs",
         "eligibility_inputs",
+        "esi_premiums",
     ]
-    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 6
-    assert [receipt["order_index"] for receipt in suboperators] == list(range(6))
+    assert [receipt["phase"] for receipt in suboperators] == ["pre_clone"] * 7
+    assert [receipt["order_index"] for receipt in suboperators] == list(range(7))
+    # The ESI stage prices the CPS rows at their share of pool household mass.
+    assert suboperators[6]["kernel_receipt"]["anchor_share"] == pytest.approx(0.5)
     assert prepared.receipt["transient_outputs_carried_through_clone"] == {
         "person": ["employment_income_last_year"]
     }
@@ -1989,6 +2011,15 @@ def test_real_preclone_prefix_runs_before_physical_clone(
         False,
     ]
     assert prepared_person.loc[~prepared_cps, "receives_wic"].isna().all()
+    employer_premium = prepared_person["employer_sponsored_insurance_premiums"]
+    # Rows 0 and 2 are employed policyholders with an employer; 1 and 3 are not.
+    assert (employer_premium[prepared_cps].to_numpy() > 0).tolist() == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert employer_premium[~prepared_cps].isna().all()
 
     prepared_spm_unit = prepared.frame.table("spm_unit")
     assert prepared_spm_unit["receives_tanf"].dropna().tolist() == [True, False]
