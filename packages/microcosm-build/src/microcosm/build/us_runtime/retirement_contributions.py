@@ -1,26 +1,16 @@
-"""ASEC-reported retirement contributions split into PolicyEngine leaves.
+"""Joint SCF participation/amount allocation of CPS retirement contributions.
 
-The retired eCPS pipeline read the measured annual contribution total from
-ASEC ``RETCB_VAL`` and allocated it across five account-type inputs.  The
-allocation is pinned to the final archived implementation at
-``9a823603e6b5fb916d65ec45d74c9c7eb0043db1``:
-
-* ``datasets/cps/cps.py`` lines 1504-1552 gates the self-employed share on
-  positive ``SEMP_VAL``, the defined-contribution share on positive
-  ``WSAL_VAL``, and the IRA remainder on either earnings source; and
-* ``datasets/cps/imputation_parameters.yaml`` lines 24-55 records the
-  administrative sources and the four allocation shares.
-
-The outputs are the five ``*_desired`` input leaves.  PolicyEngine-US 2.2.1
-applies the statutory combined elective-deferral and IRA limits and the
-self-employed-plan cap, so this stage preserves the uncapped measured desired
-amounts.
+A complete observed donor vector supplies IRA-only, employee-plan-only, or
+both participation. CPS RETCB_VAL scales the whole vector, while a second
+whole-vector hot deck replaces PUF support values. Statutory contributions,
+active participation and deductions remain model-derived. SCF source-period
+and account-type proxy limitations are declared in the source manifest.
 """
 
 from __future__ import annotations
 
 from importlib.resources import files
-from typing import Any
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -36,6 +26,10 @@ from microcosm.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
     run_source_stage,
+)
+from microcosm.build.us_runtime.joint_retirement import (
+    RETIREMENT_COLUMNS,
+    draw_joint_retirement_vectors,
 )
 from microcosm.build.us_runtime.support_provenance import (
     has_assembled_support_metadata,
@@ -59,17 +53,9 @@ __all__ = [
     "with_us_retirement_contribution_inputs",
 ]
 
-QRF: Any | None = None
-
 US_RETIREMENT_CONTRIBUTION_STAGE_NAME = "retirement_contributions"
 
-US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "traditional_401k_contributions_desired",
-    "roth_401k_contributions_desired",
-    "traditional_ira_contributions_desired",
-    "roth_ira_contributions_desired",
-    "self_employed_pension_contributions_desired",
-)
+US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS: tuple[str, ...] = RETIREMENT_COLUMNS
 US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS = (
     US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
 )
@@ -84,31 +70,15 @@ _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 _PUF_PREDICTORS: tuple[str, ...] = (
     "age",
-    "is_male",
-    "has_esi",
-    "tax_unit_is_joint",
-    "tax_unit_count_dependents",
     "employment_income",
     "self_employment_income",
-    "social_security",
 )
 _PUF_PREDICTOR_PREFIX = "retirement_contribution_predictor_"
-_SHARE_PARAMETER_KEYS = frozenset(
-    {
-        "se_pension_share",
-        "dc_share_of_remainder",
-        "roth_dc_share",
-        "traditional_ira_share",
-    }
+_JOINT_DERIVATION_PARAMETER_KEYS = frozenset(
+    {"donor_table", "age_breaks", "seed_from_build_config", "roth_dc_share"}
 )
 _PUF_IMPUTATION_PARAMETER_KEYS = frozenset(
-    {
-        "predictors",
-        "max_train_samples",
-        "n_estimators",
-        "seed_from_build_config",
-        "weight",
-    }
+    {"predictors", "age_breaks", "seed_from_build_config", "weight"}
 )
 # Deliberately broad source-plausibility bound.  Its job is to reject a
 # default/near-universal surface, while the exact allocation identities below
@@ -138,23 +108,15 @@ def us_retirement_contributions_stage_spec() -> SourceStageSpec:
     return spec
 
 
-def _share_parameters(operation: SourceOperationSpec) -> dict[str, float]:
-    unexpected = sorted(set(operation.parameters) - _SHARE_PARAMETER_KEYS)
-    missing = sorted(_SHARE_PARAMETER_KEYS - set(operation.parameters))
+def _joint_parameters(operation: SourceOperationSpec, keys: frozenset[str]) -> None:
+    unexpected = sorted(set(operation.parameters) - keys)
+    missing = sorted(keys - set(operation.parameters))
     if unexpected or missing:
         raise SourceRuntimeError(
-            "US retirement-contribution derivation parameters must match the "
-            f"archived allocation contract; missing={missing}, "
-            f"unexpected={unexpected}."
+            f"Joint retirement parameters: missing={missing}, unexpected={unexpected}."
         )
-    shares = {key: float(operation.parameters[key]) for key in _SHARE_PARAMETER_KEYS}
-    invalid = {key: value for key, value in shares.items() if not 0 <= value <= 1}
-    if invalid:
-        raise SourceRuntimeError(
-            "US retirement-contribution allocation shares must be in [0, 1]: "
-            f"{invalid}."
-        )
-    return shares
+    if operation.parameters["seed_from_build_config"] is not True:
+        raise SourceRuntimeError("Joint retirement seed must come from build config.")
 
 
 def _numeric_source(frame: pd.DataFrame, column: str) -> np.ndarray:
@@ -196,68 +158,67 @@ def _source_reconciliation_mask(frame: pd.DataFrame) -> np.ndarray:
 def derive_us_retirement_contributions_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
-    _context: SourceRuntimeContext | None,
+    context: SourceRuntimeContext | None,
 ) -> pd.DataFrame:
-    """Split measured ``RETCB_VAL`` across the five desired input leaves."""
-
-    if operation.kind != "derive_retirement_contributions":
+    """Scale a whole empirical SCF vector to each positive CPS bundled total."""
+    if operation.kind != "derive_retirement_contributions" or frame is None:
         raise SourceRuntimeError(
-            "US retirement-contribution derivation received unexpected "
-            f"operation {operation.kind!r}."
+            "Joint retirement derivation requires a person table and derive operation."
         )
-    if frame is None:
-        raise SourceRuntimeError(
-            "US retirement-contribution derivation requires the person table "
-            "to be read first."
-        )
-    missing = [
-        column
-        for column in US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS
-        if column not in frame.columns
-    ]
+    _joint_parameters(operation, _JOINT_DERIVATION_PARAMETER_KEYS)
+    missing = sorted(
+        set(US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS) - set(frame)
+    )
     if missing:
         raise SourceRuntimeError(
-            "US retirement-contribution derivation requires measured ASEC "
-            f"source column(s): {missing}."
+            f"Joint retirement derivation requires measured ASEC source columns: {missing}."
         )
-    shares = _share_parameters(operation)
-
-    result = frame.copy(deep=True)
-    retirement_contributions = _numeric_source(result, "RETCB_VAL")
-    negative_source = int(np.count_nonzero(retirement_contributions < 0))
-    if negative_source:
+    if context is None:
         raise SourceRuntimeError(
-            "US retirement-contribution source 'RETCB_VAL' contains "
-            f"{negative_source} negative value(s)."
+            "Joint retirement derivation requires the declared SCF donor table."
         )
-    has_wages = _numeric_source(result, "WSAL_VAL") > 0
-    has_self_employment = _numeric_source(result, "SEMP_VAL") > 0
-    has_earned_income = has_wages | has_self_employment
-
-    self_employed = np.where(
-        has_self_employment,
-        retirement_contributions * shares["se_pension_share"],
-        0.0,
+    donor = context.read_table(str(operation.parameters["donor_table"]))
+    result = frame.copy(deep=True)
+    source = _numeric_source(result, "RETCB_VAL")
+    if (source < 0).any():
+        raise SourceRuntimeError("US retirement RETCB_VAL contains negative values.")
+    wages = _numeric_source(result, "WSAL_VAL")
+    se = _numeric_source(result, "SEMP_VAL")
+    age_column = "age" if "age" in result else "A_AGE"
+    if age_column not in result:
+        raise SourceRuntimeError(
+            "Joint retirement derivation requires measured age or A_AGE."
+        )
+    recipient = pd.DataFrame(
+        {
+            "person_id": result["person_id"].to_numpy(),
+            "age": _numeric_source(result, age_column),
+            "has_wages": wages > 0,
+            "has_self_employment": se > 0,
+            "rank_value": source,
+            "person_weight": _numeric_source(result, _PERSON_WEIGHT_COLUMN),
+        },
+        index=result.index,
     )
-    remaining = np.maximum(retirement_contributions - self_employed, 0.0)
-    dc_pool = np.where(
-        has_wages,
-        remaining * shares["dc_share_of_remainder"],
-        0.0,
-    )
-    ira_pool = np.where(has_earned_income, remaining - dc_pool, 0.0)
-
-    result["traditional_401k_contributions_desired"] = dc_pool * (
-        1.0 - shares["roth_dc_share"]
-    )
-    result["roth_401k_contributions_desired"] = dc_pool * shares["roth_dc_share"]
-    result["traditional_ira_contributions_desired"] = (
-        ira_pool * shares["traditional_ira_share"]
-    )
-    result["roth_ira_contributions_desired"] = ira_pool * (
-        1.0 - shares["traditional_ira_share"]
-    )
-    result["self_employed_pension_contributions_desired"] = self_employed
+    donor["rank_value"] = donor[list(RETIREMENT_COLUMNS)].sum(axis=1)
+    positive = source > 0
+    values = pd.DataFrame(0.0, index=result.index, columns=RETIREMENT_COLUMNS)
+    if positive.any():
+        draws = draw_joint_retirement_vectors(
+            donor,
+            recipient.loc[positive],
+            donor_weight="scf_weight",
+            recipient_weight=_PERSON_WEIGHT_COLUMN,
+            seed=context.config.seed,
+            age_breaks=operation.parameters["age_breaks"],
+            positive_only=True,
+        )
+        donor_total = draws.sum(axis=1).to_numpy()
+        values.loc[positive] = (
+            draws.to_numpy() * (source[positive] / donor_total)[:, None]
+        )
+        result.attrs["retirement_cps_draw"] = draws.attrs["joint_retirement"]
+    result[list(RETIREMENT_COLUMNS)] = values
     return result
 
 
@@ -266,265 +227,91 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext | None,
 ) -> pd.DataFrame:
-    """QRF-impute all five contributions onto the PUF support channel.
-
-    This is the retired second-stage treatment: train on the measured ASEC
-    rows after their direct split, condition on the clone's PUF-imputed income,
-    replace all five PUF-half values, clip nonnegative, and zero employer-plan
-    contributions without wages and self-employed-plan contributions without
-    self-employment income.
-
-    A non-expanded ASEC frame has no support-channel column; in that first pass
-    this operation is intentionally a no-op.  The base builder runs the same
-    manifest again after PUF tax-detail imputation, when both support channels
-    exist and this operation becomes active.
-    """
-
-    if operation.kind != "impute_retirement_contributions_to_puf_support":
+    """Draw a complete ASEC vector for each PUF row, including nonsavers."""
+    if (
+        operation.kind != "impute_retirement_contributions_to_puf_support"
+        or frame is None
+    ):
         raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation received unexpected "
-            f"operation {operation.kind!r}."
+            "Joint retirement PUF imputation requires person table and expected operation."
         )
-    if frame is None:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires the person "
-            "table to be read first."
-        )
-    unexpected = sorted(set(operation.parameters) - _PUF_IMPUTATION_PARAMETER_KEYS)
-    missing_parameters = sorted(
-        _PUF_IMPUTATION_PARAMETER_KEYS - set(operation.parameters)
-    )
-    if unexpected or missing_parameters:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation parameters must match "
-            f"the archived method; missing={missing_parameters}, "
-            f"unexpected={unexpected}."
-        )
+    _joint_parameters(operation, _PUF_IMPUTATION_PARAMETER_KEYS)
     if not has_support_role_metadata(frame, entity="person"):
         return frame.copy(deep=True)
-
-    predictors = tuple(str(value) for value in operation.parameters["predictors"])
-    if predictors != _PUF_PREDICTORS:
+    if context is None:
         raise SourceRuntimeError(
-            "US retirement-contribution PUF predictors drifted from the "
-            f"archived method: expected {list(_PUF_PREDICTORS)}, got "
-            f"{list(predictors)}."
+            "Joint retirement PUF imputation requires build context."
         )
-    if operation.parameters["weight"] != _PERSON_WEIGHT_COLUMN:
+    predictors = tuple(operation.parameters["predictors"])
+    if (
+        predictors != _PUF_PREDICTORS
+        or operation.parameters["weight"] != _PERSON_WEIGHT_COLUMN
+    ):
         raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation must use the typed "
-            f"person-weight column {_PERSON_WEIGHT_COLUMN!r}."
+            "Joint retirement PUF predictors or person-weight column drifted."
         )
-    if operation.parameters["seed_from_build_config"] is not True:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation seed must come from "
-            "the build config."
-        )
-    max_train_samples = int(operation.parameters["max_train_samples"])
-    n_estimators = int(operation.parameters["n_estimators"])
-    if max_train_samples <= 0 or n_estimators <= 0:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF max_train_samples and n_estimators "
-            "must be positive."
-        )
-
     required = [
         _PERSON_WEIGHT_COLUMN,
-        *(_PUF_PREDICTOR_PREFIX + predictor for predictor in predictors),
-        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+        *(_PUF_PREDICTOR_PREFIX + p for p in predictors),
+        *RETIREMENT_COLUMNS,
     ]
-    missing = [column for column in required if column not in frame.columns]
+    missing = sorted(set(required) - set(frame))
     if missing:
         raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation is missing source "
-            f"column(s): {missing}."
+            f"Joint retirement PUF imputation missing columns: {missing}."
         )
-
     roles = support_role_series(frame, entity="person")
-    asec_mask = roles == _BASE_ASEC_SUPPORT_CHANNEL
-    puf_mask = roles == _PUF_TAX_DETAIL_SUPPORT_CHANNEL
-    if not asec_mask.any() or not puf_mask.any():
+    asec, puf = (
+        roles.eq(_BASE_ASEC_SUPPORT_CHANNEL),
+        roles.eq(_PUF_TAX_DETAIL_SUPPORT_CHANNEL),
+    )
+    if not asec.any() or not puf.any():
         raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires nonempty ASEC "
-            "and PUF-tax-detail support channels."
+            "Joint retirement PUF imputation requires nonempty ASEC and PUF support roles."
         )
 
-    predictor_columns = [_PUF_PREDICTOR_PREFIX + predictor for predictor in predictors]
-    training_columns = [
-        *predictor_columns,
-        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
-    ]
-    training = frame.loc[asec_mask, training_columns].copy()
-    training.columns = [
-        *(predictors),
-        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
-    ]
-    weights = pd.to_numeric(
-        frame.loc[asec_mask, _PERSON_WEIGHT_COLUMN], errors="coerce"
-    ).fillna(0.0)
-    if len(training) > max_train_samples:
-        sample = training.sample(
-            n=max_train_samples,
-            random_state=(context.config.seed if context is not None else 0),
-        ).index
-        training = training.loc[sample]
-        weights = weights.loc[sample]
+    def inputs(mask: pd.Series, identity: str) -> pd.DataFrame:
+        table = frame.loc[mask].copy()
+        table[identity] = table["person_id"]
+        table["age"] = _numeric_source(table, _PUF_PREDICTOR_PREFIX + "age")
+        wage = _numeric_source(table, _PUF_PREDICTOR_PREFIX + "employment_income")
+        se = _numeric_source(table, _PUF_PREDICTOR_PREFIX + "self_employment_income")
+        table["has_wages"], table["has_self_employment"] = wage > 0, se > 0
+        table["rank_value"] = np.maximum(wage, 0) + np.maximum(se, 0)
+        return table
 
-    test = frame.loc[puf_mask, predictor_columns].copy()
-    test.columns = list(predictors)
-    for column in (*predictors, *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS):
-        if column in training:
-            training[column] = pd.to_numeric(training[column], errors="coerce")
-            if not np.isfinite(training[column].to_numpy(dtype=np.float64)).all():
-                raise SourceRuntimeError(
-                    "US retirement-contribution QRF training column "
-                    f"{column!r} contains nonfinite values."
-                )
-    for column in predictors:
-        test[column] = pd.to_numeric(test[column], errors="coerce")
-        if not np.isfinite(test[column].to_numpy(dtype=np.float64)).all():
-            raise SourceRuntimeError(
-                "US retirement-contribution QRF prediction column "
-                f"{column!r} contains nonfinite values."
-            )
-
-    global QRF
-    if QRF is None:
-        from importlib import import_module
-
-        QRF = import_module("microcosm.fit").QRF
-    seed = context.config.seed if context is not None else 0
-    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
-        training,
-        list(predictors),
-        list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
-        weights=weights.to_numpy(dtype=np.float64),
+    donor = inputs(asec, "donor_id")
+    recipient = inputs(puf, "person_id")
+    predictions = draw_joint_retirement_vectors(
+        donor,
+        recipient,
+        donor_weight=_PERSON_WEIGHT_COLUMN,
+        recipient_weight=_PERSON_WEIGHT_COLUMN,
+        seed=context.config.seed,
+        age_breaks=operation.parameters["age_breaks"],
+        positive_only=False,
     )
-    predictions = fitted.predict(test).clip(lower=0.0)
-    no_wages = test["employment_income"].to_numpy(dtype=np.float64) == 0
-    no_self_employment = test["self_employment_income"].to_numpy(dtype=np.float64) == 0
-    predictions.loc[
-        no_wages,
-        [
-            "traditional_401k_contributions_desired",
-            "roth_401k_contributions_desired",
-        ],
-    ] = 0.0
-    predictions.loc[
-        no_self_employment,
-        "self_employed_pension_contributions_desired",
-    ] = 0.0
-
     result = frame.copy(deep=True)
-    for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
-        result.loc[puf_mask, column] = predictions[column].to_numpy(dtype=np.float64)
+    result.loc[puf, list(RETIREMENT_COLUMNS)] = predictions.to_numpy()
+    result.attrs["retirement_puf_draw"] = predictions.attrs["joint_retirement"]
     return result
 
 
 def _person_retirement_predictors(frame: Frame) -> pd.DataFrame:
-    """Build the retired QRF predictors on person rows, failing closed."""
-
+    """Construct the declared age and earned-income hot-deck predictors."""
     person = frame.table("person")
-    tax_unit = frame.table("tax_unit")
     predictors = pd.DataFrame(index=person.index)
-
-    def _numeric(*columns: str) -> np.ndarray:
-        for column in columns:
-            if column in person:
-                values = pd.to_numeric(person[column], errors="coerce").to_numpy(
-                    dtype=np.float64
-                )
-                if not np.isfinite(values).all():
-                    raise SourceRuntimeError(
-                        "US retirement-contribution QRF predictor source "
-                        f"{column!r} contains nonfinite values."
-                    )
-                return values
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation cannot construct "
-            f"predictor from any of {list(columns)}."
-        )
-
-    predictors["age"] = _numeric("age", "A_AGE")
-    if "is_male" in person:
-        predictors["is_male"] = person["is_male"].fillna(False).astype(bool)
-    elif "is_female" in person:
-        predictors["is_male"] = ~person["is_female"].fillna(False).astype(bool)
-    elif "A_SEX" in person:
-        predictors["is_male"] = _numeric("A_SEX") == 1
-    else:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires is_male, "
-            "is_female, or measured A_SEX."
-        )
-    if "has_esi" not in person:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires has_esi."
-        )
-    predictors["has_esi"] = person["has_esi"].fillna(False).astype(bool)
-
-    filing_status_column = next(
-        (
-            column
-            for column in ("filing_status_input", "filing_status")
-            if column in tax_unit
-        ),
-        None,
-    )
-    if filing_status_column is None:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires tax-unit filing status."
-        )
-    filing_status = tax_unit[filing_status_column].map(
-        lambda value: (
-            value.decode() if isinstance(value, (bytes, np.bytes_)) else str(value)
-        )
-    )
-    joint_by_id = pd.Series(
-        filing_status.eq("JOINT").to_numpy(),
-        index=tax_unit["tax_unit_id"].to_numpy(),
-    )
-    predictors["tax_unit_is_joint"] = (
-        person["person_tax_unit_id"].map(joint_by_id).fillna(False).astype(bool)
-    )
-
-    if "tax_unit_role_input" not in person:
-        raise SourceRuntimeError(
-            "US retirement-contribution PUF imputation requires "
-            "tax_unit_role_input to count dependents."
-        )
-    dependent = (
-        person["tax_unit_role_input"]
-        .map(
-            lambda value: (
-                value.decode() if isinstance(value, (bytes, np.bytes_)) else str(value)
+    for target, sources in {
+        "age": ("age", "A_AGE"),
+        "employment_income": ("employment_income_before_lsr", "WSAL_VAL"),
+        "self_employment_income": ("self_employment_income_before_lsr", "SEMP_VAL"),
+    }.items():
+        column = next((column for column in sources if column in person), None)
+        if column is None:
+            raise SourceRuntimeError(
+                f"Joint retirement predictor {target!r} requires one of {sources}."
             )
-        )
-        .eq("DEPENDENT")
-    )
-    dependent_count = dependent.groupby(person["person_tax_unit_id"]).transform("sum")
-    predictors["tax_unit_count_dependents"] = dependent_count.to_numpy(dtype=np.float64)
-    predictors["employment_income"] = _numeric(
-        "employment_income_before_lsr",
-        "WSAL_VAL",
-    )
-    predictors["self_employment_income"] = _numeric(
-        "self_employment_income_before_lsr",
-        "SEMP_VAL",
-    )
-    social_security_columns = (
-        "social_security_retirement",
-        "social_security_disability",
-        "social_security_dependents",
-        "social_security_survivors",
-    )
-    if all(column in person for column in social_security_columns):
-        predictors["social_security"] = np.sum(
-            np.column_stack([_numeric(column) for column in social_security_columns]),
-            axis=1,
-        )
-    else:
-        predictors["social_security"] = _numeric("SS_VAL")
+        predictors[target] = _numeric_source(person, column)
     return predictors
 
 
@@ -533,15 +320,28 @@ def with_us_retirement_contribution_inputs(
     *,
     seed: int,
     time_period: int,
+    donor: pd.DataFrame | None = None,
+    cache_dir: str | Path | None = None,
 ) -> Frame:
-    """Materialize the five retirement-contribution inputs on a US frame."""
+    """Materialize source contributions, rebuilding legacy fixed-share leaves.
+
+    Donor injection is for explicit source tables and hermetic contract tests.
+    Ordinary builds fetch the byte-pinned public SCF into their local cache.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US retirement contributions require the US schema.")
     person = frame.table("person")
     has_support_roles = has_support_role_metadata(person, entity="person")
-    if _retirement_contribution_surface_carries_signal(frame) and not has_support_roles:
-        return frame
+    spec = us_retirement_contributions_stage_spec()
+    if donor is None:
+        from microcosm.build.us_runtime.scf_retirement import load_scf_retirement_donor
+
+        donor = load_scf_retirement_donor(
+            cache_dir=cache_dir
+            or Path.home() / ".cache" / "microcosm" / "scf_retirement",
+            roth_dc_share=float(spec.operations[1].parameters["roth_dc_share"]),
+        )
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
@@ -550,8 +350,8 @@ def with_us_retirement_contribution_inputs(
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
     output = run_source_stage(
-        us_retirement_contributions_stage_spec(),
-        tables={"person": stage_person},
+        spec,
+        tables={"person": stage_person, "scf_retirement": donor},
         operation_handlers={
             "derive_retirement_contributions": (
                 derive_us_retirement_contributions_from_manifest
@@ -579,7 +379,16 @@ def with_us_retirement_contribution_inputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
-        metadata=frame.metadata,
+        metadata={
+            **frame.metadata,
+            "retirement_contributions": {
+                "method": "weighted_joint_hot_deck_v1",
+                "seed": int(seed),
+                "donor": dict(donor.attrs.get("scf_retirement", {})),
+                "cps_draw": output.attrs.get("retirement_cps_draw"),
+                "puf_draw": output.attrs.get("retirement_puf_draw"),
+            },
+        },
     )
 
 
@@ -622,12 +431,34 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         for column, values in contributions.items()
     }
     source_positive = reconciliation_mask & (source > 0)
-    allocation_mismatch = source_positive & ~np.isclose(
+    allocation_mismatch = reconciliation_mask & ~np.isclose(
         combined,
         source,
         rtol=1e-9,
         atol=1e-6,
     )
+    ira = (contributions["traditional_ira_contributions_desired"] > 0) | (
+        contributions["roth_ira_contributions_desired"] > 0
+    )
+    traditional = contributions["traditional_ira_contributions_desired"] > 0
+    employee_plan = (
+        (contributions["traditional_401k_contributions_desired"] > 0)
+        | (contributions["roth_401k_contributions_desired"] > 0)
+        | (contributions["self_employed_pension_contributions_desired"] > 0)
+    )
+    participation = {
+        name: {
+            "records": int(mask.sum()),
+            "weighted_people": float(weights[mask].sum()),
+        }
+        for name, mask in {
+            "ira_only": ira & ~employee_plan,
+            "employer_only": ~ira & employee_plan,
+            "both": ira & employee_plan,
+            "neither": ~ira & ~employee_plan,
+            "traditional_ira_contributors": traditional,
+        }.items()
+    }
     return {
         "nonzero_shares": {
             column: _share(values) for column, values in contributions.items()
@@ -639,6 +470,14 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         "nonzero_share_band": list(_NONZERO_SHARE_BAND),
         "nonfinite": nonfinite,
         "negative": negative,
+        "joint_participation": participation,
+        "traditional_ira_contributor_employee_plan_share": (
+            float(
+                weights[traditional & employee_plan].sum() / weights[traditional].sum()
+            )
+            if weights[traditional].sum() > 0
+            else 0.0
+        ),
         "source_rows": int(np.count_nonzero(source_mask)),
         "source_reconciliation_rows": int(np.count_nonzero(reconciliation_mask)),
         "source_positive_rows": int(np.count_nonzero(source_positive)),
@@ -683,18 +522,18 @@ def us_retirement_contributions_signal_gate(frame: Frame) -> GateResult:
                 f"{column}: nonzero share {share:.4f} outside plausibility "
                 f"band [{low}, {high}]."
             )
+    for cell in ("ira_only", "employer_only", "both"):
+        if summary["joint_participation"][cell]["weighted_people"] <= 0:
+            failures.append(
+                f"Joint retirement participation has no positive-weight {cell} rows."
+            )
+    if summary["allocation_mismatch_rows"]:
+        failures.append(
+            f"ASEC bundled totals do not reconcile on {summary['allocation_mismatch_rows']} direct-source rows."
+        )
     return GateResult(
         name="retirement_contributions_signal",
         passed=not failures,
         failures=tuple(failures),
         details=summary,
     )
-
-
-def _retirement_contribution_surface_carries_signal(frame: Frame) -> bool:
-    person = frame.table("person")
-    if not all(
-        column in person for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
-    ):
-        return False
-    return us_retirement_contributions_signal_gate(frame).passed

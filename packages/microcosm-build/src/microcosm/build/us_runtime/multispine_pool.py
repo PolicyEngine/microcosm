@@ -615,7 +615,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
     "with_us_retirement_contribution_inputs": SourceOperatorContract(
         "retirement_contributions",
         (_POST_CLONE_PHASE,),
-        "role-aware QRF replacement uses remapped structural IDs",
+        "role-aware weighted joint donor-vector replacement preserves participation",
     ),
     "with_us_retirement_distribution_inputs": SourceOperatorContract(
         "retirement_distributions",

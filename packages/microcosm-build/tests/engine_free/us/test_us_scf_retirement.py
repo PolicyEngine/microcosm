@@ -30,11 +30,11 @@ def _person(**changes) -> dict[str, float]:
 
 
 def _ira(**changes) -> dict[str, float]:
-    return _person(x6791=1, x6792=2_000, x6447=1, x6553=20_000, **changes)
+    return _person(**dict(x6791=1, x6792=2_000, x6447=1, x6553=20_000) | changes)
 
 
 def _employer(**changes) -> dict[str, float]:
-    return _person(x4201=1, x11001=2, x11040=1, x11042=100, x11043=2, **changes)
+    return _person(**dict(x4201=1, x11001=2, x11040=1, x11042=100, x11043=2) | changes)
 
 
 def test_source_participation_and_amounts_are_joint_and_nonnegative():

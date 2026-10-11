@@ -2156,28 +2156,36 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
-      "dc_share_of_remainder": {
-       "type": "number"
+      "age_breaks": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      "donor_table": {
+       "const": "scf_retirement"
       },
       "kind": {
        "const": "derive_retirement_contributions"
       },
       "roth_dc_share": {
-       "type": "number"
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
       },
-      "se_pension_share": {
-       "type": "number"
-      },
-      "traditional_ira_share": {
-       "type": "number"
+      "seed_from_build_config": {
+       "const": true
       }
      },
      "required": [
-      "dc_share_of_remainder",
+      "age_breaks",
+      "donor_table",
       "kind",
       "roth_dc_share",
-      "se_pension_share",
-      "traditional_ira_share"
+      "seed_from_build_config"
      ]
     },
     {
@@ -3798,32 +3806,35 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "age_breaks": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
       "kind": {
        "const": "impute_retirement_contributions_to_puf_support"
       },
-      "max_train_samples": {
-       "type": "number"
-      },
-      "n_estimators": {
-       "type": "number"
-      },
       "predictors": {
-       "type": "array",
-       "items": {
-        "type": "string"
-       }
+       "const": [
+        "age",
+        "employment_income",
+        "self_employment_income"
+       ]
       },
       "seed_from_build_config": {
-       "type": "boolean"
+       "const": true
       },
       "weight": {
-       "type": "string"
+       "const": "person_weight"
       }
      },
      "required": [
+      "age_breaks",
       "kind",
-      "max_train_samples",
-      "n_estimators",
       "predictors",
       "seed_from_build_config",
       "weight"

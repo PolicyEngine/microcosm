@@ -273,6 +273,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "h5_io.py",  # US artifact I/O; no population treatment.
         "immigration.py",
         "input_mass.py",
+        # Pure weighted whole-vector draw helper; the registered retirement
+        # operator owns receiver selection and Frame replacement. This helper
+        # reads no source provenance and remains subject to the runtime scan.
+        "joint_retirement.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
@@ -306,6 +310,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "release_input_coverage.py",
         "release_target_parity.py",
         "scf_auto_loans.py",
+        # Pinned public SCF fetch and factual donor-table extraction; no Frame
+        # population treatment. Retirement's registered operator consumes it.
+        "scf_retirement.py",
         "scf_wealth.py",
         "sipp_financial_assets.py",
         "sipp_tips.py",

@@ -307,13 +307,14 @@ EXPECTED_SEED_GROUPS: Mapping[str, tuple[str, ...]] = {
     "other_direct_stochastic_sites": (
         "adult_care_weighted_prefix_assignment",
         "capital_gains_tail_random_rank",
+        "retirement_contributions_cps_joint_draw",
+        "retirement_contributions_puf_joint_draw",
         "torch_calibration_reseed",
         "exact_k_pcg64_selection",
     ),
     "build_seeded_5000_caps": (
         "prior_year_income_training_cap",
         "childcare_training_cap",
-        "retirement_contributions_training_cap",
         "disability_benefits_training_cap",
         "housing_inputs_training_cap",
         "workers_compensation_training_cap",
@@ -434,9 +435,9 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_virtual_resources": 75,
     "release_rungs": 5,
     "resolved_references": 334,
-    "seed_owner_bindings": 112,
+    "seed_owner_bindings": 113,
     "seed_owner_rows": 54,
-    "seed_sites": 53,
+    "seed_sites": 54,
     "seed_streams": 14,
     "source_operators": 16,
     "source_stages": 38,
@@ -1199,7 +1200,7 @@ def build_inventory_coverage(
             "stages": len(_array(sources["stages"], "source stages")),
             "sha256": sha256_json(source_manifest),
         },
-        expected={"stages": 37, "sha256": EXPECTED_HASHES["source_manifest"]},
+        expected={"stages": 38, "sha256": EXPECTED_HASHES["source_manifest"]},
     )
     pipeline = _mapping(spine["pipeline_contract"], "spine pipeline contract")
     operator_order = tuple(
@@ -1778,7 +1779,7 @@ def build_inventory_coverage(
         "seed_site_definitions_exact",
         clauses={
             "seed site definitions differ": site_definitions_exact,
-            "seed site count differs": len(protocol_sites) == 53,
+            "seed site count differs": len(protocol_sites) == 54,
         },
         homes=("/bundle/seed_protocol",),
         consumers=("compiler_ir.seed_stream_map.sites", "compiler_ir.node_slices"),
@@ -1786,7 +1787,7 @@ def build_inventory_coverage(
             "sites": len(protocol_sites),
             "sha256": sha256_json([site.to_wire() for site in protocol.sites]),
         },
-        expected={"sites": 53, "relation": "all site fields preserved exactly"},
+        expected={"sites": 54, "relation": "all site fields preserved exactly"},
     )
     binding_by_site = {binding.site: binding for binding in spec.seed_site_bindings}
     binding_exact = set(binding_by_site) == set(compiled_sites) and all(
@@ -1801,7 +1802,7 @@ def build_inventory_coverage(
             "owner binding count differs": sum(
                 len(site.owners) for site in compiled_sites.values()
             )
-            == 112,
+            == 113,
             "one or more sites have no owner": all(
                 site.owners for site in compiled_sites.values()
             ),
@@ -1811,7 +1812,7 @@ def build_inventory_coverage(
         observed={
             "bindings": sum(len(site.owners) for site in compiled_sites.values())
         },
-        expected={"bindings": 112, "coverage": "all 53 sites"},
+        expected={"bindings": 113, "coverage": "all 54 sites"},
     )
     expected_owner_sites: dict[tuple[str, str], list[str]] = {}
     for site in protocol.sites:
@@ -1855,7 +1856,7 @@ def build_inventory_coverage(
             "seed groups overlap": groups_disjoint,
             "seed groups do not cover the protocol exactly": set(grouped_ids)
             == set(protocol_sites),
-            "seed group cardinality differs": len(grouped_ids) == 53,
+            "seed group cardinality differs": len(grouped_ids) == 54,
         },
         homes=("/bundle/seed_protocol", "/spine/seed_site_bindings"),
         consumers=("compiler_ir.seed_stream_map",),
@@ -1865,7 +1866,7 @@ def build_inventory_coverage(
         },
         expected={
             "groups": len(EXPECTED_SEED_GROUPS),
-            "sites": 53,
+            "sites": 54,
             "partition": "disjoint and exhaustive",
         },
     )

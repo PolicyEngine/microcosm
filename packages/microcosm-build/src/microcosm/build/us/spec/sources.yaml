@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: dfbf77c74a9a68787ec91402b29bf53632802b731d3a1f11008ca24dd9c6cad8
 stage_manifest:
   version: 1
   country: us
@@ -456,57 +456,69 @@ stages:
     educational_assistance carries directly from measured ASEC ED_VAL (archived cps.py at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1).
     The pinned export independently confirms that the five flags and tuition share one support mask.'
 - stage: retirement_contributions
-  survey: Census CPS ASEC + published retirement-contribution shares
-  source: https://www.census.gov/programs-surveys/cps.html
+  survey: Federal Reserve SCF 2022 + Census CPS ASEC
+  source: https://www.federalreserve.gov/econres/scfindex.htm
   grain: person
   artifacts:
   - kind: public_microdata
     format: census_asec
     vintage: build_year
     source: https://www.census.gov/programs-surveys/cps/data/datasets.html
-    locator: Census CPS ASEC person RETCB_VAL, WSAL_VAL, and SEMP_VAL fields
+    locator: Census CPS ASEC person RETCB_VAL, WSAL_VAL, SEMP_VAL, and age fields
+  - kind: public_microdata
+    format: stata_in_zip
+    vintage: '2022'
+    locator: https://www.federalreserve.gov/econres/files/scf2022s.zip
+    member: p22i6.dta
+    sha256: 409e6811df895766d50b2f597c10b1b3c5813e7d3e0e45d910ad26c0cb07f4eb
+    member_sha256: 61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a
+    size_bytes: 8856125
+    expected_rows: 22975
+  - kind: research_report
+    format: text
+    vintage: '2022'
+    source: https://www.federalreserve.gov/econres/files/codebk2022.txt
+    locator: SCF IRA/Keogh contribution X6791-X6794 and respondent/spouse current-main-job pension plan
+      type, employee contribution amount/frequency fields; questionnaire https://www.federalreserve.gov/econres/files/scfoutline.2022.pdf
   - kind: administrative_table
     format: published_estimates
-    vintage: 2022-2024
+    vintage: 2022-2023
     source: https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    locator: IRS SOI IRA contribution totals and Publication 1304 Table 1.4 Keogh-plan payments
-  - kind: administrative_table
-    format: published_time_series
-    vintage: '2023'
-    source: https://fred.stlouisfed.org/series/Y351RC1A027NBEA
-    locator: BEA/FRED employee and employer defined-contribution pension-plan contribution series Y351RC1A027NBEA
-      and W351RC0A144NBEA
+    locator: 'IRS Form 5498 / SOI IRA accumulation tables: contributor counts and gross traditional/Roth
+      contribution amounts, validated separately from Schedule 1 IRA payments'
   - kind: research_report
     format: pdf
     vintage: '2024'
     source: https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
-    locator: Vanguard How America Saves 2024 Roth defined-contribution participation evidence
+    locator: Vanguard How America Saves 2024 Roth defined-contribution participation evidence; retained
+      solely as provenance for the 15 percent within-workplace Roth amount proxy, not for joint participation
   - kind: research_report
     format: web
     vintage: '2024'
     source: https://www.psca.org/news/psca-news/2024/12/401k-savings-and-participation-rates-rise/
-    locator: Plan Sponsor Council of America 67th Annual Survey Roth participation evidence
+    locator: Plan Sponsor Council of America 67th Annual Survey Roth participation evidence; retained
+      solely as provenance for the 15 percent within-workplace Roth amount proxy, not for joint participation
   operations:
   - kind: read_table
     table: person
     weight: person_weight
   - kind: derive_retirement_contributions
-    se_pension_share: 0.046
-    dc_share_of_remainder: 0.908
+    donor_table: scf_retirement
+    age_breaks:
+    - 35
+    - 50
+    - 65
+    seed_from_build_config: true
     roth_dc_share: 0.15
-    traditional_ira_share: 0.392
   - kind: impute_retirement_contributions_to_puf_support
     predictors:
     - age
-    - is_male
-    - has_esi
-    - tax_unit_is_joint
-    - tax_unit_count_dependents
     - employment_income
     - self_employment_income
-    - social_security
-    max_train_samples: 5000
-    n_estimators: 100
+    age_breaks:
+    - 35
+    - 50
+    - 65
     seed_from_build_config: true
     weight: person_weight
   outputs:
@@ -521,13 +533,27 @@ stages:
   - traditional_ira_contributions_desired
   - roth_ira_contributions_desired
   - self_employed_pension_contributions_desired
-  notes: Exact port of the retired published-eCPS allocation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1
-    (datasets/cps/cps.py lines 1500-1552; imputation_parameters.yaml lines 24-55). Measured ASEC RETCB_VAL
-    is allocated across self-employed pension, defined-contribution, and IRA pools only where ASEC reports
-    the corresponding earned-income source. After PUF support expansion, the retired second-stage treatment
-    (extended_cps.py lines 639-780 and 1014-1073) QRF-imputes all five leaves onto the PUF half from the
-    ASEC rows and PUF-imputed income. PolicyEngine-US applies statutory limits to these five desired-contribution
-    leaves; this source stage does not cap or synthesize the measured total.
+  notes: SCF 2022 public full-file respondent and spouse records jointly observe IRA/Keogh additions (X6791-X6794,
+    calendar 2021, excluding rollovers) and employee workplace-plan contributions (current 2022 jobs;
+    plan type, participation, amount, and frequency fields). Complete five-account donor vectors preserve
+    observed IRA-only, employer-only, and joint participation rather than assigning a positive fixed share
+    of each family to every saver. Weighted systematic donor selection approximates weighted frequencies
+    within age and earnings cells, conditions on age bands and wage/self-employment source and ranks recipients/donors
+    by the measured contribution total on CPS and earned income on PUF; the five contribution proportions
+    allocate positive ASEC RETCB_VAL and reconcile to its measured total, including IRA-only savers without
+    current individual earnings. PUF-role records receive one whole weighted ASEC donor vector with matching
+    earned-income source and age band, preserving zeros and joint participation instead of drawing each
+    target separately. SCF combines IRA and Keogh additions; positive contributors with both IRA and Keogh
+    ownership are excluded because the observed pooled addition cannot identify the contributing family.
+    Pure Keogh owners carry the observed addition to the SE-pension leaf. IRA balances allocate observed
+    IRA-family additions between traditional and Roth tax types, and the employer Roth split retains the
+    prior 15 percent proxy. The SCF observation periods differ and current-job employee contributions
+    may miss former-job savers. Donor vectors preserve within-person account association; respondent and
+    spouse donors are assigned independently, so couple-level participation correlation is not modeled.
+    No deduction or policy-derived contribution cap is stored. Employer-only allocations and defined-benefit
+    coverage (option A2) remain a separate later step; these additions can reduce deductions further.
+    IRS gross accumulation statistics validate contributions; SOI Schedule 1 IRA payments validate the
+    separately model-derived deduction.
 - stage: childcare_inputs
   survey: Census CPS ASEC
   source: https://www.census.gov/programs-surveys/cps.html

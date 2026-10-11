@@ -102,7 +102,7 @@ def _stages_with_operation(
 def build_seed_site_bindings(
     source_document: Mapping[str, Any],
 ) -> list[dict[str, object]]:
-    """Bind all 53 legacy-v1 sites to their concrete execution owners."""
+    """Bind all 54 legacy-v1 sites to their concrete execution owners."""
 
     source_ids = _source_stage_ids(source_document)
     transfer_nodes = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
@@ -186,7 +186,8 @@ def build_seed_site_bindings(
         "exact_k_pcg64_selection": pipeline("select_exact_k"),
         "prior_year_income_training_cap": source("prior_year_income"),
         "childcare_training_cap": source("childcare_inputs"),
-        "retirement_contributions_training_cap": source("retirement_contributions"),
+        "retirement_contributions_cps_joint_draw": source("retirement_contributions"),
+        "retirement_contributions_puf_joint_draw": source("retirement_contributions"),
         "disability_benefits_training_cap": source("disability_benefits_input"),
         "housing_inputs_training_cap": source("acs_rent"),
         "workers_compensation_training_cap": source("workers_compensation_input"),
@@ -203,9 +204,9 @@ def build_seed_site_bindings(
     }
 
     protocol_site_ids = tuple(site.id for site in LEGACY_V1_PROTOCOL.sites)
-    if len(protocol_site_ids) != 53 or set(owners) != set(protocol_site_ids):
+    if len(protocol_site_ids) != 54 or set(owners) != set(protocol_site_ids):
         raise RuntimeError(
-            "legacy-v1 seed owner ledger must cover exactly 53 protocol sites; "
+            "legacy-v1 seed owner ledger must cover exactly 54 protocol sites; "
             f"missing={sorted(set(protocol_site_ids) - owners.keys())!r}, "
             f"extra={sorted(owners.keys() - set(protocol_site_ids))!r}"
         )

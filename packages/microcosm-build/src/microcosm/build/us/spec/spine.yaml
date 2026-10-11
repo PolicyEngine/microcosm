@@ -382,7 +382,11 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: childcare_inputs
-- site: retirement_contributions_training_cap
+- site: retirement_contributions_cps_joint_draw
+  owners:
+  - kind: source_stage
+    id: retirement_contributions
+- site: retirement_contributions_puf_joint_draw
   owners:
   - kind: source_stage
     id: retirement_contributions
