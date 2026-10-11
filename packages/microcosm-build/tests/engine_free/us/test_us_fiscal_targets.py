@@ -891,17 +891,19 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 32,842 compiled targets after
-    Medicaid substitution, 5,694 national_state targets at registry
-    d315c75804ef, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. Before microcosm#956 it was
+    """The release surface on the pinned feed: 33,250 compiled targets after
+    Medicaid substitution, 6,102 national_state targets at registry
+    f96be9f41781, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. The 408 state AGI-band rows of
+    microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
+    5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
     32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 32_842
-    assert len(surface.specs) == 5_694
-    assert surface.version == "d315c75804ef"
+    assert len(registry.specs) == 33_250
+    assert len(surface.specs) == 6_102
+    assert surface.version == "f96be9f41781"
     chip = [
         spec
         for spec in surface.specs
@@ -5347,6 +5349,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
             "metadata": {"target_role": "federal_income_tax_total"},
         },
         *complete_agi_distribution_rows(),
+        *complete_state_agi_top_tail_rows(),
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_program_rows(),

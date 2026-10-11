@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
- "rule": "Exactly the (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 586,
+ "source_commit": "51aa40fd28e2ca81937752515e773d123fecfb71",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940); each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 637,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -40,6 +40,7 @@
    "packages/federal_reserve/z1_household_net_worth",
    "packages/hhs_acf_liheap/fy2023_national_profile",
    "packages/irs_soi/congressional_district_2022",
+   "packages/irs_soi/historic_table_2_state_agi_2023",
    "packages/irs_soi/ira_roth_contributions_2022",
    "packages/irs_soi/ira_traditional_contributions_2022",
    "packages/irs_soi/state_2022",
@@ -4344,6 +4345,414 @@
    "period_value": "2023",
    "package_id": "soi-w2-statistics-2020",
    "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ak",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.al",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ar",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.az",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ca",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.co",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ct",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.dc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.de",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.fl",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ga",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.hi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ia",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.id",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.il",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.in",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ks",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ky",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.la",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ma",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.md",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.me",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mn",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mo",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ms",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mt",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nd",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ne",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nh",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nj",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nm",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nv",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ny",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.oh",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ok",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.or",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.pa",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ri",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.sc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.sd",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.tn",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.tx",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ut",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.va",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.vt",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wa",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wv",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wy",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
    "build_year": 2023
   },
   {
