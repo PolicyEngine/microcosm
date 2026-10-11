@@ -394,3 +394,54 @@ def test_implicit_candidate_resolution_requires_revision_mapping(monkeypatch) ->
             "token": None,
         }
     ]
+
+
+def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
+    # microcosm#1106: the engine-derived section is a permanent adjudication,
+    # so its entries carry approved_by and approved_on and the loader refuses
+    # one without them; known gaps carry neither.
+    import json
+
+    import pytest
+
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_engine_derived_exclusions,
+        load_efrs_parity_known_gaps,
+    )
+
+    committed = load_efrs_engine_derived_exclusions()
+    assert [(gap.variable, gap.approved_by) for gap in committed] == [
+        ("property_wealth", "juaristi22")
+    ]
+    assert committed[0].approved_on == "2026-10-11"
+    assert all(gap.approved_by is None for gap in load_efrs_parity_known_gaps())
+
+    unsigned = tmp_path / "ledger.json"
+    unsigned.write_text(
+        json.dumps(
+            {
+                "engine_derived_exclusions": {
+                    "property_wealth": {"reason": "r", "tracking_note": "t"}
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="approved_by"):
+        load_efrs_engine_derived_exclusions(str(unsigned))
+    undated = tmp_path / "undated.json"
+    undated.write_text(
+        json.dumps(
+            {
+                "engine_derived_exclusions": {
+                    "property_wealth": {
+                        "reason": "r",
+                        "tracking_note": "t",
+                        "approved_by": "juaristi22",
+                        "approved_on": "11-10-2026",
+                    }
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="ISO date"):
+        load_efrs_engine_derived_exclusions(str(undated))

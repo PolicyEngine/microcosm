@@ -615,13 +615,15 @@ def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None
 
 
 def test_resample_pools_ignore_restricted_finance_costs() -> None:
-    # Given: restricted finance costs on every record below 200k large enough
-    # that, counted as income, each would sit in the 200k band; the 260k
-    # records carry a modest cost too. TAX_CRED carries the 20% relief.
+    # Given: restricted finance costs of 200k on every record below 200k. At
+    # the stage's factor of 1.0, counted as income they would lift the 30k
+    # records (published total 31.8k) and the 80k records (84.8k) into the
+    # 200k pool, which is what the pre-fix pools did; the 260k records carry
+    # a modest cost too. TAX_CRED carries the 20% relief.
     raw = _raw_tape()
     low = raw["PAY"] < 200_000.0
-    raw.loc[low, "LLIR_RESTRICT_AMT_TOT"] = 300_000.0
-    raw.loc[low, "TAX_CRED"] = 60_000.0
+    raw.loc[low, "LLIR_RESTRICT_AMT_TOT"] = 200_000.0
+    raw.loc[low, "TAX_CRED"] = 40_000.0
     mid = raw["PAY"] == 260_000.0
     raw.loc[mid, "LLIR_RESTRICT_AMT_TOT"] = 10_000.0
     raw.loc[mid, "TAX_CRED"] = 2_000.0
@@ -643,7 +645,6 @@ def test_resample_pools_ignore_restricted_finance_costs() -> None:
     for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
         person[column] = 1.0
     factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
-    factors[SPI_PROPERTY_FINANCE_COSTS_COLUMN] = 2.0
     updated, receipt = _resample_band_donor_leaves(
         person,
         donor,
@@ -654,18 +655,22 @@ def test_resample_pools_ignore_restricted_finance_costs() -> None:
         regional_pool_minimum=5,
         seed=44,
     )
-    # Then: the 200k pool holds the 260k records alone, as it did before the
-    # finance costs joined the tape; the costs cut no pool...
+    # Then: every pool is the one the tape's income leaves give (the 200k pool
+    # holds the 260k records alone and the 500k pool the 620k records alone),
+    # so the costs cut no pool...
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[200_000]["pool_records"] == int(
         (donor["hmrc_spi_pay"] == 260_000.0).sum()
     )
+    assert rows[500_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 620_000.0).sum()
+    )
     assert receipt["carriers_outside_band"] == 0
     assert "finance costs cut no pool" in receipt["pool_basis"]
-    # ...and the drawn record's costs travel with its leaves at their own factor.
+    # ...and the drawn record's costs travel with its leaves.
     carrier = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER]].iloc[0]
     assert carrier["hmrc_spi_pay"] == 260_000.0
-    assert carrier[SPI_PROPERTY_FINANCE_COSTS_COLUMN] == 20_000.0
+    assert carrier[SPI_PROPERTY_FINANCE_COSTS_COLUMN] == 10_000.0
 
 
 def test_resample_draw_is_keyed_on_the_carrier_not_on_the_row_order() -> None:

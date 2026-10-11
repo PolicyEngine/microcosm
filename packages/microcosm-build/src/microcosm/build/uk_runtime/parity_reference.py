@@ -12,6 +12,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from importlib.resources import files
 from pathlib import Path
 
@@ -63,11 +64,18 @@ class EfrsParityReference:
 
 @dataclass(frozen=True)
 class EfrsParityKnownGap:
-    """One honestly reasoned, ledger-tracked reference coverage gap."""
+    """One honestly reasoned, ledger-tracked reference coverage gap.
+
+    An engine-derived exclusion is a permanent adjudication (the engine owns
+    the column), so it carries the approver and the approval date and no
+    expiry; a known gap carries neither.
+    """
 
     variable: str
     reason: str
     tracking_note: str
+    approved_by: str | None = None
+    approved_on: str | None = None
 
 
 def _resource_text(resource: str) -> str:
@@ -209,7 +217,7 @@ def load_efrs_parity_reference(
 
 
 def _ledger_entries(
-    raw: object, *, section: str, resource: str
+    raw: object, *, section: str, resource: str, require_signature: bool = False
 ) -> tuple[EfrsParityKnownGap, ...]:
     if not isinstance(raw, Mapping):
         raise ValueError(f"{resource}: {section!r} must be a JSON object.")
@@ -219,6 +227,25 @@ def _ledger_entries(
             raise ValueError(
                 f"{resource}: entry for {variable!r} must be a JSON object."
             )
+        approved_by = approved_on = None
+        if require_signature:
+            approved_by = _require_str(
+                entry.get("approved_by"),
+                field_name=f"{section}[{variable}].approved_by",
+                resource=resource,
+            )
+            approved_on = _require_str(
+                entry.get("approved_on"),
+                field_name=f"{section}[{variable}].approved_on",
+                resource=resource,
+            )
+            try:
+                date.fromisoformat(approved_on)
+            except ValueError as error:
+                raise ValueError(
+                    f"{resource}: {section}[{variable}].approved_on must be an "
+                    f"ISO date, got {approved_on!r}."
+                ) from error
         entries.append(
             EfrsParityKnownGap(
                 variable=str(variable),
@@ -232,6 +259,8 @@ def _ledger_entries(
                     field_name=f"{section}[{variable}].tracking_note",
                     resource=resource,
                 ),
+                approved_by=approved_by,
+                approved_on=approved_on,
             )
         )
     return tuple(entries)
@@ -263,4 +292,5 @@ def load_efrs_engine_derived_exclusions(
         payload.get("engine_derived_exclusions", {}),
         section="engine_derived_exclusions",
         resource=resource,
+        require_signature=True,
     )

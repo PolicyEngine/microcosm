@@ -46,9 +46,12 @@ def _parameters(kind: str) -> dict:
     return dict(operation.parameters)
 
 
-def _facts(*, landlords: float, receipts: float) -> HMRCPropertyRentalFacts:
+def _facts(
+    *, landlords: float, receipts: float, counts=None
+) -> HMRCPropertyRentalFacts:
     bounds = HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS
-    total = float(sum(_BAND_COUNTS))
+    counts = list(_BAND_COUNTS if counts is None else counts)
+    total = float(sum(counts))
     all_landlords = landlords / 0.99
     return HMRCPropertyRentalFacts(
         tax_year=2024,
@@ -74,9 +77,7 @@ def _facts(*, landlords: float, receipts: float) -> HMRCPropertyRentalFacts:
                 bounds[index + 1] if index + 1 < len(bounds) else None,
                 all_landlords * count / total,
             )
-            for index, (lower, count) in enumerate(
-                zip(bounds, _BAND_COUNTS, strict=True)
-            )
+            for index, (lower, count) in enumerate(zip(bounds, counts, strict=True))
         ),
         resource_sha256="test",
     )
@@ -340,6 +341,71 @@ class TestReceiptsWalk:
             assert cell["boundary_allowance_weight"] <= 2.0 * float(weights.max())
         assert cells[0]["multiplier_at_floor"] is False
         assert cells[0]["target_mean_nonpositive"] is False
+
+    def test_a_positive_target_below_the_floor_holds_the_multiplier_at_one(
+        self,
+    ) -> None:
+        # Receipts at 1.65 times profit leave the top band a positive target
+        # mean that its profit floor already exceeds: k stays 1 and the
+        # overshoot is recorded (microcosm#1145 re-review, item 7).
+        ids, profit, weights = _landlords()
+        allocation, _ = self._allocate(ids, profit, weights, receipts_per_profit=1.65)
+        top = allocation.receipt["bands_top_down"][0]
+        assert top["target_mean_receipts_gbp"] > 0.0
+        assert top["target_mean_nonpositive"] is False
+        assert top["profit_multiplier"] == 1.0
+        assert top["multiplier_at_floor"] is True
+        assert top["mean_receipts_shortfall_gbp"] < 0.0
+
+    def test_an_empty_band_carries_one_straddlers_allowance_and_passes_the_gate(
+        self,
+    ) -> None:
+        # A band whose share is smaller than one landlord's weight is missed
+        # whole; both its boundaries fall between the same two people, so its
+        # allowance is one straddler's weight, which covers the miss
+        # (microcosm#1145 re-review, item M2).
+        from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+        ids, profit, weights = _landlords()
+        counts = list(_BAND_COUNTS)
+        counts[6] = sum(_BAND_COUNTS) * 1e-4  # the £60,000 band, under one weight
+        landlords = float(weights[profit > 0].sum())
+        total_profit = float((profit * weights)[profit > 0].sum())
+        facts = _facts(landlords=landlords, receipts=2.0 * total_profit, counts=counts)
+        spec = ReceiptsAllocationSpec.from_parameters(
+            _parameters(ALLOCATE_PROPERTY_RENTAL_INCOME_KIND)
+        )
+        allocation = allocate_property_rental_income(
+            person_ids=ids, profit=profit, weights=weights, facts=facts, spec=spec
+        )
+        cells = {
+            cell["lower_bound"]: cell for cell in allocation.receipt["bands_top_down"]
+        }
+        thin = cells[60_000]
+        assert thin["target_landlords"] < float(weights.min())
+        assert thin["walk_records"] <= 1
+        if thin["walk_records"] == 0:
+            assert thin["boundary_allowance_weight"] <= float(weights.max())
+        assert (
+            abs(thin["walk_landlords_weight"] - thin["target_landlords"])
+            <= (thin["boundary_allowance_weight"])
+        )
+        result = uk_stage_health_gate(
+            evidence={
+                "stage": "property_components",
+                "receipts": {**allocation.receipt, "rows_receipts_below_profit": 0},
+            },
+            stage="property_components",
+            check="property_components",
+            parameters={
+                "stage": "property_components",
+                "check": "property_components",
+                "maximum_rows_receipts_below_profit": 0,
+                "maximum_rows_with_profit_above_band": 0,
+                "maximum_band_error_in_boundary_weights": 1.0,
+            },
+        )
+        assert result.passed, result.failures
 
     def test_bands_take_their_pris_share_of_the_landlords_here(self) -> None:
         # microcosm#1106: before calibration the spine carries fewer landlords

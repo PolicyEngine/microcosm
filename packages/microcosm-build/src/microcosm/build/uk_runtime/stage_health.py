@@ -3177,7 +3177,8 @@ def _property_components_gate(
     Table 13 band above the lowest to its share of the spine's landlords up to
     whole-person rounding: a band's mass sits within the declared multiple of
     its recorded rounding allowance, the weight of the person straddling each
-    of its two boundaries. The open top band's profit multiplier stays below
+    of its two boundaries (one straddler for an empty band), capped at twice
+    the largest landlord weight. The open top band's profit multiplier stays below
     its declared cap; a multiplier at its floor of 1 is reported, not failed.
     """
 
@@ -3228,9 +3229,14 @@ def _property_components_gate(
         walked = _finite_number(
             band.get("walk_landlords_weight"), label=f"{stage} band mass"
         )
-        allowance = _finite_number(
-            band.get("boundary_allowance_weight"),
-            label=f"{stage} band rounding allowance",
+        # The stage's allowance is two straddlers' weights at most; a larger
+        # reported allowance is capped rather than trusted.
+        allowance = min(
+            _finite_number(
+                band.get("boundary_allowance_weight"),
+                label=f"{stage} band rounding allowance",
+            ),
+            2.0 * largest,
         )
         error = abs(walked - target)
         errors.append(

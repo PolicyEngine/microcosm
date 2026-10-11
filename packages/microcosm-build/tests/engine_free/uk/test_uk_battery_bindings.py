@@ -819,6 +819,33 @@ class TestBatteryRegressions:
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
 
+    def test_input_mass_parity_compares_the_release_surface(self) -> None:
+        # The frame carries the spine's WAS property_wealth and the reference
+        # stores its own total within tolerance. Compared on the raw frame the
+        # signed exclusion would be stale and the gate would fail; the gate
+        # compares the export frame, where the column is absent, so the
+        # exclusion is in force and nothing is stale (microcosm#1106).
+        person, benunit, household = _tables()
+        household = household.assign(property_wealth=100.0)
+        reference = UKInputMassReference(
+            totals={"employment_income": 10.0, "property_wealth": 400.0},
+            filename="enhanced_frs_2023_24.h5",
+            revision="655dd07e4bb9c777b00dac044949611f1feb824f",
+            sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+            vintage="2023_24",
+        )
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={"input_mass_reference": reference},
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+        details = outcome.result.details
+        assert details["stale_exclusions"] == []
+        assert "property_wealth" in details["reviewed_exclusions"]
+
     def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
         # nothing is a failed audit, never a vacuous pass.

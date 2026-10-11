@@ -55,12 +55,14 @@ Every `hmrc_spi` reference declares an `uprating_index`; the appliers live in
 the generator and the runtime apply the same factor and the committed
 membership carries the uprated value with its receipt.
 
-- Amount rows: `policyengine_uk_parameter:<path>`, the ratio of the pinned
+- Amount rows: employment, self-employment, private pension and property
+  income follow `hmrc.itl_2026.total_income_growth_by_total_income_band`,
+  HMRC's projected total income in the band, the index their count rows'
+  growth belongs with (microcosm#1063; property since microcosm#1106). The
+  others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses. Employment income follows `obr.average_earnings`, self-employment
-  `obr.per_capita.mixed_income`, dividends `obr.per_capita.gdp`,
-  private pensions `obr.private_pension_index`, savings interest
+  uses: dividends `obr.per_capita.gdp`, savings interest
   `ons.household_interest_income`; the state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
   (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the

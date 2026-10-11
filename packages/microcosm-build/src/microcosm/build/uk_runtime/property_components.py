@@ -687,8 +687,10 @@ def allocate_property_rental_income(
     # The walk's rounding at boundary j (between bands j and j + 1, top down)
     # is bounded by the weight of the person straddling it: the last person
     # above the boundary or the first below. A band's mass error is bounded by
-    # the sum over its two boundaries.
-    boundary_allowance = np.zeros(len(top_down))
+    # the sum over its two boundaries, except where both boundaries fall
+    # between the same two people (an empty band): the walk can then miss the
+    # band by at most one of them, so the allowance counts that straddle once.
+    straddles: list[tuple[int, float]] = []
     for boundary in range(len(top_down) - 1):
         first_below = int(np.searchsorted(band_index, boundary, side="right"))
         straddle = 0.0
@@ -696,8 +698,17 @@ def allocate_property_rental_income(
             straddle = float(ranked_weights[first_below])
         if first_below > 0:
             straddle = max(straddle, float(ranked_weights[first_below - 1]))
-        boundary_allowance[boundary] += straddle
-        boundary_allowance[boundary + 1] += straddle
+        straddles.append((first_below, straddle))
+    boundary_allowance = np.zeros(len(top_down))
+    for index in range(len(top_down)):
+        above = straddles[index - 1] if index > 0 else None
+        below = straddles[index] if index < len(top_down) - 1 else None
+        if above is not None and below is not None and above[0] == below[0]:
+            boundary_allowance[index] = above[1]
+        else:
+            boundary_allowance[index] = (above[1] if above else 0.0) + (
+                below[1] if below else 0.0
+            )
     cells: list[dict[str, Any]] = []
     floored_weight = 0.0
     floored_rows = 0

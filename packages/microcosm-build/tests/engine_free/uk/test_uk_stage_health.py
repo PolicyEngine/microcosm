@@ -2485,3 +2485,17 @@ def test_property_components_gate_fails_a_top_band_at_its_cap() -> None:
     assert not _passed(failed)
     assert "reached its cap 5.0" in failed.failures[0]
     assert failed.details["top_band_multiplier_at_floor"] is False
+
+
+def test_property_components_gate_caps_a_reported_allowance_at_two_weights() -> None:
+    # The stage's allowance is two straddlers at most. A receipt that reported
+    # more would widen the gate, so the cap of twice the largest landlord
+    # weight (19,000 here) applies before the band's error is judged.
+    evidence = _property_components_evidence()
+    band = evidence["receipts"]["bands_top_down"][2]
+    band["walk_landlords_weight"] = band["target_landlords"] + 25_000.0
+    band["boundary_allowance_weight"] = 30_000.0
+    failed = _property_components(evidence)
+    assert not _passed(failed)
+    assert "rounding allowance 19000.0" in failed.failures[0]
+    assert failed.details["band_errors"][2]["allowance_weight"] == 19_000.0

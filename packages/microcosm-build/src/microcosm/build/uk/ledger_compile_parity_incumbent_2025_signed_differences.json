@@ -6682,7 +6682,7 @@
    "ledger_value": 3151071428.571429,
    "name": "hmrc/property_income_income_band_100_000_to_150_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 1273000000.0,
@@ -6690,7 +6690,7 @@
    "ledger_value": 703500000.0,
    "name": "hmrc/property_income_income_band_12_570_to_15_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 2185000000.0,
@@ -6698,7 +6698,7 @@
    "ledger_value": 1332747524.7524753,
    "name": "hmrc/property_income_income_band_150_000_to_200_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 3211000000.0,
@@ -6706,7 +6706,7 @@
    "ledger_value": 1651431535.2697096,
    "name": "hmrc/property_income_income_band_15_000_to_20_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 834100000.0,
@@ -6714,7 +6714,7 @@
    "ledger_value": 525041487.8397711,
    "name": "hmrc/property_income_income_band_1_000_000_to_inf",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 1995000000.0,
@@ -6722,7 +6722,7 @@
    "ledger_value": 1272816349.3840985,
    "name": "hmrc/property_income_income_band_200_000_to_300_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 7258000000.0,
@@ -6730,7 +6730,7 @@
    "ledger_value": 3831324110.671937,
    "name": "hmrc/property_income_income_band_20_000_to_30_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 1453500000.0,
@@ -6738,7 +6738,7 @@
    "ledger_value": 927337625.9798431,
    "name": "hmrc/property_income_income_band_300_000_to_500_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 7220000000.0,
@@ -6746,7 +6746,7 @@
    "ledger_value": 4252163461.538461,
    "name": "hmrc/property_income_income_band_30_000_to_40_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 7182000000.0,
@@ -6754,7 +6754,7 @@
    "ledger_value": 4229783653.8461537,
    "name": "hmrc/property_income_income_band_40_000_to_50_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 900600000.0,
@@ -6762,7 +6762,7 @@
    "ledger_value": 580715469.6132597,
    "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 10260000000.0,
@@ -6770,7 +6770,7 @@
    "ledger_value": 6559199999.999999,
    "name": "hmrc/property_income_income_band_50_000_to_70_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 7163000000.0,
@@ -6778,7 +6778,7 @@
    "ledger_value": 4579293333.333333,
    "name": "hmrc/property_income_income_band_70_000_to_100_000",
    "period": 2025,
-   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by the pinned engine's per-capita GDP index; the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
+   "reason": "The x1.9 adjustment is retired (microcosm#1106, María's ruling of 2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from property, landlords' profit after allowable expenses and before residential finance costs, moved to the 2025 calibration year by HMRC's projected total income in the band (hmrc.itl_2026.total_income_growth_by_total_income_band, the index the count rows' growth belongs with; María's ruling of 2026-10-11); the frozen incumbent fixture holds 1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net concept."
   },
   {
    "fixture_value": 85000.0,
