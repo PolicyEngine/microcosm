@@ -466,6 +466,11 @@
       "path": "local_small_cell_rule.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_spi_table_3_11_uk_rows.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

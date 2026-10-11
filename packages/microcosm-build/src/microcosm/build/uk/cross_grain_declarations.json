@@ -168,7 +168,8 @@
         "hmrc.spi_region.taxpayers_by_region_12570_15000"
       ],
       "max_factor_shift": 0.033,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 2.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 3.3% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 2.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 3.3% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_15000_vs_spi_region_15000",
@@ -180,7 +181,8 @@
         "hmrc.spi_region.taxpayers_by_region_15000_20000"
       ],
       "max_factor_shift": 0.018,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.8% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.8% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_20000_vs_spi_region_20000",
@@ -192,7 +194,8 @@
         "hmrc.spi_region.taxpayers_by_region_20000_30000"
       ],
       "max_factor_shift": 0.013,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_30000_vs_spi_region_30000_40000",
@@ -205,7 +208,8 @@
         "hmrc.spi_region.taxpayers_by_region_40000_50000"
       ],
       "max_factor_shift": 0.008,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 0.8% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 0.8% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_50000_vs_spi_region_50000_70000",
@@ -218,7 +222,8 @@
         "hmrc.spi_region.taxpayers_by_region_70000_100000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_100000_vs_spi_region_100000",
@@ -230,7 +235,8 @@
         "hmrc.spi_region.taxpayers_by_region_100000_150000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_150000_vs_spi_region_150000",
@@ -242,7 +248,8 @@
         "hmrc.spi_region.taxpayers_by_region_150000_200000"
       ],
       "max_factor_shift": 0.009,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.3% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 0.9% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.3% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 0.9% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_taxpayers_200000_vs_spi_region_200000",
@@ -257,7 +264,8 @@
         "hmrc.spi_region.taxpayers_by_region_200000_plus"
       ],
       "max_factor_shift": 0.011,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_12570_vs_spi_region_12570",
@@ -269,7 +277,8 @@
         "hmrc.spi_region.total_income_by_region_12570_15000"
       ],
       "max_factor_shift": 0.028,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 2.3% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 2.8% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 2.3% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 2.8% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_15000_vs_spi_region_15000",
@@ -281,7 +290,8 @@
         "hmrc.spi_region.total_income_by_region_15000_20000"
       ],
       "max_factor_shift": 0.017,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.7% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.2% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.7% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_20000_vs_spi_region_20000",
@@ -293,7 +303,8 @@
         "hmrc.spi_region.total_income_by_region_20000_30000"
       ],
       "max_factor_shift": 0.013,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_30000_vs_spi_region_30000_40000",
@@ -306,7 +317,8 @@
         "hmrc.spi_region.total_income_by_region_40000_50000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_50000_vs_spi_region_50000_70000",
@@ -319,7 +331,8 @@
         "hmrc.spi_region.total_income_by_region_70000_100000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_100000_vs_spi_region_100000",
@@ -331,7 +344,8 @@
         "hmrc.spi_region.total_income_by_region_100000_150000"
       ],
       "max_factor_shift": 0.014,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.4% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.4% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_150000_vs_spi_region_150000",
@@ -343,7 +357,8 @@
         "hmrc.spi_region.total_income_by_region_150000_200000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_total_income_200000_vs_spi_region_200000",
@@ -358,7 +373,8 @@
         "hmrc.spi_region.total_income_by_region_200000_plus"
       ],
       "max_factor_shift": 0.013,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the total income of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.3% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_12570_vs_spi_region_12570",
@@ -370,7 +386,8 @@
         "hmrc.spi_region.income_tax_by_region_12570_15000"
       ],
       "max_factor_shift": 0.063,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 5.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 6.3% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 5.7% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 6.3% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_15000_vs_spi_region_15000",
@@ -382,7 +399,8 @@
         "hmrc.spi_region.income_tax_by_region_15000_20000"
       ],
       "max_factor_shift": 0.02,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 2.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 1.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 2.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_20000_vs_spi_region_20000",
@@ -394,7 +412,8 @@
         "hmrc.spi_region.income_tax_by_region_20000_30000"
       ],
       "max_factor_shift": 0.011,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_30000_vs_spi_region_30000_40000",
@@ -407,7 +426,8 @@
         "hmrc.spi_region.income_tax_by_region_40000_50000"
       ],
       "max_factor_shift": 0.01,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.4% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.0% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_50000_vs_spi_region_50000_70000",
@@ -420,7 +440,8 @@
         "hmrc.spi_region.income_tax_by_region_70000_100000"
       ],
       "max_factor_shift": 0.011,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.5% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_100000_vs_spi_region_100000",
@@ -432,7 +453,8 @@
         "hmrc.spi_region.income_tax_by_region_100000_150000"
       ],
       "max_factor_shift": 0.011,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.6% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.6% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.1% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_150000_vs_spi_region_150000",
@@ -444,7 +466,8 @@
         "hmrc.spi_region.income_tax_by_region_150000_200000"
       ],
       "max_factor_shift": 0.012,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.6% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.2% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.6% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.2% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     },
     {
       "bridge_id": "itl_income_tax_200000_vs_spi_region_200000",
@@ -459,7 +482,8 @@
         "hmrc.spi_region.income_tax_by_region_200000_plus"
       ],
       "max_factor_shift": 0.014,
-      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.4% from one is refused."
+      "explained_by": "hmrc_spi_table_3_11_uk_row",
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum 0.8% short of HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) on the 942a1fa feed. The shortfall is the income tax of taxpayers Table 3.11's UK row carries in no region (an address abroad or not known), who are concentrated in the lowest bands. National wins: the regional cells are rescaled onto the UK band, which spreads those taxpayers over the regions pro rata. A factor more than 1.4% from one is refused. The compile checks the explanation on the values: the factor must sit within half a point of Table 3.11's United Kingdom row over the regional cells' sum (explained_by)."
     }
   ],
   "fanout_sum_bridges": [

@@ -8,11 +8,13 @@ import pytest
 
 from microcosm.build.uk_runtime.ledger_targets import UK_REGION_TIER_CODES
 from microcosm.build.uk_runtime.national_reconciliation import (
+    UK_TABLE_3_11_UK_ROW,
     UKBandBridge,
     _apply_band_bridges,
     assert_uk_national_rows_unmoved,
     reconcile_uk_national_registry,
     uk_band_bridges,
+    uk_table_3_11_uk_rows,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -109,9 +111,125 @@ def test_a_band_bridge_factor_beyond_its_bound_is_refused():
     assert specs[1].value == 11_000.0
 
 
+def _table_3_11_cell(
+    band: str, area: str, published: float, growth: float, upper: int | None
+) -> TargetSpec:
+    lower = band.split("_", 1)[0]
+    return _spec(
+        f"hmrc.spi_region.taxpayers_by_region_{band}@{area}@2025",
+        f"hmrc.spi_region.taxpayers_by_region_{band}",
+        published * growth,
+        ledger_layout_measure_id="total_income_count",
+        ledger_filter_total_income_lower_bound=lower,
+        **({} if upper is None else {"ledger_filter_total_income_upper_bound": upper}),
+        uprating_factor=repr(growth),
+        ledger_value_before_alignment=repr(published),
+    )
+
+
+def _explained_bridge(band: str, *lower_bounds: float) -> UKBandBridge:
+    return UKBandBridge(
+        bridge_id=f"itl_taxpayers_{band}",
+        higher_target_id="hmrc.itl.taxpayers_by_total_income_band",
+        higher_band_lower_bounds=tuple(lower_bounds),
+        lower_target_ids=(f"hmrc.spi_region.taxpayers_by_region_{band}",),
+        max_factor_shift=0.05,
+        explained_by=UK_TABLE_3_11_UK_ROW,
+    )
+
+
+def test_a_band_bridge_factor_is_checked_against_the_tables_own_uk_row():
+    # Table 3.11: 1,000 across the regions and 1,030 in the UK row. The band
+    # grows 10%, so the projected UK band is 1,133 and the factor is 1.03.
+    specs = [
+        _itl(12570, "15000", 1_133.0),
+        _table_3_11_cell("12570_15000", "E12000001", 600.0, 1.1, 15000),
+        _table_3_11_cell("12570_15000", "W92000004", 400.0, 1.1, 15000),
+    ]
+    bridge = _explained_bridge("12570_15000", 12570.0)
+    uk_rows = {("total_income_count", 12570.0): 1_030.0}
+    (receipt,) = _apply_band_bridges(specs, (bridge,), uk_rows=uk_rows)
+    assert receipt["declared_factor"] == pytest.approx(1.03)
+    assert receipt["explained_factor"] == pytest.approx(1.03)
+    assert receipt["explained_by"] == UK_TABLE_3_11_UK_ROW
+
+
+def test_a_factor_the_uk_row_does_not_explain_is_refused_inside_its_bound():
+    # The factor is 1.03, inside the declared 5%, but the UK row holds only
+    # 1,010: the taxpayers of no region explain one point of it, not three.
+    specs = [
+        _itl(12570, "15000", 1_133.0),
+        _table_3_11_cell("12570_15000", "E12000001", 1_000.0, 1.1, 15000),
+    ]
+    bridge = _explained_bridge("12570_15000", 12570.0)
+    with pytest.raises(ValueError, match="no longer explain the gap"):
+        _apply_band_bridges(
+            specs, (bridge,), uk_rows={("total_income_count", 12570.0): 1_010.0}
+        )
+    assert specs[1].value == pytest.approx(1_100.0)
+
+
+def test_an_open_top_regional_band_is_explained_by_every_uk_band_above_it():
+    specs = [
+        _itl(200000, "plus", 404.0),
+        _table_3_11_cell("200000_plus", "E12000007", 400.0, 1.0, None),
+    ]
+    uk_rows = {
+        ("total_income_count", 150000.0): 999.0,
+        ("total_income_count", 200000.0): 300.0,
+        ("total_income_count", 300000.0): 80.0,
+        ("total_income_count", 1000000.0): 24.0,
+        ("total_income_amount", 200000.0): 999.0,
+    }
+    bridge = _explained_bridge("200000_plus", 200000.0)
+    (receipt,) = _apply_band_bridges(specs, (bridge,), uk_rows=uk_rows)
+    assert receipt["explained_factor"] == pytest.approx(404.0 / 400.0)
+
+
+def test_an_explained_bridge_needs_its_cells_table_identity_and_a_uk_row():
+    bridge = _explained_bridge("12570_15000", 12570.0)
+    unnamed = [
+        _itl(12570, "15000", 1_000.0),
+        _regional("12570_15000", "E12000001", 1_000.0),
+    ]
+    with pytest.raises(ValueError, match="does not name its Table 3.11 measure"):
+        _apply_band_bridges(unnamed, (bridge,), uk_rows={})
+    named = [
+        _itl(12570, "15000", 1_000.0),
+        _table_3_11_cell("12570_15000", "E12000001", 1_000.0, 1.0, 15000),
+    ]
+    with pytest.raises(ValueError, match="no United Kingdom row"):
+        _apply_band_bridges(named, (bridge,), uk_rows={})
+
+
+def test_the_vendored_uk_rows_carry_every_band_of_the_three_measures():
+    rows = uk_table_3_11_uk_rows()
+    measures = {"total_income_count", "total_income_amount", "total_tax_amount"}
+    assert {measure for measure, _ in rows} == measures
+    assert len(rows) == 39
+    # Table 3.11's UK row, 2023-24: 2,850 thousand taxpayers at 12,570-15,000.
+    assert rows[("total_income_count", 12570.0)] == 2_850_000.0
+
+
 def test_every_declared_band_bridge_states_a_bound_and_its_measured_gap():
     bridges = uk_band_bridges()
     assert len(bridges) == 24
+    assert {bridge.explained_by for bridge in bridges} == {UK_TABLE_3_11_UK_ROW}
+    with pytest.raises(ValueError, match="unknown explanation"):
+        uk_band_bridges(
+            {
+                "band_bridges": [
+                    {
+                        "bridge_id": "x",
+                        "higher_target_id": "h",
+                        "higher_band_lower_bounds": [0],
+                        "lower_target_ids": [],
+                        "max_factor_shift": 0.01,
+                        "explained_by": "a_guess",
+                    }
+                ]
+            }
+        )
     assert all(0.005 < bridge.max_factor_shift <= 0.063 for bridge in bridges)
     # The lowest band carries most of the taxpayers HMRC places in no region.
     by_id = {bridge.bridge_id: bridge for bridge in bridges}

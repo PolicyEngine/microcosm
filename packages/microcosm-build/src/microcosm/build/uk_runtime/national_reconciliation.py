@@ -26,6 +26,7 @@ in its metadata.
 
 from __future__ import annotations
 
+import functools
 import math
 import re
 from collections.abc import Mapping, Sequence
@@ -40,6 +41,7 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_grain,
     uk_fanout_sum_bridges,
 )
+from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.uprating_holds import uk_value_before_uprating
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -53,6 +55,11 @@ class UKBandBridge:
     The bridge refuses a factor further than ``max_factor_shift`` from one:
     each declaration states the gap it was reviewed at, so a wider gap means
     the regional table and the UK band no longer differ for the stated reason.
+    That bound is a tripwire set from the measured gap. ``explained_by`` names
+    the publisher's own account of the gap, which is checked on the values:
+    ``hmrc_spi_table_3_11_uk_row`` says the factor is Table 3.11's United
+    Kingdom row over its twelve regional areas' sum, the taxpayers HMRC
+    places in no region.
     """
 
     bridge_id: str
@@ -60,6 +67,7 @@ class UKBandBridge:
     higher_band_lower_bounds: tuple[float, ...]
     lower_target_ids: tuple[str, ...]
     max_factor_shift: float
+    explained_by: str | None = None
 
 
 def uk_band_bridges(
@@ -75,9 +83,98 @@ def uk_band_bridges(
             ),
             lower_target_ids=tuple(str(value) for value in entry["lower_target_ids"]),
             max_factor_shift=_band_bridge_bound(entry),
+            explained_by=_band_bridge_explanation(entry),
         )
         for entry in declared.get("band_bridges", ())
     )
+
+
+UK_TABLE_3_11_UK_ROW = "hmrc_spi_table_3_11_uk_row"
+UK_TABLE_3_11_UK_ROWS_RESOURCE = "hmrc_spi_table_3_11_uk_rows.json"
+#: How far a band bridge's factor may sit from the one its explanation gives.
+#: A bridge that spans two SPI bands under one ITL band carries the two
+#: publications' rounding of that band (0.19 points at the widest).
+UK_BAND_BRIDGE_MAX_UNEXPLAINED = 0.005
+
+
+def _band_bridge_explanation(entry: Mapping[str, Any]) -> str | None:
+    explained_by = entry.get("explained_by")
+    if explained_by not in (None, UK_TABLE_3_11_UK_ROW):
+        raise ValueError(
+            f"UK band bridge {entry.get('bridge_id')!r} names an unknown "
+            f"explanation {explained_by!r}; expected {UK_TABLE_3_11_UK_ROW!r}."
+        )
+    return explained_by
+
+
+@functools.lru_cache(maxsize=1)
+def uk_table_3_11_uk_rows() -> Mapping[tuple[str, float], float]:
+    """Table 3.11's United Kingdom row, by measure and band lower bound.
+
+    All taxpayers (``sex: all``), each band of total income: the vendored
+    publisher values, read to explain the band bridges' factors.
+    """
+
+    rows: dict[tuple[str, float], float] = {}
+    for row in vendored_rows(UK_TABLE_3_11_UK_ROWS_RESOURCE):
+        dimensions = row["dimensions"]
+        lower = dimensions.get("total_income_lower_bound")
+        if dimensions.get("sex") != "all" or lower is None:
+            continue
+        rows[(str(row["measure_id"]), float(lower))] = float(row["value"])
+    return rows
+
+
+def _table_3_11_explained_factor(
+    bridge: UKBandBridge,
+    cells: Sequence[TargetSpec],
+    uk_rows: Mapping[tuple[str, float], float],
+) -> float:
+    """Table 3.11's UK row over the regional cells' sum, at the table's year.
+
+    Each regional cell names its measure and its band; the UK row is summed
+    over the published bands every distinct cell band spans (the regional
+    table's open top band covers four UK bands).
+    """
+
+    bands: set[tuple[str, float, float]] = set()
+    for spec in cells:
+        measure_id = spec.metadata.get("ledger_layout_measure_id")
+        lower = spec.metadata.get("ledger_filter_total_income_lower_bound")
+        if measure_id in (None, "") or lower in (None, ""):
+            raise ValueError(
+                f"UK band bridge {bridge.bridge_id!r} is explained by Table "
+                f"3.11's UK row, but its cell {spec.name!r} does not name its "
+                "Table 3.11 measure and band."
+            )
+        upper = spec.metadata.get("ledger_filter_total_income_upper_bound")
+        bands.add(
+            (
+                str(measure_id),
+                float(lower),
+                math.inf if upper in (None, "") else float(upper),
+            )
+        )
+    uk_total = 0.0
+    for measure_id, lower, upper in sorted(bands):
+        spanned = [
+            value
+            for (row_measure, row_lower), value in uk_rows.items()
+            if row_measure == measure_id and lower <= row_lower < upper
+        ]
+        if not spanned:
+            raise ValueError(
+                f"UK band bridge {bridge.bridge_id!r}: Table 3.11 carries no "
+                f"United Kingdom row for {measure_id} from {lower:g}."
+            )
+        uk_total += math.fsum(spanned)
+    regions_total = math.fsum(uk_value_before_uprating(spec) for spec in cells)
+    if regions_total <= 0.0:
+        raise ValueError(
+            f"UK band bridge {bridge.bridge_id!r} has a non-positive regional "
+            "total before uprating."
+        )
+    return uk_total / regions_total
 
 
 def _band_bridge_bound(entry: Mapping[str, Any]) -> float:
@@ -198,6 +295,8 @@ def _band_lower_bound(spec: TargetSpec) -> float | None:
 def _apply_band_bridges(
     specs: list[TargetSpec],
     bridges: Sequence[UKBandBridge],
+    *,
+    uk_rows: Mapping[tuple[str, float], float] | None = None,
 ) -> list[dict[str, Any]]:
     receipts: list[dict[str, Any]] = []
     by_target: dict[str, list[int]] = {}
@@ -253,6 +352,21 @@ def _apply_band_bridges(
                 "band no longer differ by the gap the bridge was reviewed at "
                 "(microcosm#1123)."
             )
+        explained = None
+        if bridge.explained_by == UK_TABLE_3_11_UK_ROW:
+            explained = _table_3_11_explained_factor(
+                bridge,
+                [specs[position] for position in lower_positions],
+                uk_table_3_11_uk_rows() if uk_rows is None else uk_rows,
+            )
+            if abs(factor - explained) > UK_BAND_BRIDGE_MAX_UNEXPLAINED:
+                raise ValueError(
+                    f"UK band bridge {bridge.bridge_id!r} would rescale its "
+                    f"regional cells by {factor!r}, but Table 3.11's United "
+                    f"Kingdom row over the regional cells' sum is {explained!r}: "
+                    "the taxpayers HMRC places in no region no longer explain "
+                    "the gap (microcosm#1123)."
+                )
         for position in lower_positions:
             spec = specs[position]
             specs[position] = replace(
@@ -279,6 +393,8 @@ def _apply_band_bridges(
                 "new_total": new_total,
                 "declared_factor": factor,
                 "max_factor_shift": bridge.max_factor_shift,
+                "explained_by": bridge.explained_by,
+                "explained_factor": explained,
                 "cells": len(lower_positions),
             }
         )
