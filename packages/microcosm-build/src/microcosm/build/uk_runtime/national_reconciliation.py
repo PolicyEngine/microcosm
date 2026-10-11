@@ -40,6 +40,7 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_grain,
     uk_fanout_sum_bridges,
 )
+from microcosm.build.uk_runtime.uprating_holds import uk_value_before_uprating
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
 _CLOSURE_RTOL = 1e-9
@@ -405,8 +406,7 @@ def uk_fanout_sum_controls(
             # The same total before the bands' own uprating index, so the
             # joint surface can test source agreement apart from the indices.
             "control_before_alignment": math.fsum(
-                float(spec.metadata.get("ledger_value_before_alignment", spec.value))
-                for spec in cells
+                uk_value_before_uprating(spec) for spec in cells
             ),
             "cells": sorted(spec.name for spec in cells),
         }

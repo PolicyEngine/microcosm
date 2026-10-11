@@ -87,11 +87,14 @@ class UKFanoutSumBridge:
     joint surface its cells are skipped as controls. Summed over every cell of
     the full compiled register, measure-excluded bands included, it is the
     total the area cells divide (HMRC SPI Table 3.6 bands over Tables 3.14 and
-    3.15). The bridge refuses a source factor further than
-    ``max_factor_shift`` from one, at every grain the surface binds: the
-    control over the cells' total before either side's uprating index. The
-    publisher's tables agree closely, so a larger gap means the two sides no
-    longer measure one quantity.
+    3.15). The factor the cells take has two parts, each bounded at every
+    grain the surface binds. The source factor is the control over the cells'
+    total before either side's uprating index: the publisher's tables agree
+    closely, so one further than ``max_factor_shift`` from one means the two
+    sides no longer measure one quantity. The index factor is the rest, the
+    gap between the bands' band-by-band growth and the cells' all-ranges
+    growth: one further than ``max_index_shift`` from one means a re-pinned
+    index has moved the area targets.
     """
 
     bridge_id: str
@@ -99,6 +102,7 @@ class UKFanoutSumBridge:
     lower_target_id: str
     geography_id: str
     max_factor_shift: float
+    max_index_shift: float
 
     @property
     def control_target_id(self) -> str:
@@ -115,10 +119,21 @@ def uk_fanout_sum_bridges(
             higher_target_id=str(entry["higher_target_id"]),
             lower_target_id=str(entry["lower_target_id"]),
             geography_id=str(entry["geography_id"]),
-            max_factor_shift=float(entry["max_factor_shift"]),
+            max_factor_shift=_fanout_bound(entry, "max_factor_shift"),
+            max_index_shift=_fanout_bound(entry, "max_index_shift"),
         )
         for entry in declared.get("fanout_sum_bridges", ())
     )
+
+
+def _fanout_bound(entry: Mapping[str, Any], field: str) -> float:
+    bound = entry.get(field)
+    if not isinstance(bound, (int, float)) or not 0.0 < float(bound) < 1.0:
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            f"{field} in (0, 1), got {bound!r}."
+        )
+    return float(bound)
 
 
 def is_uk_fanout_target(target: Mapping[str, Any]) -> bool:

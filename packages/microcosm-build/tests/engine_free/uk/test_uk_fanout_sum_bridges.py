@@ -126,7 +126,9 @@ def test_a_surface_binding_the_area_cells_without_the_control_is_refused():
         _uk_fanout_sum_controls(rows, {})
 
 
-def _area(level: str, area: str, value: float, before: float) -> TargetSpec:
+def _area(
+    level: str, area: str, value: float, before: float | None, **metadata
+) -> TargetSpec:
     return TargetSpec(
         name=f"hmrc.employment_income.amount@{area}@2025",
         entity="person",
@@ -139,7 +141,12 @@ def _area(level: str, area: str, value: float, before: float) -> TargetSpec:
             "contract_target_id": "hmrc.employment_income.amount",
             "geography_level": level,
             "geography_id": area,
-            "ledger_value_before_alignment": repr(before),
+            **(
+                {}
+                if before is None
+                else {"ledger_value_before_alignment": repr(before)}
+            ),
+            **metadata,
         },
     )
 
@@ -148,28 +155,58 @@ def _controls(control: float, before: float) -> dict:
     return {_EMPLOYMENT: {"control": control, "control_before_alignment": before}}
 
 
-def test_the_gate_reads_source_agreement_apart_from_the_two_indices():
-    # At source the cells sum to 1,000 against bands of 1,010 (1% apart). The
-    # bands grew 20% band by band and the cells 15% on the all-ranges index,
-    # so the applied factor is 5.4% from one while the sides agree at source.
-    registry = TargetRegistry(
+def _grown_cells(growth: float) -> TargetRegistry:
+    # Cells of 1,000 at source at each grain, grown on the all-ranges index.
+    return TargetRegistry(
         [
-            _area("constituency", "E14000001", 575.0, 500.0),
-            _area("constituency", "E14000002", 575.0, 500.0),
-            _area("local_authority", "E06000001", 1_150.0, 1_000.0),
+            _area("constituency", "E14000001", 500.0 * growth, 500.0),
+            _area("constituency", "E14000002", 500.0 * growth, 500.0),
+            _area("local_authority", "E06000001", 1_000.0 * growth, 1_000.0),
         ],
         country="uk",
     )
-    rows = _assert_uk_fanout_sum_agreement(registry, _controls(1_212.0, 1_010.0))
+
+
+def test_the_gate_reads_source_agreement_apart_from_the_two_indices():
+    # At source the cells sum to 1,000 against bands of 1,010 (1% apart). The
+    # bands grew 15.5% band by band and the cells 15% on the all-ranges index.
+    rows = _assert_uk_fanout_sum_agreement(
+        _grown_cells(1.15), _controls(1_010.0 * 1.155, 1_010.0)
+    )
     assert [(row["geography_level"], row["cells"]) for row in rows] == [
         ("constituency", 2),
         ("local_authority", 1),
     ]
     for row in rows:
         assert row["source_factor"] == pytest.approx(1.01)
-        assert row["applied_factor"] == pytest.approx(1_212.0 / 1_150.0)
-        assert row["index_factor"] == pytest.approx(1.2 / 1.15)
+        assert row["applied_factor"] == pytest.approx(1.01 * 1.155 / 1.15)
+        assert row["index_factor"] == pytest.approx(1.155 / 1.15)
         assert row["max_factor_shift"] == 0.02
+        assert row["max_index_shift"] == 0.01
+
+
+def test_an_index_gap_past_its_bound_is_refused_though_the_sources_agree():
+    # The same source agreement, but the bands grew 20% against the cells'
+    # 15%: the cells would take 5.4% that no publisher table disagrees by.
+    with pytest.raises(ValueError, match="uprating index.*beyond the declared 0.01"):
+        _assert_uk_fanout_sum_agreement(
+            _grown_cells(1.15), _controls(1_010.0 * 1.2, 1_010.0)
+        )
+
+
+def test_a_moved_cell_that_lost_its_source_value_is_refused():
+    registry = TargetRegistry(
+        [_area("constituency", "E14000001", 1_150.0, None, uprating_factor="1.15")],
+        country="uk",
+    )
+    with pytest.raises(ValueError, match="no ledger_value_before_alignment"):
+        _assert_uk_fanout_sum_agreement(registry, _controls(1_150.0, 1_000.0))
+    # A cell no index moved is its own source value.
+    registry = TargetRegistry(
+        [_area("constituency", "E14000001", 1_000.0, None)], country="uk"
+    )
+    (row,) = _assert_uk_fanout_sum_agreement(registry, _controls(1_000.0, 1_000.0))
+    assert row["source_factor"] == 1.0
 
 
 def test_a_grain_the_single_winner_rule_reconciles_first_is_still_gated():
@@ -178,6 +215,7 @@ def test_a_grain_the_single_winner_rule_reconciles_first_is_still_gated():
     # cells on the constituency cells, so its bridge leg would read one.
     (bridge,) = [b for b in UK_FANOUT_SUM_BRIDGES if b.bridge_id == _EMPLOYMENT]
     assert bridge.max_factor_shift == 0.02
+    assert bridge.max_index_shift == 0.01
     registry = TargetRegistry(
         [
             _area("constituency", "E14000001", 1_000.0, 1_000.0),

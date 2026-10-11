@@ -469,7 +469,8 @@
       "lower_target_id": "hmrc.employment_income.amount",
       "geography_id": "K02000001",
       "max_factor_shift": 0.02,
-      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. The gate is on source agreement, at each grain on its own: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. The factor the cells actually take also carries the gap between the bands' band-by-band growth and the cells' all-ranges growth, and is receipted beside it."
+      "max_index_shift": 0.01,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.5% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
     },
     {
       "bridge_id": "spi_employment_count_bands_vs_area",
@@ -477,7 +478,8 @@
       "lower_target_id": "hmrc.employment_income.count",
       "geography_id": "K02000001",
       "max_factor_shift": 0.02,
-      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. The gate is on source agreement, at each grain on its own: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. The factor the cells actually take also carries the gap between the bands' band-by-band growth and the cells' all-ranges growth, and is receipted beside it."
+      "max_index_shift": 0.02,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 1.4% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
     },
     {
       "bridge_id": "spi_self_employment_amount_bands_vs_area",
@@ -485,7 +487,8 @@
       "lower_target_id": "hmrc.self_employment_income.amount",
       "geography_id": "K02000001",
       "max_factor_shift": 0.02,
-      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. The gate is on source agreement, at each grain on its own: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. The factor the cells actually take also carries the gap between the bands' band-by-band growth and the cells' all-ranges growth, and is receipted beside it."
+      "max_index_shift": 0.007,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.2% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
     },
     {
       "bridge_id": "spi_self_employment_count_bands_vs_area",
@@ -493,7 +496,8 @@
       "lower_target_id": "hmrc.self_employment_income.count",
       "geography_id": "K02000001",
       "max_factor_shift": 0.02,
-      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. The gate is on source agreement, at each grain on its own: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. The factor the cells actually take also carries the gap between the bands' band-by-band growth and the cells' all-ranges growth, and is receipted beside it."
+      "max_index_shift": 0.009,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.3% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
     }
   ],
   "sum_bridges": [

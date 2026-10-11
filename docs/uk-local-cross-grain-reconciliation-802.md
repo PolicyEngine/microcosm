@@ -95,8 +95,25 @@ change before the partition.
 
 **HMRC income by area.** The SPI band partition, summed over every band of
 the full compiled register, controls the Tables 3.14 and 3.15 area cells per
-grain (`fanout_sum_bridges`). A factor more than 2% from one is refused. A
-fan-out is never an exact-signature control: its cells are a distribution.
+grain (`fanout_sum_bridges`). The factor the cells take has two parts, and
+each is gated at each grain on its own. The source factor is the bands' total
+over the cells' total before either side's uprating index: more than 2% from
+one is refused (`max_factor_shift`). The index factor is the rest, the gap
+between the bands' band-by-band growth and the cells' all-ranges growth: past
+the bridge's `max_index_shift` (its measured gap plus half a point) it is
+refused. A fan-out is never an exact-signature control: its cells are a
+distribution.
+
+**Cells that are off the surface.** A leg's control covers every area in the
+leg, but the membership signs some cells off the surface: deferred with a
+published value (the City of London, the Isles of Scilly) or absent from the
+publisher's table (HMRC's local-authority tables carry no Torbay or Isles of
+Scilly row). Where a control moves their leg, those cells join the
+reconciliation frame, so the leg's bound cells do not take their share, and
+they never reach the solve (`uk_runtime/off_surface_cells.py`). A cell with a
+value joins with it. A cell with none is implied from the target's other
+local tier, over the legs where both tiers are whole. An absent cell that no
+tier can imply is refused.
 
 **UC child bands.** The bands partition each constituency's UC caseload
 (`share_of_parent`).

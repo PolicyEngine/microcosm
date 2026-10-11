@@ -150,6 +150,28 @@ def _moved_or_covers_the_period(spec: TargetSpec) -> bool:
     )
 
 
+def uk_value_before_uprating(spec: TargetSpec) -> float:
+    """The spec's value at its own period, before an uprating index moved it.
+
+    An applier stamps ``ledger_value_before_alignment`` beside its factor, and
+    a spec no index moved is its own source value. A spec that carries a
+    factor and has lost the stamp is refused: its uprated value would stand
+    on the source side of a source-agreement test and mix two periods there.
+    """
+
+    metadata = spec.metadata
+    before = metadata.get("ledger_value_before_alignment")
+    if before is not None:
+        return float(before)
+    if "uprating_factor" in metadata:
+        raise ValueError(
+            f"UK target {spec.name!r} carries an uprating_factor and no "
+            "ledger_value_before_alignment, so its value before the index "
+            "cannot be read (microcosm#1123)."
+        )
+    return float(spec.value)
+
+
 def has_unresolved_period(spec: TargetSpec, calibration_period: int | str) -> bool:
     """No index moved the value and its fact period cannot be read.
 

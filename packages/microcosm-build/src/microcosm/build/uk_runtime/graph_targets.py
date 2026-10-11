@@ -64,6 +64,7 @@ from .ledger_targets import (
     load_uk_local_target_reference_membership,
     uk_census_household_uprating,
     uk_nation_households_reference,
+    uk_off_surface_cells,
     uk_small_cell_deferred_cells,
 )
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
@@ -293,6 +294,9 @@ def compile_uk_full_target_surface(
             "fanout_sum_controls"
         ),
         deferred_cells=uk_small_cell_deferred_cells(
+            load_uk_local_target_reference_membership()
+        ),
+        off_surface_cells=uk_off_surface_cells(
             load_uk_local_target_reference_membership()
         ),
     )

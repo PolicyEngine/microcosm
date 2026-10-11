@@ -51,11 +51,18 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.off_surface_cells import (
+    uk_off_surface_frame_rows,
+    uk_signed_cells_off_the_surface,
+)
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
 )
-from microcosm.build.uk_runtime.uprating_holds import uk_register_entry_is_signed
+from microcosm.build.uk_runtime.uprating_holds import (
+    uk_register_entry_is_signed,
+    uk_value_before_uprating,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.geography_constants import (
     UK_REGION_TIER,
@@ -929,6 +936,19 @@ def uk_small_cell_deferred_cells(
                         }
                     )
     return tuple(cells)
+
+
+def uk_off_surface_cells(membership: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    """The membership's signed cells that are off the surface (#1123).
+
+    Every deferred or absent cell but the small-cell rule's own, which join
+    the reconciliation frame through ``uk_small_cell_deferred_cells``.
+    """
+
+    return uk_signed_cells_off_the_surface(
+        membership,
+        rule_ids={str(rule["rule_id"]) for rule in _uk_small_cell_rules()},
+    )
 
 
 def assert_uk_local_deferrals_in_force(
@@ -2223,6 +2243,7 @@ def uk_local_target_surface(
     area_region_codes: Mapping[str, str] | None = None,
     fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None = None,
     deferred_cells: Sequence[Mapping[str, Any]] = (),
+    off_surface_cells: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
@@ -2231,6 +2252,10 @@ def uk_local_target_surface(
     ``fanout_sum_controls`` is the national reconciliation's receipt of each
     declared fan-out's total over the full register (#1123): a surface that
     binds a fan-out sum bridge's area cells must carry it.
+    ``off_surface_cells`` are the membership's signed cells that are not
+    bound (``uk_off_surface_cells``): where a control moves their leg they
+    join the reconciliation frame, so the leg's bound cells do not take
+    their share (``uk_runtime.off_surface_cells``).
     """
 
     if census_household_uprating is None:
@@ -2274,6 +2299,8 @@ def uk_local_target_surface(
         for target_id, _ in sharers
     }
     output_rows: list[dict[str, Any]] = []
+    #: Each output row's value before any index or factor moved it.
+    published_values: list[float] = []
     reconciliation_rows: list[dict[str, Any]] = []
     national_control_groups: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
     for spec in local_registry.specs:
@@ -2365,6 +2392,7 @@ def uk_local_target_surface(
                     "hierarchy": spec.hierarchy,
                 }
             )
+            published_values.append(uk_value_before_uprating(spec))
             reconciliation_rows.append(
                 {
                     "grain": area_type,
@@ -2508,23 +2536,78 @@ def uk_local_target_surface(
         *bound_control_ids,
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
     )
-    reconciliation = pd.DataFrame(
-        reconciliation_rows,
-        columns=["grain", "geography_id", "target_id", "value", "_output_position"],
-    )
+
+    def reconcile() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+        frame = pd.DataFrame(
+            reconciliation_rows,
+            columns=["grain", "geography_id", "target_id", "value", "_output_position"],
+        )
+        raw = frame[["grain", "geography_id", "target_id", "value"]]
+        result, pass_receipt = apply_uk_cross_grain_reconciliation(
+            raw,
+            bound_control_ids,
+            reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+            licensed_empty_legs=licensed_empty_legs,
+            area_region_codes=area_region_codes,
+            extra_bridges=fanout_bridges,
+            extra_signatures=fanout_signatures,
+        )
+        return frame, raw, result, pass_receipt
+
     coverage = uk_cross_grain_coverage_receipt()
-    raw_surface = reconciliation[["grain", "geography_id", "target_id", "value"]]
-    reconciled, receipt = apply_uk_cross_grain_reconciliation(
-        raw_surface,
-        bound_control_ids,
-        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
-        licensed_empty_legs=licensed_empty_legs,
-        area_region_codes=area_region_codes,
-        extra_bridges=fanout_bridges,
-        extra_signatures=fanout_signatures,
-    )
+    reconciliation, raw_surface, reconciled, receipt = reconcile()
+    off_surface_rows: list[dict[str, Any]] = []
+    off_surface_receipt: dict[str, Any] = {
+        "deferred_with_value": [],
+        "implied_absent": [],
+        "rows_added": 0,
+    }
+    if off_surface_cells:
+        # The first pass names the legs a control moves; only there can a
+        # cell that is off the surface leave its share on its neighbours.
+        leg_of_area = (
+            _uk_cross_grain_leg_of_area
+            if area_region_codes is None
+            else uk_cross_grain_leg_of_area(area_region_codes)
+        )
+        before = reconciliation["value"].to_numpy(dtype=np.float64)
+        after = reconciled["value"].to_numpy(dtype=np.float64)
+        bound_rows = []
+        controlled_legs: set[tuple[str, str, str]] = set()
+        frame_only_rows = []
+        for position, row in enumerate(reconciliation_rows):
+            if row["grain"] not in level_to_area_type.values():
+                continue
+            target_id = str(row["target_id"]).removeprefix("contract:")
+            if row["_output_position"] is None:
+                frame_only_rows.append({**row, "target_id": target_id})
+                continue
+            bound_rows.append(
+                {
+                    "target_id": target_id,
+                    "grain": row["grain"],
+                    "geography_id": row["geography_id"],
+                    "value": row["value"],
+                    "published_value": published_values[row["_output_position"]],
+                }
+            )
+            if before[position] != after[position]:
+                controlled_legs.add(
+                    (target_id, str(row["grain"]), leg_of_area(row["geography_id"]))
+                )
+        off_surface_rows, off_surface_receipt = uk_off_surface_frame_rows(
+            bound_rows,
+            off_surface_cells,
+            leg_of_area=leg_of_area,
+            controlled_legs=controlled_legs,
+            frame_only_rows=frame_only_rows,
+        )
+        if off_surface_rows:
+            reconciliation_rows.extend(off_surface_rows)
+            reconciliation, raw_surface, reconciled, receipt = reconcile()
+    receipt["off_surface_cells"] = off_surface_receipt
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
-        local_registry, fanout_sum_controls
+        local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
     )
     reconciled, partition_receipt = apply_cross_grain_partitions(
         raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
@@ -2629,29 +2712,45 @@ def _uk_fanout_sum_controls(
     return tuple(bridges), signatures, rows
 
 
-def _spec_value_before_alignment(spec: TargetSpec) -> float:
-    return float(spec.metadata.get("ledger_value_before_alignment", spec.value))
-
-
 def _assert_uk_fanout_sum_agreement(
     local_registry: TargetRegistry,
     fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
+    *,
+    off_surface_rows: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
-    """Refuse a fan-out sum bridge whose sides disagree at source, per grain.
+    """Bound both parts of the factor a fan-out sum bridge applies, per grain.
 
     Read from the cells before any reconciliation. The single-winner rule
     reconciles the local-authority cells through the constituency cells
     first, so the bridge's own local-authority leg always shows a factor near
     one: gating the reconciliation receipt would never test that grain.
 
-    Two factors are receipted for each grain. The applied factor is the
-    control over the cells' total as the surface binds them. The source
-    factor is the same ratio before either side's uprating index, at the
-    cells' own period: it measures only whether the publisher's area tables
-    and national bands agree, where the applied factor also carries the gap
-    between the bands' band-by-band growth and the cells' all-ranges growth.
-    The gate is on the source factor, at every grain the surface binds.
+    The applied factor is the control over the cells' total as the surface
+    binds them. It is the product of two factors, and each is refused past
+    its declared bound at every grain the surface binds:
+
+    * the source factor, the same ratio before either side's uprating index,
+      at the cells' own period. It measures only whether the publisher's area
+      tables and national bands agree (``max_factor_shift``).
+    * the index factor, the applied factor over the source factor. It is the
+      gap between the bands' band-by-band growth and the cells' all-ranges
+      growth (``max_index_shift``), so a re-pinned index that widens the gap
+      cannot move the area targets unseen.
+
+    ``off_surface_rows`` are the reconciliation frame's rows for signed cells
+    that are not bound (``uk_runtime.off_surface_cells``). The national bands
+    cover those areas too, so each grain's totals count them: without them a
+    grain that lacks a few authorities would read as a source disagreement.
     """
+
+    off_surface: dict[tuple[str, str], list[float]] = {}
+    for row in off_surface_rows:
+        level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.get(str(row["grain"]))
+        key = (str(row["target_id"]).removeprefix("contract:"), str(level))
+        totals = off_surface.setdefault(key, [0.0, 0.0, 0])
+        totals[0] += float(row["value"])
+        totals[1] += float(row["published_value"])
+        totals[2] += 1
 
     checked: list[dict[str, Any]] = []
     for bridge in UK_FANOUT_SUM_BRIDGES:
@@ -2675,8 +2774,13 @@ def _assert_uk_fanout_sum_agreement(
         control_value = float(control["control"])
         control_before = float(control["control_before_alignment"])
         for level, cells in sorted(by_level.items()):
-            total = math.fsum(float(spec.value) for spec in cells)
-            total_before = math.fsum(_spec_value_before_alignment(s) for s in cells)
+            extra, extra_before, extra_cells = off_surface.get(
+                (bridge.lower_target_id, level), (0.0, 0.0, 0)
+            )
+            total = math.fsum(float(spec.value) for spec in cells) + extra
+            total_before = (
+                math.fsum(uk_value_before_uprating(s) for s in cells) + extra_before
+            )
             if total <= 0.0 or total_before <= 0.0:
                 raise ValueError(
                     f"UK fan-out sum bridge {bridge.bridge_id!r} has a "
@@ -2692,19 +2796,32 @@ def _assert_uk_fanout_sum_agreement(
                     "cells and the national bands no longer measure one "
                     "quantity (microcosm#1123)."
                 )
+            index = applied / source
+            if abs(index - 1.0) > bridge.max_index_shift:
+                raise ValueError(
+                    f"UK fan-out sum bridge {bridge.bridge_id!r}: the national "
+                    f"bands' uprating index and its {level} cells' index differ "
+                    f"by {index!r}, beyond the declared "
+                    f"{bridge.max_index_shift!r}, so the cells would take "
+                    f"{applied!r}. Re-measure the gap and re-declare "
+                    "max_index_shift, or uprate the two sides on one index "
+                    "(microcosm#1123)."
+                )
             checked.append(
                 {
                     "bridge_id": bridge.bridge_id,
                     "geography_level": level,
                     "cells": len(cells),
+                    "off_surface_cells": extra_cells,
                     "control": control_value,
                     "control_before_alignment": control_before,
                     "cell_total": total,
                     "cell_total_before_alignment": total_before,
                     "applied_factor": applied,
                     "source_factor": source,
-                    "index_factor": applied / source,
+                    "index_factor": index,
                     "max_factor_shift": bridge.max_factor_shift,
+                    "max_index_shift": bridge.max_index_shift,
                 }
             )
     return checked
