@@ -6345,6 +6345,12 @@
         "survey_year",
         "calibration_year"
        ]
+      },
+      "dataset_year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year"
+       ]
       }
      }
     },

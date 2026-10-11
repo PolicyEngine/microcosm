@@ -1047,9 +1047,12 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#527: the UC start-up period holds on a redrawn row only while it
     # stays self-employed.
     "uc_is_in_startup_period",
-    # uk-data#525: a redrawn row's gainful self-employment follows its own
-    # status and drawn incomes.
+    # uk-data#525: a redrawn row's gainful self-employment follows its drawn
+    # incomes.
     "uc_is_in_gainful_self_employment",
+    # A redrawn row drops its FRS twin's landlord carrier: its property income
+    # is an SPI donor's (microcosm#1095).
+    "reports_rent_from_other_property",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

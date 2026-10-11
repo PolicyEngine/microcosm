@@ -132,9 +132,13 @@ class _StubEngine:
 
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], str]] = []
+        self.dataset_periods: list[str | None] = []
 
-    def materialize(self, frame, variables, period):
+    def materialize(self, frame, variables, period, *, dataset_period=None):
         self.calls.append((tuple(variables), str(period)))
+        self.dataset_periods.append(
+            None if dataset_period is None else str(dataset_period)
+        )
         benunit = frame.table("benunit")
         ids = benunit["benunit_id"].to_numpy()
         self.saving_seen = (
@@ -206,6 +210,9 @@ def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc()
             "2025",
         ),
     ]
+    # The entitlement read stamps the frame with its own survey year, so the
+    # engine projects its values to the calibration year (uk-data#510).
+    assert engine.dataset_periods == [None, "2024"]
     assert engine.saving_seen == [False, True, False]
     after = result.frame.table("benunit")
     # Unit 3 reports Pension Credit the engine finds it is not entitled to: it

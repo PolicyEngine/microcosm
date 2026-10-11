@@ -186,7 +186,10 @@ FRS_RELATIONSHIPS_RECIPROCITY_MISMATCH_TOLERANCE = 3
 #: grid code toward an adult in their own benefit unit is foster child (5), or
 #: toward whom that adult carries the reciprocal foster parent code (9). The
 #: FRS puts foster children under 16 in the carer's benefit unit, so without
-#: the flag the engine counts them as the carer's own children.
+#: the flag the engine counts them as the carer's own children. At 16 or over
+#: the FRS makes a foster child a local authority maintains a separate benefit
+#: unit (Benefit Unit Allocation, rule d), so one who stays in the carer's
+#: unit has no such allowance and is not marked.
 LOOKED_AFTER_CHILD_RULE: Mapping[str, int] = {
     "foster_child_code": 5,
     "foster_parent_code": 9,

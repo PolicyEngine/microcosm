@@ -433,7 +433,8 @@ def test_older_foster_children_and_other_units_are_not_marked() -> None:
         [
             _person(1, age=45, hrp=True, rel={2: FOSTER_PARENT, 3: FOSTER_PARENT}),
             # Sixteen or over: the FRS gives a foster child with a local
-            # authority allowance their own benefit unit.
+            # authority allowance their own benefit unit, so one in the
+            # carer's unit has no such allowance.
             _person(2, age=16, table="child", rel={1: FOSTER_CHILD}),
             # A foster link to an adult outside the child's own benefit unit.
             _person(3, age=8, table="child", rel={1: FOSTER_CHILD}, benunit=2),

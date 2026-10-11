@@ -27,7 +27,10 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
-from microcosm.build.uk_runtime.frs_spine import uc_gainful_self_employment
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_LANDLORD_CARRIER_COLUMN,
+    uc_gainful_self_employment,
+)
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -1005,6 +1008,7 @@ def impute_uk_spi_income_support(
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
+    person = _refresh_landlord_carrier(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -2156,6 +2160,31 @@ def _refresh_uc_gainful_self_employment(
             pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
             pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
         ),
+        default=False,
+    )
+    return person
+
+
+def _refresh_landlord_carrier(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Clear the FRS landlord carrier on a redrawn row.
+
+    The carrier records that the FRS respondent reported rent, at a profit or
+    a loss. A redrawn row takes its property income from an SPI donor that did
+    not read it, so the twin's answer says nothing about the row's letting,
+    and the tape has no letting-loss field to rebuild it from. The CGT stages
+    read the row's drawn ``property_income`` instead (microcosm#1095).
+    """
+
+    if FRS_LANDLORD_CARRIER_COLUMN not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        FRS_LANDLORD_CARRIER_COLUMN,
+        np.zeros(len(rows), dtype=bool),
         default=False,
     )
     return person

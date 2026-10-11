@@ -66,9 +66,11 @@ PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES = (
     "pension_credit_deemed_income",
 )
 #: The saving is stored at the survey year; entitlement is read at the
-#: release's calibration year, as uk-data reads it (uk-data#510).
+#: release's calibration year on the frame the engine projects there, as
+#: uk-data reads it (uk-data#510).
 PENSION_CREDIT_SAVING_YEAR_RULE = "survey_year"
 PENSION_CREDIT_ENTITLEMENT_YEAR_RULE = "calibration_year"
+PENSION_CREDIT_ENTITLEMENT_DATASET_YEAR_RULE = "survey_year"
 #: DWP's take-up rates cover Great Britain, so each band's residual is solved
 #: there and applied to Northern Ireland's entitled units as well.
 PENSION_CREDIT_SOLVE_SCOPE = "great_britain"
@@ -229,7 +231,15 @@ def redraw_pension_credit_take_up(
         *PENSION_CREDIT_ENTITLEMENT_VARIABLES,
         *PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES,
     ]
-    materialized = engine.materialize(with_saving, requested, entitlement_year)
+    # The frame holds survey-year values. Stamped with its own period, the
+    # engine projects them to the entitlement year as it does the released
+    # file, so the entitled set is the one a calibration-year run finds
+    # (uk-data#510 reads it the same way). Read as entitlement-year inputs
+    # instead, a survey-year State Pension would sit against the next year's
+    # guarantee.
+    materialized = engine.materialize(
+        with_saving, requested, entitlement_year, dataset_period=period
+    )
     missing = sorted(set(requested) - set(materialized))
     if missing:
         raise ValueError(f"Pension Credit take-up engine outputs missing: {missing}.")
@@ -468,6 +478,7 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             ],
             "consumed_only": True,
             "year_rule": PENSION_CREDIT_ENTITLEMENT_YEAR_RULE,
+            "dataset_year_rule": PENSION_CREDIT_ENTITLEMENT_DATASET_YEAR_RULE,
         },
         "aggregate": {
             "method": "any_positive",

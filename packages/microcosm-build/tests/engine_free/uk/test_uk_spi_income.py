@@ -142,6 +142,32 @@ def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None
     )
 
 
+def test_a_redrawn_row_drops_its_frs_twins_landlord_carrier() -> None:
+    """The carrier is the FRS respondent's answer; a redrawn row's letting is its donor's."""
+
+    person = pd.DataFrame(
+        {
+            "property_income": [0.0, 6_000.0, 0.0],
+            "reports_rent_from_other_property": [True, True, True],
+        },
+        index=[10, 20, 30],
+    )
+    spi_people = pd.Series([True, True, False], index=person.index)
+
+    result = spi_income._refresh_landlord_carrier(person, spi_people=spi_people)
+
+    # Row 30 is a base row and keeps its answer.
+    assert result["reports_rent_from_other_property"].tolist() == [False, False, True]
+    assert result["reports_rent_from_other_property"].dtype == bool
+    assert result["property_income"].tolist() == [0.0, 6_000.0, 0.0]
+    bare = pd.DataFrame({"property_income": [0.0]}, index=[1])
+    assert "reports_rent_from_other_property" not in (
+        spi_income._refresh_landlord_carrier(
+            bare, spi_people=pd.Series([True], index=[1])
+        )
+    )
+
+
 def test_spi_uc_start_up_period_holds_only_while_the_row_stays_self_employed() -> None:
     """A redrawn row keeps its donor's start-up period only while self-employed."""
 

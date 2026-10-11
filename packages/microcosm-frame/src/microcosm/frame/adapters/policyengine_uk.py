@@ -87,11 +87,26 @@ class PolicyEngineUKEngine:
         bundle: Frame,
         variables: Sequence[str],
         period: int | str,
+        *,
+        dataset_period: int | str | None = None,
     ) -> dict[str, np.ndarray]:
-        """Compute ``variables`` for ``period`` with a UK Microsimulation."""
+        """Compute ``variables`` for ``period`` with a UK Microsimulation.
+
+        The bundle's values are read as ``period`` inputs. Pass
+        ``dataset_period`` where they belong to an earlier year: the dataset is
+        then stamped with that year and policyengine-uk projects it forward to
+        ``period`` as it does a released file (``extend_single_year_dataset``).
+        """
 
         microsimulation_class = self._import_policyengine_uk().Microsimulation
-        dataset = self._build_dataset(bundle, period)
+        if dataset_period is not None and int(dataset_period) > int(period):
+            raise ValueError(
+                f"dataset_period {dataset_period} is after period {period}; "
+                "policyengine-uk projects a dataset forward only."
+            )
+        dataset = self._build_dataset(
+            bundle, period if dataset_period is None else dataset_period
+        )
         simulation = microsimulation_class(dataset=dataset)
         validate_uc_claimant_input(simulation, bundle.table("person"), period)
         results: dict[str, np.ndarray] = {}

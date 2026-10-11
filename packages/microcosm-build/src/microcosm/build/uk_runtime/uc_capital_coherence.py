@@ -408,8 +408,11 @@ def uc_recorded_property_share(
 
     :func:`uc_property_capital_share`, and none for a unit that reports
     Universal Credit (``UC_PROPERTY_CAPITAL_REPORTER_RULE``): its receipt is a
-    fact, and the imputed property would end it. The other units of its
-    household keep their own shares. In benefit-unit row order.
+    fact, and the imputed property would end it. Another unit of its household
+    keeps its own share where it records a carrier. One on the unavailable
+    sentinel takes the engine's household residual, which subtracts recorded
+    figures only and so includes the share the reporter does not record. In
+    benefit-unit row order.
     """
 
     share = uc_property_capital_share(person, benunit, household)
