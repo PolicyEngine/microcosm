@@ -198,17 +198,37 @@ def test_widening_only_adds_people_to_the_schedule_c_rule(rows) -> None:
 
 
 @_SETTINGS
-@given(rows=_rows, replacement=st.floats(max_value=0.0, min_value=-1e6))
-def test_a_loss_never_cancels_another_business(rows, replacement) -> None:
+@given(
+    rows=_rows,
+    replacement=st.floats(max_value=0.0, min_value=-1e6),
+    schedule_c_profit_leg=st.floats(min_value=0.0, max_value=1e6),
+    schedule_c_net_loss=st.floats(min_value=0.0, max_value=1e6),
+)
+def test_a_loss_never_cancels_another_business(
+    rows, replacement, schedule_c_profit_leg, schedule_c_net_loss
+) -> None:
     source = _source(rows)
     result = attribute_us_se_health_premiums(source)
 
     # Only whether each business is profitable matters: every non-positive
-    # farm or partnership amount can be swapped for any other without
-    # changing the attribution.
+    # business can be swapped for any other non-positive amount, however
+    # large the loss, without changing the attribution. For Schedule C the
+    # business is the sum of its two inputs, so an unprofitable Schedule C is
+    # replaced by another split that still nets to a loss or zero.
     moved = source.copy(deep=True)
     for column in (_FARM, _PARTNERSHIP):
         moved[column] = np.where(moved[column] > 0.0, moved[column], replacement)
+    schedule_c_profitable = (
+        source[_SCHEDULE_C[0]] + source[_SCHEDULE_C[1]]
+    ).to_numpy() > 0.0
+    moved[_SCHEDULE_C[0]] = np.where(
+        schedule_c_profitable, source[_SCHEDULE_C[0]], schedule_c_profit_leg
+    )
+    moved[_SCHEDULE_C[1]] = np.where(
+        schedule_c_profitable,
+        source[_SCHEDULE_C[1]],
+        -(schedule_c_profit_leg + schedule_c_net_loss),
+    )
     pd.testing.assert_frame_equal(
         attribute_us_se_health_premiums(moved)[[_PREMIUMS, _FLAG]],
         result[[_PREMIUMS, _FLAG]],

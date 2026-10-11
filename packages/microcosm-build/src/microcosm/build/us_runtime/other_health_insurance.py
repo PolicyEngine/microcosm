@@ -130,15 +130,16 @@ US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS: tuple[str, ...] = (
 # 26 USC 162(l)(2)(A) limits the deduction to the earned income "derived by
 # the taxpayer from the trade or business with respect to which the plan
 # providing the medical care coverage is established". The Form 7206
-# instructions (2023, p. 1) name the businesses: a Schedule C business, a
-# Schedule F farm, and a partnership whose partner has net earnings on
-# Schedule K-1 box 14 code A, plus wages of a more-than-2% S corporation
-# shareholder, which no measured input carries. PolicyEngine/policyengine-us
-# #10120 computes the limit for each business from these person inputs and,
-# with no named plan business, takes the largest. Schedule C is one business
-# over both Schedule C inputs (the engine's total_self_employment_income).
-# Each business's net earnings stand alone, so a loss in one never cancels
-# another's profit.
+# instructions (2023, p. 1) name who qualifies: a net profit on Schedule C or
+# Schedule F, a partner's net earnings on Schedule K-1 box 14 code A, the
+# Schedule SE optional methods, and wages of a more-than-2% S corporation
+# shareholder. No measured input carries the last two.
+# PolicyEngine/policyengine-us#10120 computes the limit for each business
+# from these person inputs and, with no named plan business, takes the
+# largest. Treating both Schedule C inputs as one business (the engine's
+# total_self_employment_income) is that PR's modelling choice, followed here
+# so the flag opens exactly where its limit can be positive. Each business's
+# net earnings stand alone, so a loss in one never cancels another's profit.
 US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = (
     MappingProxyType(
         {

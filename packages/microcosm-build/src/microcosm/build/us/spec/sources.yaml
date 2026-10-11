@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: c23be1739974237a881e38646cfcdea13e6eaefbe4a97bbdde06feb31471da46
+  sha256: 22e365df58aafaa02a65e29b2ed2c98531de795c4233bd3b65473efd6cd3e1b2
 stage_manifest:
   version: 1
   country: us
@@ -2922,18 +2922,25 @@ stages:
     person is outside measured employer-sponsored coverage (has_esi - the conservative, incomplete proxy
     for the 26 USC 162(l)(2)(B) subsidized-employer-plan month exclusion; eligibility through a spouse''s
     or dependent''s employer is not measured and remains documented residual overbreadth), and marks is_self_employed
-    for every person with such a business. More-than-2% S corporation shareholders, the fourth Form 7206
-    path, have no measured input. PolicyEngine-US then computes self_employed_health_insurance_premiums
-    (a formula-owned adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the
-    section 162(l) ALD as premiums capped at earned income. Version 2.2.1 caps at Schedule C income alone
-    (min(max(total_self_employment_income, 0), premiums)), so the people a farm or partnership alone qualifies
-    receive no federal deduction until the engine carries PolicyEngine/policyengine-us#10120, which computes
-    the Form 7206 limit for each business and takes the largest. The Medicare proxy keeps the statutory
-    medical-expense premium concept numerically invariant because the direct input equals the decomposed
-    reported premium whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US
-    2.2.1 reads the bare health_insurance_premiums input in five state/local formulas (MO qualified-premium
-    subtraction, MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County
-    general relief countable income, MO child-care-subsidy adjusted income): attribution moves those programs
-    from premiums-invisible toward the measured premium structure for the self-employed slice, outside
-    the federal income_tax probe''s scope. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed
-    health insurance deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed).'
+    for every person with such a business. The other two Form 7206 paths, the Schedule SE optional methods
+    and more-than-2% S corporation shareholders, have no measured input. PolicyEngine-US then computes
+    self_employed_health_insurance_premiums (a formula-owned adds-aggregation gated by is_self_employed,
+    so it cannot ship as a column) and the section 162(l) ALD as premiums capped at earned income. Version
+    2.2.1 caps at Schedule C income alone (min(max(total_self_employment_income, 0), premiums)), so the
+    people a farm or partnership alone qualifies receive no federal deduction until the engine carries
+    PolicyEngine/policyengine-us#10120, which computes the Form 7206 limit for each business and takes
+    the largest. On PUF-support people the attributed premium is the joint QRF''s prediction, whose eight
+    predictors include Schedule C income but neither farm nor partnership earnings, so it is not conditioned
+    on the business that qualifies them. The Medicare proxy keeps the statutory medical-expense premium
+    concept numerically invariant because the direct input equals the decomposed reported premium whenever
+    the modeled Part B add-on is zero. The Form 7206 instructions (2023, p. 1) let voluntarily paid Medicare
+    premiums figure the deduction, so the proxy withholds a deductible premium from Medicare-enrolled
+    self-employed people; that residual predates the farm and partnership paths and applies to them too.
+    Beyond the federal ALD, PolicyEngine-US 2.2.1 reads the bare health_insurance_premiums input in five
+    state/local formulas (MO qualified-premium subtraction, MI household resources, OH uninsured unreimbursed
+    medical expenses, CA Orange County general relief countable income, MO child-care-subsidy adjusted
+    income): attribution moves those programs from premiums-invisible toward the measured premium structure
+    for the self-employed slice, outside the federal income_tax probe''s scope; that state and local effect
+    applies to farm and partnership people under 2.2.1 already. External anchor class: IRS SOI Pub 1304
+    Table 1.4 TY2023 self-employed health insurance deduction, 3,595,764 returns / $31.23B (ledger#105,
+    buildn v9.2 feed).'

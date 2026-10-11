@@ -566,6 +566,39 @@ def test_with_inputs_materializes_se_attribution_and_carries_signal(
     assert gate.passed, gate.failures
 
 
+def test_with_inputs_carries_farm_and_partnership_premiums_through_the_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", _ZeroPremiumEngine)
+    frame = _frame()
+    person = frame.table("person")
+    # Person 7 (reported 4,000) farms and person 1 (reported 1,000) is a
+    # partner; neither has Schedule C income or measured employer coverage.
+    person.loc[[1, 7], "has_esi"] = False
+    person.loc[7, "farm_operations_income"] = 12_000.0
+    person.loc[1, "partnership_self_employment_net_earnings"] = 9_000.0
+
+    result = with_us_other_health_insurance_inputs(frame, seed=0, time_period=2024)
+
+    attributed = result.table("person")
+    assert attributed.loc[7, _PREMIUMS_OUTPUT] == 4_000.0
+    assert attributed.loc[1, _PREMIUMS_OUTPUT] == 1_000.0
+    assert attributed.loc[[1, 7], _FLAG_OUTPUT].tolist() == [True, True]
+    assert attributed.loc[[1, 7], "self_employment_income_before_lsr"].tolist() == [
+        0.0,
+        0.0,
+    ]
+    gate = us_other_health_insurance_signal_gate(result)
+    assert gate.passed, gate.failures
+    assert gate.details["se_attribution"]["positive_rows"] == 3
+
+    # Dropping the farm person's premium breaks the identity the gate checks.
+    attributed.loc[7, _PREMIUMS_OUTPUT] = 0.0
+    gate = us_other_health_insurance_signal_gate(result)
+    assert not gate.passed
+    assert any("attribution identity" in failure for failure in gate.failures)
+
+
 def test_signal_gate_rejects_broken_or_absent_se_attribution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
