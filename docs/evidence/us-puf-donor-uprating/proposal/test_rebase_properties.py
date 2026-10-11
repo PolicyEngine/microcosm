@@ -231,7 +231,7 @@ def test_each_leg_total_scales_by_its_factor(source, pos, neg, table, year, data
 @SETTINGS
 @given(amounts, positive, level_tables(), build_years)
 def test_untouched_columns_and_determinism(source, carried, table, year):
-    """Invariants 9 and 11: other columns are copied; one input, one output."""
+    """Invariants 9 and 12: other columns are copied; one input, one output."""
 
     columns = (Column("x", (Leg("F", "wages", carried),)),)
     untouched = {"weight": np.abs(source) + 1.0, "head_age": np.full(len(source), 40.0)}
@@ -355,7 +355,7 @@ def test_dividends_follow_two_series_and_keep_the_source_support(
 
 
 def test_dividends_off_the_dollar_grid_are_refused():
-    """A stored pair that is not whole TY2015 dollars does not rebase."""
+    """Invariant 10: a stored pair that is not whole TY2015 dollars does not rebase."""
 
     with pytest.raises(RebaseError):
         recover_source_dividends(
@@ -372,7 +372,8 @@ def test_dividends_off_the_dollar_grid_are_refused():
 @SETTINGS
 @given(amounts, positive, positive, st.data())
 def test_derived_columns_keep_their_ratio_to_the_base(base, carried, factor, data):
-    """A derived record keeps its ratio to its base; a zero base leaves it alone."""
+    """Invariant 11: a derived record keeps its ratio to its base; a zero base
+    leaves it alone."""
 
     shares = np.array(
         data.draw(st.lists(st.floats(0.0, 3.0), min_size=len(base), max_size=len(base)))
@@ -491,7 +492,7 @@ def stated_carried(field: str, values: np.ndarray) -> np.ndarray:
 
 
 def test_the_manifest_names_every_field_the_archived_lists_name():
-    """Invariant 12, coverage: no archived field is missing from the manifest."""
+    """Invariant 13, coverage: no archived field is missing from the manifest."""
 
     archived = set(NS["REMAINING_VARIABLES"])
     for table in ("STRAIGHT", "POS_ONLY", "NEG_ONLY"):
@@ -503,7 +504,7 @@ def test_the_manifest_names_every_field_the_archived_lists_name():
 @settings(max_examples=200, deadline=None)
 @given(st.lists(st.tuples(*[amount] * len(ALL_FIELDS)), min_size=1, max_size=20))
 def test_stated_carried_factors_match_archived_uprate_puf(rows):
-    """Invariant 12: the manifest agrees with the archived generator on every
+    """Invariant 13: the manifest agrees with the archived generator on every
     field, with the factors recomputed here from the SOI table.
 
     It covers the cases a single 2021 price year would get wrong: Schedule C
