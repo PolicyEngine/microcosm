@@ -503,11 +503,11 @@ def fill_reviewed_nulls(
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled. The two ESI premium inputs are never
+    defect, surfaced not filled. The ESI employer premium input is never
     filled, registered or not: a null there refuses the build.
     """
 
-    # microcosm#454: the ESI premium inputs exist only where the
+    # microcosm#454: the ESI employer premium exists only where the
     # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
     # fill: a registered null here would become a silent zero on the ACS spine.
     refuse_unassigned_us_esi_premiums(

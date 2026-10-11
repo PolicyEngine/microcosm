@@ -214,7 +214,7 @@ def _realistic_rows(count: int = 400) -> list[dict]:
 
 
 class TestManifestDeclaration:
-    def test_stage_declares_both_outputs_and_the_reviewed_operations(self) -> None:
+    def test_stage_declares_its_output_and_the_reviewed_operations(self) -> None:
         spec = us_esi_premiums_stage_spec()
         assert spec.stage == US_ESI_PREMIUMS_STAGE_NAME == "meps_esi_premiums"
         assert tuple(spec.outputs) == US_ESI_PREMIUMS_OUTPUT_COLUMNS
@@ -484,6 +484,45 @@ class TestEmployerPremium:
         )
         modeled = _column_total(result) / summary["scale_factor"]
         assert modeled == pytest.approx(published)
+
+    def test_every_cell_reconciles_under_the_published_mix(self) -> None:
+        """Exhaustive: every tier x State x size private cell and every
+        tier x division x column government cell.
+
+        For each cell, the no-contribution share of enrollees paying nothing
+        and the rest paying the conditional contribution average the cell's
+        premium less its average contribution. A suppressed contribution cell
+        reconciles to its fallback value, since AHRQ published none.
+        """
+
+        rows = []
+        tiers = ((1, 1), (2, 1), (3, 2))  # NOW_GRPFTYP2, NOW_GRPFTYP
+        for tier_code, grpftyp in tiers:
+            for state in _STATES:
+                # Private by size (NOEMP 0, 1, 3), State and local government.
+                for sector, noemp in ((4, 0), (4, 1), (4, 3), (2, 0), (3, 0), (1, 0)):
+                    for hipaid in (1, 2):
+                        rows.append(
+                            {
+                                "NOW_GRPFTYP2": tier_code,
+                                "NOW_GRPFTYP": grpftyp,
+                                "NOW_HIPAID": hipaid,
+                                "PEIO1COW": sector,
+                                "NOEMP": noemp,
+                                "state_fips": state,
+                            }
+                        )
+        person = esi._person_with_state(_frame(rows))
+        codes, raw, premium, contribution = esi._person_raw_shares(person)
+        _, _, share = esi._cell_values(codes, _CELLS)
+        pays_all, pays_some = raw[0::2], raw[1::2]
+        assert (codes.hipaid[0::2] == 1).all() and (codes.hipaid[1::2] == 2).all()
+        unpaid = share[0::2]
+        modeled = unpaid * pays_all + (1 - unpaid) * pays_some
+        published = premium[0::2] - contribution[0::2]
+        assert len(modeled) == 3 * 51 * 6
+        assert (pays_some > 0).all() and (pays_some < pays_all).all()
+        np.testing.assert_allclose(modeled, published, rtol=1e-12)
 
     def test_the_unconditional_contribution_would_overstate_the_cell_mean(self) -> None:
         # The national under-50 single-coverage cell: premium $9,034, average
@@ -999,7 +1038,10 @@ class TestAnchorGate:
         assert not gate.passed
         assert f"{column}: zero weighted mass." in gate.failures
 
-    @pytest.mark.parametrize("column", ["NOW_OWNGRP", "NOW_HIPAID", "PEMLR", "NOEMP"])
+    @pytest.mark.parametrize(
+        "column",
+        [c for c in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS if c != "state_fips"],
+    )
     def test_an_export_without_a_raw_column_is_red(self, column) -> None:
         # The anchor counts every policyholder, so the gate cannot grade a
         # frame that no longer says who they are.
@@ -1009,6 +1051,20 @@ class TestAnchorGate:
         assert not gate.passed
         assert any("assignment provenance incomplete" in f for f in gate.failures)
         assert "anchor_universe_employer_total" not in gate.details
+
+    def test_a_frame_without_the_household_state_fails_both_gates(self) -> None:
+        # State sits on the household table; without it no cell can be read.
+        frame = self._export()
+        frame.table("household").drop(columns=["state_fips"], inplace=True)
+        for gate in (
+            us_esi_premiums_signal_gate(frame),
+            us_esi_premiums_anchor_gate(frame, time_period=TIME_PERIOD),
+        ):
+            assert not gate.passed
+            assert any(
+                "assignment provenance incomplete" in f and "state_fips" in f
+                for f in gate.failures
+            )
 
     @pytest.mark.parametrize("year", [2025, 2031])
     def test_a_year_without_an_anchor_is_red(self, year) -> None:
@@ -1329,7 +1385,7 @@ def test_pricing_other_policyholders_never_raises_a_workers_premium(population) 
     st.sampled_from(_STATES),
     st.floats(0.5, 500.0, allow_nan=False),
 )
-def test_the_published_mix_reconciles_every_private_cell(
+def test_the_published_mix_reconciles_sampled_private_cells_through_the_stage(
     tier_code, noemp, sector, state, mass
 ) -> None:
     tier = esi._TIER_BY_CODE[tier_code]

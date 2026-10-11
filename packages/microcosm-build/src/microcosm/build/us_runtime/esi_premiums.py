@@ -202,6 +202,8 @@ _NHE_TABLES_URL = "https://www.cms.gov/files/zip/nhe-tables.zip"
 #: private, federal and State and local employers, for active employees, COBRA
 #: enrollees and retirees. The anchor microcosm#454 chose; banked in the
 #: pinned feed as cms_nhe.cy{2023,2024}.esi_employer_contribution_premiums.
+#: ``sha256`` is the digest of the zip archive at ``source`` (520,391 bytes),
+#: not of the Table 24 workbook inside it.
 EMPLOYER_PREMIUM_ANCHOR: Mapping[str, Any] = MappingProxyType(
     {
         "source": _NHE_TABLES_URL,

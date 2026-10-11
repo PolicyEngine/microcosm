@@ -250,7 +250,7 @@ _ESI_ANCHOR_EXCLUSION = (
     "88% of it and the rest is priced, not exported. Validation-gated "
     "instead: us_esi_premiums_anchor_gate recomputes the anchor-universe "
     "total at release weights and holds it within 5% of this all-employer "
-    "fact; the private-employer subset rides as a sector cross-check.",
+    "fact.",
     "experiments/us-esi-454/receipts/stage_on_pool_2023_2025.json: 92.4M "
     "weighted current policyholders; anchor-universe total $1,047.0B at scale "
     "factor 1.040; employed column $925.7B (88.4%); other policyholders "
@@ -290,9 +290,28 @@ _ESI_ANCHOR_EXCLUSION = (
     ),
 )
 
+_ESI_PRIVATE_EMPLOYER_EXCLUSION = (
+    "deferred",
+    "NHE Table 24 private-employer contribution to ESI premiums, the private "
+    "part of the all-employer fact the meps_esi_premiums stage scales to "
+    "(microcosm#454). It is neither compiled nor gated: the stage scales one "
+    "factor to the all-employer total over every current ESI policyholder, "
+    "and nothing holds the private-sector part of the column to this fact, "
+    "which also counts private retirees and COBRA enrollees. The private part "
+    "is instead recorded beside the anchor verdict against MEPS-IC's own "
+    "active-employee total (us_esi_premiums_anchor_gate, "
+    "private_active_cross_check).",
+    "experiments/us-esi-454/receipts/stage_on_pool_2023_2025.json: "
+    "private-sector part of the column $713.2B; MEPS-IC private "
+    "active-employee total $668.6B (2024)",
+    _ESI_ANCHOR_EXCLUSION[3],
+)
+
 _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     "cms_nhe.esi_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
-    "cms_nhe.esi_private_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
+    "cms_nhe.esi_private_employer_contribution_premiums": (
+        _ESI_PRIVATE_EMPLOYER_EXCLUSION
+    ),
     "jct.obbba_title_vii": _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION,
     "bea_nipa.personal_interest_income": (
         "macro_control_total",

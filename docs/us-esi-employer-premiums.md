@@ -80,7 +80,9 @@ Everyone else carries zero in the column:
 - retired, unemployed and other non-employed policyholders, because their
   coverage is not compensation of a current job;
 - the unincorporated self-employed and workers without pay (`PEIO1COW` 7 and
-  8), who have no employer to pay a share.
+  8), whose current job is not an employer's job. Their group coverage is
+  priced in the anchor universe, like a retiree's, and left out of the
+  column.
 
 The non-employed policyholders' scaled share is priced and then left out. It is
 not loaded onto workers.
@@ -100,9 +102,15 @@ employee, by coverage tier:
 - Local and federal government (`PEIO1COW` 3 and 1): the same table's
   all-governments column. MEPS-IC does not survey the federal government; this
   is a stand-in.
-- No employer class (`PEIO1COW` 0, 7 or 8, which is most non-employed
-  policyholders): the State's all-sizes private column. A non-employed
-  policyholder who does report a class of worker keeps that employer's cell.
+- No employer class (`PEIO1COW` 0, 7 or 8): the State's all-sizes private
+  column. A non-employed policyholder who does report a class of worker keeps
+  that employer's cell.
+
+`NOEMP` and `PEIO1COW` describe different jobs. `PEIO1COW` is the class of
+worker of the current job. `NOEMP` is the size of the employer of the longest
+job held last year. A worker who changed jobs takes the earlier employer's
+size band, and a current worker with no job last year (`NOEMP` 0) takes the
+State's all-sizes column.
 
 Series III for 2025 is not yet published. The 2024 government cells are aged
 to 2025 by the private-sector national ratio of the same tier and measure
@@ -283,6 +291,7 @@ the PUF-support clone, and the clone conserves both totals.
 | `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. |
 | `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. |
 | `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
+| `assert_required_us_release_source_columns` | the L0/refit export (`l0_refit_export.export_us_l0_refit_h5`, run by `tools/export_us_l0_refit_h5.py`), unless `--allow-missing-source-columns` is passed | The column must be present and non-constant. |
 | reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
 
 What the gates need, and what they do not catch:
@@ -320,7 +329,8 @@ stage; the failures it waives are still written to that file.
   `us_runtime/data/meps_ic_esi_premium_cells.json`, whose own SHA-256 the
   stage pins and checks on load.
 - NHE and BEA files: URL, byte length and SHA-256 in the stage manifest
-  (`us/source_stages.json`), and URL and SHA-256 in the module.
+  (`us/source_stages.json`), and URL and SHA-256 in the module. The NHE
+  digest is of the zip archive, not of the Table 24 workbook inside it.
 - The base summary records the stage's full summary twice
   (`esi_premiums_signal`, `esi_premiums_post_clone_signal`): scale factor, raw
   and scaled totals for both universes, totals by tier and employer sector,
@@ -342,4 +352,9 @@ stage; the failures it waives are still written to that file.
   so the fact cannot be compiled as a sum target on it. The target-parity
   manifest keeps the two `cms_nhe` ESI families as `deferred` reviewed
   exclusions and records BEA's series as a source-absent family.
+- **The standalone L0/refit export.** `tools/export_us_l0_refit_h5.py`
+  writes an H5 without running the signal or anchor gate. By default it
+  refuses a frame whose column is absent or constant, and nothing more: the
+  two ESI gates run only in the base build and in
+  `tools/build_us_fiscal_refresh_release.py`.
 - **The pre-tax employee premium.** See the section above.

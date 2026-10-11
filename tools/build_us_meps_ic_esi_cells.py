@@ -26,7 +26,9 @@ Run (downloads the three PDFs, about 25 MB, into ``--pdf-dir``)::
 
     uv run python tools/build_us_meps_ic_esi_cells.py --pdf-dir /tmp/meps-ic
 
-``--check`` regenerates in memory and fails if the committed file differs.
+``--check`` regenerates in memory and fails if any published value, title or
+pin in the committed file differs. It ignores the ``pdftotext`` version string
+and the ``text_line`` positions, which depend on the installed poppler.
 """
 
 from __future__ import annotations
@@ -553,6 +555,25 @@ def render(payload: dict) -> str:
     return json.dumps(payload, indent=1, sort_keys=True) + "\n"
 
 
+#: Provenance that depends on the installed poppler, not on the PDFs: the
+#: ``pdftotext`` version string and the text line each table was found on.
+_ENVIRONMENT_KEYS = frozenset({"pdftotext", "text_line"})
+
+
+def published_values(payload):
+    """The payload without poppler-dependent provenance, for ``--check``."""
+
+    if isinstance(payload, dict):
+        return {
+            key: published_values(value)
+            for key, value in payload.items()
+            if key not in _ENVIRONMENT_KEYS
+        }
+    if isinstance(payload, list):
+        return [published_values(item) for item in payload]
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -567,9 +588,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Fail if the committed cell table differs from a regeneration.",
     )
     args = parser.parse_args(argv)
-    rendered = render(build_payload(args.pdf_dir))
+    payload = build_payload(args.pdf_dir)
+    rendered = render(payload)
     if args.check:
-        if OUTPUT_PATH.read_text() != rendered:
+        committed = json.loads(OUTPUT_PATH.read_text())
+        if published_values(committed) != published_values(payload):
             print(f"{OUTPUT_PATH} is stale; regenerate it.", file=sys.stderr)
             return 1
         print(f"{OUTPUT_PATH} is current.")

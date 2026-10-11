@@ -15369,7 +15369,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             )
     # microcosm#454: the calibrated ESI premium total over the anchor's
     # universe (every policyholder) against CMS NHE Table 24 within tolerance,
-    # red when either column is absent or zero-mass or the raw ASEC coverage
+    # red when the column is absent or zero-mass or the raw ASEC coverage
     # columns are gone. Runs on the calibrated export for BOTH the dense and
     # sparse default paths; the verdict ships as the esi_premiums gate
     # evidence, with the base and export signal verdicts beside it so a waived

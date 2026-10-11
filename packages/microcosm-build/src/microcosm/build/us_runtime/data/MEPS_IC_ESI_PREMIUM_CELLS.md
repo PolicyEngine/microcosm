@@ -36,7 +36,9 @@ year, and a United States row that differs from the AHRQ national figure it
 must reproduce (for example single $9,025 and family $26,281 in 2025; the
 2024 rows of MEPS-IC Research Findings #54). A national row whose kept column
 is suppressed or flagged unreliable is refused too. `--check` regenerates in
-memory and fails if the committed file differs.
+memory and fails if any published value, title or pin differs; it ignores the
+`pdftotext` version and the `text_line` positions, which depend on the
+installed poppler.
 
 The stage pins this file's own SHA-256 (`esi_premiums._CELLS_SHA256`) and
 refuses to load any other bytes, so a regeneration must be re-pinned there
