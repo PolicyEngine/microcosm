@@ -30,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import subprocess
@@ -62,24 +63,62 @@ def _git_head() -> str | None:
         return None
 
 
-def _git_modified_paths() -> list[str] | None:
-    """Tracked files that differ from ``code_head``, so a receipt says so.
+#: The receipt carries the working tree's diff itself up to this size, so a
+#: reader can see what an overlay changed; past it, only the diff's digest.
+_MAX_RECEIPTED_DIFF_BYTES = 262_144
+_CODE_PATHS = ("packages", "tools")
 
-    A receipt of a draft surface may be run over a local overlay (a hold
-    register signed for the run, since an unsigned hold refuses the compile):
-    the receipt names the files rather than passing as the commit's own.
-    """
 
+def _git(*args: str) -> str | None:
     try:
-        output = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
-            capture_output=True,
-            text=True,
-            check=True,
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, check=True
         ).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
-    return sorted(line[3:] for line in output.splitlines() if line.strip())
+
+
+def _code_modifications() -> dict[str, Any] | None:
+    """What the working tree adds to ``code_head``, so a receipt can be checked.
+
+    A receipt may be run over a tree that is not the commit it names: a
+    register signed for the run only, or a tool laid over an older commit
+    that does not carry it. ``code_head`` alone would then pass as the
+    commit's own receipt. This records every file under ``packages`` and
+    ``tools`` that differs from ``code_head``, tracked or not, with the
+    SHA-256 of its content, and the diff of the tracked ones (its digest
+    always, its text while it is small). An untracked file has no diff: its
+    digest is what a reader checks against the commit that later carries it.
+    """
+
+    root = _git("rev-parse", "--show-toplevel")
+    status = _git("status", "--porcelain", "--untracked-files=all", "--", *_CODE_PATHS)
+    diff = _git("diff", "HEAD", "--", *_CODE_PATHS)
+    if root is None or status is None or diff is None:
+        return None
+    files = []
+    for line in status.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].split(" -> ")[-1].strip('"')
+        content = Path(root.strip()) / path
+        files.append(
+            {
+                "path": path,
+                "status": line[:2].strip(),
+                "sha256": (
+                    hashlib.sha256(content.read_bytes()).hexdigest()
+                    if content.is_file()
+                    else None
+                ),
+            }
+        )
+    encoded = diff.encode("utf-8")
+    return {
+        "files": sorted(files, key=lambda entry: entry["path"]),
+        "diff_sha256": hashlib.sha256(encoded).hexdigest() if diff else None,
+        "diff": diff if len(encoded) <= _MAX_RECEIPTED_DIFF_BYTES else None,
+    }
 
 
 def _national_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -305,10 +344,18 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
     cross = payload["cross_geography"]
     national = _national_rows(payload)
     local = _local_rows(payload)
+    modifications = _code_modifications()
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,
         "code_head": _git_head(),
-        "code_modified_paths": _git_modified_paths(),
+        # The paths alone, for a reader; ``code_modifications`` carries each
+        # file's digest and the diff.
+        "code_modified_paths": (
+            None
+            if modifications is None
+            else [entry["path"] for entry in modifications["files"]]
+        ),
+        "code_modifications": modifications,
         "calibration_year": payload["calibration_year"],
         "review_date": args.review_date,
         "mode": "full" if args.full else "calibration_year",
@@ -340,6 +387,9 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         # reconciliation: the applied factor and the source-agreement factor
         # the gate tests.
         "fanout_sum_bridges": cross.get("fanout_sum_bridges"),
+        # Signed cells that are off the surface and still count in their leg:
+        # deferred with a value, or implied from the target's other tier.
+        "off_surface_cells": cross.get("off_surface_cells"),
         "subset_relations": cross.get("subset_relations"),
         "partitions": cross.get("partitions"),
         "coverage": cross.get("coverage"),

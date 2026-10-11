@@ -111,12 +111,13 @@ def surface_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any
     return {
         "before": {
             "code_head": before["code_head"],
+            "code_modifications": _modifications(before),
             "review_date": before["review_date"],
             "source_validation": before["source_validation"],
         },
         "after": {
             "code_head": after["code_head"],
-            "code_modified_paths": after.get("code_modified_paths"),
+            "code_modifications": _modifications(after),
             "review_date": after["review_date"],
             "source_validation": after["source_validation"],
         },
@@ -130,6 +131,15 @@ def surface_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any
             "by_target_and_grain": local_rows,
         },
     }
+
+
+def _modifications(receipt: dict[str, Any]) -> dict[str, Any] | None:
+    """The receipt's working-tree record, less the diff text (its digest stays)."""
+
+    modifications = receipt.get("code_modifications")
+    if modifications is None:
+        return None
+    return {key: value for key, value in modifications.items() if key != "diff"}
 
 
 def reconciliation(after: dict[str, Any]) -> dict[str, Any]:
@@ -146,11 +156,12 @@ def reconciliation(after: dict[str, Any]) -> dict[str, Any]:
     communal = after.get("communal_validation") or {}
     return {
         "code_head": after["code_head"],
-        "code_modified_paths": after.get("code_modified_paths"),
+        "code_modifications": _modifications(after),
         "review_date": after["review_date"],
         "counts": after["counts"],
         "national_reconciliation": after.get("national_reconciliation"),
         "fanout_sum_bridges": after.get("fanout_sum_bridges"),
+        "off_surface_cells": after.get("off_surface_cells"),
         "cross_grain_groups": after.get("cross_grain_groups"),
         "subset_relations": after.get("subset_relations"),
         "partitions": partitions,
