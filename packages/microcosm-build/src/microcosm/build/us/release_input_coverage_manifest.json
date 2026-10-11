@@ -154,7 +154,7 @@
    "status": "required"
   },
   "health_insurance_premiums": {
-   "note": "Self-employed premium attribution leaf (PolicyEngine/microcosm#451 item 2): the deterministic attribution operation of the other_health_insurance_premiums release stage copies the reported non-Part-B premium onto this person input for strictly-positive Schedule C people outside the Medicare proxy, which is the only channel populating the section 162(l) self-employed health ALD (SOI Pub 1304 Table 1.4 TY2023: 3,595,764 returns / $31.23B, ledger#105). Absent on pre-attribution artifacts by construction; any new release produces it.",
+   "note": "Self-employed premium attribution leaf (PolicyEngine/microcosm#451 item 2): the deterministic attribution operation of the other_health_insurance_premiums release stage copies the reported non-Part-B premium onto this person input for people with a strictly positive Schedule C, Schedule F or partnership (Schedule K-1 box 14 code A) business who are outside the Medicare proxy and measured employer coverage, which is the only channel populating the section 162(l) self-employed health ALD (SOI Pub 1304 Table 1.4 TY2023: 3,595,764 returns / $31.23B, ledger#105). Absent on pre-attribution artifacts by construction; any new release produces it.",
    "status": "required"
   },
   "health_insurance_premiums_without_medicare_part_b": {
@@ -237,7 +237,7 @@
    "status": "required"
   },
   "is_self_employed": {
-   "note": "Gate flag for the self-employed premium attribution (PolicyEngine/microcosm#451 item 2): opens the defined_for gate on the engine's self_employed_health_insurance_premiums adds-aggregation for every strictly-positive Schedule C person. Written by the same attribution operation as health_insurance_premiums.",
+   "note": "Gate flag for the self-employed premium attribution (PolicyEngine/microcosm#451 item 2): opens the defined_for gate on the engine's self_employed_health_insurance_premiums adds-aggregation for every person whose Schedule C, Schedule F or partnership net earnings are strictly positive, each business on its own. Written by the same attribution operation as health_insurance_premiums.",
    "status": "required"
   },
   "is_separated": {
