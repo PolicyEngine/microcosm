@@ -142,7 +142,8 @@ def draw_joint_retirement_vectors(
         vectors = pool.iloc[selected][list(RETIREMENT_COLUMNS)].to_numpy()
         result.loc[targets.index] = vectors
 
-        def shares(values, weights):
+        def shares(values: np.ndarray, weights: np.ndarray) -> dict[str, float]:
+            """Summarize weighted participation in materialized NumPy vectors."""
             ira = values[:, 2:4].sum(axis=1) > 0
             plan = values[:, [0, 1, 4]].sum(axis=1) > 0
             return {
