@@ -127,12 +127,12 @@ def test_complete_bundle_family_inventory(spec: dict[str, object]) -> None:
         family["stage"] for family in spec["families"] for _target in family["targets"]
     )
     assert counts == {
-        "gap_fill_stacked_spine": 13,
+        "gap_fill_stacked_spine": 14,
         "primary_puf_qrf": 1,
         "late_producer_dag": 19,
     }
     assert targets == {
-        "gap_fill_stacked_spine": 48,
+        "gap_fill_stacked_spine": 49,
         "primary_puf_qrf": 65,
         "late_producer_dag": 70,
     }
@@ -145,12 +145,12 @@ def test_dashboard_compiles_the_packaged_bundle_without_a_mirror_spec() -> None:
     payload = emit()
     assert payload["spec_binding"]["spec_sha256"] == payload["spec_sha256"]
     assert payload["counts"] == {
-        "imputed_variables": 183,
-        "families": 33,
+        "imputed_variables": 184,
+        "families": 34,
         "computed_producers": 38,
         "boolean": 45,
-        "amount": 132,
+        "amount": 133,
         "categorical": 5,
-        "value_kinds": {"amount": 132, "category": 5, "count": 1, "flag": 45},
+        "value_kinds": {"amount": 133, "category": 5, "count": 1, "flag": 45},
     }
     assert len(payload["known_gaps"]) == 1

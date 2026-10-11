@@ -338,7 +338,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "a1e98deaa1f5a451c7d0e1f380a7bf50a82b0cbc94753b885b7cf9a11e7d0005",
+            "spec_sha256": "a5fdd1e11f5e3f33410068a0afe830644e6677bc72a6429cbdeb2b7167139b7f",
         },
     }
 
@@ -763,7 +763,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     producer_schedule = identities["base"]["pool_code"]["gap_fill_producer_schedule"]
     assert producer_schedule["status"] == "all_producers_precede_activation"
     assert producer_schedule["direction_count"] == 2
-    assert producer_schedule["target_count"] == 48
+    assert producer_schedule["target_count"] == 49
     digests = {
         name: pool_tool._pool_checkpoint_identity_sha256(value)
         for name, value in identities.items()

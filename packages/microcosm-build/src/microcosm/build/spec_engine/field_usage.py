@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_436
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_216
+EXPECTED_AUTHORED_FIELD_COUNT = 32_477
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_901
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_378
 
 
 class FieldUsageError(AssertionError):
@@ -341,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        797,
-        "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        802,
+        "eaf3cc45daebdba940e20e7bf2c995e7fc0bd5219935a963e7fca60c87111409",
     ),
     "bundle_country": (
         1,
@@ -365,8 +365,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
     ),
     "catalog_columns": (
-        1_673,
-        "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        1_683,
+        "85c679eb6be3331c9eabe066688790b328286b04921dbe56740fc6c1c2b68d01",
     ),
     "catalog_metadata_waivers": (
         5,
@@ -377,8 +377,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
     ),
     "generated_authorities": (
-        8_614,
-        "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        8_735,
+        "7d556b0c6b57ba83acb3008553c752437c01ad4401e1e9b4ac55dd0ee7199359",
     ),
     "geography_assignment": (
         28,
@@ -398,11 +398,11 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "imputation_family_concept_validation": (
         52,
-        "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
+        "58b1a3460b01856ac57133224c16192ee26ee9b42a82be526f33834e86f0de2a",
     ),
     "imputation_family_execution": (
-        1_769,
-        "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        1_793,
+        "8b68e86393793c1830ba8ab57d274b167d758873ae54e94342d725103ed5689d",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -505,8 +505,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "cf0000464013118955571dac2691d4cc1b900c97c6570349b489678cdf937649",
     ),
     "spine_pipeline_contract": (
-        88,
-        "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        90,
+        "3407a3521ac3720d2b4a90bfe31b6856ba8a71173609a40f79115e2acae32557",
     ),
     "spine_sampling": (
         17,

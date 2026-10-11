@@ -169,6 +169,11 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "education_inputs.py",
     "educator_expenses.py",
     "energy_subsidy.py",
+    # MEPS-IC employer-premium input (#454): a pool pre-clone operator and
+    # the whole-pool anchor. It tells the rows it derived from the rows a
+    # transfer filled by whether the raw ASEC fields are present, never by a
+    # spine or support-channel column.
+    "esi_premiums.py",
     "farm_business_income.py",
     "form_4952.py",
     "housing_inputs.py",
@@ -266,11 +271,6 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
-        # MEPS-IC employer-premium input (#454): a base-builder pre-clone
-        # stage keyed on restored ASEC coverage fields,
-        # not yet a multispine pool operator. Reads no spine or support-channel
-        # column and remains subject to the all-runtime source-identity scan.
-        "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
         "geography_ladder.py",
@@ -3492,10 +3492,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # projection names the SPM role as a required source input (#893),
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to, plus esi_premiums.py, whose output family
-        # operator_boundary registers so a raw source frame that already
-        # carries it is refused (#454). All five are classified in
-        # _OTHER_US_RUNTIME_MODULES and scanned below like every other
-        # reached module.
+        # operator_boundary registers and which the pool runs as an operator
+        # (#454). The first four are classified in _OTHER_US_RUNTIME_MODULES
+        # and esi_premiums.py as a spine-blind operator; all are scanned
+        # below like every other reached module.
         assert len(runtime_graph) == 75, (
             f"{tool.name} must reach the pinned 75-module runtime graph; "
             f"reached {len(runtime_graph)}"

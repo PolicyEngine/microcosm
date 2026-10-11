@@ -50,6 +50,13 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
+    us_esi_premiums_household_mass_share,
+    with_us_esi_premium_inputs,
+    with_us_esi_premium_pool_anchor,
+)
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
     us_hours_worked_signal_gate,
@@ -214,6 +221,7 @@ POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_medicare_take_up_input",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_esi_premium_inputs",
     "with_us_pregnancy_inputs",
     "with_us_wic_claim_input",
     "impute_us_housing_assistance_to_puf_support",
@@ -237,6 +245,7 @@ pre-clone derivation and a post-clone PUF-imputation pass.
 
 POOL_DERIVE_OPERATOR_ORDER = (
     "_complete_schedule_d_input",
+    "with_us_esi_premium_pool_anchor",
     "with_us_qbi_input_reconciliation",
 )
 """Whole-pool deterministic operators owned by the derive stage."""
@@ -367,11 +376,11 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 763),
+    ("declared_absent_engine_input", 762),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 122),
+    ("materialized_pool_input_surface", 123),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
     ("unprovisioned_source_input", 1),
@@ -383,9 +392,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
+    "2552a2386e84556fe5867dcb5759bef893bfa5afddadfb96ffb987ac53322e47"
 )
-"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,074 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -562,6 +571,12 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         (_PRE_CLONE_PHASE,),
         "raw household parent pointers must be counted before rows duplicate",
     ),
+    "with_us_esi_premium_inputs": SourceOperatorContract(
+        "esi_premiums",
+        (_PRE_CLONE_PHASE,),
+        "one premium per source person, scaled at the CPS rows' share of pool "
+        "household mass, so the early fill sees measured wages on both sources",
+    ),
     "with_us_pregnancy_inputs": SourceOperatorContract(
         "pregnancy",
         (_POST_CLONE_PHASE,),
@@ -638,6 +653,13 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         "transferred tax-unit parents exist only on the physically cloned pool",
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
+    "with_us_esi_premium_pool_anchor": SourceOperatorContract(
+        "esi_premiums",
+        (_POST_CLONE_PHASE,),
+        "transferred employer premiums take the source rows' total per unit of "
+        "household mass once the cross-source fill has completed every row",
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
+    ),
     "with_us_qbi_input_reconciliation": SourceOperatorContract(
         "qbi_reconciliation",
         (_POST_CLONE_PHASE,),
@@ -645,7 +667,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
 }
-"""Total clone-phase registry for all 23 pool-path operator kernels."""
+"""Total clone-phase registry for all 25 pool-path operator kernels."""
 
 POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
 """Backward-compatible name for the now-total pool operator registry."""
@@ -1280,6 +1302,44 @@ def pool_remaining_stage_input_manifest(
         fallback="derive_from_finite_transferred_parents",
     )
 
+    # The ESI premium anchor reads the transferred premium, the raw ASEC
+    # fields that mark the rows the stage derived itself, each person's
+    # source-record wages, and household mass.
+    register(
+        "derive",
+        "with_us_esi_premium_pool_anchor",
+        "person",
+        US_ESI_EMPLOYER_PREMIUM_COLUMN,
+        execution_scope="whole_pool",
+        provision=surface_provision(US_ESI_EMPLOYER_PREMIUM_COLUMN),
+        available_by="transferred",
+    )
+    for variable, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items():
+        register(
+            "derive",
+            "with_us_esi_premium_pool_anchor",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+    for entity, variable, provision in (
+        ("person", "person_household_id", "frame_membership"),
+        ("household", "household_id", "frame_entity_id"),
+        ("household", "<resolved_weight>", "frame_household_weight"),
+        ("person", "<resolved_weight>", "frame_resolve_weights_from_household_weight"),
+    ):
+        register(
+            "derive",
+            "with_us_esi_premium_pool_anchor",
+            entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+
     for variable in US_QBI_RECONCILED_PERSON_COLUMNS:
         register(
             "derive",
@@ -1794,6 +1854,9 @@ def prepare_multispine_source_inputs_for_clone(
     including the transient prior-year wage target needed by the later PUF QRF.
     """
 
+    def esi_premiums_at_pool_share(available: Frame) -> PoolStageOutput:
+        return _with_pool_us_esi_premium_inputs(available, pool=frame)
+
     operators: Mapping[str, SourceFrameOperator] = {
         "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
         "with_us_hours_worked_inputs": _with_gated_us_hours_worked_inputs,
@@ -1820,6 +1883,7 @@ def prepare_multispine_source_inputs_for_clone(
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
         ),
+        "with_us_esi_premium_inputs": esi_premiums_at_pool_share,
     }
     return _run_source_operator_chain(
         frame,
@@ -1827,6 +1891,31 @@ def prepare_multispine_source_inputs_for_clone(
         operator_names=POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
         operators=operators,
     )
+
+
+def _with_pool_us_esi_premium_inputs(
+    available: Frame,
+    *,
+    pool: Frame,
+) -> PoolStageOutput:
+    """Run the ESI premium stage on the CPS-source rows of a pool.
+
+    The kernel sees those rows only, at pool weights. They carry ``share`` of
+    the pool's household mass, so they take that share of the national anchor
+    and each person keeps the dollars a single-source build assigns.
+    """
+
+    share = us_esi_premiums_household_mass_share(
+        pool,
+        _cps_source_evidence_mask(pool, phase=_PRE_CLONE_PHASE),
+    )
+    produced = with_us_esi_premium_inputs(
+        available,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+        anchor_share=share,
+    )
+    return PoolStageOutput(produced, {"anchor_share": share})
 
 
 def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
@@ -2894,8 +2983,10 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     Schedule D capital-gain distributions are derived once per tax unit from
     the transferred parent inputs, then carried by the first person only when
     the unit has no pre-existing values. Existing non-null values are never
-    rewritten. The shared QBI reconciliation then restores its documented
-    all-or-nothing identities on the imputed PUF-detail surface.
+    rewritten. The ESI premium anchor then holds the transferred employer
+    premiums to the source rows' total per unit of household mass. The shared
+    QBI reconciliation finally restores its documented all-or-nothing
+    identities on the imputed PUF-detail surface.
     """
 
     remaining_stage_manifest_receipt = pool_remaining_stage_input_manifest_receipt()
@@ -2914,17 +3005,27 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             receipt,
         )
 
+    def anchor_esi_premiums_with_receipt(input_frame: Frame) -> PoolStageOutput:
+        anchored, receipt = with_us_esi_premium_pool_anchor(input_frame)
+        return PoolStageOutput(anchored, receipt)
+
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
         operator_names=POOL_DERIVE_OPERATOR_ORDER,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
+            "with_us_esi_premium_pool_anchor": anchor_esi_premiums_with_receipt,
             "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
         },
     )
-    schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
-    qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    kernel_receipts = {
+        suboperator["operator"]: suboperator["kernel_receipt"]
+        for suboperator in completed.receipt["suboperators"]
+    }
+    schedule_d_receipt = kernel_receipts["_complete_schedule_d_input"]
+    esi_premium_receipt = kernel_receipts["with_us_esi_premium_pool_anchor"]
+    qbi_receipt = kernel_receipts["with_us_qbi_input_reconciliation"]
     authorized = bind_us_qbi_reconciliation_transition_authority(
         completed.frame,
         qbi_receipt,
@@ -2942,6 +3043,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
+            "esi_premium_pool_anchor": dict(esi_premium_receipt),
             "qbi_input_reconciliation": dict(qbi_receipt),
         },
         qbi_transition_authority_sha256=qbi_receipt["sha256"],

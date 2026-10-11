@@ -2060,12 +2060,12 @@ def _assert_invariants(
     for family in families:
         by_stage.setdefault(str(family["stage"]), []).append(family)
     expected = {
-        "gap_fill_stacked_spine": (13, 48),
+        "gap_fill_stacked_spine": (14, 49),
         "primary_puf_qrf": (1, 65),
         "late_producer_dag": (19, 70),
     }
     expected_dtypes = {
-        "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
+        "gap_fill_stacked_spine": {"bool": 20, "float": 28, "int": 1},
         "primary_puf_qrf": {"bool": 8, "float": 55, "int": 2},
         "late_producer_dag": {"bool": 17, "float": 50, "int": 1, "str": 2},
     }

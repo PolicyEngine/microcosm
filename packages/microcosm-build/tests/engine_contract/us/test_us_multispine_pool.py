@@ -29,7 +29,7 @@ def test_production_operator_invocations_are_total_and_guarded(
         (
             multispine_pool_module.prepare_multispine_source_inputs_for_clone,
             POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
-            {"_run_source_operator_chain"},
+            {"_run_source_operator_chain", "_with_pool_us_esi_premium_inputs"},
         ),
         (
             multispine_pool_module._post_clone_source_operators,
@@ -49,6 +49,7 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "us_qbi_reconciliation_change_receipt",
                 "validate_us_qbi_reconciliation_live_output",
                 "validate_us_qbi_reconciliation_transition",
+                "with_us_esi_premium_pool_anchor",
                 "with_us_qbi_input_reconciliation",
             },
         ),
@@ -147,8 +148,8 @@ def test_production_operator_invocations_are_total_and_guarded(
         for phase in contract.phases
     }
     assert observed_placements == registered_placements
-    assert len({name for name, _phase in observed_placements}) == 23
-    assert len(observed_placements) == 24
+    assert len({name for name, _phase in observed_placements}) == 25
+    assert len(observed_placements) == 26
 
 
 def test_derive_stage_rejects_preclone_pool_before_kernels(
@@ -196,15 +197,15 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
-    frame = _replace_person(frame, person)
+    frame = _with_esi_premium_pool_surface(_replace_person(frame, person))
 
     result = multispine_pool_module.derive_multispine_pool_inputs(frame)
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1059
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1074
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
-        "derive": 34,
+        "derive": 49,
         "seed": 33,
         "simulate": 992,
     }

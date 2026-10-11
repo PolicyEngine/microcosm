@@ -107,8 +107,8 @@ def _reuse_real_worker_binding_for_pin_checks() -> object:
 EXPECTED_COUNTS = {
     "adapter_surfaces": 13,
     "authority_components": 9,
-    "early_families": 13,
-    "early_targets": 48,
+    "early_families": 14,
+    "early_targets": 49,
     "itemization_batches": 5,
     "itemization_targets": 37,
     "late_groups": 19,
@@ -123,7 +123,7 @@ EXPECTED_COUNTS = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 334,
+    "resolved_references": 335,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
@@ -137,7 +137,7 @@ EXPECTED_COUNTS = {
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
-    "typed_columns": 176,
+    "typed_columns": 177,
     "typed_entities": 8,
     "typed_scopes": 7,
 }
