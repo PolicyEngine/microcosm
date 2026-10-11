@@ -745,8 +745,10 @@ def test_packaged_exclusions_load():
     # energy rows are a published-source residual against the stage's DESNZ
     # volume at QEP prices. The OBR cars receipts include business-paid car
     # fuel, so household road fuel is bound on ONS 07.2.2 in their place. A
-    # masked re-solve changed no other row's fit, so they are held out of the
-    # objective and measured by the diagnose tool.
+    # re-solve with the four masked together left the other rows fitting no
+    # worse, so they are held out of the objective and measured by the
+    # diagnose tool. The PR that added them closes microcosm#1113, so the
+    # three that tracked it track its follow-up issue, microcosm#1207.
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
     assert sorted(e["name"] for e in consumption_taxes) == [
         "obr.fuel_duties_cars",
@@ -766,9 +768,9 @@ def test_packaged_exclusions_load():
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
     assert trackings == {
         "obr.vat": "policyengine-uk#1996",
-        "obr.fuel_duties_cars": "microcosm#1113",
-        "ons.household_electricity_expenditure": "microcosm#1113",
-        "ons.household_gas_expenditure": "microcosm#1113",
+        "obr.fuel_duties_cars": "microcosm#1207",
+        "ons.household_electricity_expenditure": "microcosm#1207",
+        "ons.household_gas_expenditure": "microcosm#1207",
     }
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]

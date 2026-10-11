@@ -1631,9 +1631,21 @@ def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> No
         "period_type": "calendar_year",
         "period_value": 2024,
     }
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_DIARY_PRICE_COLUMNS,
+    )
+
     evidence = {
         "stage": "lcfs_consumption",
-        "donor_uprating": {"from_period": 2023, "to_period": 2024},
+        "donor_uprating": {
+            "from_period": 2023,
+            "to_period": 2024,
+            "fiscal_year_bridge": {"start_year_weight": 0.75, "next_year_weight": 0.25},
+            "columns": {
+                column: {"basis": "engine_parameter", "from_window": "fiscal_year"}
+                for column in UK_LCFS_DIARY_PRICE_COLUMNS
+            },
+        },
         "energy_pricing": {
             "period_type": "calendar_year",
             "period_value": 2024,
@@ -1663,7 +1675,29 @@ def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> No
     passed = run(evidence)
     assert passed.passed, passed.failures
     assert passed.details["steps"]["energy_level"] == ("calendar_year", 2024)
+    assert passed.details["steps"]["donor_uprating"] == ("calendar_year", 2024)
     failing(lambda e: e["donor_uprating"].update(to_period=2025), "donor uprating")
+    # A diary column moved by a full year's step lands a quarter past the
+    # calendar year, whatever the receipt's target year says.
+    failing(
+        lambda e: e["donor_uprating"]["columns"]["health_consumption"].pop(
+            "from_window"
+        ),
+        "a quarter past calendar 2024",
+    )
+    failing(
+        lambda e: e["donor_uprating"]["columns"].pop("bus_fare_spending"),
+        "a quarter past calendar 2024",
+    )
+    failing(
+        lambda e: e["donor_uprating"]["fiscal_year_bridge"].update(
+            start_year_weight=1.0
+        ),
+        "calendar-year index",
+    )
+    failing(
+        lambda e: e["donor_uprating"].pop("fiscal_year_bridge"), "calendar-year index"
+    )
     failing(
         lambda e: e["energy_pricing"].update(period_type="fiscal_year"), "energy prices"
     )
@@ -1775,6 +1809,7 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "domestic_energy_consumption": [2000.0, 900.0],
             "petrol_spending": [800.0, 0.0],
             "diesel_spending": [0.0, 700.0],
+            "bus_fare_spending": [100.0, 0.0],
         }
     )
     draws = pd.DataFrame(
@@ -1785,6 +1820,7 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
             "transport_consumption": [2000.0, 1000.0],
             "petrol_spending": [1500.0, 0.0],
             "diesel_spending": [0.0, 900.0],
+            "bus_fare_spending": [0.0, 250.0],
         }
     )
     _, receipt = recompose_parent_totals(

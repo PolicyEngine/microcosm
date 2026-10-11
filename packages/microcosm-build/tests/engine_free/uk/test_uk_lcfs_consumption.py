@@ -825,10 +825,13 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     # Totals contain their levelled components (#1113).
     energy = out[["electricity_consumption", "gas_consumption"]].sum(axis=1)
     assert (out["housing_water_and_electricity_consumption"] >= energy).all()
-    assert (out["transport_consumption"] >= road_fuel).all()
+    # Transport holds the levelled road fuel and the priced bus fares together.
+    bus = out["bus_fare_spending"].to_numpy(dtype=float)
+    assert (out["transport_consumption"] >= road_fuel + bus - 1e-9).all()
     recomposed = evidence["recomposed_totals"]["parents"]
+    household_weights = result.weights_for("household").values
     assert recomposed["transport_consumption"]["weighted_components"] == (
-        pytest.approx(level["level"])
+        pytest.approx(level["level"] + household_weights @ bus)
     )
     assert recomposed["housing_water_and_electricity_consumption"][
         "weighted_total"
@@ -1020,6 +1023,8 @@ def test_division_capture_compares_each_division_with_ons() -> None:
                 "coicop": coicop,
                 "source_sheet": sheet,
                 "consumption_concept": concept,
+                "price_basis": "current_prices",
+                "seasonal_adjustment": "not_seasonally_adjusted",
             },
         )
         return float(row["value"])
@@ -1054,6 +1059,66 @@ def test_division_capture_compares_each_division_with_ons() -> None:
         12 * frame / (total["published_national"] - total["out_of_scope"])
     )
     assert capture["gated"] is False
+
+
+def test_report_only_diagnostics_record_a_missing_year_and_do_not_raise(
+    monkeypatch,
+) -> None:
+    """A report-only block says why it has no figures; it never stops a build."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime import lcfs_consumption as module
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        DiagnosticUnavailableError,
+        desnz_cars_share_by_fuel,
+        division_capture,
+        division_capture_or_reason,
+        fuel_litres_audit,
+    )
+
+    draws = pd.DataFrame(
+        {column: [1.0e3, 2.0e3] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    weights = np.array([1.0e7, 5.0e6])
+    # No Consumer Trends row is vendored for 2031.
+    with pytest.raises(DiagnosticUnavailableError, match="expected one"):
+        division_capture(draws, weights=weights, period_value=2031)
+    recorded = division_capture_or_reason(draws, weights=weights, period_value=2031)
+    assert recorded["available"] is False and recorded["gated"] is False
+    assert "expected one" in recorded["reason"]
+    assert "divisions" not in recorded
+    assert "available" not in division_capture_or_reason(
+        draws, weights=weights, period_value=2024
+    )
+
+    # DESNZ's vehicle split is vendored for 2022 to 2024 only.
+    with pytest.raises(DiagnosticUnavailableError, match="cars row"):
+        desnz_cars_share_by_fuel(2031)
+
+    def no_split(period_value: int):
+        raise DiagnosticUnavailableError(f"no cars row for {period_value}.")
+
+    monkeypatch.setattr(module, "desnz_cars_share_by_fuel", no_split)
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    fuel = pd.DataFrame(
+        {"petrol_spending": [1500.0, 0.0], "diesel_spending": [0.0, 1200.0]}
+    )
+    audit = fuel_litres_audit(fuel, weights=weights, stage=stage)
+    # The audit falls back to the OBR cars share on both fuels and says so.
+    assert audit["per_fuel_ratio_basis"] == (
+        "uniform cars share, not a per-fuel benchmark"
+    )
+    assert "no cars row" in audit["cars_share_unavailable"]
+    petrol = audit["fuels"]["petrol_spending"]
+    assert "desnz_cars_share" not in petrol
+    assert petrol["cars_litres_benchmark"] == pytest.approx(
+        petrol["hmrc_litres_all_road_users"]
+        * audit["obr_fuel_duty_receipts"]["cars_share"]
+    )
+    assert audit["frame_over_cars_benchmark"] == pytest.approx(
+        audit["frame_over_obr_uniform_cars_benchmark"]
+    )
 
 
 def test_road_fuel_level_reads_the_vendored_ons_row() -> None:
@@ -1441,6 +1506,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
             "domestic_energy_consumption": [2000.0, 900.0, 0.0],
             "petrol_spending": [800.0, 0.0, 0.0],
             "diesel_spending": [0.0, 700.0, 0.0],
+            "bus_fare_spending": [100.0, 0.0, 50.0],
         }
     )
     # The levelled parts, beside the totals as the chain drew them.
@@ -1452,6 +1518,8 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
             "transport_consumption": [2000.0, 1000.0, 0.0],
             "petrol_spending": [1500.0, 0.0, 0.0],
             "diesel_spending": [0.0, 900.0, 0.0],
+            # Priced bus fares: journeys times yield, not the chain's draw.
+            "bus_fare_spending": [0.0, 250.0, 400.0],
             "food_and_non_alcoholic_beverages_consumption": [1.0, 2.0, 3.0],
         }
     )
@@ -1467,8 +1535,9 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         600.0,
         800.0,
     ]
-    # Transport: 2000 - 800 + 1500; 1000 - 700 + 900; 0.
-    assert out["transport_consumption"].tolist() == [2700.0, 1200.0, 0.0]
+    # Transport nets the drawn fuel and bus and adds the levelled fuel and the
+    # priced bus: 2000 - 900 + 1500; 1000 - 700 + 1150; 0 - 50 floors at 0, + 400.
+    assert out["transport_consumption"].tolist() == [2600.0, 1450.0, 400.0]
     assert out["food_and_non_alcoholic_beverages_consumption"].tolist() == [
         1.0,
         2.0,
@@ -1486,8 +1555,14 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     )
     assert housing["rows_below_components"] == 0
     transport = receipt["parents"]["transport_consumption"]
-    assert transport["weighted_total"] == 2.0 * 2700.0 + 1200.0
-    assert transport["weighted_components"] == 2.0 * 1500.0 + 900.0
+    assert transport["drawn_subtracts"] == [
+        "petrol_spending",
+        "diesel_spending",
+        "bus_fare_spending",
+    ]
+    assert transport["weighted_total"] == 2.0 * 2600.0 + 1450.0 + 3.0 * 400.0
+    assert transport["weighted_components"] == 2.0 * 1500.0 + 1150.0 + 3.0 * 400.0
+    assert transport["rows_floored"] == 1
     uncarried = receipt["uncarried"]
     expected = [
         float(
@@ -1550,6 +1625,7 @@ def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> Non
         "transport_consumption",
         "petrol_spending",
         "diesel_spending",
+        "bus_fare_spending",
     )
     draws = pd.DataFrame({column: [1.0] for column in columns})
     with pytest.raises(ValueError, match=match):

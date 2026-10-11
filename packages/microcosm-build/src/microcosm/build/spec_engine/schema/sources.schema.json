@@ -9477,6 +9477,9 @@
          },
          "audit_parameter_path": {
           "type": "string"
+         },
+         "from_window": {
+          "const": "fiscal_year"
          }
         }
        }
@@ -9489,6 +9492,22 @@
       },
       "instant": {
        "const": "january_first"
+      },
+      "fiscal_year_bridge": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "start_year_weight",
+        "next_year_weight"
+       ],
+       "properties": {
+        "start_year_weight": {
+         "const": 0.75
+        },
+        "next_year_weight": {
+         "const": 0.25
+        }
+       }
       }
      }
     },

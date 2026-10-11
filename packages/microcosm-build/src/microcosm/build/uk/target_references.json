@@ -23665,7 +23665,10 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "04.5.1",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         },
         "geography_level": "country",
         "geography_id": "K02000001"
@@ -23688,7 +23691,10 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "04.5.2",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         },
         "geography_level": "country",
         "geography_id": "K02000001"
@@ -23711,7 +23717,10 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "07.2.2",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         },
         "geography_level": "country",
         "geography_id": "K02000001"

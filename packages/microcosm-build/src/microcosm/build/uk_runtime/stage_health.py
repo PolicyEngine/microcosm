@@ -2648,12 +2648,23 @@ def _consumption_basis_gate(
     """Every LCFS spend column is on the declared base year's prices.
 
     Checks on the receipts of the steps that set the spend levels
-    (microcosm#1113): the donor uprating's target year, the energy prices'
-    and the DESNZ level's periods, the bus prices' re-pricing year and the
-    road-fuel level's period must all be the declared calendar year, so
-    policyengine-uk can project every column from the H5's year with no
-    per-column bases. A step whose receipt is absent fails the check.
+    (microcosm#1113). The donor uprating must end at the declared year and
+    carry every diary spend column from the April-to-March diary year, placed
+    on the calendar-year index at three quarters and one quarter, not by a
+    full year's step, which would land a quarter past the calendar year. The
+    energy prices' and the DESNZ level's periods, the bus prices' re-pricing
+    year and the road-fuel level's period must all be the declared calendar
+    year. policyengine-uk can then project every column from the H5's year
+    with no per-column bases. A step whose receipt is absent fails the check.
     """
+
+    from microcosm.build.uk_runtime.donor_uprating import (
+        FROM_WINDOW_FISCAL_YEAR,
+        UK_FISCAL_YEAR_CALENDAR_WEIGHTS,
+    )
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_DIARY_PRICE_COLUMNS,
+    )
 
     check = "consumption_basis"
     period_type = str(parameters.get("period_type") or "")
@@ -2678,11 +2689,38 @@ def _consumption_basis_gate(
 
     uprating = receipt("donor_uprating")
     if uprating is not None:
-        found["donor_uprating"] = ("calendar_year", uprating.get("to_period"))
         if uprating.get("to_period") != period_value:
             failures.append(
                 f"{stage}: the donor uprating moves the diary to "
                 f"{uprating.get('to_period')!r}, not {period_value}."
+            )
+        bridge = uprating.get("fiscal_year_bridge")
+        bridge = bridge if isinstance(bridge, Mapping) else {}
+        weights = (bridge.get("start_year_weight"), bridge.get("next_year_weight"))
+        columns = uprating.get("columns")
+        columns = columns if isinstance(columns, Mapping) else {}
+        full_step = [
+            column
+            for column in UK_LCFS_DIARY_PRICE_COLUMNS
+            if not isinstance(columns.get(column), Mapping)
+            or columns[column].get("from_window") != FROM_WINDOW_FISCAL_YEAR
+        ]
+        bridged = not full_step and weights == UK_FISCAL_YEAR_CALENDAR_WEIGHTS
+        found["donor_uprating"] = (
+            "calendar_year" if bridged else "fiscal_year",
+            uprating.get("to_period"),
+        )
+        if full_step:
+            failures.append(
+                f"{stage}: the donor uprating does not carry {full_step} from "
+                "the April-to-March diary year, so a full year's step leaves "
+                f"them a quarter past calendar {period_value}."
+            )
+        elif weights != UK_FISCAL_YEAR_CALENDAR_WEIGHTS:
+            failures.append(
+                f"{stage}: the donor uprating places the diary year on the "
+                f"calendar-year index at {weights}, not "
+                f"{UK_FISCAL_YEAR_CALENDAR_WEIGHTS}."
             )
     energy = receipt("energy_pricing")
     if energy is not None:

@@ -2,7 +2,7 @@
 to the NEED shape at the DESNZ level (microcosm#890 F, chronicle#270).
 
 The LCFS diary and the consumption QRF carry energy as pounds. Four published
-facts turn that into a base-year (FY2024-25) frame under one declared
+facts turn that into a base-year (calendar 2024) frame under one declared
 operation, ``price_domestic_energy``:
 
 * price: the DESNZ Quarterly Energy Prices average variable unit cost

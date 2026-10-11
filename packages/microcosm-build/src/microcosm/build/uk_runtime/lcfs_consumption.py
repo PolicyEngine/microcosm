@@ -151,6 +151,10 @@ UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
     CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
 )
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
+#: The spend columns a price index carries from the April-to-March diary to
+#: the calendar base year (microcosm#1113). Energy and road fuel are not here:
+#: later steps set their levels for that year.
+UK_LCFS_DIARY_PRICE_COLUMNS = (*UK_LCFS_COICOP_DIVISION_COLUMNS, "bus_fare_spending")
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
 #: vehicle variable). Both sides are rounded and clipped to this closed range so
@@ -215,6 +219,9 @@ UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
 #: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
 UK_LITRES_AUDIT_PER_FUEL_BASIS = "desnz cars share of each fuel's road use"
+#: The fallback when DESNZ publishes no vehicle split for the audit's year: the
+#: OBR cars share of duty receipts on both fuels, which only the total can bear.
+UK_LITRES_AUDIT_UNIFORM_BASIS = "uniform cars share, not a per-fuel benchmark"
 UK_DESNZ_ROAD_FUEL_CONCEPT = "desnz.road_transport.fuel_consumption"
 UK_LITRES_AUDIT_FUELS = {"petrol_spending": "petrol", "diesel_spending": "diesel"}
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
@@ -280,18 +287,22 @@ RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: each maps to the chain draws subtracted from its own draw to leave its
 #: remainder, and the levelled columns added back. The chain draws each part
 #: after its total, so the split is the chain's own. Housing (p604) nets the
-#: drawn electricity and gas (the chain's domestic-energy target is the diary's
-#: electricity plus gas), so the liquid and solid fuels no column carries stay
-#: in its remainder; transport (p607) nets the drawn petrol and diesel (c72211,
-#: c72212) and keeps other motor fuels.
+#: chain's domestic-energy draw, which is the electricity and gas
+#: ``derive_energy_from_lcfs`` makes of the diary. That derivation splits all of
+#: ``p537`` (fuel, light and power) where the household reports no combined
+#: payment, so those households' liquid and solid fuels leave with the drawn
+#: energy; where it reads the combined payment, whatever else ``p537`` holds
+#: stays in the housing remainder. Transport (p607) nets the drawn petrol and
+#: diesel (c72211, c72212) and the drawn bus fares (which the pricing step
+#: replaces with journeys times yield), and keeps other motor fuels.
 UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "housing_water_and_electricity_consumption": (
         ("domestic_energy_consumption",),
         ("electricity_consumption", "gas_consumption"),
     ),
     "transport_consumption": (
-        ("petrol_spending", "diesel_spending"),
-        ("petrol_spending", "diesel_spending"),
+        ("petrol_spending", "diesel_spending", "bus_fare_spending"),
+        ("petrol_spending", "diesel_spending", "bus_fare_spending"),
     ),
 }
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
@@ -488,7 +499,7 @@ class UKLCFSConsumptionStageTransform:
         capture = (
             None
             if uprating is None
-            else division_capture(
+            else division_capture_or_reason(
                 household_draws,
                 weights=weights,
                 period_value=int(uprating["to_period"]),
@@ -555,8 +566,24 @@ class UKLCFSConsumptionImputationResult:
     fit_weight_records: tuple[FitWeightRecord, ...]
 
 
+class DiagnosticUnavailableError(ValueError):
+    """A report-only diagnostic's published row is missing or ambiguous.
+
+    Raised only by the diagnostics' own row lookups, so the stage can record
+    why a report-only block has no figures and carry on. A vendored resource
+    that lags the feed pin still fails in ``vendored_rows`` as a plain error.
+    """
+
+
 #: ONS Consumer Trends' generic concept for the divisions and classes.
 UK_ONS_HFCE_CONCEPT = "ons.household_final_consumption_expenditure"
+#: The variant of each Consumer Trends row the diagnostic reads: annual,
+#: current prices, not seasonally adjusted.
+UK_ONS_HFCE_ROW_DIMENSIONS = {
+    "frequency": "annual",
+    "price_basis": "current_prices",
+    "seasonal_adjustment": "not_seasonally_adjusted",
+}
 #: Each LCFS division column and its COICOP division.
 UK_LCFS_DIVISION_COICOP = {
     column: f"{division:02d}"
@@ -580,13 +607,14 @@ def _ons_annual_value(
         period_type="calendar_year",
         period_value=int(period_value),
         dimensions={
+            **UK_ONS_HFCE_ROW_DIMENSIONS,
             "coicop": coicop,
             "source_sheet": source_sheet,
             "consumption_concept": consumption_concept,
         },
     )
     if len(rows) != 1:
-        raise ValueError(
+        raise DiagnosticUnavailableError(
             f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}, "
             f"found {len(rows)}."
@@ -670,6 +698,32 @@ def division_capture(
     }
 
 
+def division_capture_or_reason(
+    household_draws: pd.DataFrame, *, weights: Sequence[float], period_value: int
+) -> dict[str, Any]:
+    """The division capture, or why it has no figures for this year.
+
+    The block is report-only, so a Consumer Trends row that is missing or
+    ambiguous for the year must not stop the stage: the receipt records the
+    reason in place of the figures.
+    """
+
+    try:
+        return division_capture(
+            household_draws, weights=weights, period_value=period_value
+        )
+    except DiagnosticUnavailableError as error:
+        return {
+            "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+            "concept": UK_ONS_HFCE_CONCEPT,
+            "period_type": "calendar_year",
+            "period_value": int(period_value),
+            "available": False,
+            "reason": str(error),
+            "gated": False,
+        }
+
+
 def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
     """The cars share of each fuel's UK road use, from DESNZ's vehicle/fuel ktoe.
 
@@ -695,7 +749,7 @@ def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
                 continue
             vehicle = str(dims.get("vehicle_type"))
             if vehicle in by_vehicle:
-                raise ValueError(
+                raise DiagnosticUnavailableError(
                     f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: duplicate {vehicle} {fuel} "
                     f"row for {period_value}."
                 )
@@ -703,7 +757,7 @@ def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
             record_ids.append(str(row.get("source_record_id", "")))
         total = sum(by_vehicle.values())
         if "cars" not in by_vehicle or total <= 0:
-            raise ValueError(
+            raise DiagnosticUnavailableError(
                 f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: no {fuel} cars row for "
                 f"{period_value}."
             )
@@ -792,14 +846,19 @@ def fuel_litres_audit(
 
     cars, total = receipts(UK_OBR_CARS_CATEGORY), receipts(UK_OBR_TOTAL_CATEGORY)
     cars_share = cars / total
-    desnz = desnz_cars_share_by_fuel(to_period)
+    try:
+        desnz: dict[str, dict[str, Any]] | None = desnz_cars_share_by_fuel(to_period)
+        unavailable = None
+    except DiagnosticUnavailableError as error:
+        desnz, unavailable = None, str(error)
     for column, entry in fuels.items():
         fuel = UK_LITRES_AUDIT_FUELS[column]
-        entry["desnz_cars_share"] = desnz[fuel]["cars_share"]
-        entry["desnz_ktoe_by_vehicle"] = desnz[fuel]["ktoe_by_vehicle"]
-        entry["cars_litres_benchmark"] = (
-            entry["hmrc_litres_all_road_users"] * desnz[fuel]["cars_share"]
-        )
+        share = cars_share
+        if desnz is not None:
+            share = desnz[fuel]["cars_share"]
+            entry["desnz_cars_share"] = share
+            entry["desnz_ktoe_by_vehicle"] = desnz[fuel]["ktoe_by_vehicle"]
+        entry["cars_litres_benchmark"] = entry["hmrc_litres_all_road_users"] * share
         entry["frame_over_cars_benchmark"] = (
             entry["frame_litres"] / entry["cars_litres_benchmark"]
             if entry["cars_litres_benchmark"] > 0
@@ -829,7 +888,12 @@ def fuel_litres_audit(
         "frame_over_obr_uniform_cars_benchmark": (
             frame_total / obr_benchmark_total if obr_benchmark_total > 0 else None
         ),
-        "per_fuel_ratio_basis": UK_LITRES_AUDIT_PER_FUEL_BASIS,
+        "per_fuel_ratio_basis": (
+            UK_LITRES_AUDIT_PER_FUEL_BASIS
+            if desnz is not None
+            else UK_LITRES_AUDIT_UNIFORM_BASIS
+        ),
+        **({} if unavailable is None else {"cars_share_unavailable": unavailable}),
         "gated": False,
     }
 
@@ -1296,8 +1360,8 @@ def recompose_parent_totals(
     A total keeps its own chain draw less the chain's draws of the parts the
     stage re-levels (``drawn``, kept before any step touched them; floored at
     zero where the parts outgrow the total), and adds the levelled parts back,
-    so it always contains the electricity, gas, petrol and diesel at their
-    published scale (microcosm#1113). The chain draws each part after, and
+    so it always contains the electricity, gas, petrol, diesel and priced bus
+    fares at their published scale (microcosm#1113). The chain draws each part after, and
     conditional on, its total, so the remainder is the chain's own split; a
     remainder drawn as a chain target of its own over-drew the vehicle-purchase
     tail of transport (10 to 13 percent above the donor in-sample).
@@ -1793,11 +1857,13 @@ def clean_lcfs_consumption_table(
     """Return the LCFS donor table with annualized consumption variables.
 
     ``uprating`` maps donor columns to the declared factors that move the
-    2023-24 diary to the FRS 2024-25 base year (``uprate_donor_columns``);
-    it is applied after annualisation and before the donor-side NEED rake, so
-    the income bands and the support-clip ranges see base-year values.
+    2023-24 diary to the base year (``uprate_donor_columns``): the spend
+    columns to calendar-2024 prices, the income predictors a full year to the
+    FRS 2024-25 incomes. It is applied after annualisation and before the
+    donor-side NEED rake, so the income bands and the support-clip ranges see
+    base-year values.
     ``energy`` (the declared ``price_domestic_energy``) converts the diary's
-    energy spend to kWh at the FY2024-25 regional average prices paid, rakes
+    energy spend to kWh at the calendar-2024 regional average prices paid, rakes
     the income margin to the NEED means (shape only, no level) and prices back; without it the energy columns
     are the raw diary spend.
     """
@@ -2098,14 +2164,15 @@ def support_clip_to_donor(
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
     """Donor support per clipped column.
 
-    Levelled columns carry no bounds, nor do the totals written back around
-    their levelled components, whose coherence the stage's recomposed-totals
-    check holds instead (microcosm#1113).
+    Levelled columns carry no bounds. The housing and transport totals keep
+    theirs although the stage writes them back around levelled components
+    (microcosm#1113): the terminal support check then holds the emitted totals
+    to the diary's own range, which a stage-time receipt check cannot do.
     """
 
     ranges: dict[str, tuple[float, float]] = {}
     for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        if column in UK_LCFS_RAKED_COLUMNS or column in UK_LCFS_RECOMPOSED_PARENTS:
+        if column in UK_LCFS_RAKED_COLUMNS:
             continue
         values = pd.to_numeric(donor[column], errors="coerce")
         finite = values[np.isfinite(values)]
