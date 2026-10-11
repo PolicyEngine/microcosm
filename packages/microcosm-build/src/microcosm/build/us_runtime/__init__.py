@@ -2169,8 +2169,9 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Current ESI policyholders take the MEPS-IC employer share of "
             "their tier x firm-size x State (or government census-division) "
-            "cell, scaled over every policyholder to CMS NHE Table 24 and "
-            "written for the employed ones (microcosm #454). Deterministic; "
+            "cell, scaled over every policyholder to BEA NIPA 7.8 line 17 "
+            "(B4923C) and written for the employed ones (microcosm #454). "
+            "Deterministic; "
             "shared by support clones."
         ),
     ),

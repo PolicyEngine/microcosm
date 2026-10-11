@@ -393,7 +393,7 @@ class TestCells:
 
 
 class TestEmployerPremium:
-    def test_weighted_total_over_every_policyholder_is_the_nhe_anchor(self) -> None:
+    def test_weighted_total_over_every_policyholder_is_the_anchor(self) -> None:
         result = _run(_realistic_rows(), weights=np.linspace(50, 5_000, 400))
         summary = us_esi_premiums_summary(result)
         assert summary["anchor_universe_employer_total"] == pytest.approx(
@@ -1124,6 +1124,46 @@ class TestAnchorFeedCheck:
             2025: 1_027_929_000_000,
         }
         assert esi.us_esi_premiums_anchor_feed_mismatches(self._facts(values)) == []
+
+    def test_the_committed_feed_pin_banks_the_anchor(self) -> None:
+        """The pinned feed's three added facts are the stage's anchor values.
+
+        The feed itself is too large for the repository, so this reads the
+        committed row-by-row report of the re-pin. Changing the anchor without
+        re-pinning the feed, or the reverse, fails here and not only at a
+        release preflight.
+        """
+
+        report = json.loads(
+            (
+                _REPOSITORY_ROOT / "experiments/us-esi-454/feed-repin/value_diff.json"
+            ).read_text()
+        )
+        pin = json.loads(
+            files("microcosm.build.us").joinpath("chronicle_feed.json").read_text()
+        )
+        assert report["new"]["sha256"] == pin["facts_sha256"]
+        assert report["new"]["rows"] == pin["fact_row_count"]
+        assert report["previous_rows_missing"] == 0
+        assert report["previous_rows_changed"] == 0
+        added = report["rows_added"]
+        assert len(added) == 3
+        assert {str(row["period"]["value"]): row["value"] for row in added} == dict(
+            esi.EMPLOYER_PREMIUM_ANCHOR["values"]
+        )
+        template = esi.EMPLOYER_PREMIUM_ANCHOR["feed_record_set"]
+        assert {row["record_set_id"] for row in added} == {
+            template.format(year=year) for year in esi.EMPLOYER_PREMIUM_ANCHOR["values"]
+        }
+        assert {row["source_sha256"] for row in added} == {
+            esi.EMPLOYER_PREMIUM_ANCHOR["sha256"]
+        }
+        # The same rows, as facts, satisfy the release tool's check.
+        facts = [
+            {"layout": {"record_set_id": row["record_set_id"]}, "value": row["value"]}
+            for row in added
+        ]
+        assert esi.us_esi_premiums_anchor_feed_mismatches(facts) == []
 
     def test_a_missing_repeated_or_different_fact_is_named(self) -> None:
         facts = self._facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})

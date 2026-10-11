@@ -6417,13 +6417,14 @@ def _run_green_register_release(
     assert captured["esi_premiums_anchor_periods"] == [builder.PERIOD]
     signal_evidence = {"evaluated": True, "passed": True, "failures": []}
     assert json.loads((release_dir / "esi_premiums.json").read_text()) == {
-        "schema_version": 2,
+        "schema_version": 3,
         "enforced": True,
         "esi_premiums": {
             "passed": True,
             "failures": [],
             "details": {"checked": True},
         },
+        "anchor_feed": {"enforced": True, "matches": True, "mismatches": []},
         "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
     for block in (build_manifest, release_manifest["build"]):
@@ -16179,11 +16180,75 @@ def test_main_holds_the_esi_anchor_to_the_feed_before_compiling_targets() -> Non
     source = inspect.getsource(builder._main)
     checked = source.index("_check_committed_us_ledger_feed_pin(")
     anchored = source.index(
-        "us_esi_premiums_anchor_feed_mismatches(\n        ledger_artifact.facts"
+        "_check_us_esi_anchor_against_feed(\n        ledger_artifact.facts"
     )
     compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
     assert checked < anchored < compiled
-    assert source.count("us_esi_premiums_anchor_feed_mismatches(") == 1
+    assert source.count("_check_us_esi_anchor_against_feed(") == 1
+    # The same list reaches the evidence file.
+    assert "_esi_anchor_feed_evidence(\n" in source
+
+
+def _b4923c_facts(values: dict[int, int]) -> list[dict]:
+    return [
+        {
+            "layout": {
+                "record_set_id": f"bea_nipa.cy{year}.private_group_health_insurance"
+            },
+            "value": value,
+        }
+        for year, value in values.items()
+    ]
+
+
+def test_the_esi_anchor_feed_check_passes_on_the_banked_series() -> None:
+    builder = _load_builder_module()
+    facts = _b4923c_facts(
+        {2023: 923_195_000_000, 2024: 977_034_000_000, 2025: 1_027_929_000_000}
+    )
+    assert (
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+        == []
+    )
+
+
+def test_the_esi_anchor_feed_check_refuses_a_feed_that_disagrees() -> None:
+    """A revised or missing B4923C fact stops a release build."""
+    builder = _load_builder_module()
+    # BEA's pre-revision 2024 value, and no 2025 fact.
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    with pytest.raises(SystemExit, match="anchor differs from the Chronicle feed"):
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("allow_unpinned_feed", "allow_esi_premium_gaps"),
+    [(True, False), (False, True), (True, True)],
+)
+def test_a_waived_esi_anchor_feed_mismatch_stays_on_the_record(
+    allow_unpinned_feed, allow_esi_premium_gaps
+) -> None:
+    """A diagnostic flag lets the build go on; the difference is recorded."""
+    builder = _load_builder_module()
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    mismatches = builder._check_us_esi_anchor_against_feed(
+        facts,
+        allow_unpinned_feed=allow_unpinned_feed,
+        allow_esi_premium_gaps=allow_esi_premium_gaps,
+    )
+    assert len(mismatches) == 2
+    evidence = builder._esi_anchor_feed_evidence(mismatches, enforced=False)
+    assert evidence == {
+        "enforced": False,
+        "matches": False,
+        "mismatches": mismatches,
+    }
+    assert any("1002920000000" in item for item in evidence["mismatches"])
+    assert any("cy2025" in item for item in evidence["mismatches"])
 
 
 # SPM measurement composition refusal

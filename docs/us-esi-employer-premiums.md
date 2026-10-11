@@ -1,6 +1,6 @@
 # US employer-sponsored insurance premiums (#454)
 
-Status as of 2026-10-10. Code: `microcosm.build.us_runtime.esi_premiums`
+Status as of 2026-10-11. Code: `microcosm.build.us_runtime.esi_premiums`
 (stage `meps_esi_premiums`). Receipts: `experiments/us-esi-454/`.
 
 ## What the stage produces
@@ -190,9 +190,13 @@ that gate.
 The stage pins BEA's values itself (`EMPLOYER_PREMIUM_ANCHOR`, the
 Section 7 workbook by URL and SHA-256). The pinned US Chronicle feed banks the
 same series (record sets `bea_nipa.cy<year>.private_group_health_insurance`,
-PolicyEngine/chronicle#331; `docs/us-chronicle-feed-repin.md`), and the
-release tool refuses a feed whose values differ from the stage's
-(`us_esi_premiums_anchor_feed_mismatches`), so the two cannot drift apart.
+PolicyEngine/chronicle#331; `docs/us-chronicle-feed-repin.md`). Two checks
+hold them together. A test compares the anchor with the three facts the
+committed re-pin report says the pinned feed added, so changing one without
+the other fails CI. And the release tool refuses a feed whose values differ
+from the stage's (`us_esi_premiums_anchor_feed_mismatches`); a diagnostic run
+under `--allow-unpinned-feed` or `--allow-esi-premium-gaps` continues and
+records the difference.
 
 Two facts differ from what #454 recorded in July:
 
@@ -323,10 +327,12 @@ What the gates need, and what they do not catch:
 The stage pins the pre-calibration total exactly. Nothing calibrates the
 column, so the anchor gate is what holds a release's total after reweighting
 and sparse selection. `esi_premiums.json` is required release evidence: it
-carries the anchor verdict, both cross-checks and the base and export signal
-verdicts, and both manifests record it. `--allow-esi-premium-gaps` stops the
-gates failing a diagnostic build, for example on a base built before this
-stage; the failures it waives are still written to that file.
+carries the anchor verdict, both cross-checks, the base and export signal
+verdicts and the anchor-versus-feed verdict, and both manifests record it.
+`--allow-esi-premium-gaps` stops the gates failing a diagnostic build, for
+example on a base built before this stage; the failures it waives, including
+a feed whose B4923C facts differ from the anchor, are still written to that
+file.
 
 ## Lineage
 

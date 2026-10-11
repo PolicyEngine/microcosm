@@ -42,9 +42,10 @@ runs). Built at `cf9ece2`:
   `aggregate_fact_key`) and adds exactly the three B4923C facts: $923,195M,
   $977,034M and $1,027,929M, each from `Section7All_xls.xlsx` (sha256
   `de1c34e3…`);
-- compiled at 2024 with the packaged CD crosswalk, aging and the Medicaid
-  substitutions, all 33,250 targets are identical on both feeds, name, value
-  and metadata. B4923C is not compiled into a target: the stage scales to it,
+- compiled at 2024 with the packaged CD crosswalk and the Medicaid
+  substitutions, with target aging on and again with it off, the registry is
+  the same ordered list of targets on both feeds, name, value and metadata
+  (33,250 targets with aging on). B4923C is not compiled into a target: the stage scales to it,
   and whether to calibrate the column is decision d1264. The target-parity
   manifest lists it as a `deferred` reviewed exclusion (82 feed families, 32
   compiled, 53 reviewed exclusions; it was a source-absent family before);
@@ -53,7 +54,11 @@ runs). Built at `cf9ece2`:
 The comparison scripts and their reports are in
 `experiments/us-esi-454/feed-repin/`. The release tool now refuses a feed
 whose B4923C values differ from the stage's pinned anchor
-(`us_esi_premiums_anchor_feed_mismatches`).
+(`us_esi_premiums_anchor_feed_mismatches`); a diagnostic run under
+`--allow-unpinned-feed` or `--allow-esi-premium-gaps` continues and records
+the difference in `esi_premiums.json`. A later re-pin that changes other rows
+(microcosm#1192 re-dates the W-2 item facts) must carry the three B4923C
+pairs and redo the row comparison against its own previous feed.
 
 ## The 2026-10-04 re-pin: TY2023 state AGI bands (microcosm#940)
 

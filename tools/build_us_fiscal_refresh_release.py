@@ -1311,11 +1311,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic escape hatch (microcosm#454): record the ESI premium "
             "gates — employer_sponsored_insurance_premiums absent, zero-mass, "
-            "missing its raw ASEC coverage columns, or off the CMS NHE Table 24 "
-            "anchor — without failing the build (for example on a base built "
-            "before the meps_esi_premiums stage). The failures are still "
-            "written to esi_premiums.json. Release builds must leave this "
-            "unset."
+            "missing its raw ASEC coverage columns, or off the BEA NIPA 7.8 "
+            "line 17 (B4923C) anchor, or a feed whose B4923C facts differ "
+            "from that anchor — without failing the build (for example on a "
+            "base built before the meps_esi_premiums stage). The failures are "
+            "still written to esi_premiums.json. Release builds must leave "
+            "this unset."
         ),
     )
     parser.add_argument(
@@ -7463,6 +7464,23 @@ def _esi_premiums_signal_evidence(gate: GateResult | None) -> dict[str, object]:
     }
 
 
+def _esi_anchor_feed_evidence(
+    mismatches: Sequence[str], *, enforced: bool
+) -> dict[str, object]:
+    """The anchor-versus-feed verdict for the release evidence file.
+
+    ``mismatches`` is non-empty only when a diagnostic flag waived a feed
+    whose B4923C facts differ from the stage's anchor; they are kept verbatim
+    so the waived difference stays on the record.
+    """
+
+    return {
+        "enforced": enforced,
+        "matches": not mismatches,
+        "mismatches": list(mismatches),
+    }
+
+
 def _input_mass_reference_gate(
     base_frame: Frame,
     *,
@@ -12298,6 +12316,35 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
+def _check_us_esi_anchor_against_feed(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    allow_unpinned_feed: bool,
+    allow_esi_premium_gaps: bool,
+) -> list[str]:
+    """Hold the ESI stage's pinned anchor to the feed's banked B4923C facts.
+
+    microcosm#454 / d1317: the ``meps_esi_premiums`` stage scales to BEA
+    B4923C values it pins itself, and the pinned feed banks the same series.
+    On the committed pin a difference means the stage drifted from the feed,
+    so the build stops. A reviewed diagnostic run on another feed
+    (``--allow-unpinned-feed``) or with the ESI gates waived
+    (``--allow-esi-premium-gaps``) continues; the differences are returned
+    either way and written to ``esi_premiums.json``.
+    """
+
+    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
+        raise SystemExit(
+            "error: the meps_esi_premiums anchor differs from the Chronicle "
+            "feed: "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed or --allow-esi-premium-gaps only "
+            "for an explicitly reviewed diagnostic run"
+        )
+    return mismatches
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -12519,16 +12566,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
     )
-    # microcosm#454 / d1317: the ESI stage scales to BEA B4923C values it pins
-    # itself; the feed banks the same series. Refuse a feed that disagrees.
-    esi_anchor_feed_mismatches = us_esi_premiums_anchor_feed_mismatches(
-        ledger_artifact.facts
+    esi_anchor_feed_mismatches = _check_us_esi_anchor_against_feed(
+        ledger_artifact.facts,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+        allow_esi_premium_gaps=args.allow_esi_premium_gaps,
     )
-    if esi_anchor_feed_mismatches and not args.allow_esi_premium_gaps:
-        raise SystemExit(
-            "error: the meps_esi_premiums anchor differs from the Chronicle "
-            "feed: " + "; ".join(esi_anchor_feed_mismatches)
-        )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -15380,7 +15422,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 force_upload=True,
             )
     # microcosm#454: the calibrated ESI premium total over the anchor's
-    # universe (every policyholder) against CMS NHE Table 24 within tolerance,
+    # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
     # red when the column is absent or zero-mass or the raw ASEC coverage
     # columns are gone. Runs on the calibrated export for BOTH the dense and
     # sparse default paths; the verdict ships as the esi_premiums gate
@@ -15411,13 +15453,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         esi_premiums_path.write_text(
             json.dumps(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "enforced": not args.allow_esi_premium_gaps,
                     "esi_premiums": {
                         "passed": esi_premiums_anchor_gate.passed,
                         "failures": list(esi_premiums_anchor_gate.failures),
                         "details": dict(esi_premiums_anchor_gate.details),
                     },
+                    "anchor_feed": _esi_anchor_feed_evidence(
+                        esi_anchor_feed_mismatches,
+                        enforced=not (
+                            args.allow_unpinned_feed or args.allow_esi_premium_gaps
+                        ),
+                    ),
                     "signal": {
                         "base_frame": _esi_premiums_signal_evidence(
                             esi_premiums_base_gate

@@ -46,5 +46,7 @@ Chronicle feed to `cf9ece2`, which banks BEA B4923C, the stage's anchor
   `aggregate_fact_key` and compares row bytes; `value_diff.json` records 0
   rows missing, 0 changed and the three added B4923C facts.
 - `compare_registries.py` compiles the US fiscal target registry on both
-  feeds the way the target-parity generator does; `registry_diff.json`
-  records 33,250 targets on each and no difference.
+  feeds, once the way the target-parity generator does (targets aged) and
+  once with aging off, and compares each as an ordered list;
+  `registry_diff.json` records 33,250 targets with distinct names on each
+  feed and identical lists under both settings.

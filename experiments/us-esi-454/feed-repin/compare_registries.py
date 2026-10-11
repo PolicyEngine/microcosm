@@ -3,21 +3,29 @@
     uv run python experiments/us-esi-454/feed-repin/compare_registries.py \
         <previous consumer_facts.jsonl> <new consumer_facts.jsonl> <report.json>
 
-Uses the same compile as tools/build_us_target_parity_manifest.py (target
-period 2024, age targets, canonical congressional-district crosswalk, the
-reviewed Medicaid substitutions) and compares every target's name, value and
-metadata.
+Compiles at target period 2024 with the canonical congressional-district
+crosswalk and the reviewed Medicaid substitutions, once the way
+tools/build_us_target_parity_manifest.py does (targets aged) and once with
+aging off (dollar targets allowed unaged). Each registry is compared as an
+ordered list, so a repeated, reordered, added, dropped or changed target shows
+up; every field of every target is serialized.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib.util
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+
+CONFIGURATIONS = {
+    "aged": {"age_targets": True},
+    "unaged": {"age_targets": False, "allow_unaged_dollar_targets": True},
+}
 
 
 def _generator():
@@ -29,8 +37,7 @@ def _generator():
     return module
 
 
-def _registry(generator, path: Path) -> dict[str, dict]:
-    facts, _ = generator._load_feed(path)
+def _registry(generator, facts: list[dict], **options) -> list[str]:
     registry = generator.compile_us_fiscal_target_registry(
         facts,
         target_period=generator.TARGET_PERIOD,
@@ -39,33 +46,46 @@ def _registry(generator, path: Path) -> dict[str, dict]:
                 generator.default_congressional_district_vintage_crosswalk_path()
             )
         ),
-        age_targets=True,
+        **options,
     )
     registry, _ = generator.apply_us_medicaid_enrollment_substitutions(registry)
-    out = {}
+    rows = []
     for spec in registry.specs:
         fields = (
             dataclasses.asdict(spec) if dataclasses.is_dataclass(spec) else vars(spec)
         )
-        out[spec.name] = json.loads(json.dumps(fields, default=str, sort_keys=True))
-    return out
+        rows.append(json.dumps(fields, default=str, sort_keys=True))
+    return rows
 
 
 def main() -> None:
     previous_path, new_path, report_path = (Path(arg) for arg in sys.argv[1:4])
     generator = _generator()
-    previous = _registry(generator, previous_path)
-    new = _registry(generator, new_path)
-    report = {
-        "previous_targets": len(previous),
-        "new_targets": len(new),
-        "only_previous": sorted(set(previous) - set(new)),
-        "only_new": sorted(set(new) - set(previous)),
-        "changed": sorted(n for n in previous if n in new and previous[n] != new[n]),
-    }
+    previous_facts, _ = generator._load_feed(previous_path)
+    new_facts, _ = generator._load_feed(new_path)
+    report: dict[str, dict] = {}
+    differs = False
+    for label, options in CONFIGURATIONS.items():
+        previous = _registry(generator, previous_facts, **options)
+        new = _registry(generator, new_facts, **options)
+        names = [json.loads(row)["name"] for row in new]
+        first_difference = next(
+            (i for i, (a, b) in enumerate(zip(previous, new, strict=False)) if a != b),
+            None,
+        )
+        report[label] = {
+            "options": options,
+            "previous_targets": len(previous),
+            "new_targets": len(new),
+            "distinct_target_names": len(set(names)),
+            "ordered_lists_identical": previous == new,
+            "first_differing_index": first_difference,
+            "registry_sha256": hashlib.sha256("\n".join(new).encode()).hexdigest(),
+        }
+        differs = differs or previous != new
     Path(report_path).write_text(json.dumps(report, indent=1, sort_keys=True) + "\n")
-    print(json.dumps(report, indent=1))
-    if report["only_previous"] or report["only_new"] or report["changed"]:
+    print(json.dumps(report, indent=1, sort_keys=True))
+    if differs:
         raise SystemExit("the compiled registry differs between the feeds")
 
 

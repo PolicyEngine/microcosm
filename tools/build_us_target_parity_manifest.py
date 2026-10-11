@@ -241,13 +241,22 @@ _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION = (
 
 _ESI_ORIGIN = (
     "a REAL us-data calibration target: utils/loss.py pinned "
-    "employer_sponsored_insurance_premiums at 1_002.9e9 (the NIPA 7.8 "
-    "employer-contribution aggregate; verified at archived commit 2e044571, "
-    "loss.py line 33, with etl_national_targets carrying the row), removed at "
-    "9f320d2c ('Remove survey-based national calibration targets', PR #831). "
-    "The input itself was imputed by the retired eCPS (MEPS-IC priors over "
-    "ASEC NOW_* policyholder fields, archived 42ed5d45 cps.py "
-    "L197-271/L1575-1581)."
+    "employer_sponsored_insurance_premiums at 1_002.9e9 (this series, the NIPA "
+    "7.8 employer-contribution aggregate, before BEA's 2026-09-30 revision; "
+    "verified at archived commit 2e044571, loss.py line 33, with "
+    "etl_national_targets carrying the row), removed at 9f320d2c ('Remove "
+    "survey-based national calibration targets', PR #831). The input itself "
+    "was imputed by the retired eCPS (MEPS-IC priors over ASEC NOW_* "
+    "policyholder fields, archived 42ed5d45 cps.py L197-271/L1575-1581)."
+)
+
+_ESI_NHE_ORIGIN = (
+    "not itself a us-data calibration target: the retired pipeline calibrated "
+    "employer_sponsored_insurance_premiums to the BEA NIPA 7.8 series (family "
+    "bea_nipa.private_group_health_insurance; utils/loss.py 1_002.9e9 at "
+    "archived commit 2e044571, removed at 9f320d2c, PR #831). The v9.2 feed "
+    "banked the NHE Table 24 series for the microcosm#454 gate before "
+    "decision d1317 moved the stage's anchor to BEA."
 )
 
 _ESI_BEA_ANCHOR_EXCLUSION = (
@@ -302,7 +311,7 @@ _ESI_NHE_EXCLUSION = (
     "anchor-universe total $977.0B, 0.933 of NHE's $1,047.0B; scaled to NHE "
     "instead, the employed column would be $925.7B",
     _fence(
-        origin=_ESI_ORIGIN,
+        origin=_ESI_NHE_ORIGIN,
         purpose=(
             "a cross-check on the ESI anchor's level: an independent estimate "
             "of the same active-plus-retired concept from the national health "
@@ -332,7 +341,7 @@ _ESI_PRIVATE_EMPLOYER_EXCLUSION = (
     "private-sector part of the column $665.6B; MEPS-IC private "
     "active-employee total $668.6B (2024)",
     _fence(
-        origin=_ESI_ORIGIN,
+        origin=_ESI_NHE_ORIGIN,
         purpose=(
             "a sector cross-check that private employers' share of the ESI "
             "total is in range."

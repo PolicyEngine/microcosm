@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: 50c9eb0dc57a74117d17db67f160e500664fed5b3a39c77a423f6e4aaafe0d24
+  sha256: 559062a1bd10efdd89b8c83da9294fea43062b8b6760524f4350dd84d63ef383
 stage_manifest:
   version: 1
   country: us
@@ -1887,15 +1887,15 @@ stages:
   notes: 'Restores the retired eCPS employer-premium input (archived 42ed5d45 datasets/cps/cps.py L197-271/L1575-1581)
     from source fields the hermetic H5 inputs lacked (microcosm#454). Anchor universe: every current ESI
     policyholder (NOW_OWNGRP 1), employed or not, because the anchor counts employer contributions for
-    active employees, COBRA enrollees and retirees. Column universe: employed (PEMLR 1-2) policyholders
-    whose current job has an employer (PEIO1COW 1-6); dependents, non-employed policyholders, the unincorporated
-    self-employed and workers without pay carry 0, and their scaled share stays out of the column rather
-    than being loaded onto workers. Cells: MEPS-IC 2025 Series II private-sector average total premium
-    and employee contribution per enrolled employee by State and firm size (NOEMP 1-2 under 50, 3-6 50+,
-    0 the State all-sizes cell; the finer MEPS-IC bands do not nest the NOEMP bands) and coverage tier
-    (NOW_GRPFTYP2 family / self plus one / self-only, cross-checked against NOW_GRPFTYP); State government
-    and local/federal employers take the MEPS-IC 2024 Series III State-government and all-government census-division
-    cells (latest published; the federal cell is a stand-in), aged to 2025 by the private national 2025/2024
+    active and retired employees. Column universe: employed (PEMLR 1-2) policyholders whose current job
+    has an employer (PEIO1COW 1-6); dependents, non-employed policyholders, the unincorporated self-employed
+    and workers without pay carry 0, and their scaled share stays out of the column rather than being
+    loaded onto workers. Cells: MEPS-IC 2025 Series II private-sector average total premium and employee
+    contribution per enrolled employee by State and firm size (NOEMP 1-2 under 50, 3-6 50+, 0 the State
+    all-sizes cell; the finer MEPS-IC bands do not nest the NOEMP bands) and coverage tier (NOW_GRPFTYP2
+    family / self plus one / self-only, cross-checked against NOW_GRPFTYP); State government and local/federal
+    employers take the MEPS-IC 2024 Series III State-government and all-government census-division cells
+    (latest published; the federal cell is a stand-in), aged to 2025 by the private national 2025/2024
     ratio of the same tier and measure; a policyholder with no employer class (PEIO1COW 0, 7, 8) takes
     the State all-sizes private cell. AHRQ suppressed nine small-firm contribution cells; each takes the
     national small-firm cell times the State total-to-national ratio. Employer paid all (NOW_HIPAID 1):
