@@ -5,15 +5,27 @@ One run recalibrates the published ACS local release's 4,459-target surface
 verified sparse checkpoint with the release's settings — Adam, 800 epochs as
 warm-started batches of 400, lr 0.02, ``mass="conserve"``,
 ``max_weight_ratio=5.0``, ``target_loss_cap=1.0``, seed 0, default target loss
-weights and scales — plus the run's ``l2_lambda``, ``l2_basis`` and
-``mass_parametrization``, optionally holding one rotated fold of targets out.
+scales — plus the run's ``l2_lambda``, ``l2_basis``, ``mass_parametrization``
+and target-loss weighting, optionally holding one rotated fold of targets out.
 The batch loop mirrors ``tools/build_us_acs_local_release.py`` ``do_calibrate``.
 
 Run spec (JSON or flags)::
 
     {"run_id": "...", "l2_lambda": 0.0, "l2_basis": "record",
      "mass_parametrization": "projection", "epochs": 800, "epoch_batch": 400,
-     "holdout_fold": null, "acs_share": null}
+     "holdout_fold": null, "acs_share": null, "target_weighting": "equal"}
+
+``target_weighting`` is ``equal`` (the release's loss: no
+``target_loss_weights``, every target counts once) or ``shared``: the shared
+module's national-release weighting (``SHARED_TARGET_LOSS_WEIGHTS``) of the
+specs ``registry.py`` rebuilt for this checkpoint (``target_registry.json``,
+verified against its receipt), computed on the run's training specs and passed
+to ``calibrate`` as ``target_loss_weights``. The weights, their summary by
+family, subfamily and geography, and a content hash go in the metrics'
+``target_loss_weights`` block and in ``weights.npz``; every fit block gains the
+weighted measures (training fit with the training weights, so its weighted
+capped error is the solve's loss; held-out fit with each held-out target's
+full-surface weight).
 
 ``acs_share`` reseeds the prior: the ACS spine's rows are rescaled together to
 that share of the household mass and the donor (ASEC-by-PUF) rows to the rest,
@@ -106,6 +118,27 @@ INPUT_FILES = (
     "targets_meta.parquet",
     "holdout_folds.npz",
 )
+#: The rebuilt target specs (``registry.py``) and their receipt. Only runs
+#: with ``target_weighting="shared"`` read them.
+REGISTRY_FILE = "target_registry.json"
+REGISTRY_RECEIPT_FILE = "target_registry.receipt.json"
+#: ``equal`` is the ACS local tool's loss as released: no
+#: ``target_loss_weights``, every target counts once. ``shared`` weights the
+#: targets like the national release, through the shared module both builds
+#: call (``SHARED_TARGET_LOSS_WEIGHTS``).
+TARGET_WEIGHTINGS = ("equal", "shared")
+#: ``module:function`` of the shared target-loss weighting the ACS local
+#: build calls: it takes the training ``TargetSpec``s and returns one positive
+#: weight per spec, row-aligned (``us_acs_local.v1`` row mapping, no family
+#: multipliers, as the tool's default).
+SHARED_TARGET_LOSS_WEIGHTS = (
+    "microcosm.build.us_runtime.target_loss_weights:us_acs_local_target_loss_weights"
+)
+#: Set by the Modal image: the shared module's source file, loaded on its own.
+#: Importing it as a package module runs ``microcosm.build.us_runtime``'s
+#: package ``__init__``, which needs the whole build stack; the module itself
+#: imports only numpy and the standard library.
+SHARED_WEIGHTS_FILE_ENV = "MICROCOSM_TARGET_LOSS_WEIGHTS_FILE"
 KERNEL_MODULES = (
     "microcosm.calibrate.solve",
     "microcosm.calibrate.matrix",
@@ -191,6 +224,13 @@ class RunSpec:
     epoch_batch: int = 400
     holdout_fold: int | None = None
     acs_share: float | None = None
+    target_weighting: str = "equal"
+    #: ``(family, multiplier)`` pairs passed to the shared weighting as its
+    #: ``family_multipliers`` (the tool's ``--target-family-loss-multiplier``);
+    #: empty is the tool's default. Training weights only: held-out scoring
+    #: always uses the unmultiplied full-surface weights, one yardstick for
+    #: every run.
+    family_loss_multipliers: tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.run_id or "/" in self.run_id:
@@ -213,6 +253,18 @@ class RunSpec:
             )
         if self.acs_share is not None and not (0.0 < self.acs_share < 1.0):
             raise ValueError(f"acs_share must be in (0, 1): {self.acs_share!r}")
+        if self.target_weighting not in TARGET_WEIGHTINGS:
+            raise ValueError(f"unknown target_weighting {self.target_weighting!r}")
+        if self.family_loss_multipliers and self.target_weighting == "equal":
+            raise ValueError("family_loss_multipliers need target_weighting='shared'")
+        families = [family for family, _ in self.family_loss_multipliers]
+        if len(set(families)) != len(families):
+            raise ValueError("family_loss_multipliers repeats a family")
+        for family, multiplier in self.family_loss_multipliers:
+            if not (isinstance(family, str) and family):
+                raise ValueError(f"bad family in family_loss_multipliers: {family!r}")
+            if not (math.isfinite(multiplier) and multiplier > 0):
+                raise ValueError(f"multiplier for {family!r} must be positive")
 
     @classmethod
     def from_mapping(cls, mapping: dict) -> RunSpec:
@@ -231,6 +283,16 @@ class RunSpec:
                 values[key] = int(values[key])
         if values.get("holdout_fold") is not None:
             values["holdout_fold"] = int(values["holdout_fold"])
+        multipliers = values.get("family_loss_multipliers")
+        if multipliers:
+            pairs = (
+                multipliers.items() if isinstance(multipliers, dict) else multipliers
+            )
+            values["family_loss_multipliers"] = tuple(
+                sorted((str(family), float(value)) for family, value in pairs)
+            )
+        elif "family_loss_multipliers" in values:
+            values["family_loss_multipliers"] = ()
         return cls(**values)
 
 
@@ -249,6 +311,10 @@ class Inputs:
     fold_of_target: np.ndarray
     manifest: dict
     input_sha256: dict[str, str]
+    #: The rebuilt ``TargetRegistry`` (spec ``i`` = CSR row ``i``), loaded only
+    #: for a weighted run, with its sha256 and ``registry.py``'s receipt.
+    registry: object | None = None
+    registry_receipt: dict | None = None
     _matrix64: sparse.csr_array | None = None
 
     def matrix64(self) -> sparse.csr_array:
@@ -297,8 +363,43 @@ def reseed_prior(
     return prior
 
 
+def load_registry(checkpoint: Path, meta: pd.DataFrame, manifest_sha256: str):
+    """The rebuilt registry, checked against ``registry.py``'s receipt.
+
+    Refuses a receipt that did not pass, one written for another checkpoint
+    (its ``targets_meta.parquet`` or ``MANIFEST.json`` digest differs), a
+    registry whose bytes are not the receipt's, and specs out of CSR row
+    order or with values other than the checkpoint's.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+
+    receipt = json.loads((checkpoint / REGISTRY_RECEIPT_FILE).read_text())
+    if not receipt.get("ok"):
+        raise SystemExit(f"{REGISTRY_RECEIPT_FILE} is not ok; rerun registry.py")
+    if receipt["checkpoint_manifest_sha256"] != manifest_sha256:
+        raise SystemExit(f"{REGISTRY_RECEIPT_FILE} was written for another MANIFEST")
+    if receipt["targets_meta_sha256"] != sha256(checkpoint / "targets_meta.parquet"):
+        raise SystemExit(f"{REGISTRY_RECEIPT_FILE} was written for other targets")
+    path = checkpoint / REGISTRY_FILE
+    digest = sha256(path)
+    if digest != receipt["registry"]["sha256"]:
+        raise SystemExit(f"{REGISTRY_FILE}: sha256 {digest} != receipt")
+    registry = TargetRegistry.from_json(path)
+    if [spec.name for spec in registry.specs] != meta["name"].tolist():
+        raise SystemExit(f"{REGISTRY_FILE} is not in CSR row order")
+    values = np.asarray([float(spec.value) for spec in registry.specs])
+    if not np.array_equal(values, meta["value"].to_numpy(np.float64)):
+        raise SystemExit(f"{REGISTRY_FILE} values differ from targets_meta")
+    return registry, {**receipt, "verified_registry_sha256": digest}
+
+
 def load_inputs(
-    checkpoint: Path, *, verify: bool = True, log: Callable = print
+    checkpoint: Path,
+    *,
+    verify: bool = True,
+    log: Callable = print,
+    need_registry: bool = False,
 ) -> Inputs:
     started = time.time()
     manifest = json.loads((checkpoint / "MANIFEST.json").read_text())
@@ -331,9 +432,15 @@ def load_inputs(
         raise SystemExit("household ids must be strictly increasing (Frame contract)")
     if not np.array_equal(meta["fold"].to_numpy(), fold_of_target):
         raise SystemExit("targets_meta fold column differs from holdout_folds.npz")
+    registry, registry_receipt = None, None
+    if need_registry:
+        registry, registry_receipt = load_registry(
+            checkpoint, meta, sha256(checkpoint / "MANIFEST.json")
+        )
     log(
         f"inputs: {n_targets} targets x {n_households:,} households, nnz "
-        f"{matrix.nnz:,}, verified={verify}, {time.time() - started:.1f}s"
+        f"{matrix.nnz:,}, verified={verify}, registry={need_registry}, "
+        f"{time.time() - started:.1f}s"
     )
     return Inputs(
         checkpoint=checkpoint,
@@ -344,6 +451,8 @@ def load_inputs(
         fold_of_target=fold_of_target,
         manifest=manifest,
         input_sha256=digests,
+        registry=registry,
+        registry_receipt=registry_receipt,
     )
 
 
@@ -413,6 +522,220 @@ def training_rows(inputs: Inputs, holdout_fold: int | None) -> np.ndarray:
     if holdout_fold is None:
         return np.arange(n_targets, dtype=np.int64)
     return np.flatnonzero(inputs.fold_of_target != holdout_fold).astype(np.int64)
+
+
+# ---------------------------------------------------------------------------
+# Target-loss weights
+# ---------------------------------------------------------------------------
+
+
+def shared_weight_module():
+    """The shared target-loss weighting module.
+
+    Imported by name, or, when ``SHARED_WEIGHTS_FILE_ENV`` names its source
+    file (the Modal image), executed from that file alone. Either way it is
+    the committed module at the launch's HEAD; the metrics record its path and
+    sha256.
+    """
+
+    import importlib
+    import importlib.util
+
+    module_name, _, _ = SHARED_TARGET_LOSS_WEIGHTS.partition(":")
+    path = os.environ.get(SHARED_WEIGHTS_FILE_ENV)
+    if not path:
+        return importlib.import_module(module_name)
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load the shared weighting from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def shared_weight_function():
+    """The shared module and its weighting function."""
+
+    module = shared_weight_module()
+    _, _, function_name = SHARED_TARGET_LOSS_WEIGHTS.partition(":")
+    return module, getattr(module, function_name)
+
+
+def target_loss_weights_for(
+    inputs: Inputs,
+    rows: np.ndarray,
+    family_multipliers: dict[str, float] | None = None,
+) -> np.ndarray:
+    """The shared weighting of the specs at ``rows``, in that order.
+
+    The function sees exactly the specs a build calibrating on ``rows`` would
+    weight, so a holdout run's training rows are weighted among themselves.
+    """
+
+    if inputs.registry is None:
+        raise SystemExit("a weighted run needs the rebuilt target registry")
+    _, function = shared_weight_function()
+    specs = inputs.registry.specs
+    weights = np.asarray(
+        function([specs[int(i)] for i in rows], family_multipliers or None),
+        dtype=np.float64,
+    )
+    if weights.shape != (len(rows),):
+        raise SystemExit(
+            f"the shared weighting returned shape {weights.shape} for {len(rows)} specs"
+        )
+    if not (np.isfinite(weights).all() and (weights > 0).all()):
+        raise SystemExit("the shared weighting returned a non-positive or NaN weight")
+    return weights
+
+
+def loss_vector_sha256(names: Sequence[str], weights: np.ndarray) -> str:
+    """Content address of a weight vector, as the builds record it.
+
+    The national ``loss_vector_sha256`` form: one ``{"row_name",
+    "weight_hex"}`` object per row, in row order, compact sorted-key JSON.
+    Row names are ``name@period`` (the shared module's ``target_row_name``).
+    """
+
+    vector = [
+        {"row_name": str(name), "weight_hex": float(weight).hex()}
+        for name, weight in zip(names, weights, strict=True)
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            vector, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def row_names(inputs: Inputs, rows: np.ndarray) -> list[str]:
+    """``name@period`` of the targets at ``rows`` (every target is 2024's)."""
+
+    names = inputs.meta["name"].to_numpy()
+    return [f"{names[int(i)]}@2024" for i in rows]
+
+
+def weight_summary(
+    weights: np.ndarray, meta: pd.DataFrame, rows: np.ndarray, names: Sequence[str]
+) -> dict:
+    """How a weight vector over ``rows`` divides the loss among the targets."""
+
+    subset = meta.iloc[rows]
+    weights = np.asarray(weights, dtype=np.float64)
+    total = float(weights.sum())
+
+    def shares(column: str) -> dict:
+        labels = subset[column].astype(str).to_numpy()
+        out = {}
+        for label in sorted(set(labels.tolist())):
+            mask = labels == label
+            out[label] = {
+                "n": int(mask.sum()),
+                "weight_share": float(weights[mask].sum() / total),
+                "count_share": float(mask.mean()),
+                "mean_weight": float(weights[mask].mean()),
+            }
+        return out
+
+    order = np.argsort(-weights, kind="stable")
+    return {
+        "n": int(weights.size),
+        "sum": total,
+        "mean": float(weights.mean()),
+        "min": float(weights.min()),
+        "max": float(weights.max()),
+        "effective_n_targets": total**2 / float(np.square(weights).sum()),
+        "loss_vector_sha256": loss_vector_sha256(names, weights),
+        "per_family": shares("family"),
+        "per_subfamily": shares("subfamily"),
+        "per_geography_level": shares("geography_level"),
+        "largest": [
+            {"row": int(rows[i]), "name": str(names[i]), "weight": float(weights[i])}
+            for i in order[:10]
+        ],
+        "smallest": [
+            {"row": int(rows[i]), "name": str(names[i]), "weight": float(weights[i])}
+            for i in order[::-1][:10]
+        ],
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class LossWeights:
+    """A run's target-loss weights: on its training rows and on every row.
+
+    ``train`` is what ``calibrate`` receives, with the run's family
+    multipliers. ``full`` weights the whole surface at once without
+    multipliers; held-out fit is weighted with its held-out rows, so every
+    fold and every run scores a target with the weight the default
+    full-surface objective gives it.
+    """
+
+    train: np.ndarray | None
+    full: np.ndarray | None
+
+    @property
+    def weighted(self) -> bool:
+        return self.train is not None
+
+
+def loss_weights_for(spec: RunSpec, inputs: Inputs, train: np.ndarray) -> LossWeights:
+    if spec.target_weighting == "equal":
+        return LossWeights(None, None)
+    full_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
+    full = target_loss_weights_for(inputs, full_rows)
+    multipliers = dict(spec.family_loss_multipliers)
+    if np.array_equal(train, full_rows) and not multipliers:
+        return LossWeights(full, full)
+    return LossWeights(target_loss_weights_for(inputs, train, multipliers), full)
+
+
+def loss_weights_block(
+    spec: RunSpec, inputs: Inputs, train: np.ndarray, weights: LossWeights
+) -> dict:
+    """The metrics' record of the run's target-loss weights."""
+
+    if not weights.weighted:
+        return {"target_weighting": "equal", "target_loss_weights": None}
+    module, function = shared_weight_function()
+    full_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
+    receipt = inputs.registry_receipt or {}
+    specs = inputs.registry.specs
+    train_names = row_names(inputs, train)
+    full_names = row_names(inputs, full_rows)
+    # The shared module's own digest and summary, beside the harness's.
+    module_digest = module.target_loss_weights_sha256(
+        [module.target_row_name(specs[int(i)]) for i in train], weights.train
+    )
+    if module_digest != loss_vector_sha256(train_names, weights.train):
+        raise SystemExit("the harness's weight digest differs from the module's")
+    return {
+        "target_weighting": spec.target_weighting,
+        "function": SHARED_TARGET_LOSS_WEIGHTS,
+        "function_qualname": getattr(function, "__qualname__", None),
+        "row_mapping": module.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "formula": module.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "family_multipliers": dict(spec.family_loss_multipliers),
+        "module_file": getattr(module, "__file__", None),
+        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV))
+        and Path(module.__file__).resolve()
+        == Path(os.environ[SHARED_WEIGHTS_FILE_ENV]).resolve(),
+        "module_sha256": sha256(Path(module.__file__)),
+        "registry_sha256": receipt.get("verified_registry_sha256"),
+        "registry_compile_head": receipt.get("compile_head"),
+        "train": weight_summary(weights.train, inputs.meta, train, train_names),
+        "full_surface": weight_summary(
+            weights.full, inputs.meta, full_rows, full_names
+        ),
+        "train_distribution": module.target_loss_weight_distribution(
+            [specs[int(i)] for i in train],
+            weights.train,
+            row_mapping=module.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -614,12 +937,24 @@ def fit_rows(estimates: np.ndarray, targets: np.ndarray) -> dict[str, np.ndarray
     return {"relative": relative, "abs_relative": np.abs(relative), "capped": capped}
 
 
-def fit_summary(rows: dict[str, np.ndarray], mask: np.ndarray | None = None) -> dict:
+def fit_summary(
+    rows: dict[str, np.ndarray],
+    mask: np.ndarray | None = None,
+    loss_weights: np.ndarray | None = None,
+) -> dict:
+    """Unweighted fit; with ``loss_weights`` (aligned with ``rows``) also weighted.
+
+    The weighted capped error is the loss's own form, ``sum(w * capped) /
+    sum(w)`` over the rows in ``mask``; ``weighted_loss_numerator`` is its
+    numerator scaled by the whole block's weight, so each family's
+    ``share_of_weighted_loss`` sums to one across families.
+    """
+
     abs_rel = rows["abs_relative"] if mask is None else rows["abs_relative"][mask]
     capped = rows["capped"] if mask is None else rows["capped"][mask]
     if abs_rel.size == 0:
         return {"n_targets": 0}
-    return {
+    summary = {
         "n_targets": int(abs_rel.size),
         "fraction_within_10pct": float(np.mean(abs_rel <= WITHIN)),
         "mean_abs_rel_error": float(abs_rel.mean()),
@@ -628,22 +963,60 @@ def fit_summary(rows: dict[str, np.ndarray], mask: np.ndarray | None = None) -> 
         "max_abs_rel_error": float(abs_rel.max()),
         "mean_capped_scaled_error": float(capped.mean()),
     }
+    if loss_weights is not None:
+        all_weights = np.asarray(loss_weights, dtype=np.float64)
+        weights = all_weights if mask is None else all_weights[mask]
+        summary.update(
+            {
+                "weighted_mean_capped_scaled_error": float(
+                    np.sum(weights * capped) / weights.sum()
+                ),
+                "weighted_fraction_within_10pct": float(
+                    np.sum(weights * (abs_rel <= WITHIN)) / weights.sum()
+                ),
+                "weight_share": float(weights.sum() / all_weights.sum()),
+                "weighted_loss_numerator": float(
+                    np.sum(weights * capped) / all_weights.sum()
+                ),
+            }
+        )
+    return summary
 
 
 def fit_block(
-    estimates: np.ndarray, meta: pd.DataFrame, rows: np.ndarray, worst: int = 10
+    estimates: np.ndarray,
+    meta: pd.DataFrame,
+    rows: np.ndarray,
+    worst: int = 10,
+    loss_weights: np.ndarray | None = None,
 ) -> dict:
-    """Fit of ``estimates`` (all targets) on the target subset ``rows``."""
+    """Fit of ``estimates`` (all targets) on the target subset ``rows``.
+
+    ``loss_weights``, aligned with ``rows``, adds the weighted measures.
+    """
 
     subset = meta.iloc[rows]
     values = subset["value"].to_numpy(np.float64)
     est = estimates[rows]
     errors = fit_rows(est, values)
-    block = {"overall": fit_summary(errors), "per_family": {}, "per_subfamily": {}}
+    block = {
+        "overall": fit_summary(errors, loss_weights=loss_weights),
+        "per_family": {},
+        "per_subfamily": {},
+    }
     for column, key in (("family", "per_family"), ("subfamily", "per_subfamily")):
         labels = subset[column].to_numpy()
         for label in sorted(set(labels.tolist())):
-            block[key][label] = fit_summary(errors, labels == label)
+            block[key][label] = fit_summary(
+                errors, labels == label, loss_weights=loss_weights
+            )
+    if loss_weights is not None:
+        total = block["overall"]["weighted_loss_numerator"]
+        for key in ("per_family", "per_subfamily"):
+            for entry in block[key].values():
+                entry["share_of_weighted_loss"] = (
+                    entry["weighted_loss_numerator"] / total if total > 0 else None
+                )
     order = np.argsort(-errors["capped"])[:worst]
     block["worst_targets"] = [
         {
@@ -655,6 +1028,19 @@ def fit_block(
         }
         for i in order
     ]
+    if loss_weights is not None:
+        weights = np.asarray(loss_weights, dtype=np.float64)
+        contribution = weights * errors["capped"] / weights.sum()
+        block["largest_weighted_loss_contributions"] = [
+            {
+                "row": int(subset["row"].iloc[i]),
+                "name": str(subset["name"].iloc[i]),
+                "weight": float(weights[i]),
+                "relative_error": float(errors["relative"][i]),
+                "contribution": float(contribution[i]),
+            }
+            for i in np.argsort(-contribution, kind="stable")[:worst]
+        ]
     return block
 
 
@@ -769,6 +1155,7 @@ def run_calibration(
     train = training_rows(inputs, spec.holdout_fold)
     targets = build_target_set(inputs, train)
     expected_names = [f"{name}@2024" for name in inputs.meta["name"].to_numpy()[train]]
+    loss_weights = loss_weights_for(spec, inputs, train)
     log(
         f"run {spec.run_id}: {len(train)} training targets"
         + (
@@ -778,7 +1165,8 @@ def run_calibration(
         )
         + f"; l2_lambda={spec.l2_lambda} l2_basis={spec.l2_basis} "
         f"mass_parametrization={spec.mass_parametrization} epochs={spec.epochs} "
-        f"batch={spec.epoch_batch} acs_share={spec.acs_share}; "
+        f"batch={spec.epoch_batch} acs_share={spec.acs_share} "
+        f"target_weighting={spec.target_weighting}; "
         f"torch threads={torch.get_num_threads()}"
     )
 
@@ -789,10 +1177,23 @@ def run_calibration(
     options: dict | None = None
     result_block: dict | None = None
     spec_json = json.dumps(dataclasses.asdict(spec), sort_keys=True)
+    # The weights' content, not just the spec: a resumed weighted run must
+    # continue under the same weights (module, registry and multipliers).
+    loss_digest = (
+        loss_vector_sha256(row_names(inputs, train), loss_weights.train)
+        if loss_weights.weighted
+        else ""
+    )
     if resume and resume_path.exists():
         saved = np.load(resume_path, allow_pickle=False)
         if str(saved["spec_json"]) != spec_json:
             raise SystemExit(f"{resume_path} belongs to a different run spec")
+        saved_digest = str(saved["loss_digest"]) if "loss_digest" in saved.files else ""
+        if saved_digest != loss_digest:
+            raise SystemExit(
+                f"{resume_path} was solved under other target-loss weights "
+                f"({saved_digest or 'none recorded'} != {loss_digest or 'none'})"
+            )
         warm = np.asarray(saved["weights"], dtype=np.float64)
         done = int(saved["epochs_done"])
         batches = json.loads(str(saved["batches_json"]))
@@ -853,6 +1254,11 @@ def run_calibration(
             seed=RELEASE_SETTINGS["seed"],
             warm_start_weights=warm,
             progress_callback=on_progress,
+            **(
+                {"target_loss_weights": loss_weights.train}
+                if loss_weights.weighted
+                else {}
+            ),
         )
         finished = time.time()
         if result.problem.skipped:
@@ -899,6 +1305,7 @@ def run_calibration(
             weights=warm,
             epochs_done=np.int64(done),
             spec_json=np.str_(spec_json),
+            loss_digest=np.str_(loss_digest),
             batches_json=np.str_(json.dumps(jsonable(batches))),
             options_json=np.str_(json.dumps(options)),
             result_json=np.str_(json.dumps(jsonable(result_block))),
@@ -933,11 +1340,21 @@ def run_calibration(
         epochs_done=np.int64(done),
         spec_json=np.str_(spec_json),
         **{f"trajectory_{i}": t for i, t in enumerate(trajectories)},
+        **(
+            {
+                "target_loss_weights_train": loss_weights.train,
+                "target_loss_weights_full": loss_weights.full,
+                "train_rows": train,
+            }
+            if loss_weights.weighted
+            else {}
+        ),
     )
     return {
         "stopped": False,
         "resumed": bool(resume and batches_this_process < len(batches)),
         "weights": weights,
+        "loss_weights": loss_weights,
         "train_rows": train,
         "batches": batches,
         "options": options,
@@ -952,12 +1369,24 @@ def score(
     train: np.ndarray,
     holdout: np.ndarray | None,
     acs_share: float | None = None,
+    loss_weights: LossWeights | None = None,
 ) -> dict:
     """Metrics against the run's prior (the "design" blocks) and the release's.
 
     With ``acs_share`` unset the prior is the release's design weights and the
-    two coincide.
+    two coincide. With weighted ``loss_weights`` every fit block also carries
+    the weighted measures: training fit with the training weights (its
+    weighted capped error is the solve's loss), held-out fit with the
+    full-surface weights of the held-out rows.
     """
+
+    loss_weights = loss_weights or LossWeights(None, None)
+    train_w = loss_weights.train
+    holdout_w = (
+        loss_weights.full[holdout]
+        if loss_weights.weighted and holdout is not None
+        else None
+    )
 
     from microcosm.calibrate import chi_square_distance
 
@@ -967,7 +1396,7 @@ def score(
     original = inputs.design
     metrics = {
         "concentration": concentration_metrics(weights, design, inputs.households),
-        "fit_train": fit_block(estimates, inputs.meta, train),
+        "fit_train": fit_block(estimates, inputs.meta, train, loss_weights=train_w),
         "prior": {
             "acs_share": acs_share,
             "realized_acs_share": float(
@@ -987,13 +1416,29 @@ def score(
         },
     }
     if holdout is not None:
-        metrics["fit_holdout"] = fit_block(estimates, inputs.meta, holdout)
+        metrics["fit_holdout"] = fit_block(
+            estimates, inputs.meta, holdout, loss_weights=holdout_w
+        )
         metrics["fit_holdout_design"] = fit_block(
-            design_estimates, inputs.meta, holdout
+            design_estimates, inputs.meta, holdout, loss_weights=holdout_w
         )
     metrics["fit_train_design"] = {
-        "overall": fit_block(design_estimates, inputs.meta, train)["overall"]
+        "overall": fit_block(
+            design_estimates, inputs.meta, train, loss_weights=train_w
+        )["overall"]
     }
+    if loss_weights.weighted:
+        # Training fit on the yardstick (unmultiplied full-surface weights of
+        # the training rows), comparable across runs with and without family
+        # multipliers.
+        metrics["fit_train_yardstick"] = {
+            "overall": fit_block(
+                estimates,
+                inputs.meta,
+                train,
+                loss_weights=loss_weights.full[train],
+            )["overall"]
+        }
     return metrics
 
 
@@ -1014,7 +1459,12 @@ def calibrate_mode(
         (out_dir / "spec.json").write_text(
             json.dumps(dataclasses.asdict(spec), indent=2) + "\n"
         )
-        inputs = load_inputs(checkpoint, verify=verify, log=log)
+        inputs = load_inputs(
+            checkpoint,
+            verify=verify,
+            log=log,
+            need_registry=spec.target_weighting != "equal",
+        )
         prov = provenance()
         calibration = run_calibration(
             spec,
@@ -1032,13 +1482,15 @@ def calibrate_mode(
             inputs.folds[spec.holdout_fold] if spec.holdout_fold is not None else None
         )
         scoring_started = time.time()
-        metrics = score(inputs, weights, train, holdout, spec.acs_share)
+        loss_weights = calibration["loss_weights"]
+        metrics = score(inputs, weights, train, holdout, spec.acs_share, loss_weights)
         from microcosm.calibrate import relative_error_loss
 
         recomputed_loss = relative_error_loss(
             estimates_for(inputs, weights)[train],
             inputs.values[train],
             target_loss_cap=RELEASE_SETTINGS["target_loss_cap"],
+            target_loss_weights=loss_weights.train,
         )
         consistency = {
             "recomputed_final_loss": recomputed_loss,
@@ -1054,6 +1506,26 @@ def calibrate_mode(
             "mass_conserved_ratio": float(weights.sum() / inputs.design.sum()),
             "max_ratio_to_prior": float((weights / inputs.prior(spec.acs_share)).max()),
         }
+        if loss_weights.weighted:
+            # The loss at the starting weights, recomputed here, against the
+            # solve's own epoch-0 loss: the weights calibrate saw are these.
+            design_loss = relative_error_loss(
+                estimates_for(inputs, inputs.prior(spec.acs_share))[train],
+                inputs.values[train],
+                target_loss_cap=RELEASE_SETTINGS["target_loss_cap"],
+                target_loss_weights=loss_weights.train,
+            )
+            consistency["recomputed_design_loss"] = design_loss
+            consistency["recomputed_design_loss_relative_to_epoch0"] = (
+                calibration["trajectory_first_loss"] / design_loss - 1.0
+                if calibration["trajectory_first_loss"] is not None
+                else None
+            )
+            consistency["unweighted_final_loss"] = relative_error_loss(
+                estimates_for(inputs, weights)[train],
+                inputs.values[train],
+                target_loss_cap=RELEASE_SETTINGS["target_loss_cap"],
+            )
         payload = {
             "kind": "calibrate",
             "resumed": calibration["resumed"],
@@ -1066,6 +1538,9 @@ def calibrate_mode(
             "options": calibration["options"],
             "batches": calibration["batches"],
             "consistency": consistency,
+            "target_loss_weights": loss_weights_block(
+                spec, inputs, train, loss_weights
+            ),
             "metrics": metrics,
             "inputs": {
                 "checkpoint": str(checkpoint),
@@ -1104,13 +1579,27 @@ def evaluate_mode(
     *,
     verify: bool,
     acs_share: float | None = None,
+    target_weighting: str = "equal",
 ) -> dict:
+    """Score a weight vector; ``target_weighting="shared"`` adds weighted fit.
+
+    The weighted blocks use the full-surface weights: training fit over every
+    target, and each fold's held-out rows with their full-surface weights.
+    """
+
+    if target_weighting not in TARGET_WEIGHTINGS:
+        raise SystemExit(f"unknown target_weighting {target_weighting!r}")
     out_dir = out_root / label
     out_dir.mkdir(parents=True, exist_ok=True)
     log = Logger(out_dir / "progress.log")
     started = time.time()
     try:
-        inputs = load_inputs(checkpoint, verify=verify, log=log)
+        inputs = load_inputs(
+            checkpoint,
+            verify=verify,
+            log=log,
+            need_registry=target_weighting != "equal",
+        )
         if weights_arg == "design":
             weights = inputs.prior(acs_share)
             source = {"kind": "design", "acs_share": acs_share}
@@ -1129,10 +1618,19 @@ def evaluate_mode(
                 f"weights shape {weights.shape} does not match the checkpoint"
             )
         all_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
-        metrics = score(inputs, weights, all_rows, None, acs_share)
+        spec = RunSpec(run_id=label, target_weighting=target_weighting)
+        loss_weights = loss_weights_for(spec, inputs, all_rows)
+        metrics = score(inputs, weights, all_rows, None, acs_share, loss_weights)
         estimates = estimates_for(inputs, weights)
         metrics["fit_holdout_by_fold"] = {
-            str(fold): fit_block(estimates, inputs.meta, rows)
+            str(fold): fit_block(
+                estimates,
+                inputs.meta,
+                rows,
+                loss_weights=(
+                    loss_weights.full[rows] if loss_weights.weighted else None
+                ),
+            )
             for fold, rows in inputs.folds.items()
         }
         payload = {
@@ -1140,6 +1638,9 @@ def evaluate_mode(
             "label": label,
             "release_tag": RELEASE_TAG,
             "weights_source": source,
+            "target_loss_weights": loss_weights_block(
+                spec, inputs, all_rows, loss_weights
+            ),
             "metrics": metrics,
             "inputs": {
                 "checkpoint": str(checkpoint),
@@ -1179,6 +1680,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--holdout-fold", type=int, default=None)
     parser.add_argument("--acs-share", type=float, default=None)
     parser.add_argument(
+        "--target-weighting", choices=TARGET_WEIGHTINGS, default="equal"
+    )
+    parser.add_argument(
+        "--family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help="shared weighting only: scale one family's training weights",
+    )
+    parser.add_argument(
         "--weights", default="design", help="evaluate: 'design' or <npz>[:key]"
     )
     parser.add_argument(
@@ -1206,6 +1717,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.out_root,
             verify=not args.no_verify,
             acs_share=args.acs_share,
+            target_weighting=args.target_weighting,
         )
         return 0
     if args.spec:
@@ -1223,6 +1735,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             epoch_batch=args.epoch_batch,
             holdout_fold=args.holdout_fold,
             acs_share=args.acs_share,
+            target_weighting=args.target_weighting,
+            family_loss_multipliers=tuple(
+                sorted(
+                    (family, float(value))
+                    for family, _, value in (
+                        entry.partition("=") for entry in args.family_loss_multiplier
+                    )
+                )
+            ),
         )
     calibrate_mode(
         spec,
