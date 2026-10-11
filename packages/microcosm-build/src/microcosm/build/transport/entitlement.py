@@ -195,6 +195,42 @@ def _rows(spec):
     return result, gaps
 
 
+def _require_matching_cell_targets(spec, contract):
+    """Refuse a tracked cell target that disagrees with the support contract.
+
+    The support contract's target thresholds decide the per-cell flags in the
+    diagnostics; the ``cell_support_target`` gate reports them. Both are spec
+    data, so a spec that changes one copy without the other would flag cells
+    against one threshold and report against another.
+    """
+    pairs = (
+        ("minimum_cell_ess", "target_minimum_cell_ess"),
+        (
+            "maximum_single_donor_dollar_share",
+            "target_maximum_single_donor_dollar_share",
+        ),
+        ("required_cells", "required_cells"),
+        ("required_scenarios", "required_scenarios"),
+        ("aggregation_column", "aggregation_column"),
+    )
+    for gate in transport_resource(spec, "gates")["gates"]:
+        if gate["gate"] != "cell_support_target" or "not_applicable" in gate:
+            continue
+        target = _mapping(gate["parameters"], "cell-support target parameters")
+        for own, declared in pairs:
+            if own not in target:
+                continue
+            mine, theirs = target[own], contract[declared]
+            if isinstance(mine, list | tuple):
+                mine, theirs = sorted(mine), sorted(theirs)
+            if mine != theirs:
+                raise ValueError(
+                    f"The cell-support target gate {gate['id']!r} declares "
+                    f"{own}={target[own]!r}, but the support contract declares "
+                    f"{declared}={contract[declared]!r}; the two must agree."
+                )
+
+
 def _cell_contract(spec):
     resources = spec.get("resources", {})
     if not any(name in resources for name in ("gates", "gates.json")):
@@ -222,6 +258,7 @@ def _cell_contract(spec):
             "target_maximum_single_donor_dollar_share",
         )
     }
+    _require_matching_cell_targets(spec, parameters)
     reporting = transport_resource(spec, "scenarios")["gap_conventions"][
         "reporting_cells"
     ]

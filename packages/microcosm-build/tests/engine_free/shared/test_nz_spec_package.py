@@ -1571,6 +1571,16 @@ class TestDeclaredResources:
         assert target.parameters["minimum_effective_sample_size"] == 16000
         assert cell_target.parameters["minimum_cell_ess"] == 400
         assert cell_target.parameters["maximum_single_donor_dollar_share"] == 0.05
+        # The support contract's copy of target (a) drives the per-cell flags;
+        # it must match the tracked target gate that reports them.
+        assert support.parameters["target_minimum_cell_ess"] == 400
+        assert support.parameters["target_maximum_single_donor_dollar_share"] == 0.05
+        assert set(cell_target.parameters["required_cells"]) == set(
+            support.parameters["required_cells"]
+        )
+        assert set(cell_target.parameters["required_scenarios"]) == set(
+            support.parameters["required_scenarios"]
+        )
         for gate in (ess, ratio, support, target, cell_target):
             assert gate.not_applicable is None
             assert gate.parameters["aggregation_column"] == "source_household_id"

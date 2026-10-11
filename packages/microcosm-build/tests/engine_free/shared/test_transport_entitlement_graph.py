@@ -227,6 +227,69 @@ def test_cell_support_graph_adds_diagnostics_to_explicit_gap_output_declarations
     )
 
 
+def _with_cell_target(fixture, **overrides):
+    """Return the fixture's spec with a tracked cell-target gate appended."""
+    spec = copy.deepcopy(fixture.spec)
+    gates = spec["resources"]["gates"]["gates"]
+    contract = next(g for g in gates if g["gate"] == "cell_support")["parameters"]
+    parameters = {
+        "required_scenarios": list(contract["required_scenarios"]),
+        "required_cells": list(contract["required_cells"]),
+        "aggregation_column": contract["aggregation_column"],
+        "required_weight_entity": "household",
+        "required_weight_kind": "calibrated",
+        "minimum_cell_ess": contract["target_minimum_cell_ess"],
+        "maximum_single_donor_dollar_share": contract[
+            "target_maximum_single_donor_dollar_share"
+        ],
+    }
+    parameters.update(overrides)
+    gates.append(
+        {
+            "id": "toy_cell_support_target",
+            "gate": "cell_support_target",
+            "phase": "terminal",
+            "criticality": "diagnostic",
+            "parameters": parameters,
+        }
+    )
+    return spec
+
+
+def test_cell_support_target_matching_the_contract_builds(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    fixture.reprepare(_with_cell_target(fixture)).graph()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"minimum_cell_ess": 1_000_000},
+        {"maximum_single_donor_dollar_share": 1},
+        {"required_cells": ["toy_type/single"]},
+        {"required_scenarios": ["S0"]},
+        {"aggregation_column": "household_id"},
+    ],
+    ids=["ess", "share", "cells", "scenarios", "aggregation"],
+)
+def test_cell_support_target_drift_from_the_contract_is_refused(tmp_path, overrides):
+    fixture = _cell_support_fixture(tmp_path)
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(_with_cell_target(fixture, **overrides)).graph()
+
+
+def test_cell_support_contract_target_drift_is_refused(tmp_path):
+    # The reviewer's mutant: change only the contract's copy of the target.
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture)
+    contract = next(
+        g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
+    )
+    contract["parameters"]["target_minimum_cell_ess"] = 1_000_000
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
 @pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])
 def test_cell_support_graph_absence_prevents_export(tmp_path, absence):
     fixture = _cell_support_fixture(tmp_path)
