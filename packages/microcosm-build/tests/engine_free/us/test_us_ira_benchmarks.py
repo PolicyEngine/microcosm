@@ -11,7 +11,9 @@ import pytest
 
 def _benchmarks() -> dict:
     return json.loads(
-        files("microcosm.build.us").joinpath("ira_benchmarks.json").read_text()
+        files("microcosm.build")
+        .joinpath("us_runtime", "data", "ira_benchmarks.json")
+        .read_text()
     )
 
 
@@ -75,9 +77,7 @@ def test_deduction_benchmarks_bind_ira_payments_column(
     year: int, returns: int, amount_thousands: int
 ) -> None:
     row = next(
-        row
-        for row in _benchmarks()["model_derived_deductions"]
-        if row["year"] == year
+        row for row in _benchmarks()["model_derived_deductions"] if row["year"] == year
     )
     assert row["number_of_returns"] == returns
     assert row["amount_thousands"] == amount_thousands
