@@ -1,5 +1,13 @@
 {
  "schema_version": 2,
  "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
- "exclusions": {}
+ "exclusions": {
+  "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025": {
+   "reason": "The regional income-tax cells slice on policyengine-uk's total_income, which leaves out other_investment_income although income_tax charges it as savings interest, so an SPI record whose income is mostly other investment income sits in a low band with its whole income tax. Fewer than 10 such records sit in the West Midlands GBP 12,570-15,000 band: the cell's design value is 339.2m against the 55.1m target (6.1 times, and 6.0 times before the microcosm#1095 ports; every other region's cell is 0.6-1.1 times), and banded on total income including other investment income it falls in line with the other regions. The solver pulls the cell to +8.6% before the ports and +8.9% with the engine-free ports; policyengine-uk 2.122.2 lands it at +23.6% and the full ports at +27.4% (about 2 points of the last step come from CVPAY leaving property income). Deferred four weeks while policyengine-uk's total_income is corrected upstream to include other investment income (pe-uk#2174).",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1095 (the head and counterfactual arms of 2026-10-06 on the second ports PR)",
+   "approved_on": "2026-10-06",
+   "expires_on": "2026-11-03"
+  }
+ }
 }
