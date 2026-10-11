@@ -86,15 +86,18 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
-#: Each SPI component is rebased by the index policyengine-uk's dataset
-#: projection grows its variable with (``policyengine_uk/data/
-#: uprating_indices.yaml``), since the engine runs a loaded dataset on it.
-#: Savings interest is the one component whose ``Variable.uprating`` attribute
-#: names another index: ONS household interest income, x2.27 from 2022 to 2024
-#: against GDP per head's x1.09. The attribute only carries a situation input
-#: forward (uk-data#541; María's ruling of 2026-10-09, microcosm#1095). The
-#: engine lockstep test holds every component to the projection table.
-SPI_INCOME_UPRATING_INDEX_OVERRIDES = {
+#: The donor rebase moves each SPI component from the tape's year to the
+#: frame's survey year. Those years are history, so a component moves by the
+#: index its engine variable names (``Variable.uprating``). For every
+#: component but savings interest that is also the index policyengine-uk's
+#: dataset projection applies from the survey year on (``policyengine_uk/data/
+#: uprating_indices.yaml``). Savings interest's own index is ONS household
+#: interest income, x2.27 from 2022 to 2024 as rates rose, where the
+#: projection's GDP per head gives x1.09. The projection's index applies from
+#: the survey year on, where the engine runs it and the SPI band targets follow
+#: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
+#: microcosm#1095). The engine lockstep test holds both statements.
+SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
     "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
 }
 # Use the pinned engine's variable-specific indices. None explicitly retains
@@ -1359,9 +1362,7 @@ def _spi_income_uprating_factors(year: int):
                 raise ValueError(
                     f"Missing SPI uprating variable {variable_name!r} for {column}."
                 )
-            path = SPI_INCOME_UPRATING_INDEX_OVERRIDES.get(
-                variable_name, getattr(variable, "uprating", None)
-            )
+            path = getattr(variable, "uprating", None)
             if not isinstance(path, str) or not path:
                 raise ValueError(f"Unsupported SPI uprating index for {column}.")
             before, after = source, target
@@ -1382,8 +1383,10 @@ def _spi_income_uprating_factors(year: int):
             "factor": factor,
             "basis": "model_index" if path else "held_nominal",
         }
-        if variable_name in SPI_INCOME_UPRATING_INDEX_OVERRIDES:
-            columns[column]["index_source"] = "dataset_projection"
+        if variable_name in SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION:
+            columns[column]["dataset_projection_index"] = (
+                SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION[variable_name]
+            )
     return factors, {
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": year,

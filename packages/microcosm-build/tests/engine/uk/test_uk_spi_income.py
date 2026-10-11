@@ -558,11 +558,11 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
             "obr.per_capita.mixed_income",
             target.obr.per_capita.mixed_income / source.obr.per_capita.mixed_income,
         ),
-        # The engine's dataset projection, not the variable's attribute
-        # (microcosm#1095).
+        # The index of the variable's history; the dataset projection's index
+        # applies from the frame's year on (microcosm#1095).
         "savings_interest_income": (
-            "obr.per_capita.gdp",
-            target.obr.per_capita.gdp / source.obr.per_capita.gdp,
+            "ons.household_interest_income",
+            target.ons.household_interest_income / source.ons.household_interest_income,
         ),
         "dividend_income": (
             "obr.per_capita.gdp",
@@ -647,10 +647,15 @@ def _engine_projection_indices() -> dict[str, str]:
     }
 
 
-def test_spi_rebasing_follows_the_engines_dataset_projection() -> None:
-    """Every indexed SPI component is rebased by the index policyengine-uk's
-    dataset projection grows its variable with, so an engine that moves a
-    variable to another index fails here (microcosm#1095, uk-data#541)."""
+def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
+    """The donor rebase moves each component by its variable's own index.
+
+    For every indexed component but savings interest that is also the index
+    policyengine-uk's dataset projection applies. Savings interest's history
+    index is named apart, with the projection's index the SPI band targets
+    take from the frame's year on. An engine that moves either fails here
+    (microcosm#1095, uk-data#541).
+    """
 
     projection = _engine_projection_indices()
     _, receipt = spi_income._spi_income_uprating_factors.__wrapped__(2024)
@@ -659,8 +664,16 @@ def test_spi_rebasing_follows_the_engines_dataset_projection() -> None:
         column: row for column, row in receipt["columns"].items() if row["index"]
     }
     assert indexed
+    differs = spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION
     for column, row in indexed.items():
-        assert row["index"] == projection[row["variable"]], column
-    assert receipt["columns"]["savings_interest_income"]["index_source"] == (
-        "dataset_projection"
+        if row["variable"] in differs:
+            assert row["index"] != projection[row["variable"]], column
+            assert row["dataset_projection_index"] == projection[row["variable"]]
+        else:
+            assert row["index"] == projection[row["variable"]], column
+            assert "dataset_projection_index" not in row
+    savings = receipt["columns"]["savings_interest_income"]
+    assert savings["index"] == (
+        "gov.economic_assumptions.indices.ons.household_interest_income"
     )
+    assert savings["factor"] == pytest.approx(2.2692, abs=1e-4)

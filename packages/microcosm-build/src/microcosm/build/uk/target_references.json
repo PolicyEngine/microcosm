@@ -30102,7 +30102,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30127,7 +30127,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30152,7 +30152,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30177,7 +30177,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30202,7 +30202,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30227,7 +30227,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30252,7 +30252,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30277,7 +30277,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30302,7 +30302,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30327,7 +30327,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30352,7 +30352,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30377,7 +30377,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -30402,7 +30402,7 @@
         "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },

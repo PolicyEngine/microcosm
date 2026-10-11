@@ -87,8 +87,10 @@ _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
     "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
-    "2023-24 savings-interest rows by band uprated by the household interest "
-    "index; the incumbent registry binds neither (chronicle#282)."
+    "2023-24 savings-interest rows by band, moved to the dataset's year by the "
+    "household interest index and from there to the calibration year by GDP "
+    "per head, the index the engine's dataset projection applies "
+    "(microcosm#1095); the incumbent registry binds neither (chronicle#282)."
 )
 
 _SPI_REGION_LEDGER_ONLY_RATIONALE = (
