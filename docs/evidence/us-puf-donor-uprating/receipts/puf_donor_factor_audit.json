@@ -5318,7 +5318,20 @@
   "recovered_qualified_equals_E00650_share": 1.0,
   "source_qualified_exceeds_ordinary_records": 0,
   "source_ordinary_equals_qualified_and_positive_records": 23817,
-  "stored_non_qualified_nonzero_where_source_difference_zero": 23817
+  "stored_non_qualified_nonzero_where_source_difference_zero": 23817,
+  "synthetic": {
+   "records": 3985,
+   "with_any_dividend": 3376,
+   "stored_non_qualified_negative": 1190,
+   "stored_qualified_negative": 0,
+   "recovered_ordinary_off_whole_dollars": 3376,
+   "recovered_qualified_off_whole_dollars": 3329,
+   "recovered_ordinary_below_recovered_qualified": 1343,
+   "weight_total": 1316.9999999999998,
+   "weighted_negative_non_qualified": -1422548992.2301135,
+   "weighted_positive_non_qualified": 6169972157.925807,
+   "weighted_qualified": 25621253347.595177
+  }
  },
  "donor_weighted_mass": {
   "tax_units_weighted": 161181891.72138393,

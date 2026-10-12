@@ -44,6 +44,7 @@ from rebase_reference import (  # noqa: E402
     rebase_column,
     rebase_dividends,
     rebase_donor,
+    rebase_synthetic_dividends,
     recover_source_dividends,
     scale_derived,
     splice,
@@ -154,6 +155,39 @@ def test_rebase_refuses_a_donor_that_does_not_verify(source, carried, table, yea
         rebase_donor(donor, columns, table, year, source={"F": source})
 
 
+@SETTINGS
+@given(
+    amounts,
+    positive,
+    positive,
+    level_tables(),
+    build_years,
+    st.integers(0, 59),
+    st.floats(1.0, 1e7),
+)
+def test_a_nonzero_donor_value_on_a_zero_source_record_fails_the_gate(
+    source, pos, neg, table, year, index, planted
+):
+    """Invariant 1 on a sign-split column: a source zero is checked too."""
+
+    assume(index < len(source))
+    source = source.copy()
+    source[index] = 0.0
+    column = Column(
+        "c", (Leg("F", "wages", pos, sign=1), Leg("F", "interest", neg, sign=-1))
+    )
+    donor_values = np.where(source > 0, source * pos, source * neg)
+    donor_values[index] = planted
+    with pytest.raises(RebaseError):
+        rebase_donor(
+            Donor(columns={"c": donor_values}),
+            (column,),
+            table,
+            year,
+            source={"F": source},
+        )
+
+
 def test_the_stage_has_no_unverified_path():
     """Invariant 1 at the stage: the source is a required argument."""
 
@@ -177,7 +211,9 @@ def test_identity_when_the_series_matches_the_carried_factor(source, table, year
 @SETTINGS
 @given(amounts, positive, positive, level_tables(), build_years)
 def test_zero_sign_support_and_rank_are_preserved(source, pos, neg, table, year):
-    """Invariants 6 and 7, on a sign-split column like Schedule C."""
+    """Invariants 6 and 7, on a sign-split column like Schedule C. Rank
+    preservation is claimed only for multiplicative single-expression columns;
+    reconstructed non-qualified dividends can reorder."""
 
     column = Column(
         "c",
@@ -285,10 +321,32 @@ def test_growth_across_the_pivot_counts_it_once(series, start, end):
 
 
 @SETTINGS
+@given(
+    spliced_series(), spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026)
+)
+def test_per_return_growth_across_the_pivot(series, counts, start, end):
+    """Invariant 4 per return: growth divides the spliced aggregate by the
+    spliced return count, each counted once across its own pivot."""
+
+    _, actuals, projection = series
+    _, count_actuals, count_projection = counts
+    assume(start < end)
+    levels = splice(actuals, projection)
+    returns = splice(count_actuals, count_projection)
+    table = LevelTable({"line": levels}, returns)
+    assert np.isclose(
+        table.growth("line", start, end),
+        (levels[end] / levels[start]) / (returns[end] / returns[start]),
+        rtol=1e-12,
+    )
+
+
+@SETTINGS
 @given(spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026))
 def test_splice_agrees_with_target_aging(series, start, end):
-    """Invariant 4, differential: the reference splice equals the factor
-    ``target_aging._projection_factor`` gives targets for the same span."""
+    """Invariant 4, differential: given the same series, the reference's
+    aggregate splice equals the factor ``target_aging._projection_factor``
+    gives targets for the same span. Return-count division is tested above."""
 
     target_aging = pytest.importorskip("microcosm.build.us_runtime.target_aging")
     pivot, actuals, projection = series
@@ -366,6 +424,69 @@ def test_dividends_off_the_dollar_grid_are_refused():
         )
 
 
+@pytest.mark.parametrize("value", [1_000_000.4, 1e9 + 0.3, 123.5, 7.25e10 + 0.5])
+def test_large_off_grid_dividends_are_refused(value):
+    """Invariant 10: an absolute tolerance refuses off-grid values at any size."""
+
+    with pytest.raises(RebaseError):
+        recover_source_dividends(
+            np.array([value]),
+            np.array([0.0]),
+            carried_ordinary=1.0,
+            carried_qualified=1.0,
+        )
+
+
+# Synthetic amounts are arbitrary floats, not whole dollars; cents keep them
+# away from subnormal values that underflow under any factor below one.
+cents = st.integers(min_value=-10_000_000_000, max_value=100_000_000_000).map(
+    lambda c: c / 100
+)
+synthetic_pairs = st.lists(
+    st.tuples(cents.map(abs), cents),
+    min_size=1,
+    max_size=60,
+)
+
+
+@SETTINGS
+@given(synthetic_pairs, positive, positive, level_tables(), build_years)
+def test_synthetic_dividends_scale_each_column_and_keep_signs(
+    pairs, carried_ordinary, carried_qualified, table, year
+):
+    """Invariant 10 on synthetic records: fractional pairs, qualified above
+    ordinary and negative non-qualified amounts all rebase multiplicatively."""
+
+    qualified = np.array([q for q, _ in pairs])
+    non_qualified = np.array([n for _, n in pairs])
+    q_out, nq_out = rebase_synthetic_dividends(
+        qualified,
+        non_qualified,
+        carried_ordinary=carried_ordinary,
+        carried_qualified=carried_qualified,
+        table=table,
+        build_year=year,
+    )
+    q_factor = table.growth("qualified_dividends", 2015, year) / carried_qualified
+    nq_factor = table.growth("non_qualified_dividends", 2015, year) / carried_ordinary
+    assert close(q_out, qualified * q_factor, rtol=1e-12)
+    assert close(nq_out, non_qualified * nq_factor, rtol=1e-12)
+    assert np.array_equal(np.sign(q_out), np.sign(qualified))
+    assert np.array_equal(np.sign(nq_out), np.sign(non_qualified))
+
+
+def test_synthetic_pairs_do_not_pass_the_regular_recovery():
+    """The regular rule refuses a pair whose qualified exceeds ordinary."""
+
+    with pytest.raises(RebaseError):
+        recover_source_dividends(
+            np.array([200.0]),
+            np.array([-100.0]),
+            carried_ordinary=1.0,
+            carried_qualified=1.0,
+        )
+
+
 # --- Derived columns ---------------------------------------------------------
 
 
@@ -384,6 +505,16 @@ def test_derived_columns_keep_their_ratio_to_the_base(base, carried, factor, dat
     nonzero = base_carried != 0
     assert close(out[nonzero], derived[nonzero] * factor, rtol=1e-9)
     assert np.array_equal(out[~nonzero], derived[~nonzero])
+
+
+@SETTINGS
+@given(st.lists(st.floats(1e-3, 1e9), min_size=1, max_size=60), positive)
+def test_a_derived_value_on_a_zero_base_is_left_unchanged(derived, factor):
+    """Invariant 11: a nonzero derived value whose carried base is zero."""
+
+    derived = np.array(derived)
+    zero = np.zeros_like(derived)
+    assert np.array_equal(scale_derived(derived, zero, zero * factor), derived)
 
 
 # --- Differential: the carried-factor manifest against the archived code ----

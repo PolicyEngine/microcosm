@@ -6,4 +6,9 @@ non-qualified dividends follow the qualified series: caught by test_dividends_fo
 recovered dividends are not snapped to whole dollars: caught by test_dividends_follow_two_series_and_keep_the_source_support
 the splice applies the projection index without rebasing it to the pivot: caught by test_growth_across_the_pivot_counts_it_once
 derived columns are left unscaled: caught by test_derived_columns_keep_their_ratio_to_the_base
+the gate checks only records with a nonzero source: caught by test_a_nonzero_donor_value_on_a_zero_source_record_fails_the_gate
+the dollar grid uses a relative tolerance: caught by test_large_off_grid_dividends_are_refused[1000000.4]
+synthetic non-qualified dividends follow the qualified series: caught by test_synthetic_dividends_scale_each_column_and_keep_signs
+a zero base zeroes the derived value: caught by test_a_derived_value_on_a_zero_base_is_left_unchanged
+growth does not divide out return counts: caught by test_per_return_growth_across_the_pivot
 untouched columns are changed: caught by test_untouched_columns_and_determinism

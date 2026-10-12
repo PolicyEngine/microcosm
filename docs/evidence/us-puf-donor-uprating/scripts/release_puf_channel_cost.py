@@ -34,6 +34,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pandas as pd
 
 CHANNELS = {
     ("asec", 0): "asec",
@@ -72,7 +73,9 @@ PUF_SOURCED_TARGET_VARIABLES = (
 )
 
 
-# Donor columns as the frame stores them (person or tax-unit grain).
+# Donor columns as the frame stores them (person or tax-unit grain). Person
+# columns are summed to tax units before positive and negative legs are split,
+# the grain of the donor table they are compared with.
 STORED_INPUTS = (
     "employment_income_before_lsr",
     "self_employment_income_before_lsr",
@@ -259,13 +262,25 @@ def main() -> None:
         )
         tax_unit_arm = channel[tax_unit_household]
 
-        def masses(values, households, arms):
+        person_tax_unit_position = pd.Index(tax_unit_ids).get_indexer(
+            person_column("person_tax_unit_id")
+        )
+        if (person_tax_unit_position < 0).any():
+            raise ValueError("person_tax_unit_id not found among tax_unit_id")
+
+        def masses(values):
+            """Positive and negative mass by arm, clipped at tax-unit grain."""
+
             values = values.astype(np.float64)
             out = {}
             for label in ("asec", "puf_arm"):
-                mask = arms == "asec" if label == "asec" else arms != "asec"
+                mask = (
+                    tax_unit_arm == "asec"
+                    if label == "asec"
+                    else tax_unit_arm != "asec"
+                )
                 for stage, weight in (("design", initial), ("final", final)):
-                    w = weight[households[mask]]
+                    w = weight[tax_unit_household[mask]]
                     out[f"{label}_{stage}_positive"] = float(
                         w @ np.clip(values[mask], 0, None)
                     )
@@ -277,18 +292,16 @@ def main() -> None:
         stored = {}
         for name in STORED_INPUTS:
             if name in person_by_name:
-                stored[name] = {
-                    "entity": "person",
-                    **masses(person_column(name), person_household, person_arm),
-                }
+                unit_totals = np.bincount(
+                    person_tax_unit_position,
+                    weights=person_column(name).astype(np.float64),
+                    minlength=len(tax_unit_ids),
+                )
+                stored[name] = {"entity": "person", **masses(unit_totals)}
             elif name in tax_unit_by_name:
                 stored[name] = {
                     "entity": "tax_unit",
-                    **masses(
-                        tax_unit[tax_unit_by_name[name]]["values"][()],
-                        tax_unit_household,
-                        tax_unit_arm,
-                    ),
+                    **masses(tax_unit[tax_unit_by_name[name]]["values"][()]),
                 }
         receipt["stored_inputs_by_arm"] = stored
         receipt["weighted_units_by_arm"] = {

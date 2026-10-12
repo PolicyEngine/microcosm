@@ -93,9 +93,9 @@ For the two TY2015 columns the hypotheses coincide: no archived list names their
 | Taxable pensions | 861.8 | 1,574.1 | 1.83 | 335.6 | 1.088 |
 | Taxable IRA distributions | 406.1 | 730.7 | 1.80 | 110.8 | 1.074 |
 | Social Security, retirement component (a) | 790.7 | 1,024.8 | 1.30 | 1,198.6 | 1.232 |
-| Schedule C profit, with its SSTB share (b) | 699.1 | 1,024.3 | 1.47 | 550.0 | 0.757 |
+| Schedule C profit, with its SSTB share (b) | 699.1 | 1,024.3 | 1.47 | 549.8 | 0.757 |
 | Partnership income, positive (c) | 766.2 | 821.5 | 1.07 | 0.0 | 1.550 |
-| Rental income, positive | 142.5 | 277.4 | 1.95 | 245.4 | 0.929 |
+| Rental income, positive | 142.5 | 277.1 | 1.95 | 245.2 | 0.929 |
 | Estate income, positive | 48.0 | 150.7 | 3.14 | 0.0 | 1.020 |
 | Cash charitable gifts (f) | 196.8 | 269.7 | 1.37 | 0.0 | 1.040 |
 | Real estate taxes (f) | 227.3 | 312.3 | 1.37 | 0.0 | 1.040 |

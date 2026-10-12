@@ -31,17 +31,23 @@ different price years.
 Three kinds of column:
 
 - **Single-expression columns** (one leg, or a positive and a negative leg of
-  one field): verified by the gate, then rebased leg by leg.
-- **Dividends.** The donor stores qualified and non-qualified dividends, the
-  second as ordinary less qualified after each was aged by its own factor.
-  The TY2015 ordinary and qualified amounts are recovered exactly from the two
-  stored columns, then qualified follows the qualified line and non-qualified
-  follows the ordinary-less-qualified line. Non-qualified is zero exactly
-  where the source's ordinary equals its qualified.
+  one field): verified by the gate on every regular record, zeros included,
+  then rebased leg by leg.
+- **Dividends on regular records.** The donor stores qualified and
+  non-qualified dividends, the second as ordinary less qualified after each was
+  aged by its own factor. The TY2015 ordinary and qualified amounts are
+  recovered exactly from the two stored columns, then qualified follows the
+  qualified line and non-qualified follows the ordinary-less-qualified line.
+  Non-qualified is zero exactly where the source's ordinary equals its
+  qualified.
+- **Dividends on synthetic records** (the aggregate-record replacements, which
+  have no source record and are not whole TY2015 dollars): each stored column
+  is scaled by its own column's factor, so signs are kept, including the
+  negative non-qualified amounts some of them already hold.
 - **Derived columns** (simulated from, or a structural transform of, a base
   amount): each record is scaled by the ratio of its rebased to its carried
-  base, which keeps the record's ratio to its base. They are not verified by
-  the gate.
+  base, which keeps the record's ratio to its base. A record whose carried
+  base is zero is left unchanged. They are not verified by the gate.
 
 A donor stamped as rebased cannot be rebased again, and a donor whose values
 do not verify against the source refuses to rebase.
@@ -147,6 +153,17 @@ def verify_carried(
     )
 
 
+def expected_carried(source_values: np.ndarray, column: Column) -> np.ndarray:
+    """The whole column the donor should hold: each leg's records times its
+    carried factor, and zero wherever the source is zero."""
+
+    expected = np.zeros_like(source_values, dtype=np.float64)
+    for leg in column.legs:
+        mask = leg_mask(source_values, leg)
+        expected[mask] = source_values[mask] * leg.carried
+    return expected
+
+
 def rebase_column(
     values: np.ndarray, column: Column, table: LevelTable, build_year: int
 ) -> np.ndarray:
@@ -179,9 +196,20 @@ def recover_source_dividends(
     )
     snapped = tuple(np.rint(values) for values in recovered)
     for values, grid in zip(recovered, snapped, strict=True):
-        if not np.all(np.abs(values - grid) <= 1e-6 * np.maximum(1.0, np.abs(grid))):
+        if not np.all(on_dollar_grid(values, grid)):
             raise RebaseError("recovered dividends are not whole TY2015 dollars")
+        if np.any(grid < 0):
+            raise RebaseError("recovered dividends are negative")
+    if np.any(snapped[1] > snapped[0]):
+        raise RebaseError("recovered qualified dividends exceed ordinary dividends")
     return snapped
+
+
+def on_dollar_grid(values: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Within float64 rounding of a whole dollar: an absolute tolerance that
+    grows only with the few units in the last place a division can add."""
+
+    return np.abs(values - grid) <= 1e-6 + 1e-13 * np.abs(grid)
 
 
 def rebase_dividends(
@@ -208,6 +236,33 @@ def rebase_dividends(
     )
     non_qualified_out = (ordinary_2015 - qualified_2015) * table.growth(
         non_qualified_series, SOURCE_YEAR, build_year
+    )
+    return qualified_out, non_qualified_out
+
+
+def rebase_synthetic_dividends(
+    qualified: np.ndarray,
+    non_qualified: np.ndarray,
+    *,
+    carried_ordinary: float,
+    carried_qualified: float,
+    table: LevelTable,
+    build_year: int,
+    qualified_series: str = "qualified_dividends",
+    non_qualified_series: str = "non_qualified_dividends",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Synthetic records: each stored column scaled by its column's factor.
+
+    There is no source record to recover, and the stored pair need not be whole
+    dollars or have qualified below ordinary. Non-qualified takes the carried
+    ordinary factor as its carried factor.
+    """
+
+    qualified_out = qualified * (
+        table.growth(qualified_series, SOURCE_YEAR, build_year) / carried_qualified
+    )
+    non_qualified_out = non_qualified * (
+        table.growth(non_qualified_series, SOURCE_YEAR, build_year) / carried_ordinary
     )
     return qualified_out, non_qualified_out
 
@@ -245,16 +300,17 @@ def rebase_donor(
             "is not the archived lineage this rebase starts from"
         )
     for column in columns:
+        fields = {leg.field for leg in column.legs}
+        if len(fields) != 1:
+            raise RebaseError(f"{column.name}: a column's legs must share one field")
+        field = fields.pop()
+        expected = expected_carried(source[field], column)
         values = donor.columns[column.name]
-        for leg in column.legs:
-            mask = leg_mask(source[leg.field], leg)
-            if not verify_carried(
-                values[mask], source[leg.field][mask], leg.carried, rtol=column.rtol
-            ):
-                raise RebaseError(
-                    f"{column.name}: donor values do not equal "
-                    f"{leg.field} x {leg.carried}"
-                )
+        if not verify_carried(values, expected, 1.0, rtol=column.rtol):
+            raise RebaseError(
+                f"{column.name}: donor values do not equal {field} times its "
+                "carried factors on every record"
+            )
     rebased = {name: values.copy() for name, values in donor.columns.items()}
     for column in columns:
         rebased[column.name] = rebase_column(

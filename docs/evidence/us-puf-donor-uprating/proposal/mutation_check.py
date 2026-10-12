@@ -1,4 +1,4 @@
-"""Seed nine faults in the rebase reference and check a property test catches each.
+"""Seed fourteen faults in the rebase reference and check a property test catches each.
 
 Run from the repository root:
     uv run python docs/evidence/us-puf-donor-uprating/proposal/mutation_check.py
@@ -50,6 +50,28 @@ MUTATIONS = {
     "derived columns are left unscaled": (
         "    return values * ratio\n",
         "    return values\n",
+    ),
+    "the gate checks only records with a nonzero source": (
+        "        if not verify_carried(values, expected, 1.0, rtol=column.rtol):\n",
+        "        if not verify_carried(\n"
+        "            values[expected != 0], expected[expected != 0], 1.0, rtol=column.rtol\n"
+        "        ):\n",
+    ),
+    "the dollar grid uses a relative tolerance": (
+        "    return np.abs(values - grid) <= 1e-6 + 1e-13 * np.abs(grid)\n",
+        "    return np.abs(values - grid) <= 1e-6 * np.maximum(1.0, np.abs(grid))\n",
+    ),
+    "synthetic non-qualified dividends follow the qualified series": (
+        "        table.growth(non_qualified_series, SOURCE_YEAR, build_year) / carried_ordinary\n",
+        "        table.growth(qualified_series, SOURCE_YEAR, build_year) / carried_ordinary\n",
+    ),
+    "a zero base zeroes the derived value": (
+        "        out=np.ones_like(base_carried, dtype=np.float64),\n",
+        "        out=np.zeros_like(base_carried, dtype=np.float64),\n",
+    ),
+    "growth does not divide out return counts": (
+        "        return (level[end] / level[start]) / (self.returns[end] / self.returns[start])\n",
+        "        return level[end] / level[start]\n",
     ),
     "untouched columns are changed": (
         "        untouched={name: values.copy() for name, values in donor.untouched.items()},\n",

@@ -148,7 +148,7 @@
    "entity": "person",
    "asec_design_positive": 5780987772440.752,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 4546201680812.669,
+   "asec_final_positive": 4546201680812.67,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 4930213574968.566,
    "puf_arm_design_negative": 0.0,
@@ -157,10 +157,10 @@
   },
   "self_employment_income_before_lsr": {
    "entity": "person",
-   "asec_design_positive": 274988955961.80756,
-   "asec_design_negative": -1210860275.284351,
-   "asec_final_positive": 180037515755.82074,
-   "asec_final_negative": -1133898217.3817003,
+   "asec_design_positive": 274920281791.011,
+   "asec_design_negative": -1142186104.4877677,
+   "asec_final_positive": 179937155325.75772,
+   "asec_final_negative": -1033537787.3186597,
    "puf_arm_design_positive": 351907115447.5354,
    "puf_arm_design_negative": -2309886373.030448,
    "puf_arm_final_positive": 308957620838.5232,
@@ -175,13 +175,13 @@
    "puf_arm_design_positive": 160224809512.1462,
    "puf_arm_design_negative": -3946593327.9930677,
    "puf_arm_final_positive": 348028629976.77423,
-   "puf_arm_final_negative": -11630167692.84629
+   "puf_arm_final_negative": -11630167692.846292
   },
   "taxable_interest_income": {
    "entity": "person",
    "asec_design_positive": 218110593371.1429,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 156481347572.47852,
+   "asec_final_positive": 156481347572.47855,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 79363157440.69016,
    "puf_arm_design_negative": 0.0,
@@ -194,16 +194,16 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 54460727245.35187,
+   "puf_arm_design_positive": 54460727245.351875,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 61952320685.70444,
+   "puf_arm_final_positive": 61952320685.704445,
    "puf_arm_final_negative": 0.0
   },
   "qualified_dividend_income": {
    "entity": "person",
-   "asec_design_positive": 48518629528.916916,
+   "asec_design_positive": 48518629528.91691,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 33680749498.402817,
+   "asec_final_positive": 33680749498.402813,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 181941706341.10397,
    "puf_arm_design_negative": 0.0,
@@ -223,7 +223,7 @@
   },
   "short_term_capital_gains": {
    "entity": "person",
-   "asec_design_positive": 14470321748.003168,
+   "asec_design_positive": 14470321748.00317,
    "asec_design_negative": 0.0,
    "asec_final_positive": 13357931462.344105,
    "asec_final_negative": 0.0,
@@ -239,9 +239,9 @@
    "asec_final_positive": 97958164057.1901,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 1112906581740.4924,
-   "puf_arm_design_negative": -303604806.19820887,
+   "puf_arm_design_negative": -303604806.1982089,
    "puf_arm_final_positive": 1128554179890.2808,
-   "puf_arm_final_negative": -302424937.3199245
+   "puf_arm_final_negative": -302424937.3199244
   },
   "long_term_capital_gains_on_collectibles": {
    "entity": "person",
@@ -249,9 +249,9 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 17087075436.346218,
+   "puf_arm_design_positive": 17087075436.346214,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 24719229737.37829,
+   "puf_arm_final_positive": 24719229737.37828,
    "puf_arm_final_negative": 0.0
   },
   "unrecaptured_section_1250_gain": {
@@ -271,7 +271,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 10155465319.076845,
+   "puf_arm_design_positive": 10155465319.076847,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 10152521937.26543,
    "puf_arm_final_negative": 0.0
@@ -280,7 +280,7 @@
    "entity": "person",
    "asec_design_positive": 167798156565.80255,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 132712460306.16823,
+   "asec_final_positive": 132712460306.16821,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 787072742037.2976,
    "puf_arm_design_negative": 0.0,
@@ -289,7 +289,7 @@
   },
   "taxable_ira_distributions": {
    "entity": "person",
-   "asec_design_positive": 55416018264.65786,
+   "asec_design_positive": 55416018264.65787,
    "asec_design_negative": 0.0,
    "asec_final_positive": 54606775789.17772,
    "asec_final_negative": 0.0,
@@ -300,20 +300,20 @@
   },
   "social_security_retirement": {
    "entity": "person",
-   "asec_design_positive": 599316924682.2821,
+   "asec_design_positive": 599316924682.2822,
    "asec_design_negative": 0.0,
    "asec_final_positive": 602830092994.8159,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 512411075317.7178,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 465389917682.80676,
+   "puf_arm_final_positive": 465389917682.8069,
    "puf_arm_final_negative": 0.0
   },
   "social_security_disability": {
    "entity": "person",
    "asec_design_positive": 57299377483.03669,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 62632593181.89563,
+   "asec_final_positive": 62632593181.89562,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 89874622516.9633,
    "puf_arm_design_negative": 0.0,
@@ -322,22 +322,22 @@
   },
   "social_security_survivors": {
    "entity": "person",
-   "asec_design_positive": 25883148614.357216,
+   "asec_design_positive": 25883148614.357224,
    "asec_design_negative": 0.0,
    "asec_final_positive": 31299980504.33101,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 135334851385.64278,
+   "puf_arm_design_positive": 135334851385.64279,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 130038137907.21066,
+   "puf_arm_final_positive": 130038137907.21065,
    "puf_arm_final_negative": 0.0
   },
   "social_security_dependents": {
    "entity": "person",
    "asec_design_positive": 4842217768.534931,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 5804820998.568123,
+   "asec_final_positive": 5804820998.568124,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 46232782231.46506,
+   "puf_arm_design_positive": 46232782231.465065,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 45305227665.56256,
    "puf_arm_final_negative": 0.0
@@ -349,9 +349,9 @@
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 410755325147.82556,
-   "puf_arm_design_negative": -96098810489.16202,
+   "puf_arm_design_negative": -96098810489.162,
    "puf_arm_final_positive": 1128517679151.5771,
-   "puf_arm_final_negative": -107975045122.44385
+   "puf_arm_final_negative": -107975045122.44382
   },
   "s_corp_income": {
    "entity": "person",
@@ -373,18 +373,18 @@
    "puf_arm_design_positive": 61009241095.822754,
    "puf_arm_design_negative": -44933418795.26918,
    "puf_arm_final_positive": 156344702690.83093,
-   "puf_arm_final_negative": -77837349229.90659
+   "puf_arm_final_negative": -77837349229.90657
   },
   "rental_income": {
    "entity": "person",
-   "asec_design_positive": 122675778934.42694,
-   "asec_design_negative": -1723030213.5878866,
-   "asec_final_positive": 139660489748.68842,
-   "asec_final_negative": -1739081314.6678505,
-   "puf_arm_design_positive": 138698194046.28806,
-   "puf_arm_design_negative": -48923083488.54401,
-   "puf_arm_final_positive": 195893640661.52045,
-   "puf_arm_final_negative": -85027297673.03246
+   "asec_design_positive": 122585515417.56264,
+   "asec_design_negative": -1632766696.7235675,
+   "asec_final_positive": 139586409752.89606,
+   "asec_final_negative": -1665001318.8754663,
+   "puf_arm_design_positive": 138574070813.5011,
+   "puf_arm_design_negative": -48798960255.75704,
+   "puf_arm_final_positive": 195582506406.0423,
+   "puf_arm_final_negative": -84716163417.55432
   },
   "estate_income": {
    "entity": "person",
@@ -410,14 +410,14 @@
   },
   "farm_operations_income": {
    "entity": "person",
-   "asec_design_positive": 20969597416.886543,
-   "asec_design_negative": -354482517.4283703,
-   "asec_final_positive": 32153842213.84559,
-   "asec_final_negative": -579920131.3743851,
-   "puf_arm_design_positive": 8622417888.529343,
-   "puf_arm_design_negative": -18163450792.471947,
-   "puf_arm_final_positive": 11988206348.44591,
-   "puf_arm_final_negative": -29947090600.73255
+   "asec_design_positive": 20957474857.20787,
+   "asec_design_negative": -342359957.7497027,
+   "asec_final_positive": 32138759233.31659,
+   "asec_final_negative": -564837150.8453832,
+   "puf_arm_design_positive": 8622414768.17624,
+   "puf_arm_design_negative": -18163447672.118843,
+   "puf_arm_final_positive": 11988206042.194523,
+   "puf_arm_final_negative": -29947090294.481163
   },
   "farm_rent_income": {
    "entity": "person",
@@ -426,24 +426,24 @@
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 12161472125.363218,
-   "puf_arm_design_negative": -3614533647.4495726,
+   "puf_arm_design_negative": -3614533647.449573,
    "puf_arm_final_positive": 13225380301.14615,
-   "puf_arm_final_negative": -8694189661.574564
+   "puf_arm_final_negative": -8694189661.574562
   },
   "miscellaneous_income": {
    "entity": "person",
-   "asec_design_positive": 8548100418.741042,
+   "asec_design_positive": 8548100418.741043,
    "asec_design_negative": 0.0,
    "asec_final_positive": 6981777019.211489,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 25345112321.99158,
-   "puf_arm_design_negative": -29093991343.037537,
+   "puf_arm_design_positive": 25345112321.991585,
+   "puf_arm_design_negative": -29093991343.03754,
    "puf_arm_final_positive": 39847471939.19627,
-   "puf_arm_final_negative": -55988375561.49892
+   "puf_arm_final_negative": -55988375561.498924
   },
   "alimony_income": {
    "entity": "person",
-   "asec_design_positive": 2616147189.890926,
+   "asec_design_positive": 2616147189.8909264,
    "asec_design_negative": 0.0,
    "asec_final_positive": 1057586689.1019764,
    "asec_final_negative": 0.0,
@@ -458,7 +458,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 7703645789.02384,
+   "puf_arm_design_positive": 7703645789.023842,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 12723517086.752907,
    "puf_arm_final_negative": 0.0
@@ -469,7 +469,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 28289638031.91199,
+   "puf_arm_design_positive": 28289638031.911987,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 45926735218.55081,
    "puf_arm_final_negative": 0.0
@@ -480,7 +480,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 134835305442.41257,
+   "puf_arm_design_positive": 134835305442.41255,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 250146994817.11664,
    "puf_arm_final_negative": 0.0
@@ -502,7 +502,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 156144901532.67157,
+   "puf_arm_design_positive": 156144901532.67163,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 215141355898.61633,
    "puf_arm_final_negative": 0.0
@@ -513,7 +513,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 238088949913.0496,
+   "puf_arm_design_positive": 238088949913.04956,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 367228375652.8728,
    "puf_arm_final_negative": 0.0
@@ -526,7 +526,7 @@
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 20625938373.954395,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 44630401896.25473,
+   "puf_arm_final_positive": 44630401896.25472,
    "puf_arm_final_negative": 0.0
   },
   "investment_income_elected_form_4952": {
@@ -546,9 +546,9 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 12842269400.505304,
+   "puf_arm_design_positive": 12842269400.505302,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 14327824698.65557,
+   "puf_arm_final_positive": 14327824698.655571,
    "puf_arm_final_negative": 0.0
   },
   "educator_expense": {
@@ -559,7 +559,7 @@
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 780952605.7545393,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 947557599.4398183,
+   "puf_arm_final_positive": 947557599.4398181,
    "puf_arm_final_negative": 0.0
   },
   "qualified_tuition_expenses": {
@@ -579,7 +579,7 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 4003737724.6820297,
+   "puf_arm_design_positive": 4003737724.6820292,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 7977778123.049208,
    "puf_arm_final_negative": 0.0
@@ -590,29 +590,29 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 146423874899.36688,
+   "puf_arm_design_positive": 146423874899.3669,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 198138513933.0159,
    "puf_arm_final_negative": 0.0
   },
   "traditional_ira_contributions_desired": {
    "entity": "person",
-   "asec_design_positive": 9250062037.034569,
+   "asec_design_positive": 9250062037.034567,
    "asec_design_negative": 0.0,
-   "asec_final_positive": 7274734246.938625,
+   "asec_final_positive": 7274734246.938626,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 6633674687.77094,
+   "puf_arm_design_positive": 6633674687.770941,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 8223050082.456674,
    "puf_arm_final_negative": 0.0
   },
   "self_employed_pension_contributions_desired": {
    "entity": "person",
-   "asec_design_positive": 428140771.2832168,
+   "asec_design_positive": 428140771.2832167,
    "asec_design_negative": 0.0,
    "asec_final_positive": 642390716.1571527,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 343323331.4637755,
+   "puf_arm_design_positive": 343323331.46377546,
    "puf_arm_design_negative": 0.0,
    "puf_arm_final_positive": 822242302.9671359,
    "puf_arm_final_negative": 0.0
@@ -645,9 +645,9 @@
    "asec_design_negative": 0.0,
    "asec_final_positive": 0.0,
    "asec_final_negative": 0.0,
-   "puf_arm_design_positive": 201541044318.59045,
+   "puf_arm_design_positive": 201541044318.59042,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 439644706006.322,
+   "puf_arm_final_positive": 439644706006.3221,
    "puf_arm_final_negative": 0.0
   },
   "unadjusted_basis_qualified_property": {
@@ -658,7 +658,7 @@
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 1717535980862.5098,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 3083440838967.219,
+   "puf_arm_final_positive": 3083440838967.2188,
    "puf_arm_final_negative": 0.0
   },
   "qualified_reit_and_ptp_income": {
@@ -669,7 +669,7 @@
    "asec_final_negative": 0.0,
    "puf_arm_design_positive": 4850416653.189299,
    "puf_arm_design_negative": 0.0,
-   "puf_arm_final_positive": 9644460738.466467,
+   "puf_arm_final_positive": 9644460738.466469,
    "puf_arm_final_negative": 0.0
   },
   "qualified_bdc_income": {

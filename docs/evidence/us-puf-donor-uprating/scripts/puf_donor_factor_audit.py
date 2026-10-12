@@ -802,6 +802,45 @@ def main() -> None:
         ),
     }
 
+    # The synthetic records (aggregate-record replacements) have no source
+    # record. Apply the same recovery to them and count where it would fail.
+    table_synthetic = table.loc[table["tax_unit_id"] >= SYNTHETIC_START]
+    syn_qualified = table_synthetic["qualified_dividend_income"].to_numpy(np.float64)
+    syn_non_qualified = table_synthetic["non_qualified_dividend_income"].to_numpy(
+        np.float64
+    )
+    syn_ordinary_raw = (syn_non_qualified + syn_qualified) / carried_ordinary
+    syn_qualified_raw = syn_qualified / carried_qualified
+
+    def off_grid(values: np.ndarray) -> np.ndarray:
+        return np.abs(values - np.rint(values)) > 1e-6 + 1e-13 * np.abs(values)
+
+    receipt["dividends"]["synthetic"] = {
+        "records": int(len(table_synthetic)),
+        "with_any_dividend": int(
+            ((syn_qualified != 0) | (syn_non_qualified != 0)).sum()
+        ),
+        "stored_non_qualified_negative": int((syn_non_qualified < 0).sum()),
+        "stored_qualified_negative": int((syn_qualified < 0).sum()),
+        "recovered_ordinary_off_whole_dollars": int(off_grid(syn_ordinary_raw).sum()),
+        "recovered_qualified_off_whole_dollars": int(off_grid(syn_qualified_raw).sum()),
+        "recovered_ordinary_below_recovered_qualified": int(
+            (np.rint(syn_ordinary_raw) < np.rint(syn_qualified_raw)).sum()
+        ),
+        "weight_total": float(table_synthetic["weight"].sum()),
+        "weighted_negative_non_qualified": float(
+            table_synthetic["weight"].to_numpy(np.float64)
+            @ np.clip(syn_non_qualified, None, 0)
+        ),
+        "weighted_positive_non_qualified": float(
+            table_synthetic["weight"].to_numpy(np.float64)
+            @ np.clip(syn_non_qualified, 0, None)
+        ),
+        "weighted_qualified": float(
+            table_synthetic["weight"].to_numpy(np.float64) @ syn_qualified
+        ),
+    }
+
     # 7. Donor weighted totals beside the SOI actuals of the same line. The
     # donor weights are S006/100 times return-count growth to 2021, so a file
     # at TY2021 levels should total near the TY2021 actuals.
