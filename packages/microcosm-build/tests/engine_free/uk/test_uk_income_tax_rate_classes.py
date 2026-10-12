@@ -10,7 +10,10 @@ import numpy as np
 import pytest
 
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
+    UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
+    UK_RATE_CLASS_ENGINE_TOLERANCE_GBP,
     UK_RATE_CLASSES,
+    rate_class_engine_tolerance,
     relief_by_rate_class,
     tax_by_rate_class,
 )
@@ -110,6 +113,26 @@ def test_a_schedule_without_an_additional_rate_files_its_top_rate_as_higher() ->
     assert classes["basic"].tolist() == pytest.approx([4_000.0, 7_540.0])
     assert classes["higher"].tolist() == pytest.approx([0.0, 8_920.0])
     assert classes["additional"].tolist() == [0.0, 0.0]
+
+
+def test_the_engine_tolerance_adds_float32_steps_at_each_persons_amounts() -> None:
+    # The engine computes in float32: its step is under a penny at GBP 60,000,
+    # GBP 1 at GBP 10 million and GBP 8 at GBP 100 million. The GBP 1
+    # tolerance grows by a few steps at the person's largest amount, so
+    # rounding alone does not refuse a schedule that still matches.
+    tolerance = rate_class_engine_tolerance(
+        np.array([50_000.0, 10_000_000.0, 100_000_000.0]),
+        np.array([60_000.0, 1_000.0, -5.0]),
+    )
+
+    steps = UK_RATE_CLASS_ENGINE_FLOAT32_STEPS
+    assert tolerance.tolist() == [
+        UK_RATE_CLASS_ENGINE_TOLERANCE_GBP + steps * 2.0**-8,
+        UK_RATE_CLASS_ENGINE_TOLERANCE_GBP + steps * 1.0,
+        UK_RATE_CLASS_ENGINE_TOLERANCE_GBP + steps * 8.0,
+    ]
+    # A drift of GBP 5 at ordinary pay is still refused.
+    assert tolerance[0] < 1.02
 
 
 def test_the_all_rates_total_is_a_diagnostic_beside_the_higher_rate_band() -> None:

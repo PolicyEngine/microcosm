@@ -46,9 +46,31 @@ UK_RATE_CLASS_ALLOCATION: Mapping[str, object] = {
 
 #: The engine variable the allocation re-implements: the schedule applied to
 #: earned taxable income. A person's classes must add up to its rise within
-#: the tolerance (the engine computes in float32), or the measure refuses.
+#: the tolerance, or the measure refuses.
 UK_RATE_CLASS_ENGINE_VARIABLE = "earned_income_tax"
 UK_RATE_CLASS_ENGINE_TOLERANCE_GBP = 1.0
+#: The engine computes in float32, whose step grows with the amount (GBP 1 at
+#: GBP 10 million, GBP 8 at GBP 100 million). The tolerance adds this many
+#: steps at the person's own largest amount to the GBP 1, so rounding alone
+#: never refuses a schedule that still matches.
+UK_RATE_CLASS_ENGINE_FLOAT32_STEPS = 4
+
+
+def rate_class_engine_tolerance(*amounts: np.ndarray) -> np.ndarray:
+    """Each person's tolerance against the engine variable, in GBP.
+
+    GBP 1 plus ``UK_RATE_CLASS_ENGINE_FLOAT32_STEPS`` float32 steps at the
+    largest of the person's ``amounts`` (the incomes and taxes the comparison
+    reads). Below about GBP 2 million the steps add less than GBP 1.
+    """
+
+    largest = np.maximum.reduce(
+        [np.abs(np.asarray(amount, dtype=float)) for amount in amounts]
+    )
+    step = np.spacing(largest.astype(np.float32)).astype(float)
+    return (
+        UK_RATE_CLASS_ENGINE_TOLERANCE_GBP + UK_RATE_CLASS_ENGINE_FLOAT32_STEPS * step
+    )
 
 
 def tax_by_rate_class(

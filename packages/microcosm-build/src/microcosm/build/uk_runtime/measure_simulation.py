@@ -19,9 +19,11 @@ from microcosm.build.uk_runtime.atomic_area_support import (
 )
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
+    UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
     UK_RATE_CLASS_ENGINE_TOLERANCE_GBP,
     UK_RATE_CLASS_ENGINE_VARIABLE,
     UK_RATE_CLASSES,
+    rate_class_engine_tolerance,
     relief_by_rate_class,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -774,12 +776,23 @@ class UKMeasureResolver:
             baseline_earned, dtype=float
         )
         earned_gap = np.abs(earned_tax_change - sum(relief.values()))
-        beyond = earned_gap > UK_RATE_CLASS_ENGINE_TOLERANCE_GBP
+        # GBP 1 plus a few float32 steps at the person's own amounts: the
+        # engine rounds a very large income to more than GBP 1.
+        tolerance = rate_class_engine_tolerance(
+            baseline_income,
+            counterfactual_income,
+            baseline_earned,
+            counterfactual_earned,
+        )
+        beyond = earned_gap > tolerance
         if beyond.any():
             raise ValueError(
                 f"The {UK_RATE_CLASS_ALLOCATION['kind']} allocation no longer adds "
                 f"up to the engine's {engine_variable}: {int(beyond.sum())} "
-                f"person(s) differ by up to GBP {float(earned_gap.max()):.2f}. "
+                f"person(s) differ by more than GBP "
+                f"{UK_RATE_CLASS_ENGINE_TOLERANCE_GBP:g} and "
+                f"{UK_RATE_CLASS_ENGINE_FLOAT32_STEPS} float32 steps, by up to "
+                f"GBP {float(earned_gap[beyond].max()):.2f}. "
                 "Review the income tax schedule it reads."
             )
         baseline_tax, _ = compute_uk_measure_input(
