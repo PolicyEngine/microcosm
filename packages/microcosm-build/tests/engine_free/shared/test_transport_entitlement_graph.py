@@ -381,6 +381,8 @@ def _cell_support_contract(spec):
         "required_cells",
         "required_scenarios",
         "aggregation_column",
+        "required_weight_kind",
+        "required_weight_entity",
     ],
 )
 def test_cell_support_contract_omitting_a_key_is_refused_by_name(tmp_path, key):

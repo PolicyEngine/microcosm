@@ -261,6 +261,8 @@ _CELL_CONTRACT_KEYS = (
     "required_cells",
     "required_scenarios",
     "aggregation_column",
+    "required_weight_kind",
+    "required_weight_entity",
 )
 
 
