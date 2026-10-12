@@ -4046,7 +4046,12 @@ def test_congressional_district_taxable_interest_ignores_the_package_stamp() -> 
     stamped truthfully at 2022, and both age from the control's 2023 period on
     the CBO AGI link, as the Table 4.3 row does. Before, the ty2023 stamp aged
     the levels one link (x1.087) where the truthful stamp would age two, and
-    neither reached the control (microcosm#1030, #1038)."""
+    neither reached the control (microcosm#1030, #1038).
+
+    Historic Table 2's TY2022 rows compile alongside. Stamped truthfully, the
+    district file's US row and Historic Table 2's share a period, universe and
+    status, so only the family in the denominator key keeps each family on its
+    own US row (94 vs 100): the case a corrected stamp creates."""
     cbo = [
         _cbo_income_source_projection_fact(
             2023, "adjusted_gross_income", value=15_000_000_000_000
@@ -4061,6 +4066,7 @@ def test_congressional_district_taxable_interest_ignores_the_package_stamp() -> 
             [
                 *packaged_reference_facts(),
                 *_taxable_interest_cd_package_at(stamp),
+                *_taxable_interest_ht2_facts(),
                 *_taxable_interest_t43_facts(),
                 *cbo,
             ],
@@ -4069,6 +4075,11 @@ def test_congressional_district_taxable_interest_ignores_the_package_stamp() -> 
             allow_unaged_dollar_targets=True,
         )
         specs = {spec.name: spec for spec in registry.specs}
+        ht2_ca = specs[_INTEREST_HT2_CA.format(measure="taxable_interest_amount")]
+        assert math.isclose(ht2_ca.value, 25e9 * 2.35 * 1.1, rel_tol=1e-12)
+        assert ht2_ca.metadata["soi_share_total_source_record_id"] == (
+            _INTEREST_HT2_US.format(measure="taxable_interest_amount")
+        )
         compiled[stamp] = (
             {
                 (
