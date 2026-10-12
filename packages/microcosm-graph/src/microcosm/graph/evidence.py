@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import stat
 import uuid
@@ -56,7 +57,12 @@ EXECUTION_PROTOCOL = "microcosm.graph.execution-evidence.v1"
 # real build already holds in memory; they are bounded by bytes and nesting
 # depth only. The per-item complexity charge of the compiler-schema reader is
 # not applied here: a licensed spine manifest has over a million JSON items in
-# 13 MB and must remain loadable and hashable.
+# 13 MB and must remain loadable and hashable. The cap must admit every file a
+# real build writes: the K=25/60k dense build's numerical/preflight graphs are
+# 399 MiB (41.4M items, measured 2.2 GiB peak RSS to parse — about 5.7x the
+# bytes, not the 25-35x of a tiny-item shape, which no real evidence file
+# has). 1 GiB is that largest real file with ~2.5x headroom; digest-only
+# paths use :func:`read_bytes` and never pay the parse cost.
 _MAX_BYTES = 1024 * 1024 * 1024
 _MAX_DEPTH = 64
 _SUMMARY_FIELDS = frozenset({"node", "artifact", "key", "type", "data"})
@@ -92,6 +98,13 @@ def _bounded_depth(value: object) -> None:
             pending.extend((child, depth + 1) for child in item)
         elif type(item) is dict:
             pending.extend((child, depth + 1) for child in item.values())
+        elif type(item) is float:
+            # ``parse_constant`` only fires on the NaN/Infinity literals; an
+            # overflowing number literal such as 1e400 reaches here as inf.
+            require(
+                math.isfinite(item),
+                "Graph evidence: evidence input requires finite JSON numbers.",
+            )
 
 
 def read_bytes(path: Path) -> bytes:
