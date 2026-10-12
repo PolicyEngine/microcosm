@@ -956,6 +956,22 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     }
     assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
     assert {spec.name for spec in state_specs} <= set(full_by_name)
+    # The compiler drops the district file's SALT and premium-tax-credit facts
+    # read from the wrong IRS column (microcosm#1038), so `totals` keeps only
+    # the Historic Table 2 premium-tax-credit rows (51 states and 9 at-large
+    # district copies, returns and amounts) and `full` 29,860 SOI specs.
+    totals_soi = [spec for spec in totals_registry.specs if spec.family == "irs_soi"]
+    assert len(totals_soi) == 120
+    assert {spec.metadata["source_measure_id"] for spec in totals_soi} == {
+        "premium_tax_credit_returns",
+        "premium_tax_credit_amount",
+    }
+    assert not [
+        spec.name
+        for spec in totals_soi
+        if ".congressional_district_" in spec.metadata["ledger_layout_record_set_id"]
+    ]
+    assert sum(spec.family == "irs_soi" for spec in full_registry.specs) == 29_860
 
     assert not [
         spec
