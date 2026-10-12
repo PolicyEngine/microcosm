@@ -1,0 +1,53 @@
+<frozen importlib._bootstrap>:491: RuntimeWarning: The global interpreter lock (GIL) has been enabled to load module 'quantile_forest._quantile_forest_fast', which has not declared that it can run safely without the GIL. To override this behavior and keep the GIL disabled (at your own risk), run with PYTHON_GIL=0 or -Xgil=0.
+[    1.5s] feed /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_51aa40f.jsonl sha256=965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac rows=40178
+[   28.0s] option a: 33250 specs; national_state=6102 v=3fad14f85468; full=33250 v=c3aaea9c1e8c
+[   60.9s] option b: 33250 specs; national_state=6102 v=937b3df341a7; full=33250 v=0f294d4f9312
+[   83.3s] option c: 33250 specs; national_state=6102 v=31bd18096d33; full=33250 v=ac32014f3325
+[  121.3s] option d: 33242 specs; national_state=6094 v=41a1fa2b013f; full=33242 v=469b8ed2c5db
+[  123.7s] option a: changed vs a 0 (outside T2.5 0)
+[  123.7s]    national_state: v=3fad14f85468 n=6102 t25 rows 232 share 0.01555 totals 0.00287 outside max |dw| 0.00e+00
+[  123.8s]    full: v=c3aaea9c1e8c n=33250 t25 rows 232 share 0.00605 totals 0.00112 outside max |dw| 0.00e+00
+[  123.8s]    eitc_total|no_qualifying_children: total/bins 1.1569894123166187
+[  123.8s]    eitc_total|one_qualifying_child: total/bins 1.017755563566669
+[  123.8s]    eitc_total|two_qualifying_children: total/bins 0.9750260646757214
+[  123.8s]    eitc_total|three_or_more_qualifying_children: total/bins 0.9932913289762774
+[  123.8s]    eitc_returns|no_qualifying_children: total/bins 1.061889328898516
+[  123.8s]    eitc_returns|one_qualifying_child: total/bins 1.0006191136305496
+[  123.8s]    eitc_returns|two_qualifying_children: total/bins 0.9610939769856527
+[  123.8s]    eitc_returns|three_or_more_qualifying_children: total/bins 0.9505335436037772
+[  126.4s] option b: changed vs a 8 (outside T2.5 0)
+[  126.5s]    national_state: v=937b3df341a7 n=6102 t25 rows 232 share 0.01555 totals 0.00287 outside max |dw| 7.83e-06
+[  126.5s]    full: v=0f294d4f9312 n=33250 t25 rows 232 share 0.00605 totals 0.00112 outside max |dw| 2.97e-06
+[  126.5s]    eitc_total|no_qualifying_children: total/bins 1.0
+[  126.5s]    eitc_total|one_qualifying_child: total/bins 1.0000000000000002
+[  126.5s]    eitc_total|two_qualifying_children: total/bins 1.0000000000000002
+[  126.5s]    eitc_total|three_or_more_qualifying_children: total/bins 0.9999999999999999
+[  126.5s]    eitc_returns|no_qualifying_children: total/bins 0.9999999999999999
+[  126.5s]    eitc_returns|one_qualifying_child: total/bins 1.0
+[  126.5s]    eitc_returns|two_qualifying_children: total/bins 1.0000000000000002
+[  126.5s]    eitc_returns|three_or_more_qualifying_children: total/bins 0.9999999999999999
+[  139.6s] option c: changed vs a 232 (outside T2.5 0)
+[  139.6s]    national_state: v=31bd18096d33 n=6102 t25 rows 232 share 0.01548 totals 0.00287 outside max |dw| 1.49e-04
+[  139.7s]    full: v=ac32014f3325 n=33250 t25 rows 232 share 0.00603 totals 0.00112 outside max |dw| 5.85e-05
+[  139.7s]    eitc_total|no_qualifying_children: total/bins 1.0
+[  139.7s]    eitc_total|one_qualifying_child: total/bins 1.0
+[  139.7s]    eitc_total|two_qualifying_children: total/bins 1.0
+[  139.7s]    eitc_total|three_or_more_qualifying_children: total/bins 1.0
+[  139.7s]    eitc_returns|no_qualifying_children: total/bins 1.0
+[  139.7s]    eitc_returns|one_qualifying_child: total/bins 1.0
+[  139.7s]    eitc_returns|two_qualifying_children: total/bins 1.0
+[  139.7s]    eitc_returns|three_or_more_qualifying_children: total/bins 1.0
+[  141.9s] option d: changed vs a 8 (outside T2.5 0)
+[  142.0s]    national_state: v=41a1fa2b013f n=6094 t25 rows 224 share 0.01272 totals 0.00000 outside max |dw| 2.87e-03
+[  142.0s]    full: v=469b8ed2c5db n=33242 t25 rows 224 share 0.00494 totals 0.00000 outside max |dw| 1.40e-03
+[  142.0s]    eitc_total|no_qualifying_children: total/bins None
+[  142.1s]    eitc_total|one_qualifying_child: total/bins None
+[  142.1s]    eitc_total|two_qualifying_children: total/bins None
+[  142.1s]    eitc_total|three_or_more_qualifying_children: total/bins None
+[  142.1s]    eitc_returns|no_qualifying_children: total/bins None
+[  142.1s]    eitc_returns|one_qualifying_child: total/bins None
+[  142.1s]    eitc_returns|two_qualifying_children: total/bins None
+[  142.1s]    eitc_returns|three_or_more_qualifying_children: total/bins None
+[  142.2s] cd vs t25: {"eitc_no_children_claims": {"cd_us": 6589240.0, "a_over_bins": 1.0585190816594752, "a_over_total": 0.9968261784469227, "b_over_bins": 1.0585190816594752, "b_over_total": 1.0585190816594754, "c_over_bins": 0.9968261784469227, "c_over_total": 0.9968261784469227, "d_over_bins": 1.0585190816594752}, "eitc_no_children_amount": {"cd_us": 2607048748.074592, "a_over_bins": 1.1772252938427594, "a_over_total": 1.0174901181555525, "b_over_bins": 1.1772252938427594, "b_over_total": 1.1772252938427594, "c_over_bins": 1.0174901181555525, "c_over_total": 1.0174901181555525, "d_over_bins": 1.1772252938427594}, "eitc_one_child_claims": {"cd_us": 8232160.0, "a_over_bins": 0.9725490998719831, "a_over_total": 0.9719473540169348, "b_over_bins": 0.9725490998719831, "b_over_total": 0.9725490998719831, "c_over_bins": 0.9719473540169348, "c_over_total": 0.9719473540169348, "d_over_bins": 0.9725490998719831}, "eitc_one_child_amount": {"cd_us": 22375089125.21339, "a_over_bins": 0.9330454445238539, "a_over_total": 0.916767717047939, "b_over_bins": 0.9330454445238539, "b_over_total": 0.9330454445238536, "c_over_bins": 0.916767717047939, "c_over_total": 0.916767717047939, "d_over_bins": 0.9330454445238539}, "eitc_two_children_claims": {"cd_us": 5414870.0, "a_over_bins": 0.9222584968074418, "a_over_total": 0.9595924216484912, "b_over_bins": 0.9222584968074418, "b_over_total": 0.9222584968074417, "c_over_bins": 0.9595924216484912, "c_over_total": 0.9595924216484912, "d_over_bins": 0.9222584968074418}, "eitc_two_children_amount": {"cd_us": 23395909729.66105, "a_over_bins": 0.8792615696791217, "a_over_total": 0.9017826307766967, "b_over_bins": 0.8792615696791217, "b_over_total": 0.8792615696791216, "c_over_bins": 0.9017826307766967, "c_over_total": 0.9017826307766967, "d_over_bins": 0.8792615696791217}, "eitc_three_or_more_children_claims": {"cd_us": 3025000.0, "a_over_bins": 0.92328226294927, "a_over_total": 0.9713305428957415, "b_over_bins": 0.92328226294927, "b_over_total": 0.9232822629492701, "c_over_bins": 0.9713305428957415, "c_over_total": 0.9713305428957415, "d_over_bins": 0.92328226294927}, "eitc_three_or_more_children_amount": {"cd_us": 14787140932.119295, "a_over_bins": 0.9106625238330983, "a_over_total": 0.9168131214551734, "b_over_bins": 0.9106625238330983, "b_over_total": 0.9106625238330984, "c_over_bins": 0.9168131214551734, "c_over_total": 0.9168131214551734, "d_over_bins": 0.9106625238330983}}
+[  142.2s] done
+exit=0
