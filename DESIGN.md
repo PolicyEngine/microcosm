@@ -256,8 +256,11 @@ never as namespace squatters.
 
 **Constellation versioning has a mechanism, not just an intent.** Each shard
 pins `microcosm-frame>=X,<X+1` AND asserts kernel compatibility at import (a
-cheap `frame.__version__` check) so pip's looser resolution can't silently
-assemble an incompatible set. CI builds every shard wheel once and compares
+cheap check of the installed frame version) so pip's looser resolution can't
+silently assemble an incompatible set. microcosm-build reads that version from
+the distribution metadata rather than `frame.__version__`, and loads its
+public names lazily, so importing one build submodule does not load the
+kernel's numpy and pandas stack. CI builds every shard wheel once and compares
 each archive's package contents with its source tree. Behavioral contracts run
 from the source checkout in separate environment-specific jobs; wheel validation
 does not install the artifacts or repeat behavioral tests. This validates archive

@@ -646,7 +646,9 @@ def check_stage(plan_data: dict) -> dict:
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
             "-c",
-            "import json, importlib.metadata as m; import microcosm.build; "
+            # The star import loads every public name; a bare package import
+            # is lazy and would not prove the modelling stack imports.
+            "import json, importlib.metadata as m; from microcosm.build import *; "
             "print(json.dumps({p: m.version(p) for p in "
             "('policyengine-us', 'policyengine-core', 'microcosm-build')}))",
         ],

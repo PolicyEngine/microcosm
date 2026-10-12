@@ -609,7 +609,7 @@ def test_runner_smoke_is_inline_and_check_sized() -> None:
     assert plan.resources is plan_lib.CHECK
     argv = plan_lib.planned_argv(plan)
     assert argv[:3] == ["/opt/venv/bin/python", "-B", "-c"]
-    assert "import microcosm.build" in argv[3]
+    assert "from microcosm.build import *" in argv[3]
     assert argv[4:] == [
         "/work/state",
         "/work/inputs/ladder/us_puma_ladder_2020.npz",

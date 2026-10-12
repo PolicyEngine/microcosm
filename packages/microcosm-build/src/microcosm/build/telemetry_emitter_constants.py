@@ -14,7 +14,12 @@ TEMPORARY_DIRECTORY_ALIAS: Final = Path("/tmp")
 
 DEFAULT_SEND_TIMEOUT_SECONDS: Final = 0.2
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
-DEFAULT_STARTUP_TIMEOUT_SECONDS: Final = 3.0
+# start() returns as soon as the service answers its first ping or exits, so
+# only a live service that never answers costs the whole wait, while giving up
+# early discards hosted telemetry for the entire build. Startup is interpreter
+# start plus the SQLAlchemy spool: 0.4-0.8 s on a build host at load average
+# 80-160 on 2026-10-09, where single imports also stalled for up to 24 s.
+DEFAULT_STARTUP_TIMEOUT_SECONDS: Final = 30.0
 STARTUP_POLL_SECONDS: Final = 0.02
 SERVICE_READY_TIMEOUT_SECONDS: Final = 0.1
 SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS: Final = 1.0
@@ -27,9 +32,15 @@ SERVICE_START_WARNING: Final = (
     "warning: the local telemetry emitter service could not start: "
     "{error_type}: {error}"
 )
+SERVICE_EXITED_WARNING: Final = (
+    "warning: the local telemetry emitter service exited with status "
+    "{returncode} before it became ready; the build will continue without "
+    "hosted telemetry."
+)
 SERVICE_NOT_READY_WARNING: Final = (
-    "warning: the local telemetry emitter service did not become ready; "
-    "the build will continue without hosted telemetry."
+    "warning: the local telemetry emitter service did not become ready "
+    "within {timeout_seconds:g} s; the build will continue without hosted "
+    "telemetry."
 )
 QUEUE_WARNING: Final = (
     "warning: the local telemetry emitter service could not queue an update "

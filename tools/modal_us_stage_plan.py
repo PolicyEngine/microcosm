@@ -581,7 +581,9 @@ import json
 import pathlib
 import sys
 
-import microcosm.build  # noqa: F401 - proves the synced environment imports
+# Every public name, not the lazy package alone: proves the synced
+# environment's modelling stack (torch, pandas, calibration) imports.
+from microcosm.build import *  # noqa: F403
 
 state = pathlib.Path(sys.argv[1])
 rows = [
