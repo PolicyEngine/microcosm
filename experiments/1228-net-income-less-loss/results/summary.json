@@ -1,0 +1,2141 @@
+{
+ "arms": {
+  "published": {
+   "own_surface": null,
+   "own_final_loss": null,
+   "seconds": null,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9392419175027871,
+    "mean_capped_error": 0.030671954752352796
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.9447066756574511,
+     "mean_capped_error": 0.02611096140291406
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.013708336438015325
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.004786171988310605
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9326923076923077,
+     "mean_capped_error": 0.03556621885364327
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09587898316943377
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.7321428571428571,
+     "mean_capped_error": 0.0869336563476515
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.02634991203200058
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0226157203827145
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8950064020486556,
+     "mean_capped_error": 0.04963768466675568
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.005154815167880631
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0009358205197866781
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5003016468374404
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010861502280506776
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.013310321133514092
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.021600962328985254
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0012514028465502194
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.9090909090909091,
+     "mean_capped_error": 0.0439132617667858
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.0052195006170793
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0003712451388514287
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9444444444444444,
+     "mean_capped_error": 0.015595675212413949
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.017877472854352136
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.7924528301886793,
+     "mean_capped_error": 0.08391890450650809
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.004349847818168548
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9622641509433962,
+     "mean_capped_error": 0.023849333564630443
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.013464319164800426
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0019586491206874143
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9161849710982659,
+     "mean_capped_error": 0.04811431349605853
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0010277452255966256
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.0030915283103182946
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0005263360639137434
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0013767768666579788
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 26300786.91539395,
+     "us_concept_exact": 31295989.887002863,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.7647058823529411,
+      "mean_capped_error": 0.0607635921486313
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.19607843137254902,
+      "mean_capped_error": 0.15645942058342163
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 488894776128.99677,
+     "us_concept_exact": 820989668707.7206,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9411764705882353,
+      "mean_capped_error": 0.05982328106114371
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.6356146216496612
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 9479193.161301691,
+     "us_concept_exact": 11489273.647078848,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9803921568627451,
+      "mean_capped_error": 0.008239930285000788
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0784313725490196,
+      "mean_capped_error": 0.21008219822300894
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 1128517678095.899,
+     "us_concept_exact": 1020542634029.1309,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9019607843137255,
+      "mean_capped_error": 0.02318281918623664
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.5686274509803921,
+      "mean_capped_error": 0.12766310243791923
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 9321528.97427554,
+     "us_concept_exact": 14090442.84911722,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0009848472970694563
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.5085784363190154
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 253318942421.4058,
+     "us_concept_exact": 248787751422.50922,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.47058823529411764,
+      "mean_capped_error": 0.5307151541117274
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.3333333333333333,
+      "mean_capped_error": 0.580705596340832
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 836923406141.0552,
+     "neg_sum": -15933737433.32917,
+     "net": 820989668707.726,
+     "pos_count": 30643372.032014083,
+     "neg_count": 652617.8549889551,
+     "nonzero_count": 31295989.887003038
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 488894776164.28094,
+     "neg_sum": -4303569740.482876,
+     "net": 484591206423.7981,
+     "pos_count": 26300786.915394105,
+     "neg_count": 311333.74241678946,
+     "nonzero_count": 26612120.657810893
+    },
+    "sstb_only": {
+     "pos_sum": 348028629976.77423,
+     "neg_sum": -11630167692.84629,
+     "net": 336398462283.9279,
+     "pos_count": 4420640.526723596,
+     "neg_count": 365923.7217944156,
+     "nonzero_count": 4786564.2485180115
+    },
+    "partnership_s_corp": {
+     "pos_sum": 1128517679151.5771,
+     "neg_sum": -107975045122.44385,
+     "net": 1020542634029.1333,
+     "pos_count": 9479193.161301674,
+     "neg_count": 2010080.4857771557,
+     "nonzero_count": 11489273.64707883
+    },
+    "rental_only": {
+     "pos_sum": 335168916158.93835,
+     "neg_sum": -86381164736.42978,
+     "net": 248787751422.50858,
+     "pos_count": 9070089.715544755,
+     "neg_count": 5020353.133572421,
+     "nonzero_count": 14090442.849117175
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 345450943406.025,
+     "neg_sum": -92132001343.94482,
+     "net": 253318942062.0802,
+     "pos_count": 9321528.974275539,
+     "neg_count": 5182645.849439174,
+     "nonzero_count": 14504174.823714713
+    },
+    "farm_rent_only": {
+     "pos_sum": 13225380301.14615,
+     "neg_sum": -8694189661.574564,
+     "net": 4531190639.571587,
+     "pos_count": 442237.19948787196,
+     "neg_count": 290542.75199212704,
+     "nonzero_count": 732779.951479999
+    },
+    "tax_units": 172034458.48638445
+   },
+   "kish_ess": 77758.10900441968,
+   "chi_square_from_initial": 2.1881298165428027,
+   "max_ratio_to_published": 1.0,
+   "min_ratio_to_published": 1.0,
+   "correlation_with_published": 1.0
+  },
+  "release": {
+   "own_surface": {
+    "n": 5694,
+    "within_10pct": 0.934141201264489,
+    "mean_capped_error": 0.03529936550385233,
+    "weighted_capped_error": 0.028419576730484935,
+    "rows_312": {
+     "n": 312,
+     "within_10pct": 0.8397435897435898,
+     "mean_capped_error": 0.11564262716297395
+    },
+    "rows_312_by_measure": {
+     "partnership_scorp_income_amount": {
+      "n": 52,
+      "within_10pct": 0.9038461538461539,
+      "mean_capped_error": 0.023320138248756637
+     },
+     "partnership_scorp_income_returns": {
+      "n": 52,
+      "within_10pct": 0.9807692307692307,
+      "mean_capped_error": 0.008221509483320824
+     },
+     "rental_royalty_income_amount": {
+      "n": 52,
+      "within_10pct": 0.46153846153846156,
+      "mean_capped_error": 0.5394571640411362
+     },
+     "rental_royalty_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0010888826136124061
+     },
+     "schedule_c_income_amount": {
+      "n": 52,
+      "within_10pct": 0.9423076923076923,
+      "mean_capped_error": 0.05959167522265514
+     },
+     "schedule_c_income_returns": {
+      "n": 52,
+      "within_10pct": 0.75,
+      "mean_capped_error": 0.06217639336836244
+     }
+    }
+   },
+   "own_final_loss": 0.028419576730484935,
+   "seconds": 1314.747535943985,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9396135265700483,
+    "mean_capped_error": 0.03064178511781629
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.9447066756574511,
+     "mean_capped_error": 0.02607499254475389
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.013769658324178547
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.004593915130734745
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9326923076923077,
+     "mean_capped_error": 0.035465935544292046
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09592778936820183
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.7321428571428571,
+     "mean_capped_error": 0.08705073993276376
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.026298896614688365
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.022744707404218863
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8962868117797695,
+     "mean_capped_error": 0.049592415099011015
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.0051731378611796835
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0012008217416993015
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5000652883687807
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010911652262527898
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.013254987869856218
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.02150793794214733
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0012726777407143868
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.9090909090909091,
+     "mean_capped_error": 0.04393657867856458
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.005510149531800581
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0006312685635856593
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9444444444444444,
+     "mean_capped_error": 0.015562940587337261
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.017812678478596577
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.7924528301886793,
+     "mean_capped_error": 0.08398954409997555
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00422327290136127
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9716981132075472,
+     "mean_capped_error": 0.02384864423929114
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.01348791640248878
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0019690755270115475
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9161849710982659,
+     "mean_capped_error": 0.04801447186391042
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0010066147968133762
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.0032495664292109252
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00010769990955436877
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0015443807110568134
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 26295799.159897976,
+     "us_concept_exact": 31289968.970477466,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.7647058823529411,
+      "mean_capped_error": 0.060773672488153394
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.19607843137254902,
+      "mean_capped_error": 0.15649278382802412
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 488979977388.8304,
+     "us_concept_exact": 820954710357.5177,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9411764705882353,
+      "mean_capped_error": 0.06006721407271851
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.635341723231795
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 9476975.60119726,
+     "us_concept_exact": 11485125.694225589,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9803921568627451,
+      "mean_capped_error": 0.008229177847167563
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0784313725490196,
+      "mean_capped_error": 0.2097752029874944
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 1128981889247.4282,
+     "us_concept_exact": 1021022818600.7543,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.9019607843137255,
+      "mean_capped_error": 0.02329261446345788
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.5686274509803921,
+      "mean_capped_error": 0.1272839113459558
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 9318329.851936102,
+     "us_concept_exact": 14087963.156447668,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0009439899904904554
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.5084520879200642
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 253129223408.97986,
+     "us_concept_exact": 248630372192.89108,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.47058823529411764,
+      "mean_capped_error": 0.5304269123556683
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.3333333333333333,
+      "mean_capped_error": 0.5804471959768585
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 836897564747.8885,
+     "neg_sum": -15942854390.369133,
+     "net": 820954710357.5194,
+     "pos_count": 30637295.53793346,
+     "neg_count": 652673.432543968,
+     "nonzero_count": 31289968.97047743
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 488979977425.3806,
+     "neg_sum": -4301564361.853214,
+     "net": 484678413063.5274,
+     "pos_count": 26295799.159898017,
+     "neg_count": 311378.7877498479,
+     "nonzero_count": 26607177.947647866
+    },
+    "sstb_only": {
+     "pos_sum": 347917587322.50793,
+     "neg_sum": -11641290028.515919,
+     "net": 336276297293.992,
+     "pos_count": 4419462.965977609,
+     "neg_count": 365861.0144020738,
+     "nonzero_count": 4785323.980379683
+    },
+    "partnership_s_corp": {
+     "pos_sum": 1128981890303.2515,
+     "neg_sum": -107959071702.4982,
+     "net": 1021022818600.7533,
+     "pos_count": 9476975.601197299,
+     "neg_count": 2008150.093028321,
+     "nonzero_count": 11485125.69422562
+    },
+    "rental_only": {
+     "pos_sum": 335035227671.0874,
+     "neg_sum": -86404855478.19797,
+     "net": 248630372192.88943,
+     "pos_count": 9067391.242437936,
+     "neg_count": 5020571.914009664,
+     "nonzero_count": 14087963.1564476
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 345291078153.60815,
+     "neg_sum": -92161855104.38545,
+     "net": 253129223049.22272,
+     "pos_count": 9318329.851936135,
+     "neg_count": 5182856.221886316,
+     "nonzero_count": 14501186.073822452
+    },
+    "farm_rent_only": {
+     "pos_sum": 13188683648.979633,
+     "neg_sum": -8689832792.646439,
+     "net": 4498850856.333195,
+     "pos_count": 441794.9868180575,
+     "neg_count": 290154.4428066949,
+     "nonzero_count": 731949.4296247524
+    },
+    "tax_units": 172041973.64516407
+   },
+   "kish_ess": 77794.03493503302,
+   "chi_square_from_initial": 2.186732258128342,
+   "max_ratio_to_published": 1.2504528492253517,
+   "min_ratio_to_published": 0.7855713373068746,
+   "correlation_with_published": 0.9998780972433269
+  },
+  "concept_exact": {
+   "own_surface": {
+    "n": 5694,
+    "within_10pct": 0.9388830347734457,
+    "mean_capped_error": 0.03164366258004792,
+    "weighted_capped_error": 0.0264063957697224,
+    "rows_312": {
+     "n": 312,
+     "within_10pct": 0.9262820512820513,
+     "mean_capped_error": 0.04720747594386884
+    },
+    "rows_312_by_measure": {
+     "partnership_scorp_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8653846153846154,
+      "mean_capped_error": 0.028883996442526278
+     },
+     "partnership_scorp_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0006390508073137742
+     },
+     "rental_royalty_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8269230769230769,
+      "mean_capped_error": 0.1603230193528389
+     },
+     "rental_royalty_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0012057894819960864
+     },
+     "schedule_c_income_amount": {
+      "n": 52,
+      "within_10pct": 0.9230769230769231,
+      "mean_capped_error": 0.0796010739995202
+     },
+     "schedule_c_income_returns": {
+      "n": 52,
+      "within_10pct": 0.9423076923076923,
+      "mean_capped_error": 0.01259192557901783
+     }
+    }
+   },
+   "own_final_loss": 0.0264063957697224,
+   "seconds": 1558.8121206760406,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9396135265700483,
+    "mean_capped_error": 0.030741412529971347
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.9440323668240054,
+     "mean_capped_error": 0.02607568753445054
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010904197587764846
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0036052334092457083
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.034226396595080685
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09109925234109437
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.7321428571428571,
+     "mean_capped_error": 0.08418714100797045
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.023674542364517125
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.018840278291496468
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8975672215108835,
+     "mean_capped_error": 0.05005965123013537
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.005204105689222395
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0009279681696786606
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5000646071918048
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.009827796120916967
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.01362232148396899
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.019371396875947505
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0012899603468806559
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.8909090909090909,
+     "mean_capped_error": 0.04645260572676645
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.004868626949900442
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00035132536074768226
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9444444444444444,
+     "mean_capped_error": 0.016097656987760754
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.01677932581115465
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.8018867924528302,
+     "mean_capped_error": 0.08083348356126543
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0032387306139560106
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9622641509433962,
+     "mean_capped_error": 0.024149769427090677
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9903846153846154,
+     "mean_capped_error": 0.010599831815436804
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0024466417052489346
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9142581888246628,
+     "mean_capped_error": 0.049668974340546054
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0011221610304182265
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.0031690911297172874
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00045554322728548507
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001559968378187311
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 21097308.06794628,
+     "us_concept_exact": 29368663.80894041,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.28878027173319204
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.9411764705882353,
+      "mean_capped_error": 0.012201901204235446
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 436541144438.9505,
+     "us_concept_exact": 506922149127.2931,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.21568627450980393,
+      "mean_capped_error": 0.20976920148774575
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.9215686274509803,
+      "mean_capped_error": 0.07972405668147982
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 7262592.469218501,
+     "us_concept_exact": 9522292.71397138,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.09803921568627451,
+      "mean_capped_error": 0.23745014602284834
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.000591070336106078
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 1248728293657.6807,
+     "us_concept_exact": 1119829818707.648,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.5098039215686274,
+      "mean_capped_error": 0.12091337897545473
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.8627450980392157,
+      "mean_capped_error": 0.028810547174107477
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 6146224.56082022,
+     "us_concept_exact": 9320362.054195859,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.3258843907753155
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0010674291015424786
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 111266691574.44617,
+     "us_concept_exact": 98375781508.66736,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.3333333333333333,
+      "mean_capped_error": 0.3613558796914522
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.8235294117647058,
+      "mean_capped_error": 0.16297079722510247
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 532174277507.26306,
+     "neg_sum": -25252128379.97207,
+     "net": 506922149127.291,
+     "pos_count": 28075258.461739875,
+     "neg_count": 1293405.3472004451,
+     "nonzero_count": 29368663.80894032
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 436541144279.8536,
+     "neg_sum": -9372107430.03218,
+     "net": 427169036849.8214,
+     "pos_count": 21097308.06794647,
+     "neg_count": 855021.9108168985,
+     "nonzero_count": 21952329.978763368
+    },
+    "sstb_only": {
+     "pos_sum": 95633133227.40947,
+     "neg_sum": -15880020949.939894,
+     "net": 79753112277.46957,
+     "pos_count": 7037689.125085464,
+     "neg_count": 473861.43453633785,
+     "nonzero_count": 7511550.559621802
+    },
+    "partnership_s_corp": {
+     "pos_sum": 1248728295308.59,
+     "neg_sum": -128898476600.9437,
+     "net": 1119829818707.6465,
+     "pos_count": 7262592.469218479,
+     "neg_count": 2259700.244752976,
+     "nonzero_count": 9522292.713971455
+    },
+    "rental_only": {
+     "pos_sum": 182663737698.69913,
+     "neg_sum": -84287956190.0322,
+     "net": 98375781508.66693,
+     "pos_count": 5750779.802142654,
+     "neg_count": 3569582.2520532925,
+     "nonzero_count": 9320362.054195946
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 199502863673.60962,
+     "neg_sum": -88236172932.60324,
+     "net": 111266690741.00638,
+     "pos_count": 6146224.560820239,
+     "neg_count": 3703174.3814952965,
+     "nonzero_count": 9849398.942315536
+    },
+    "farm_rent_only": {
+     "pos_sum": 20079006757.558445,
+     "neg_sum": -7188097525.218986,
+     "net": 12890909232.339458,
+     "pos_count": 548511.1120325762,
+     "neg_count": 252812.77444826922,
+     "nonzero_count": 801323.8864808455
+    },
+    "tax_units": 171798780.41966832
+   },
+   "kish_ess": 77306.34727637228,
+   "chi_square_from_initial": 2.1989173208342634,
+   "max_ratio_to_published": 187.12452832058665,
+   "min_ratio_to_published": 0.0027996439820645188,
+   "correlation_with_published": 0.9173741192580671
+  },
+  "concept_exact_no_business_count": {
+   "own_surface": {
+    "n": 5642,
+    "within_10pct": 0.9404466501240695,
+    "mean_capped_error": 0.031323200173138596,
+    "weighted_capped_error": 0.025832973648824337,
+    "rows_312": {
+     "n": 260,
+     "within_10pct": 0.9307692307692308,
+     "mean_capped_error": 0.050001055259384634
+    },
+    "rows_312_by_measure": {
+     "partnership_scorp_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8653846153846154,
+      "mean_capped_error": 0.028530542772320446
+     },
+     "partnership_scorp_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.000684900228991228
+     },
+     "rental_royalty_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8461538461538461,
+      "mean_capped_error": 0.1593774574958563
+     },
+     "rental_royalty_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0014704569866811333
+     },
+     "schedule_c_income_amount": {
+      "n": 52,
+      "within_10pct": 0.9423076923076923,
+      "mean_capped_error": 0.059941918813074056
+     }
+    }
+   },
+   "own_final_loss": 0.025832973648824337,
+   "seconds": 1200.0367929935455,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9409141583054627,
+    "mean_capped_error": 0.03042088833322333
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.9447066756574511,
+     "mean_capped_error": 0.026529874659650177
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010574763973047635
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.003085691130915091
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.03168180587198839
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09178930934524338
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.75,
+     "mean_capped_error": 0.0831646723093811
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.022714403445755794
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.017400626020309076
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8975672215108835,
+     "mean_capped_error": 0.049082028571479516
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.004713594982796336
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001987146973107481
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5002390646810833
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010808419058344136
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.012586838072405852
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.019279363433851986
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0013007420016721324
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.9090909090909091,
+     "mean_capped_error": 0.04449095632812949
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.004917012080573806
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0006176716667074328
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9444444444444444,
+     "mean_capped_error": 0.016587755295978918
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.016275365231536054
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.8018867924528302,
+     "mean_capped_error": 0.080191155286596
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.003283691205816094
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9716981132075472,
+     "mean_capped_error": 0.023536825658785326
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9903846153846154,
+     "mean_capped_error": 0.011485702657938988
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0019159759978313123
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9171483622350675,
+     "mean_capped_error": 0.04882282902706604
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001193572563453933
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.0032011161553566
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0004261590438591849
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0013449864823105277
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 10446931.684720758,
+     "us_concept_exact": 14401263.986489767,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.6270138550401406
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.4855405722321898
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 422542007444.54694,
+     "us_concept_exact": 493450521143.3887,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.27450980392156865,
+      "mean_capped_error": 0.1892787054302032
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.9411764705882353,
+      "mean_capped_error": 0.06023872356878862
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 7247623.202793523,
+     "us_concept_exact": 9523957.756858235,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.11764705882352941,
+      "mean_capped_error": 0.23844306238491975
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0006412367608047584
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 1252526622019.3538,
+     "us_concept_exact": 1120216282645.756,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.47058823529411764,
+      "mean_capped_error": 0.12354065050484782
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.8627450980392157,
+      "mean_capped_error": 0.02845670909142064
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 6140638.852181552,
+     "us_concept_exact": 9323595.021850869,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.3260537135587229
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0013440313721226156
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 113142552295.48412,
+     "us_concept_exact": 99319784558.6815,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.3137254901960784,
+      "mean_capped_error": 0.3551583848245998
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.8431372549019608,
+      "mean_capped_error": 0.16181378251448247
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 513000301045.8628,
+     "neg_sum": -19549779902.473724,
+     "net": 493450521143.38904,
+     "pos_count": 13650600.58147629,
+     "neg_count": 750663.4050134177,
+     "nonzero_count": 14401263.986489708
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 422542007032.52625,
+     "neg_sum": -5772391174.62831,
+     "net": 416769615857.89795,
+     "pos_count": 10446931.68472077,
+     "neg_count": 389819.73932549707,
+     "nonzero_count": 10836751.424046267
+    },
+    "sstb_only": {
+     "pos_sum": 90458294013.33652,
+     "neg_sum": -13777388727.845417,
+     "net": 76680905285.4911,
+     "pos_count": 3238309.7180729257,
+     "neg_count": 390560.49617484875,
+     "nonzero_count": 3628870.2142477743
+    },
+    "partnership_s_corp": {
+     "pos_sum": 1252526623709.004,
+     "neg_sum": -132310341063.25182,
+     "net": 1120216282645.7522,
+     "pos_count": 7247623.202793542,
+     "neg_count": 2276334.5540646818,
+     "nonzero_count": 9523957.756858224
+    },
+    "rental_only": {
+     "pos_sum": 185437626581.64838,
+     "neg_sum": -86117842022.96698,
+     "net": 99319784558.6814,
+     "pos_count": 5753234.4943641145,
+     "neg_count": 3570360.5274867145,
+     "nonzero_count": 9323595.021850828
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 202601658081.3424,
+     "neg_sum": -89459106543.11453,
+     "net": 113142551538.22787,
+     "pos_count": 6140638.852181494,
+     "neg_count": 3704029.2692447496,
+     "nonzero_count": 9844668.121426243
+    },
+    "farm_rent_only": {
+     "pos_sum": 20513634304.56611,
+     "neg_sum": -6690867325.019619,
+     "net": 13822766979.54649,
+     "pos_count": 538518.496693682,
+     "neg_count": 258571.61566575454,
+     "nonzero_count": 797090.1123594366
+    },
+    "tax_units": 171453411.49112204
+   },
+   "kish_ess": 82769.38427576036,
+   "chi_square_from_initial": 1.9969664973829373,
+   "max_ratio_to_published": 186.25197277796858,
+   "min_ratio_to_published": 0.0020738144761323915,
+   "correlation_with_published": 0.8495061593350868
+  },
+  "drop": {
+   "own_surface": {
+    "n": 5434,
+    "within_10pct": 0.9433198380566802,
+    "mean_capped_error": 0.029588555266496584,
+    "weighted_capped_error": 0.02414134084794914,
+    "rows_312": {
+     "n": 52,
+     "within_10pct": 0.8461538461538461,
+     "mean_capped_error": 0.14401425021136027
+    },
+    "rows_312_by_measure": {
+     "rental_royalty_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8461538461538461,
+      "mean_capped_error": 0.14401425021136027
+     }
+    }
+   },
+   "own_final_loss": 0.02414134084794914,
+   "seconds": 1327.6631488800049,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9442586399108138,
+    "mean_capped_error": 0.0284829929964979
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.9501011463250169,
+     "mean_capped_error": 0.02473938074825016
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.011291184144557436
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0031072439607380147
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.03050141917914439
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09301644230735817
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.7678571428571429,
+     "mean_capped_error": 0.07969413734883017
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.02163188704911867
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.020514266626268585
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8950064020486556,
+     "mean_capped_error": 0.05034426166635014
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.0030517663934444272
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0015511247300519912
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5004930092510557
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.012167779249265043
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.011184960830172093
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.02280387142337408
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0012212386144266822
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.9090909090909091,
+     "mean_capped_error": 0.039132420333477
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.004343737060606912
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00016722962812168495
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9537037037037037,
+     "mean_capped_error": 0.014512006728752636
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.015950702266462176
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.839622641509434,
+     "mean_capped_error": 0.065558611555918
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0023703100230219915
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9811320754716981,
+     "mean_capped_error": 0.022688841278055212
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.012103793322479297
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0017192305259913546
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9229287090558767,
+     "mean_capped_error": 0.043133486881561364
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001058140387657035
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.003109099500562069
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 4.577865852951706e-05
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001689537783649304
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 14705482.92440955,
+     "us_concept_exact": 19545853.955323044,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.4854461020585187
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0392156862745098,
+      "mean_capped_error": 0.316764832844319
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 1013049234569.7578,
+     "us_concept_exact": 1320738618653.3716,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.8280560883734137
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.9117405017268697
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 5125504.830486556,
+     "us_concept_exact": 7448437.801826627,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.48844006848619353
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.17647058823529413,
+      "mean_capped_error": 0.2585143607948064
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 986909097087.566,
+     "us_concept_exact": 811085770783.4054,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.058823529411764705,
+      "mean_capped_error": 0.3601264397789437
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.09803921568627451,
+      "mean_capped_error": 0.45242757009616796
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 8952775.496664645,
+     "us_concept_exact": 14248242.492186503,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.5098039215686274,
+      "mean_capped_error": 0.1164169947667931
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0784313725490196,
+      "mean_capped_error": 0.511207759456351
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 96244798433.67328,
+     "us_concept_exact": 95051311739.32632,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.8431372549019608,
+      "mean_capped_error": 0.1467777268818779
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.49019607843137253,
+      "mean_capped_error": 0.2668533600129238
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 1332854434606.9531,
+     "neg_sum": -12115815953.579754,
+     "net": 1320738618653.3733,
+     "pos_count": 19027805.645274416,
+     "neg_count": 518048.3100485289,
+     "nonzero_count": 19545853.955322944
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 1013049234094.7592,
+     "neg_sum": -3823314218.207496,
+     "net": 1009225919876.5516,
+     "pos_count": 14705482.924409505,
+     "neg_count": 313331.05016851786,
+     "nonzero_count": 15018813.974578023
+    },
+    "sstb_only": {
+     "pos_sum": 319805200512.19366,
+     "neg_sum": -8292501735.372258,
+     "net": 311512698776.8214,
+     "pos_count": 4361342.790689465,
+     "neg_count": 219729.21551480342,
+     "nonzero_count": 4581072.006204268
+    },
+    "partnership_s_corp": {
+     "pos_sum": 986909098527.1526,
+     "neg_sum": -175823327743.75406,
+     "net": 811085770783.3986,
+     "pos_count": 5125504.830486545,
+     "neg_count": 2322932.9713401077,
+     "nonzero_count": 7448437.801826653
+    },
+    "rental_only": {
+     "pos_sum": 208807231655.78845,
+     "neg_sum": -113755919916.461,
+     "net": 95051311739.32745,
+     "pos_count": 8707768.69404723,
+     "neg_count": 5540473.79813936,
+     "nonzero_count": 14248242.49218659
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 216072084141.34116,
+     "neg_sum": -119827286324.72166,
+     "net": 96244797816.61949,
+     "pos_count": 8952775.496664695,
+     "neg_count": 5713390.034520076,
+     "nonzero_count": 14666165.53118477
+    },
+    "farm_rent_only": {
+     "pos_sum": 10085180185.960823,
+     "neg_sum": -8891694108.668758,
+     "net": 1193486077.2920647,
+     "pos_count": 416675.3343875678,
+     "neg_count": 298485.2804042252,
+     "nonzero_count": 715160.614791793
+    },
+    "tax_units": 170803381.19051546
+   },
+   "kish_ess": 84834.25503378721,
+   "chi_square_from_initial": 1.9164335353108426,
+   "max_ratio_to_published": 168.73463300089801,
+   "min_ratio_to_published": 0.0044356778480312276,
+   "correlation_with_published": 0.8530574344564628
+  },
+  "rebase_positive_part": {
+   "own_surface": {
+    "n": 5694,
+    "within_10pct": 0.9406392694063926,
+    "mean_capped_error": 0.031124895924437537,
+    "weighted_capped_error": 0.025520896184999003,
+    "rows_312": {
+     "n": 312,
+     "within_10pct": 0.9294871794871795,
+     "mean_capped_error": 0.048663839443980575
+    },
+    "rows_312_by_measure": {
+     "partnership_scorp_income_amount": {
+      "n": 52,
+      "within_10pct": 0.8653846153846154,
+      "mean_capped_error": 0.029121361073805672
+     },
+     "partnership_scorp_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0007174959400305368
+     },
+     "rental_royalty_income_amount": {
+      "n": 52,
+      "within_10pct": 0.7692307692307693,
+      "mean_capped_error": 0.20061369170231247
+     },
+     "rental_royalty_income_returns": {
+      "n": 52,
+      "within_10pct": 0.9807692307692307,
+      "mean_capped_error": 0.020449154676961213
+     },
+     "schedule_c_income_amount": {
+      "n": 52,
+      "within_10pct": 0.9615384615384616,
+      "mean_capped_error": 0.04022053983444267
+     },
+     "schedule_c_income_returns": {
+      "n": 52,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.000860793436330879
+     }
+    }
+   },
+   "own_final_loss": 0.025520896184999003,
+   "seconds": 1360.8871195316315,
+   "common_rows": {
+    "n": 5382,
+    "within_10pct": 0.9412857673727238,
+    "mean_capped_error": 0.03010814557547852
+   },
+   "common_rows_by_variable": {
+    "": {
+     "n": 1483,
+     "within_10pct": 0.947403910991234,
+     "mean_capped_error": 0.025680003134721487
+    },
+    "adjusted_gross_income": {
+     "n": 57,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010869756310194949
+    },
+    "assigned_aca_ptc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0031830344921850028
+    },
+    "capital_gains_gross": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.021545397499507925
+    },
+    "charitable_deduction": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.09389530298475145
+    },
+    "count": {
+     "n": 56,
+     "within_10pct": 0.75,
+     "mean_capped_error": 0.08117755116568282
+    },
+    "ctc": {
+     "n": 104,
+     "within_10pct": 0.9615384615384616,
+     "mean_capped_error": 0.022104357248142234
+    },
+    "deductible_mortgage_interest": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.015159476349723526
+    },
+    "eitc": {
+     "n": 781,
+     "within_10pct": 0.8962868117797695,
+     "mean_capped_error": 0.04905632374082366
+    },
+    "employment_income": {
+     "n": 106,
+     "within_10pct": 0.9905660377358491,
+     "mean_capped_error": 0.0045833346660445985
+    },
+    "estate_income": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0002535638551836992
+    },
+    "estate_losses": {
+     "n": 2,
+     "within_10pct": 0.5,
+     "mean_capped_error": 0.5004057178816248
+    },
+    "income_tax": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.010053325465220626
+    },
+    "income_tax_before_credits": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.013096228500835659
+    },
+    "interest_deduction": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.018109815462155773
+    },
+    "ira_distributions": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0013584711903109092
+    },
+    "itemized_taxable_income_deductions": {
+     "n": 55,
+     "within_10pct": 0.8909090909090909,
+     "mean_capped_error": 0.04459104451985205
+    },
+    "medical_expense_deduction": {
+     "n": 104,
+     "within_10pct": 0.9807692307692307,
+     "mean_capped_error": 0.004945892430593925
+    },
+    "non_sch_d_capital_gains": {
+     "n": 2,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.00016985252287565246
+    },
+    "ordinary_dividend_income": {
+     "n": 108,
+     "within_10pct": 0.9537037037037037,
+     "mean_capped_error": 0.016346793255598208
+    },
+    "qualified_dividends": {
+     "n": 104,
+     "within_10pct": 0.9519230769230769,
+     "mean_capped_error": 0.016374502025037138
+    },
+    "real_estate_taxes": {
+     "n": 106,
+     "within_10pct": 0.7924528301886793,
+     "mean_capped_error": 0.08014987554314529
+    },
+    "refundable_ctc": {
+     "n": 104,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0029265620560569375
+    },
+    "salt_deduction": {
+     "n": 106,
+     "within_10pct": 0.9622641509433962,
+     "mean_capped_error": 0.02346409117959429
+    },
+    "tax_exempt_interest_income": {
+     "n": 104,
+     "within_10pct": 0.9903846153846154,
+     "mean_capped_error": 0.010888368956829044
+    },
+    "taxable_income": {
+     "n": 107,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.002506899924440365
+    },
+    "taxable_interest_income": {
+     "n": 1038,
+     "within_10pct": 0.9171483622350675,
+     "mean_capped_error": 0.049660796430057455
+    },
+    "taxable_pension_income": {
+     "n": 108,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0011393456822805243
+    },
+    "taxable_social_security": {
+     "n": 108,
+     "within_10pct": 0.9907407407407407,
+     "mean_capped_error": 0.0032063208613954198
+    },
+    "tip_income": {
+     "n": 1,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.0005644290296060586
+    },
+    "unemployment_compensation": {
+     "n": 106,
+     "within_10pct": 1.0,
+     "mean_capped_error": 0.001624817581294069
+    }
+   },
+   "rows_312": {
+    "schedule_c_income_returns": {
+     "us_target": 30354680.0,
+     "us_release_concept": 16765414.239372674,
+     "us_concept_exact": 22493042.079613097,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.44619656914319605
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.255240628173601
+     }
+    },
+    "schedule_c_income_amount": {
+     "us_target": 472289642161.9491,
+     "us_release_concept": 524427962672.9276,
+     "us_concept_exact": 613289949110.9703,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.49019607843137253,
+      "mean_capped_error": 0.13453075480353566
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.2910165220758344
+     }
+    },
+    "partnership_scorp_income_returns": {
+     "us_target": 9551770.0,
+     "us_release_concept": 7268318.530816951,
+     "us_concept_exact": 9523299.47472488,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.11764705882352941,
+      "mean_capped_error": 0.23816200449975694
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 1.0,
+      "mean_capped_error": 0.0006731202839592062
+     }
+    },
+    "partnership_scorp_income_amount": {
+     "us_target": 1157602275777.119,
+     "us_release_concept": 1247921767076.7927,
+     "us_concept_exact": 1119446019405.733,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.5098039215686274,
+      "mean_capped_error": 0.11793068670235751
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.8627450980392157,
+      "mean_capped_error": 0.029046065096675455
+     }
+    },
+    "rental_royalty_income_returns": {
+     "us_target": 9398010.0,
+     "us_release_concept": 6349815.02144129,
+     "us_concept_exact": 10669611.298720777,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.0,
+      "mean_capped_error": 0.3283768515217562
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.43137254901960786,
+      "mean_capped_error": 0.1733655485579856
+     }
+    },
+    "rental_royalty_income_amount": {
+     "us_target": 95949567370.41321,
+     "us_release_concept": 119793997239.833,
+     "us_concept_exact": 118216927758.00688,
+     "states_release_concept": {
+      "n": 51,
+      "within_10pct": 0.13725490196078433,
+      "mean_capped_error": 0.5175850176851029
+     },
+     "states_concept_exact": {
+      "n": 51,
+      "within_10pct": 0.1568627450980392,
+      "mean_capped_error": 0.5054651608700602
+     }
+    }
+   },
+   "model_totals": {
+    "schedule_c_total": {
+     "pos_sum": 627729978529.0084,
+     "neg_sum": -14440029418.037537,
+     "net": 613289949110.971,
+     "pos_count": 21893495.858489927,
+     "neg_count": 599546.2211232035,
+     "nonzero_count": 22493042.07961313
+    },
+    "schedule_c_nonsstb": {
+     "pos_sum": 524427962388.01794,
+     "neg_sum": -3459685483.7158675,
+     "net": 520968276904.30206,
+     "pos_count": 16765414.239372676,
+     "neg_count": 306384.8612301914,
+     "nonzero_count": 17071799.10060287
+    },
+    "sstb_only": {
+     "pos_sum": 103302016140.99051,
+     "neg_sum": -10980343934.32167,
+     "net": 92321672206.66884,
+     "pos_count": 5173156.727650797,
+     "neg_count": 314370.05891128955,
+     "nonzero_count": 5487526.786562087
+    },
+    "partnership_s_corp": {
+     "pos_sum": 1247921768743.3425,
+     "neg_sum": -128475749337.61453,
+     "net": 1119446019405.728,
+     "pos_count": 7268318.530816973,
+     "neg_count": 2254980.943907943,
+     "nonzero_count": 9523299.474724917
+    },
+    "rental_only": {
+     "pos_sum": 186504895565.0938,
+     "neg_sum": -68287967807.08555,
+     "net": 118216927758.00827,
+     "pos_count": 6185587.588570689,
+     "neg_count": 4484023.710150097,
+     "nonzero_count": 10669611.298720784
+    },
+    "rental_plus_farm_rent": {
+     "pos_sum": 192889949831.28137,
+     "neg_sum": -73095953101.79054,
+     "net": 119793996729.49083,
+     "pos_count": 6349815.021441329,
+     "neg_count": 4657982.993235243,
+     "nonzero_count": 11007798.01467657
+    },
+    "farm_rent_only": {
+     "pos_sum": 8840170100.950193,
+     "neg_sum": -7263101129.467646,
+     "net": 1577068971.4825478,
+     "pos_count": 305834.6418223487,
+     "neg_count": 265774.60906043684,
+     "nonzero_count": 571609.2508827855
+    },
+    "tax_units": 171169825.5187798
+   },
+   "kish_ess": 81036.17721739199,
+   "chi_square_from_initial": 2.052086504679212,
+   "max_ratio_to_published": 186.84931341249253,
+   "min_ratio_to_published": 0.002040609286800876,
+   "correlation_with_published": 0.9056528913504068
+  }
+ },
+ "irs_ty2022_aged": {
+  "schedule_c_total": {
+   "pos_count": 21969832,
+   "neg_count": 8386569,
+   "pos_sum": 608980837381.8507,
+   "neg_sum": -149198909095.43423
+  },
+  "partnership_s_corp": {
+   "pos_count_upper": 7339387,
+   "pos_sum_upper": 1456265836672.1682,
+   "net": 1155309642347.4458
+  },
+  "rental_plus_farm_rent": {
+   "pos_count": 6380131,
+   "neg_count": 3313901,
+   "pos_sum": 166796498138.73874,
+   "neg_sum": -62406494031.38192
+  }
+ }
+}

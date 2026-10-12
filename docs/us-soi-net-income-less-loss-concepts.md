@@ -136,7 +136,8 @@ the packaged district crosswalk and Medicaid substitution) the change:
 These rows are on `national_state`, the surface the certified Route A
 release calibrates, so changing what they bind is a ruling. Three options
 were measured on the release's own calibration checkpoint (see "Effect on
-the Route A calibration" below):
+the Route A calibration" below), with a fourth arm that keeps option 1 but
+drops the Schedule C counts:
 
 1. **Concept-exact (this PR).** Bind each column to the signed tax-unit
    total of its line. This needs no new facts and no share assumption.
@@ -159,3 +160,27 @@ the Route A calibration" below):
   carriers until the frame carries losses;
 - partnership and rental (line 26) do carry losses: 1.68M and 3.66M units before
   calibration.
+
+## Effect on the Route A calibration
+
+`experiments/1228-net-income-less-loss/` re-solves the certified Route A release's `national_state` calibration from its own checkpoint (5,694 targets, 352,932 households, the release's solver settings), once per binding. Only the 312 rows differ between arms. The replay of the release's own binding reproduces it: loss 0.028420 against the recorded 0.028426, weight correlation 0.9999.
+
+| 2024 national total | IRS (Table 1.4 TY2022 aged ×1.12; HT2 for nets and counts) | Release binding | Concept-exact (this PR) | Rebase onto Table 1.4 net income | Drop the 260 rows |
+|---|---:|---:|---:|---:|---:|
+| Schedule C net, incl. SSTB | $460B (HT2 $472B) | $821B | $507B | $613B | $1,321B |
+| Schedule C profits | $609B | $837B | $532B | $628B | $1,333B |
+| Schedule C profit units | 21.97M | 30.64M | 28.08M | 21.89M | 19.03M |
+| Schedule C units with an entry | 30.35M | 31.29M | 29.37M | 22.49M | 19.55M |
+| Partnership/S-corp net | $1,158B | $1,021B | $1,120B | $1,119B | $811B |
+| Partnership/S-corp profit units | ≤ 7.34M | 9.48M | 7.26M | 7.27M | 5.13M |
+| Rental and royalty net (line 26) | $95.9B | $248.6B | $98.4B | $118.2B | $95.1B |
+| Rental and royalty units with an entry (line 26) | 9.40M | 14.09M | 9.32M | 10.67M | 14.25M |
+| The 5,382 other targets within 10% | | 93.96% | 93.96% | 94.13% | 94.43% |
+| Kish ESS | | 77,794 | 77,306 | 81,036 | 84,834 |
+
+- The concept-exact binding is right on what the IRS columns measure, and costs nothing elsewhere.
+- Its Schedule C profit units (1.28×) and profits (0.87×) are off because the frame has few Schedule C losses.
+- The rebase gets profits right and the net 1.3× high, for the same reason. It also needs PolicyEngine/chronicle#346 and has no partnership counterpart.
+- Dropping the rows lets Schedule C reach $1.3T.
+
+The experiment's README has the arm definitions, the checks, per-measure state fit and the full totals.
