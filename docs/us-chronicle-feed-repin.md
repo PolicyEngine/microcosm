@@ -220,8 +220,9 @@ package can pin one file with `artifact.artifact_year` and still render
 `{year}` into its period, record ids and vintage from the build year. The
 scope builds these five at 2023, so each emits its pinned file as `ty2023`.
 PolicyEngine/chronicle#117 reported the congressional-district case in July.
-microcosm#1030 found the other four, and PolicyEngine/chronicle#292 fixes the
-stamp at source.
+microcosm#1030 found the other four, and PolicyEngine/chronicle#292 (merged
+2026-09-28) refuses these builds at source. The `51aa40f` pin is `c5e5bf8`
+plus one package, so it still carries all five.
 
 | Package | File | Data year | Facts stamped ty2023 |
 |---|---|---|---|
@@ -259,7 +260,18 @@ Each detected fact must match a reviewed `US_RESTAMPED_SOURCE_PACKAGES` entry,
 or the compile refuses. For matching specs, the readings that aging and the
 period contract use move to the data year:
 - `source_period`;
-- `uprating_to_period`, for specs rebased onto a restamped control.
+- `uprating_to_period`, for specs rebased onto a restamped control;
+- `uprating_from_period`, for a restamped row rebased as a share of a
+  restamped total of the same package, stamp and data year (the total its
+  rebase names in `soi_share_total_source_record_id`).
+
+A share's `uprating_to_period`, where its aging starts, stays at the control's
+period. The stamp cancels in row / total, and the level and its period are
+the control's. Starting the aging at the data year instead would apply the
+control's growth from the data year to its own period twice: for the
+congressional-district capital-gains shares that microcosm#1040 proposes,
+x0.761. Any other rebased restamp refuses the compile: one with no named
+total, a truthful total, or a total from another package, stamp or data year.
 
 The stamp is kept in `source_vintage_stamped_period`. Values and target names
 do not change. Two readings still see the stamp, because moving them would
@@ -275,10 +287,12 @@ keyed by its publication year can carry later columns: BEA's 2024-keyed
 `SAINC.zip` has a 2025 column. A truthful build of such a column needs a
 `US_LATER_PERIOD_OBSERVATION_EXEMPTIONS` entry.
 
-**On this feed**, compiled as the release does:
+**On this feed** (`51aa40f`), compiled as the release does:
 
-- **`national_state`** keeps 5,694 targets, and its registry moves from
-  `d315c75804ef` to `884bc45ef335`.
+- **`national_state`** keeps 6,102 targets, and its registry moves from
+  `e1f9906bf0e0` to `61f5cac06310`. On `c5e5bf8`, before the 408 state
+  AGI-band rows, it moved from `d315c75804ef` to `884bc45ef335` at 5,694; every
+  figure below is the same on both feeds.
   - One value moves: the W-2 Box 7 tips amount, from $28,280,884,269 to
     $34,287,530,779 (+21.2%).
   - 53 specs change metadata only: 51 Historic Table 2 net-capital-gains
@@ -322,7 +336,9 @@ Two things need a decision before that re-pin:
   1.4 ty2023, which counts returns with a taxable net gain (a different
   population), and the 51 `national_state` counts would fall 58.5%. Today the
   51 state counts sum to 2.39× the national Table 1.4 target of the same
-  compiled variable.
+  compiled variable. microcosm#1036 (decision d468) chooses the control by
+  concept instead; no restamped row is then a capital-gains control, and the
+  60 control corrections above go away.
 - **`SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID`**, which names the `ty2023`
   record set.
 

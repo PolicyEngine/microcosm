@@ -895,9 +895,11 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
-    version from f96be9f41781 by binding the Part B premium target to
+    61f5cac06310, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. Reading the restamped W-2 tips
+    amount at TY2020 (microcosm#1030) moved the version from e1f9906bf0e0
+    with the counts unchanged. microcosm#1206 moved it from f96be9f41781 by
+    binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
@@ -908,7 +910,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "e1f9906bf0e0"
+    assert surface.version == "61f5cac06310"
     chip = [
         spec
         for spec in surface.specs
@@ -1043,6 +1045,9 @@ def test_pinned_feed_corrects_the_translated_congressional_district_specs(
             "soi-congressional-district-2022"
         )
     )
+    # The 60 Historic Table 2 capital-gains return counts rebased onto the
+    # congressional-district US row (51 of them on national_state), and no
+    # restamped share: no compile on main rebases a restamped row.
     assert (
         sum(
             "uprating_index_source_vintage_correction" in spec.metadata
@@ -1050,33 +1055,55 @@ def test_pinned_feed_corrects_the_translated_congressional_district_specs(
         )
         == 60
     )
-
-
-def test_pinned_feed_capital_gains_returns_control_reads_its_data_year(
-    pinned_feed_national_state_surface,
-) -> None:
-    """The Historic Table 2 net-capital-gains return counts rebase onto the
-    congressional-district file's US row, which is TY2022 data stamped
-    ty2023. The rebase lands them at the control's data year, 2022; the
-    counts never age, so no value moves. Which control those rows should use
-    is a separate concept question: the Table 1.4 ty2023 row counts a
-    different return population."""
-    _, surface, _ = pinned_feed_national_state_surface
-    control_id = (
-        "irs_soi.ty2023.congressional_district_2022.all_returns.us."
-        "net_capital_gains_returns"
-    )
-    rebased = [
-        spec
-        for spec in surface.specs
-        if spec.metadata.get("uprating_index_source_record_id") == control_id
+    assert not [
+        spec.name
+        for spec in registry.specs
+        if "uprating_from_period_vintage_stamped_period" in spec.metadata
     ]
-    assert len(rebased) == 51
+
+
+def test_pinned_feed_rebased_specs_read_restamped_inputs_at_their_data_year(
+    pinned_feed_facts, pinned_feed_national_state_surface
+) -> None:
+    """Every spec rebased onto a restamped control inherits the control's data
+    year, and every restamped spec that was rebased is a share of a restamped
+    total of its own package, stamp and data year: its share is read at the
+    data year while aging still starts at the control's period. On this feed
+    the 60 Historic Table 2 capital-gains return counts rebase onto the
+    congressional-district US row (TY2022 stamped ty2023) and land at 2022;
+    counts never age, so no value moves. The test names no control, so it
+    holds whichever control the capital-gains rebase picks, including a
+    concept rule that never picks the district row (microcosm#1036), and with
+    district rows rebased as shares of that row (microcosm#1040)."""
+    from microcosm.build.us_runtime.source_vintage import source_vintage_corrections
+
+    registry, _, _ = pinned_feed_national_state_surface
+    corrections = source_vintage_corrections(pinned_feed_facts)
+    rebased = [spec for spec in registry.specs if "uprating_factor" in spec.metadata]
+    assert rebased
     for spec in rebased:
-        assert spec.metadata["uprating_to_period"] == "2022"
-        assert spec.metadata["uprating_index_source_vintage_stamped_period"] == "2023"
-        assert spec.metadata["uprating_factor"] == "0.97964474977721"
-        assert spec.metadata["aging_factor_source"] == "not_dollar_amount"
+        metadata = spec.metadata
+        control = corrections.get(metadata.get("uprating_index_source_record_id", ""))
+        if control is None:
+            assert "uprating_index_source_vintage_correction" not in metadata
+        else:
+            assert metadata["uprating_to_period"] == str(control.data_year)
+            assert metadata["uprating_index_source_period"] == str(control.data_year)
+            assert metadata["uprating_index_source_vintage_stamped_period"] == str(
+                control.stamped_year
+            )
+        if "source_vintage_correction" not in metadata:
+            assert "uprating_from_period_vintage_stamped_period" not in metadata
+            continue
+        total = corrections[metadata["soi_share_total_source_record_id"]]
+        assert metadata["source_vintage_correction"] == total.label
+        assert metadata["uprating_from_period"] == str(total.data_year)
+        assert metadata["uprating_from_period_vintage_stamped_period"] == str(
+            total.stamped_year
+        )
+        assert (
+            metadata["uprating_to_period"] == metadata["uprating_index_source_period"]
+        )
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
