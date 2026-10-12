@@ -85,6 +85,8 @@ def test_prices_recompute_from_the_vendored_rows() -> None:
     assert london.trips_per_person == pytest.approx(trips)
     assert london.population == pytest.approx(population)
     assert london.boardings_per_trip == pytest.approx(total / (trips * population))
+    # London fares held flat through 2024-25, so the calendar re-pricing is 1.
+    assert london.calendar_price_factor == pytest.approx(1.0)
     assert london.fare_per_trip == pytest.approx(
         london.boardings_per_trip * london.yield_per_fare_paying_boarding
     )
@@ -114,6 +116,97 @@ def test_prices_recompute_from_the_vendored_rows() -> None:
     assert ni.receipts == pytest.approx(49_584_434.28 + 100_498_383.21, rel=1e-6)
     assert ni.concessionary_boardings == pytest.approx(8_960_000.0)
     assert "composition check" in prices.receipt["algebra"]
+    # Every area's fiscal-year yield is re-priced to calendar 2024 (#1113).
+    assert prices.receipt["price_year"] == 2024
+    for area in prices.other_by_region.values():
+        assert area.fare_per_trip == pytest.approx(
+            area.boardings_per_trip
+            * area.yield_per_fare_paying_boarding
+            * area.calendar_price_factor
+        )
+    assert ni.receipt["price_index"]["basis"] == "england_index_as_proxy"
+
+
+def test_calendar_price_factor_reprices_a_fiscal_year_yield() -> None:
+    """Quarterly: calendar over fiscal mean; annual: three quarters of Y (#1113)."""
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import calendar_price_factor
+
+    quarterly = {
+        "resource": "dft_bus_value_anchors.json",
+        "concept": "dft.local_bus_fares_index",
+        "geography_id": "dft:england_outside_london",
+        "frequency": "quarterly",
+    }
+    factor, receipt = calendar_price_factor(
+        quarterly,
+        price_year=2024,
+        fiscal_start="2024-04-01",
+        allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+    )
+    by_start = {
+        row["period_coverage"]["start_date"]: float(row["value"])
+        for row in vendored_rows(
+            "dft_bus_value_anchors.json",
+            concept="dft.local_bus_fares_index",
+            geography_id="dft:england_outside_london",
+        )
+    }
+    calendar = [by_start[f"2024-{m}-01"] for m in ("01", "04", "07", "10")]
+    fiscal = [
+        by_start[q] for q in ("2024-04-01", "2024-07-01", "2024-10-01", "2025-01-01")
+    ]
+    assert factor == pytest.approx(np.mean(calendar) / np.mean(fiscal))
+    assert factor < 1.0  # fares rose in January 2025
+    assert receipt["calendar_quarters"]["2024-01-01"] == calendar[0]
+
+    annual = {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.local_fare_index",
+        "geography_id": "S92000003",
+        "frequency": "annual",
+    }
+    factor, receipt = calendar_price_factor(
+        annual,
+        price_year=2024,
+        fiscal_start="2024-04-01",
+        allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+    )
+    years = {int(k): v for k, v in receipt["calendar_years"].items()}
+    assert factor == pytest.approx(
+        years[2024] / (0.75 * years[2024] + 0.25 * years[2025])
+    )
+    for change, match in (
+        ({"frequency": "monthly"}, "unsupported price index frequency"),
+        ({"resource": "family_resources.json"}, "not declared"),
+        ({"geography_id": "W92000004"}, "lacks quarters"),
+    ):
+        with pytest.raises(BusFarePricingError, match=match):
+            calendar_price_factor(
+                {**quarterly, **change},
+                price_year=2024,
+                fiscal_start="2024-04-01",
+                allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+            )
+
+
+def test_a_price_year_needs_every_area_to_name_its_index() -> None:
+    declared = _declared()
+    areas = [dict(area) for area in declared["areas"]]
+    areas[1].pop("price_index")
+    with pytest.raises(BusFarePricingError, match="declares no price_index"):
+        bus_fare_prices(
+            {**declared, "areas": areas}, allowed_resources=UK_LCFS_VENDORED_RESOURCES
+        )
+    # Without a price year the yields stay on the publisher's fiscal year.
+    unrepriced = bus_fare_prices(
+        {key: value for key, value in declared.items() if key != "price_year"},
+        allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+    )
+    assert all(
+        area.calendar_price_factor == 1.0
+        for area in unrepriced.other_by_region.values()
+    )
 
 
 def test_published_fact_refuses_the_wrong_resource_unit_or_split() -> None:

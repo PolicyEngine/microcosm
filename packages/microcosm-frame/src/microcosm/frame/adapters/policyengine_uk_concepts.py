@@ -491,6 +491,10 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
         ),
     ),
     unmapped={
+        "fact:household.source_household_id": (
+            "Original donor household lineage is build provenance and weight "
+            "diagnostic support, not a policyengine-uk rules input."
+        ),
         "fact:person.legal_marital_status": (
             "policyengine-uk derives marital status from benefit-unit "
             "composition; marital_status and is_married are formula-owned."

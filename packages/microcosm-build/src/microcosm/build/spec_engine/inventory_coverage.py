@@ -359,8 +359,11 @@ EXPECTED_HASHES = {
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-    "seed_map": "5641418e4a815da24744d59dfcf82fb11aa2f2ddc290ffcab9627383ea6fa682",
-    "seed_protocol": "fd2021c3a69e2a937c8c748343f1b555a876112a52c887d174d482eea0b1afbb",
+    # #1178: puf_support's source bytes attest CPS Social Security preservation;
+    # #454: the meps_esi_premiums stage joins the attested sources. RNG rules
+    # and the ordered QRF targets are unchanged.
+    "seed_map": "08698f4440eb31d1e2886036e7fd0ab86d4c6a007deaa650127dc4346a2151e0",
+    "seed_protocol": "303da98866edb2a87b1dc36d9ff5a0146deb3a68a4f5361416b5794c13ae4cfb",
     "source_manifest": "629a0712659a26b2d6aa6c0e5672421f415d625e0599d6baa0a834d118953c6a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",

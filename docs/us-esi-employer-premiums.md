@@ -196,7 +196,8 @@ committed re-pin report says the pinned feed added, so changing one without
 the other fails CI. And the release tool refuses a feed whose values differ
 from the stage's (`us_esi_premiums_anchor_feed_mismatches`); a diagnostic run
 under `--allow-unpinned-feed` or `--allow-esi-premium-gaps` continues and
-records the difference.
+records the difference in `esi_premiums.json`, or in the report of a
+`--dry-run-gates-report` run, which stops before that file is written.
 
 Two facts differ from what #454 recorded in July:
 

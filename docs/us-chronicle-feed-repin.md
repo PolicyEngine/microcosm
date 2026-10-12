@@ -56,7 +56,7 @@ The comparison scripts and their reports are in
 whose B4923C values differ from the stage's pinned anchor
 (`us_esi_premiums_anchor_feed_mismatches`); a diagnostic run under
 `--allow-unpinned-feed` or `--allow-esi-premium-gaps` continues and records
-the difference in `esi_premiums.json`. A later re-pin that changes other rows
+the difference in `esi_premiums.json` (in the report, for a dry run). A later re-pin that changes other rows
 (microcosm#1192 re-dates the W-2 item facts) must carry the three B4923C
 pairs and redo the row comparison against its own previous feed.
 
