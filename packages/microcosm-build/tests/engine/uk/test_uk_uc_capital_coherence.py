@@ -52,10 +52,10 @@ def test_engine_uses_reported_capital_and_sentinel_routes_to_residual_proxy() ->
     np.testing.assert_array_equal(result, np.asarray([0.0, 16_000.0, 7_000.0]))
 
 
-def _capital_frame(uc_capital, pension_credit_capital):
-    """Pensioner parents, one of them the household reference person, with
-    their working-age child's unit, and a lone parent with a 17-year-old
-    dependant."""
+def _capital_frame(uc_capital, pension_credit_capital, *, child_heads=False):
+    """Pensioner parents with their working-age child's unit, and a lone
+    parent with a 17-year-old dependant. One of the parents is the household
+    reference person, or the child where ``child_heads``."""
 
     person = pd.DataFrame(
         {
@@ -64,7 +64,7 @@ def _capital_frame(uc_capital, pension_credit_capital):
             "person_household_id": [1, 1, 1, 2, 2],
             "age": [70, 68, 30, 40, 17],
             "is_benunit_head": [True, False, True, True, False],
-            "is_household_head": [True, False, False, True, False],
+            "is_household_head": [not child_heads, False, child_heads, True, False],
             "is_uc_claimant": [True, True, True, True, False],
             "universal_credit_reported": 0.0,
         }
@@ -165,3 +165,86 @@ def test_the_engine_assesses_the_recorded_property_and_no_other_unit_takes_it() 
     )
     uc_reporter_keeps, _ = _assessable_capital(reporter_keeps)
     np.testing.assert_allclose(uc_reporter_keeps, [0.0, 0.0, uc_share[2]], rtol=1e-6)
+
+
+def test_a_unit_on_the_sentinel_beside_a_recording_unit_takes_the_engines_proxy() -> (
+    None
+):
+    """A unit on the unavailable sentinel stays on policyengine-uk's proxies,
+    which share the household's gross property. Beside a recording reference
+    person's unit, the Universal Credit proxy leaves it the 10% that unit did
+    not record, and the Pension Credit proxy, which subtracts nothing, counts
+    the property a second time (microcosm#1095)."""
+
+    unavailable = [-1.0, -1.0, -1.0]
+    tables = {
+        entity: _capital_frame(unavailable, unavailable).table(entity)
+        for entity in ("person", "benunit", "household")
+    }
+    uc_share = uc_property_capital_share(
+        tables["person"], tables["benunit"], tables["household"]
+    )
+    pension_credit_share = pension_credit_property_capital_share(
+        tables["person"], tables["benunit"], tables["household"]
+    )
+
+    # The parents record and their child's unit is on the sentinel: the
+    # Universal Credit residual gives the child the 10,000 of sale costs the
+    # parents' 90,000 left out of household 1's 100,000.
+    uc_mixed, pension_credit_mixed = _assessable_capital(
+        _capital_frame(
+            [uc_share[0], -1.0, uc_share[2]],
+            [pension_credit_share[0], -1.0, pension_credit_share[2]],
+        )
+    )
+    np.testing.assert_allclose(uc_mixed, [90_000.0, 10_000.0, 45_000.0], rtol=1e-6)
+    np.testing.assert_allclose(pension_credit_mixed, [117_000.0, 0.0, 0.0], rtol=1e-6)
+
+
+def test_property_held_by_a_working_age_reference_person_leaves_pension_credit() -> (
+    None
+):
+    """Where the working-age child is the household reference person, the
+    child's unit records the household's property and the parents record none.
+    policyengine-uk reads Pension Credit capital only for a unit with a member
+    at the qualifying age, so no Pension Credit assessment counts it. Parents
+    on the sentinel take the engine's gross proxy instead, beside the child's
+    recorded figure (microcosm#1095)."""
+
+    unavailable = [-1.0, -1.0, -1.0]
+    tables = {
+        entity: _capital_frame(unavailable, unavailable, child_heads=True).table(entity)
+        for entity in ("person", "benunit", "household")
+    }
+    uc_share = uc_property_capital_share(
+        tables["person"], tables["benunit"], tables["household"]
+    )
+    pension_credit_share = pension_credit_property_capital_share(
+        tables["person"], tables["benunit"], tables["household"]
+    )
+    np.testing.assert_allclose(uc_share, [0.0, 90_000.0, 45_000.0], rtol=1e-12)
+    np.testing.assert_allclose(
+        pension_credit_share, [0.0, 117_000.0, 49_500.0], rtol=1e-12
+    )
+
+    uc_recorded, pension_credit_recorded = _assessable_capital(
+        _capital_frame(
+            recorded_capital_with_property(np.zeros(3), uc_share),
+            recorded_capital_with_property(np.zeros(3), pension_credit_share),
+            child_heads=True,
+        )
+    )
+    np.testing.assert_allclose(uc_recorded, uc_share, rtol=1e-6)
+    np.testing.assert_array_equal(pension_credit_recorded, [0.0, 0.0, 0.0])
+
+    # The parents on the sentinel: Pension Credit assesses them the gross
+    # 130,000 (property and land), which the child's unit also records at 90%.
+    uc_mixed, pension_credit_mixed = _assessable_capital(
+        _capital_frame(
+            [-1.0, uc_share[1], uc_share[2]],
+            [-1.0, pension_credit_share[1], pension_credit_share[2]],
+            child_heads=True,
+        )
+    )
+    np.testing.assert_allclose(uc_mixed, [10_000.0, 90_000.0, 45_000.0], rtol=1e-6)
+    np.testing.assert_allclose(pension_credit_mixed, [130_000.0, 0.0, 0.0], rtol=1e-6)

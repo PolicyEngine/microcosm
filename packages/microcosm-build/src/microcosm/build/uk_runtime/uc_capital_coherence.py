@@ -95,7 +95,17 @@ PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES = ("owned_land", *UC_PROPERTY_CAPITAL_SO
 #: share (María's ruling of 2026-10-12, microcosm#1095). policyengine-uk's
 #: proxies share household capital over every claimant or partner instead,
 #: which puts a parent's property on an adult child's claim; they apply only
-#: to a unit on the unavailable sentinel.
+#: to a unit on the unavailable sentinel. Such a unit takes the gross value,
+#: with no sale costs. Beside a recording unit, the Universal Credit proxy
+#: shares only what that unit did not record. The Pension Credit proxy
+#: subtracts nothing, so a pension-age unit on the sentinel is assessed a
+#: share of property the reference person's unit also records.
+#:
+#: A consequence of the ruling: where the reference person is of working age,
+#: the property of a pension-age unit in the household is recorded on the
+#: reference person's unit. policyengine-uk reads Pension Credit capital only
+#: for a unit with a member at the qualifying age, so no Pension Credit
+#: assessment counts that property.
 PROPERTY_CAPITAL_OWNERS = "household_reference_person_unit"
 PROPERTY_CAPITAL_OWNER_COLUMN = "is_household_head"
 #: Capital counts at its market value less 10% for the costs of sale (UC Regs
