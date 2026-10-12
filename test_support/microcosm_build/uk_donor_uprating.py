@@ -22,7 +22,10 @@ from microcosm.build.uk_runtime.etb_services import (
     etb_donor_uprating,
     rail_fare_index_denominator_key,
 )
-from microcosm.build.uk_runtime.lcfs_consumption import lcfs_donor_uprating
+from microcosm.build.uk_runtime.lcfs_consumption import (
+    UK_LCFS_DIARY_PRICE_COLUMNS,
+    lcfs_donor_uprating,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from test_support.paths import paths_for
 

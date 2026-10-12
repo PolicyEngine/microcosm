@@ -659,11 +659,30 @@ def test_committed_exclusion_registers_load() -> None:
     )
 
     assert set(input_mass) == {"efrs-post-calibration"}
-    # Both former entries retired 2026-09-21: the first national candidate
-    # measured charitable_investment_gifts and owned_land inside the fence,
-    # and the gate fails a stale exclusion by design.
-    assert input_mass["efrs-post-calibration"] == {}
-    assert qrf_tail == {}
+    # The 2026-09-21 retirements (charitable_investment_gifts and owned_land
+    # measured inside the fence on the first national candidate) stand; the
+    # certifier rehearsal on the 2026-09-30 build earned three entries
+    # (microcosm#1063 c9): the two FRS education inputs the enhanced-FRS
+    # reference barely carries, and the sparse charity-gifts leaf back at
+    # the concentration threshold. The gate fails any of them as stale the
+    # day a build brings the column inside the fence, which the 2 October
+    # final build did for adult_ema (+74% against the reference): its entry
+    # is retired. The 3 October final build's certifier earned three more,
+    # signed 2026-10-04: the FRS access-fund outlier at the weight bound
+    # (expiring with the owed period rule) and the SPI channel's two
+    # legacy-benefit leaves. All three are retired with the microcosm#1095
+    # ports: spi_benefit_coherence zeroes income-based JSA and Working Tax
+    # Credit on SPI rows, and on the review-head arm the columns sit at +316%
+    # and +103% of the reference and the access fund at +62%, its household
+    # off the weight bound, all inside the fence, so the gate fails them as
+    # stale.
+    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
+    assert set(qrf_tail) == {"charitable_investment_gifts"}
+    for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
+        assert record.approved_by == "juaristi22"
+        assert record.approved_on in {"2026-10-02", "2026-10-04"}
+        assert record.expires_on in {"2027-04-02", "2027-01-04", "2027-04-04"}
+        assert "microcosm#1063" in record.adjudication
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
     )

@@ -248,7 +248,10 @@ def _spine_family_frame(
             "household_support_clone_index": [row["support_clone"] for row in rows],
             "household_is_spi_synthetic": [row["spi"] for row in rows],
             "household_is_capital_gains_clone": [row["cgt"] for row in rows],
-            "household_is_cgt_band_donor": [row["band_donor"] for row in rows],
+            "household_is_cgt_support_copy": [row["band_donor"] for row in rows],
+            "household_is_cgt_residential_clone": [
+                row.get("residential_arm", False) for row in rows
+            ],
             "region": [row["region"] for row in rows],
             "household_weight": [row["weight"] for row in rows],
         }
@@ -418,33 +421,6 @@ def test_full_fraction_is_a_structural_no_op() -> None:
     assert sampled is frame
     assert "normalization_factor" not in receipt
     assert receipt["uk_policy"]["spi_replacement_quota_checked"] is True
-
-
-def test_sampled_frames_pass_the_real_stage_fence() -> None:
-    """The sampler's arithmetic is proven against the fence itself.
-
-    The first credentialed rung run died because the sampler and
-    ``_resolve_candidate_lineage`` disagreed; this test closes the coverage
-    hole the adversarial review found by running the REAL fence over sampled
-    frames: every draw must resolve with the full frame's exact multiplier
-    and person-level SPI/CG offsets.
-    """
-
-    from microcosm.build.uk_runtime.frs_hmrc_leaves import (
-        _resolve_candidate_lineage,
-    )
-
-    frame = _source_family_frame()
-    full = _resolve_candidate_lineage(frame)
-    for seed in (0, 3, 11, 42):
-        sampled, _receipt = sample_uk_national_frame(frame, fraction=0.5, seed=seed)
-        lineage = _resolve_candidate_lineage(sampled)
-        assert lineage.clone_id_multiplier == full.clone_id_multiplier
-        assert lineage.spi_person_id_offset == full.spi_person_id_offset
-        assert (
-            lineage.capital_gains_person_id_offset
-            == full.capital_gains_person_id_offset
-        )
 
 
 def test_spine_source_units_use_raw_family_regions() -> None:

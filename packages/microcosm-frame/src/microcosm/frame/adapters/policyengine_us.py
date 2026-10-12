@@ -39,7 +39,11 @@ from microcosm.frame.adapters._policyengine_us_source_index import (
 from microcosm.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
+from microcosm.frame.adapters.policyengine_us_concepts import (
+    POLICYENGINE_US_CONCEPT_MAPPING,
+)
 from microcosm.frame.bundle import Frame
+from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import (
     engine_tables,
     materialize_nullable_booleans_for_pytables,
@@ -53,6 +57,7 @@ from microcosm.frame.units import US_SCHEMA
 from microcosm.frame.weights import Weights
 
 __all__ = [
+    "POLICYENGINE_US_CONCEPT_MAPPING",
     "ConsumerReceipt",
     "PolicyEngineUSEngine",
     "PolicyEngineUSVariableMetadataIndex",
@@ -892,6 +897,10 @@ class PolicyEngineUSEngine:
     def entity_schema(self) -> EntitySchema:
         """Return the US entity schema (no engine import required)."""
         return US_SCHEMA
+
+    def concept_mapping(self) -> ConceptMapping:
+        """Return the concept-to-input mapping (no engine import required)."""
+        return POLICYENGINE_US_CONCEPT_MAPPING
 
     # ------------------------------------------------------------------
     # Materialization

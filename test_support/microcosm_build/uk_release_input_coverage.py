@@ -156,7 +156,7 @@ def _hmrc_family_coverage() -> dict[str, dict[str, object]]:
     return {
         "hmrc_spi_income": {
             "status": "required_at_build",
-            "stage": "hmrc_spi_income",
+            "stage": "hmrc_spi_income_spine",
             "effective_mass_requirements": {
                 "gift_aid": {
                     "status": "distributional_required",

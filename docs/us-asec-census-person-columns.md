@@ -14,6 +14,12 @@ The base pools three processed CPS ASEC inputs, pinned in
 | 2023 | `census_cps_2023.h5` | `cb578173…` | 144,265 | 2 of 18 |
 | 2024 | `census_cps_2024.h5` | `ec36604c…` | 142,125 | 18 of 18 |
 
+Added 2026-09-27: income year 2025 (`census_cps_2025.h5`, `4c5a3218…`,
+134,729 person rows) carries all 18 recodes and every reviewed column below;
+in a default-pool (2023-2025) source construction the restore added nothing
+for 2025 and verified all 11 reviewed columns equal to `pppub26.csv`. Income
+year 2022 has left the default pool (`docs/us-asec-source-pins.md`).
+
 The 2022 and 2023 files were extracted with an older column list. Besides 16
 `NOW_*` at-interview coverage recodes they lack `A_EXPRRP`, `PTOTVAL`,
 `A_ENRLW`, `A_FTPT`, `A_FAMREL`, `A_FAMTYP` and `PECOHAB`; the 2022 file also

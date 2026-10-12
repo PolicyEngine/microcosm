@@ -8,19 +8,23 @@ client, a Modal connection or the network (git runs against a local repo).
 
 from __future__ import annotations
 
+import collections
 import copy
 import dataclasses
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     COMMIT,
@@ -28,6 +32,8 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
     LADDER_SHA,
     ROOT,
     STAGING_SHA,
+    base_plan_data,
+    load_app,
     plan_lib,
 )
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
@@ -40,32 +46,9 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
 
 @pytest.fixture
 def app(monkeypatch):
-    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
+    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module."""
 
-    The stub answers ``is_local()`` with False, so the module defines its
-    image and functions without reading a plan or contacting Modal; volume
-    calls (commit, reload) are recorded, not performed.
-    """
-
-    stub = MagicMock(name="modal")
-    stub.is_local.return_value = False
-    # @app.function(...) keeps the function and records its Modal options.
-    stub.App.return_value.function.side_effect = lambda **options: (
-        lambda function: setattr(function, "modal_options", options) or function
-    )
-    stub.App.return_value.local_entrypoint.side_effect = lambda **_: lambda f: f
-    stub.current_input_id.return_value = "in-test"
-    stub.current_function_call_id.return_value = "fc-test"
-    monkeypatch.setitem(sys.modules, "modal", stub)
-    monkeypatch.setitem(sys.modules, "modal_us_stage_plan", plan_lib)
-    monkeypatch.setattr(sys, "path", list(sys.path))
-    spec = importlib.util.spec_from_file_location(
-        "modal_us_stage_under_test", ROOT / "tools" / "modal_us_stage.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_app(monkeypatch)
 
 
 # --------------------------------------------------------------------------- #
@@ -265,6 +248,7 @@ def test_the_committed_plans_parse() -> None:
         "us-modal-stage-example-plan.json",
         "us-modal-stage-smoke-plan.json",
         "us-modal-stage-acceptance-20260923-plan.json",
+        "us-modal-stage-route-a-base-plan.json",
     ):
         plan_lib.parse_plan(json.loads((ROOT / "docs" / name).read_text()))
 
@@ -341,9 +325,14 @@ def test_argv_paths_are_stable_across_stages() -> None:
 
 
 def test_no_option_maps_to_a_runner_owned_flag() -> None:
+    # Not by name, by an abbreviation argparse would expand, or with '='.
     for tool in plan_lib.TOOLS.values():
         flags = {option.flag for option in tool.options.values()}
         assert not flags & tool.owned_flags
+        for key, option in tool.options.items():
+            assert (
+                plan_lib.option_flag_problem(key, option.flag, tool.owned_flags) is None
+            ), (tool.name, key)
 
 
 def test_build_stage_argv_requires_every_staged_path() -> None:
@@ -445,12 +434,15 @@ def test_receipt_records_plan_source_outputs_and_cost(tmp_path: Path) -> None:
     assert receipt["resources"] == {
         "class": "heavy",
         "cpu": 4.0,
+        "cpu_limit": None,
         "memory_mib": 131072,
         "timeout_s": 28800,
         "nonpreemptible": False,
     }
     paths = [item["path"] for item in receipt["outputs"]]
     assert paths == ["checkpoints/run_identity.json", "populace_us_2024_acs_local.h5"]
+    # Every output is on the volume (only a resume-state stage leaves some).
+    assert receipt["outputs_not_mirrored"] == []
     h5 = receipt["outputs"][1]
     assert h5["sha256"] == hashlib.sha256(b"\x89HDF" * 100).hexdigest()
     # 4 cores + 128 GiB at list price for the measured materialize wall.
@@ -866,10 +858,78 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
     assert env["MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES"] == "1"
 
 
-@pytest.mark.parametrize("key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY"])
+@pytest.mark.parametrize(
+    "key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY", "PYTHONHASHSEED"]
+)
 def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may not be passed"):
         plan_lib.tool_environment({}, {key: "x"})
+
+
+# A probe value: any hash seed other than the local run's "0".
+_PROBE_SEED = "12345"
+
+
+@pytest.mark.parametrize("container", [None, "0", _PROBE_SEED, "random", ""])
+def test_the_container_s_hash_seed_never_reaches_the_tool(container) -> None:
+    base = {"PATH": "/usr/bin", "HOME": "/root"}
+    if container is not None:
+        base["PYTHONHASHSEED"] = container
+    env, removed = plan_lib.tool_environment(base, {"PYTHONUNBUFFERED": "1"})
+    # Neutralized: whatever the container sets, the tool gets none, so the
+    # base's pinned tool gives its stages "0" (its setdefault), as locally.
+    assert "PYTHONHASHSEED" not in env
+    assert removed == ([] if container is None else ["PYTHONHASHSEED"])
+    assert plan_lib.hash_seed_problem(env) is None
+    base_tool = plan_lib.US_PUF_SUPPORT_BASE
+    assert plan_lib.hash_seed_record(base_tool, base, env) == {
+        "container": container,
+        "passed_to_tool": None,
+        "stages_run_with": "0",
+    }
+    # A tool without its own default: its interpreters pick their own seed.
+    acs = plan_lib.US_ACS_LOCAL_RELEASE
+    assert plan_lib.hash_seed_record(acs, base, env)["stages_run_with"] is None
+
+
+@pytest.mark.parametrize("value", [_PROBE_SEED, "1", "random", "", " 0"])
+def test_a_tool_environment_forcing_another_hash_seed_is_refused(value) -> None:
+    problem = plan_lib.hash_seed_problem({"PYTHONHASHSEED": value})
+    assert problem is not None and f"PYTHONHASHSEED={value!r}" in problem
+    assert plan_lib.hash_seed_problem({"PYTHONHASHSEED": "0"}) is None
+    assert plan_lib.hash_seed_problem({}) is None
+    # No plan can ask for one: it is outside the env allowlist.
+    with pytest.raises(plan_lib.PlanError, match="not allowlisted"):
+        plan_lib.parse_plan(_plan_data(env={"PYTHONHASHSEED": value or "0"}))
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    base=st.dictionaries(
+        st.sampled_from(
+            ["PATH", "HOME", "PYTHONHASHSEED", "HF_TOKEN", "OMP_NUM_THREADS", "X"]
+        ),
+        st.text(max_size=6),
+        max_size=6,
+    ),
+    plan_env=st.dictionaries(
+        st.sampled_from(["OMP_NUM_THREADS", "PYTHONUNBUFFERED", "MICROCOSM_X"]),
+        st.text(max_size=4),
+        max_size=3,
+    ),
+)
+def test_every_tool_environment_passes_the_hash_seed_check(base, plan_env) -> None:
+    # For any container environment and any allowlisted plan environment,
+    # the tool's environment carries no hash seed, so the runner's refusal
+    # never fires on what tool_environment builds; the record says what the
+    # container had.
+    env, removed = plan_lib.tool_environment(base, plan_env)
+    assert "PYTHONHASHSEED" not in env
+    assert ("PYTHONHASHSEED" in removed) == ("PYTHONHASHSEED" in base)
+    assert plan_lib.hash_seed_problem(env) is None
+    record = plan_lib.hash_seed_record(plan_lib.US_PUF_SUPPORT_BASE, base, env)
+    assert record["container"] == base.get("PYTHONHASHSEED")
+    assert (record["passed_to_tool"], record["stages_run_with"]) == (None, "0")
 
 
 # --------------------------------------------------------------------------- #
@@ -1067,6 +1127,7 @@ def test_app_run_stage_ends_the_attempt_with_its_outcome(
             "tree_clean": True,
             "branch_verified": True,
             "tool_present": True,
+            "tree_files_verified": True,
         },
     )
     error = app._Refusal("lock held") if raised == "refusal" else OSError("disk full")
@@ -1098,7 +1159,7 @@ def test_a_mirror_cut_short_never_leaves_a_half_written_file(
     plan_lib.mirror_tree(src, dst)
     (src / "a.npz").write_bytes(b"new-a-longer")
     (src / "b.h5").write_bytes(b"new-b-longer")
-    real_copy = plan_lib.shutil.copy2
+    real_copy = plan_lib.copy_hashed
 
     def copy_then_die(source, target):
         if Path(source).name == "b.h5":
@@ -1106,7 +1167,7 @@ def test_a_mirror_cut_short_never_leaves_a_half_written_file(
             raise KeyboardInterrupt
         return real_copy(source, target)
 
-    monkeypatch.setattr(plan_lib.shutil, "copy2", copy_then_die)
+    monkeypatch.setattr(plan_lib, "copy_hashed", copy_then_die)
     with pytest.raises(KeyboardInterrupt):
         plan_lib.mirror_tree(src, dst)
     # a.npz was replaced whole, b.h5 still holds its old bytes, and the
@@ -1115,7 +1176,7 @@ def test_a_mirror_cut_short_never_leaves_a_half_written_file(
     assert (dst / "b.h5").read_bytes() == b"old-b"
     assert (dst / f".b.h5{plan_lib.MIRROR_PARTIAL_SUFFIX}").exists()
     assert set(plan_lib.tree_listing(dst)) == {"a.npz", "b.h5"}
-    monkeypatch.setattr(plan_lib.shutil, "copy2", real_copy)
+    monkeypatch.setattr(plan_lib, "copy_hashed", real_copy)
     counts = plan_lib.mirror_tree(src, dst)
     assert counts["partials_removed"] == 1
     assert (dst / "b.h5").read_bytes() == b"new-b-longer"
@@ -1243,18 +1304,33 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
             for flag in (False, True)
         ]
         + [plan_lib.parse_plan(_smoke_plan_data())]
+        + [
+            plan_lib.parse_plan(base_plan_data(nonpreemptible=flag))
+            for flag in (False, True)
+        ]
     }
     assert keys <= set(app.RUNNERS)
     for (name, nonpreemptible), runner in app.RUNNERS.items():
         resources = plan_lib.RESOURCE_CLASSES[name]
         options = runner.modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
-            resources.cpu,
+            resources.modal_cpu,
             resources.memory_mib,
             resources.timeout_s,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
+        # Memory is a request everywhere (an int, never a (request, limit)).
+        assert isinstance(options["memory"], int)
+    # The base sets a CPU limit equal to its request, and Modal throttles CPU
+    # use above the limit, which is what the $15 ceiling counts on; the ACS
+    # classes keep request-only.
+    for nonpreemptible in (False, True):
+        assert app.RUNNERS[("base", nonpreemptible)].modal_options["cpu"] == (
+            4.0,
+            4.0,
+        )
+    assert app.RUNNERS[("heavy", True)].modal_options["cpu"] == 4.0
     # The check never asks for non-preemptible placement.
     assert "nonpreemptible" not in app.check_stage.modal_options
 
@@ -1332,3 +1408,651 @@ def test_every_documented_thread_count_is_allowlisted(key) -> None:
 @pytest.mark.parametrize("key", ["VECLIB_MAXIMUM_THREADS", "FOO_NUM_THREADS"])
 def test_an_undocumented_thread_variable_is_refused_by_name(key) -> None:
     assert not plan_lib._ENV_KEY.fullmatch(key)
+
+
+# --------------------------------------------------------------------------- #
+# One read per file: hashing while mirroring, verifying while pulling          #
+# --------------------------------------------------------------------------- #
+
+_TREE_DIRS = ("", "a", "a/b", "c")
+# File names carry a dot and directory names do not, so no path is both.
+_TREE_NAME = st.from_regex(r"[a-z]{1,3}\.(h5|json|npz)", fullmatch=True)
+_TREE = st.dictionaries(
+    st.tuples(st.sampled_from(_TREE_DIRS), _TREE_NAME).map(
+        lambda item: f"{item[0]}/{item[1]}".lstrip("/")
+    ),
+    st.binary(max_size=64),
+    max_size=8,
+)
+_TREE_SETTINGS = settings(
+    max_examples=60,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+
+
+def _fresh(tmp_path: Path) -> Path:
+    root = tmp_path / uuid.uuid4().hex
+    root.mkdir()
+    return root
+
+
+def _write_tree(root: Path, files: dict[str, bytes]) -> None:
+    """Make ``root`` hold exactly ``files``; untouched files keep their mtime."""
+
+    for rel in plan_lib.tree_listing(root):
+        if rel not in files:
+            (root / rel).unlink()
+    for rel, payload in files.items():
+        path = root / rel
+        if path.is_file() and path.read_bytes() == payload:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+
+def _contents(root: Path) -> dict[str, bytes]:
+    return {rel: (root / rel).read_bytes() for rel in plan_lib.tree_listing(root)}
+
+
+@_TREE_SETTINGS
+@given(old=_TREE, new=_TREE)
+def test_mirror_tree_hashed_equals_hash_tree_then_mirror_tree(
+    tmp_path: Path, old: dict[str, bytes], new: dict[str, bytes]
+) -> None:
+    # Differential: the one-pass push lists exactly what hash_tree lists and
+    # leaves the destination exactly as mirror_tree would, from any prior
+    # destination state.
+    root = _fresh(tmp_path)
+    src, dst, ref = root / "src", root / "dst", root / "ref"
+    for path in (src, dst, ref):
+        path.mkdir()
+    _write_tree(src, old)
+    plan_lib.mirror_tree(src, dst)
+    plan_lib.mirror_tree(src, ref)
+    _write_tree(src, new)
+    outputs, counts = plan_lib.mirror_tree_hashed(src, dst)
+    assert outputs == plan_lib.hash_tree(src)
+    plan_lib.mirror_tree(src, ref)
+    assert _contents(dst) == _contents(ref) == new
+    assert plan_lib.tree_listing(dst) == plan_lib.tree_listing(src)
+    assert counts["copied"] + counts["hashed_in_place"] + counts["hashes_reused"] == (
+        len(new)
+    )
+    assert counts["hashes_reused"] == 0
+    # Mirrored again with the digests it just computed: nothing is copied
+    # or read again.
+    known = plan_lib.known_hashes(src, outputs)
+    again, counts = plan_lib.mirror_tree_hashed(src, dst, known=known)
+    assert again == outputs
+    assert (counts["copied"], counts["hashed_in_place"]) == (0, 0)
+    assert counts["hashes_reused"] == len(new)
+
+
+@_TREE_SETTINGS
+@given(declared=_TREE, present=_TREE, with_receipt=st.booleans())
+def test_pulled_outputs_problems_equal_pulled_state_problems(
+    tmp_path: Path,
+    declared: dict[str, bytes],
+    present: dict[str, bytes],
+    with_receipt: bool,
+) -> None:
+    # Differential: verifying the pulled state from the digests taken while
+    # pulling it reports what re-reading it (verify_receipt, strict) reports.
+    root = _fresh(tmp_path)
+    receipt_tree, state = root / "receipt", root / "state"
+    receipt_tree.mkdir()
+    state.mkdir()
+    _write_tree(receipt_tree, declared)
+    _write_tree(state, present)
+    latest = (
+        (
+            "stage-x.json",
+            {
+                "schema": plan_lib.RECEIPT_SCHEMA,
+                "outputs": plan_lib.hash_tree(receipt_tree),
+            },
+        )
+        if with_receipt
+        else None
+    )
+    assert plan_lib.pulled_outputs_problems(
+        plan_lib.hash_tree(state), latest
+    ) == plan_lib.pulled_state_problems(state, latest)
+
+
+def test_a_pull_hashes_once_and_a_push_reuses_the_untouched_digests(
+    tmp_path: Path,
+) -> None:
+    volume, local = tmp_path / "volume", tmp_path / "local"
+    _write_tree(volume, {"ckpt/000.h5": b"frame0", "ckpt/001.h5": b"frame1"})
+    pulled, counts = plan_lib.mirror_tree_hashed(volume, local)
+    assert counts["copied"] == 2 and pulled == plan_lib.hash_tree(volume)
+    known = plan_lib.known_hashes(local, pulled)
+    # The tool adds a checkpoint and rewrites one; the other is untouched.
+    (local / "ckpt" / "002.h5").write_bytes(b"frame2")
+    (local / "ckpt" / "001.h5").write_bytes(b"frame1-redone")
+    outputs, counts = plan_lib.mirror_tree_hashed(local, volume, known=known)
+    assert outputs == plan_lib.hash_tree(local) == plan_lib.hash_tree(volume)
+    assert counts == {
+        "copied": 2,
+        "hashed_in_place": 0,
+        "hashes_reused": 1,
+        "deleted": 0,
+        "partials_removed": 0,
+    }
+
+
+_PUSH_FIRST = st.lists(
+    st.sampled_from(["a", "a/b", "c", "zz.h5", "a/x.json", "c/q.npz"]),
+    max_size=3,
+    unique=True,
+)
+
+
+@_TREE_SETTINGS
+@given(old=_TREE, new=_TREE, first=_PUSH_FIRST, clean_exit=st.booleans())
+def test_push_state_copies_first_paths_first_and_after_a_clean_exit_only_them(
+    tmp_path: Path,
+    old: dict[str, bytes],
+    new: dict[str, bytes],
+    first: list[str],
+    clean_exit: bool,
+) -> None:
+    # Properties of the runner's push, from any prior destination state:
+    # the receipt always lists the whole source tree as hash_tree does; the
+    # copies follow push_order (the first paths' files, in their order,
+    # before every other file); without copy_only the destination mirrors
+    # the source; with it the destination holds every first-path file and
+    # nothing that differs from the source, and the files it lacks are
+    # exactly the ones reported as not mirrored, which verify_receipt names.
+    root = _fresh(tmp_path)
+    src, dst = root / "src", root / "dst"
+    src.mkdir()
+    dst.mkdir()
+    _write_tree(src, old)
+    plan_lib.mirror_tree(src, dst)
+    _write_tree(src, new)
+    copy_only = tuple(first) if clean_exit and first else None
+    copied: list[str] = []
+    real = plan_lib.copy_hashed
+
+    def spy(source, target):
+        copied.append(Path(source).relative_to(src).as_posix())
+        return real(source, target)
+
+    plan_lib.copy_hashed = spy
+    try:
+        outputs, counts, not_mirrored = plan_lib.push_state(
+            src, dst, first=first, copy_only=copy_only
+        )
+    finally:
+        plan_lib.copy_hashed = real
+    assert outputs == plan_lib.hash_tree(src)
+    order = plan_lib.push_order(plan_lib.tree_listing(src), first)
+    assert sorted(order) == sorted(new) and len(order) == len(set(order))
+    in_first = [
+        any(plan_lib.under_state_path(rel, path) for path in first) for rel in order
+    ]
+    # Every first-path file comes before every other file.
+    assert in_first == sorted(in_first, reverse=True)
+    # And the first paths keep their order: the index in ``first`` of each
+    # file's first matching path (len(first) for a file under none) never
+    # decreases along the push, and the files of one index are sorted.
+    ranks = [
+        next(
+            (
+                index
+                for index, path in enumerate(first)
+                if plan_lib.under_state_path(rel, path)
+            ),
+            len(first),
+        )
+        for rel in order
+    ]
+    assert ranks == sorted(ranks)
+    for rank in set(ranks):
+        group = [rel for rel, r in zip(order, ranks, strict=True) if r == rank]
+        assert group == sorted(group)
+    assert copied == [rel for rel in order if rel in set(copied)]
+    on_dst = _contents(dst)
+    if copy_only is None:
+        assert on_dst == new and not_mirrored == []
+    else:
+        assert all(new.get(rel) == payload for rel, payload in on_dst.items())
+        assert all(
+            on_dst.get(rel) == new[rel]
+            for rel, flag in zip(order, in_first, strict=True)
+            if flag
+        )
+        assert not_mirrored == sorted(set(new) - set(on_dst))
+        assert counts["hashed_not_copied"] == len(not_mirrored)
+    receipt = {
+        "schema": plan_lib.RECEIPT_SCHEMA,
+        "outputs": outputs,
+        "outputs_not_mirrored": not_mirrored,
+    }
+    assert plan_lib.verify_receipt(receipt, dst, strict=True) == [
+        f"missing: {item['path']} (outputs_not_mirrored: hashed in the container, "
+        "never copied to the runs volume)"
+        for item in outputs
+        if item["path"] in not_mirrored
+    ]
+
+
+def test_push_copy_only_applies_to_a_clean_exit_of_a_resume_state_stage() -> None:
+    resources = plan_lib.CHECK
+    resumable = plan_lib.StageSpec(
+        "run", resources, (), mirror_first=("out",), rest_is_resume_state=True
+    )
+    for returncode, stopped, expected in (
+        (0, False, ("out",)),
+        (0, True, None),
+        (1, False, None),
+        (-9, True, None),
+    ):
+        assert (
+            plan_lib.push_copy_only(
+                resumable, returncode=returncode, stopped_at_budget=stopped
+            )
+            == expected
+        )
+    ordered_only = plan_lib.StageSpec("run", resources, (), mirror_first=("out",))
+    assert (
+        plan_lib.push_copy_only(ordered_only, returncode=0, stopped_at_budget=False)
+        is None
+    )
+    with pytest.raises(ValueError, match="needs mirror_first"):
+        plan_lib.StageSpec("run", resources, (), rest_is_resume_state=True)
+    with pytest.raises(ValueError, match="clean relative path"):
+        plan_lib.StageSpec("run", resources, (), mirror_first=("../out",))
+
+
+# --------------------------------------------------------------------------- #
+# The run path end to end, against local directories                          #
+# --------------------------------------------------------------------------- #
+
+# A stand-in for a resumable tool: its first run writes a checkpoint, a
+# later run of the same state finds it and only rewrites the output.
+_FAKE_TOOL = """\
+import os, pathlib, sys, time
+state, data = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+ckpt = state / "ckpt" / "step1.bin"
+resumed = ckpt.exists()
+if not resumed:
+    ckpt.parent.mkdir(parents=True, exist_ok=True)
+    ckpt.write_bytes(data.read_bytes() * 3)
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text(f"resumed={resumed}\\n")
+print("fake tool", "resumed" if resumed else "fresh", flush=True)
+time.sleep(float(os.environ.get("MICROCOSM_FAKE_SLEEP", "0")))
+"""
+_FAKE_PAYLOAD = b"fake input"
+_FAKE_SHA = hashlib.sha256(_FAKE_PAYLOAD).hexdigest()
+
+
+def _fake_tool(
+    timeout_s: int = 3600, overhead: int = 60, **stage: object
+) -> plan_lib.ToolSpec:
+    resources = plan_lib.Resources("check", 2.0, 8 * 1024, timeout_s=timeout_s)
+    return plan_lib.ToolSpec(
+        name="fake-stage",
+        script=None,
+        inputs=("data",),
+        stages={
+            "run": plan_lib.StageSpec(
+                "run",
+                resources,
+                ("data",),
+                runner_overhead_seconds=overhead,
+                **stage,  # type: ignore[arg-type]
+            )
+        },
+        options={},
+        owned_flags=frozenset(),
+        argv_builder=lambda plan, paths, state: [
+            "-c",
+            _FAKE_TOOL,
+            state,
+            paths["data"],
+        ],
+    )
+
+
+def _fake_plan(**overrides) -> dict:
+    data = {
+        "schema": plan_lib.PLAN_SCHEMA,
+        "tool": "fake-stage",
+        "stage": "run",
+        "run_id": "fake-run",
+        "source": {"commit": "a" * 40, "branch": "main"},
+        "inputs": {
+            "data": {
+                "uri": f"volume://cas/sha256/{_FAKE_SHA}/data.bin",
+                "sha256": _FAKE_SHA,
+            }
+        },
+    }
+    data.update(overrides)
+    return data
+
+
+@pytest.fixture
+def fake_runner(app, tmp_path: Path, monkeypatch):
+    """The app with its mounts, clone and venv pointed at local directories."""
+
+    def install(tool: plan_lib.ToolSpec):
+        monkeypatch.setitem(plan_lib.TOOLS, tool.name, tool)
+        return app
+
+    for name in ("inputs", "runs", "work", "repo", "venv/bin"):
+        (tmp_path / name).mkdir(parents=True)
+    (tmp_path / "venv" / "bin" / "python").symlink_to(sys.executable)
+    cas = tmp_path / "inputs" / "cas" / "sha256" / _FAKE_SHA
+    cas.mkdir(parents=True)
+    (cas / "data.bin").write_bytes(_FAKE_PAYLOAD)
+    monkeypatch.setattr(plan_lib, "INPUTS_MOUNT", str(tmp_path / "inputs"))
+    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path / "runs"))
+    monkeypatch.setattr(plan_lib, "WORK_ROOT", str(tmp_path / "work"))
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
+    monkeypatch.setattr(plan_lib, "IMAGE_VENV", str(tmp_path / "venv"))
+    monkeypatch.setattr(
+        app,
+        "_git_state",
+        lambda plan: {
+            "head_matches_plan": True,
+            "tree_clean": True,
+            "branch_verified": True,
+            "tool_present": True,
+            "tree_files_verified": True,
+        },
+    )
+    return install
+
+
+def _new_container(tmp_path: Path) -> None:
+    """A new attempt starts on an empty work disk, in a later second."""
+
+    shutil.rmtree(tmp_path / "work")
+    (tmp_path / "work").mkdir()
+    time.sleep(1.1)  # receipts are named to the second
+
+
+def _records(tmp_path: Path) -> list[dict]:
+    attempts = tmp_path / "runs" / "runs" / "fake-run" / "attempts"
+    return [json.loads(path.read_text()) for path in sorted(attempts.glob("*.json"))]
+
+
+def test_a_stage_runs_resumes_and_refuses_tampered_state_end_to_end(
+    fake_runner, tmp_path: Path
+) -> None:
+    app = fake_runner(_fake_tool())
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+
+    first = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert first["status"] == "COMPLETED"
+    assert first["outputs"] == plan_lib.hash_tree(volume_state)
+    assert (
+        plan_lib.verify_receipt(
+            first, volume_state, strict=True, require_completed=True
+        )
+        == []
+    )
+    assert [item["path"] for item in first["outputs"]][:1] == ["ckpt/step1.bin"]
+    assert first["runner"]["state_pulled"]["copied"] == 0
+    assert first["runner"]["state_pushed"]["copied"] == len(first["outputs"]) == 3
+    budget = first["runner"]["tool_budget"]
+    assert (budget["seconds"], budget["limited_by"]) == (600, "max_wall_seconds")
+
+    # A second attempt of the run pulls the state, hashed and verified in
+    # one pass, resumes, and re-reads nothing it did not change.
+    _new_container(tmp_path)
+    second = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert second["status"] == "COMPLETED"
+    assert (
+        second["prior_state_verified_against"]
+        == first["receipt_path"].rsplit("/", 1)[1]
+    )
+    assert second["runner"]["state_pulled"]["copied"] == 3
+    pushed = second["runner"]["state_pushed"]
+    # The new log and the rewritten output are copied; the checkpoint and
+    # the first log keep the digests the pull verified.
+    assert (pushed["copied"], pushed["hashes_reused"], pushed["hashed_in_place"]) == (
+        2,
+        2,
+        0,
+    )
+    assert second["outputs"] == plan_lib.hash_tree(volume_state)
+    assert (volume_state / "out" / "result.txt").read_text() == "resumed=True\n"
+
+    # State on the volume that its latest receipt does not list is refused
+    # before anything uses it.
+    (volume_state / "ckpt" / "step1.bin").write_bytes(b"x" * len(_FAKE_PAYLOAD * 3))
+    _new_container(tmp_path)
+    with pytest.raises(plan_lib.PlanError, match="not what its latest receipt lists"):
+        app._run_stage(_fake_plan(max_wall_seconds=600))
+    outcomes = [(item["outcome"], item["finished"]) for item in _records(tmp_path)]
+    assert outcomes == [("receipt", True), ("receipt", True), ("error", False)]
+
+
+def test_the_container_deadline_stops_a_tool_before_the_class_timeout(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # No max_wall_seconds, a class timeout of 8 s and a 5 s reserve: the
+    # tool (which would sleep 60 s) is stopped about 3 s in, and the state
+    # is still mirrored with a receipt inside the timeout.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_fake_tool(timeout_s=8, overhead=5))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan(env={"MICROCOSM_FAKE_SLEEP": "60"}))
+    assert time.monotonic() - started < 8
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+    assert receipt["budget_seconds_this_attempt"] is None
+    budget = receipt["runner"]["tool_budget"]
+    assert budget["limited_by"] == "container_timeout"
+    assert budget["seconds"] == budget["container_seconds"] <= 3
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
+
+
+def test_a_container_left_without_tool_time_refuses_to_start_the_tool(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_fake_tool(timeout_s=8, overhead=8))
+    with pytest.raises(plan_lib.PlanError, match="of tool time is left"):
+        app._run_stage(_fake_plan())
+    ((outcome, finished),) = [
+        (item["outcome"], item["finished"]) for item in _records(tmp_path)
+    ]
+    assert (outcome, finished) == ("error", False)
+    assert not (tmp_path / "runs" / "runs" / "fake-run" / "receipts").exists()
+
+
+def test_a_clean_exit_pushes_only_the_stage_s_first_paths_end_to_end(
+    fake_runner, tmp_path: Path
+) -> None:
+    # A stage whose other state only serves a resume (the base's frame
+    # checkpoints): after a clean exit the checkpoint is hashed into the
+    # receipt but not copied, the output and the log are on the volume and
+    # verify, and the finished run cannot be resumed.
+    app = fake_runner(
+        _fake_tool(mirror_first=("out", "logs"), rest_is_resume_state=True)
+    )
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("COMPLETED", False)
+    assert receipt["outputs_not_mirrored"] == ["ckpt/step1.bin"]
+    listed = {item["path"]: item for item in receipt["outputs"]}
+    assert listed["ckpt/step1.bin"]["sha256"] == (
+        hashlib.sha256(_FAKE_PAYLOAD * 3).hexdigest()
+    )
+    assert not (volume_state / "ckpt").exists()
+    pushed = receipt["runner"]["state_pushed"]
+    assert (pushed["copied"], pushed["hashed_not_copied"]) == (2, 1)
+    for prefix in ("out", "logs"):
+        assert (
+            plan_lib.verify_receipt(
+                receipt,
+                volume_state,
+                prefix=prefix,
+                strict=True,
+                require_completed=True,
+            )
+            == []
+        )
+    assert plan_lib.verify_receipt(receipt, volume_state, strict=True) == [
+        "missing: ckpt/step1.bin (outputs_not_mirrored: hashed in the container, "
+        "never copied to the runs volume)"
+    ]
+    _new_container(tmp_path)
+    with pytest.raises(
+        plan_lib.PlanError, match="that receipt kept outputs off the volume"
+    ):
+        app._run_stage(_fake_plan(max_wall_seconds=600))
+
+
+def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # Stopped at the container deadline, the same stage copies everything
+    # (the next attempt resumes from it), the output and log first.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(
+        _fake_tool(
+            timeout_s=8,
+            overhead=5,
+            mirror_first=("out", "logs"),
+            rest_is_resume_state=True,
+        )
+    )
+    work_state = tmp_path / "work" / "state"
+    copied: list[str] = []
+    real = plan_lib.copy_hashed
+
+    def spy(source, target):
+        copied.append(Path(source).relative_to(work_state).as_posix())
+        return real(source, target)
+
+    monkeypatch.setattr(plan_lib, "copy_hashed", spy)
+    receipt = app._run_stage(_fake_plan(env={"MICROCOSM_FAKE_SLEEP": "60"}))
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+    assert receipt["outputs_not_mirrored"] == []
+    assert len(copied) == 3
+    assert copied[0] == "out/result.txt"
+    assert copied[1].startswith("logs/")
+    assert copied[2] == "ckpt/step1.bin"
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
+
+
+# --------------------------------------------------------------------------- #
+# The hash seed and the disk floor, through the app                           #
+# --------------------------------------------------------------------------- #
+
+# A stand-in tool that records the hash seed its environment gives it.
+_SEED_TOOL = """\
+import json, os, pathlib, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "seed.json").write_text(
+    json.dumps({"PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED")})
+)
+"""
+
+
+def _seed_tool(**stage: object) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        _fake_tool(**stage),
+        argv_builder=lambda plan, paths, state: ["-c", _SEED_TOOL, state],
+    )
+
+
+def test_the_container_s_hash_seed_is_neutralized_end_to_end(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # The container sets a probe seed; the tool runs without it, and the
+    # receipt says so.
+    monkeypatch.setenv("PYTHONHASHSEED", _PROBE_SEED)
+    app = fake_runner(_seed_tool())
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert receipt["status"] == "COMPLETED"
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    seen = json.loads((volume_state / "out" / "seed.json").read_text())
+    assert seen == {"PYTHONHASHSEED": None}
+    assert receipt["runner"]["python_hash_seed"] == {
+        "container": _PROBE_SEED,
+        "passed_to_tool": None,
+        "stages_run_with": None,  # the stand-in sets no default of its own
+    }
+    assert "PYTHONHASHSEED" in receipt["runner"]["tool_env_removed"]
+
+
+def test_a_forced_hash_seed_is_refused_before_anything_is_staged(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    real = plan_lib.tool_environment
+
+    def forced(base, plan_env):
+        env, removed = real(base, plan_env)
+        return {**env, "PYTHONHASHSEED": _PROBE_SEED}, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", forced)
+    with pytest.raises(app._Refusal, match=f"PYTHONHASHSEED='{_PROBE_SEED}'"):
+        app._run_stage(_fake_plan(max_wall_seconds=600))
+    ((outcome, finished),) = [
+        (item["outcome"], item["finished"]) for item in _records(tmp_path)
+    ]
+    # A refusal: finished and not charged; nothing pulled, staged or run.
+    assert (outcome, finished) == ("refused", True)
+    assert not (tmp_path / "work" / "inputs").exists()
+    assert not (tmp_path / "work" / "state").exists()
+    run_dir = tmp_path / "runs" / "runs" / "fake-run"
+    assert not (run_dir / "state").exists() and not (run_dir / "receipts").exists()
+
+
+def test_check_stage_fails_when_the_run_would_refuse(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # The check must not say OK for a stage whose paid run would refuse:
+    # a work disk below the stage's floor, or a forced hash seed.
+    app = fake_runner(_seed_tool(min_free_disk_gib=70))
+    # The check reads the clone's tree-file rows too; the stand-in has none.
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    usage = collections.namedtuple("usage", "total used free")
+    free = {"gib": 20}
+    monkeypatch.setattr(
+        app.shutil,
+        "disk_usage",
+        lambda _path: usage(512 * 1024**3, 0, free["gib"] * 1024**3),
+    )
+    monkeypatch.setenv("PYTHONHASHSEED", _PROBE_SEED)
+    report = app.check_stage(_fake_plan())
+    assert report["work_disk"]["would_refuse"].endswith("needs 70 GiB")
+    assert report["ok"] is False
+    (disk,) = [item for item in report["problems"] if item.startswith("work disk:")]
+    assert "20.0 GiB free" in disk and "check container" in disk
+    # The container's seed is withheld, so it is recorded, not a problem.
+    assert report["python_hash_seed"]["container"] == _PROBE_SEED
+    assert report["python_hash_seed"]["passed_to_tool"] is None
+    assert not [item for item in report["problems"] if "PYTHONHASHSEED" in item]
+
+    free["gib"] = 70
+    report = app.check_stage(_fake_plan())
+    assert report["work_disk"]["would_refuse"] is None
+    assert not [item for item in report["problems"] if item.startswith("work disk")]
+
+    real = plan_lib.tool_environment
+    monkeypatch.setattr(
+        plan_lib,
+        "tool_environment",
+        lambda base, plan_env: (
+            {**real(base, plan_env)[0], "PYTHONHASHSEED": _PROBE_SEED},
+            [],
+        ),
+    )
+    report = app.check_stage(_fake_plan())
+    assert report["ok"] is False
+    assert [item for item in report["problems"] if "PYTHONHASHSEED" in item]

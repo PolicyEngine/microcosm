@@ -255,7 +255,9 @@ def supported_uc_probe(matrix, targets, prior, names, rows, tolerance=0.05):
 
 
 def protected_subset_probe(matrix, targets, prior, names, tolerance=0.05):
-    obr = ["obr.income_tax", "obr.ni", "obr.state_pension", "obr.child_benefit"]
+    # The bound State Pension level (microcosm#1069 moved the OBR line to a
+    # diagnostic).
+    obr = ["obr.income_tax", "obr.ni", "dwp.state_pension.amount", "obr.child_benefit"]
     employment = [
         str(name).rsplit("@", 1)[0]
         for name in names

@@ -22,10 +22,24 @@ def test_both_donor_stages_declare_uprating_to_the_base_year() -> None:
     ]
     assert lcfs["columns"]["petrol_spending"]["basis"] == "vendored_litre_proxy"
     assert lcfs["columns"]["diesel_spending"]["basis"] == "vendored_litre_proxy"
+    # Every diary spend column starts from the April-to-March diary year and
+    # ends at calendar 2024 (microcosm#1113); income predictors move a full year.
+    assert lcfs["fiscal_year_bridge"] == {
+        "start_year_weight": 0.75,
+        "next_year_weight": 0.25,
+    }
     assert lcfs["columns"]["bus_fare_spending"] == {
         "basis": "engine_parameter",
         "parameter_path": CPI,
+        "from_window": "fiscal_year",
     }
+    bridged = sorted(
+        column
+        for column, spec in lcfs["columns"].items()
+        if spec.get("from_window") == "fiscal_year"
+    )
+    assert bridged == sorted(UK_LCFS_DIARY_PRICE_COLUMNS)
+    assert "from_window" not in lcfs["columns"]["employment_income"]
     etb = uprating_operation(stages["etb_services"])
     assert etb["columns"]["rail_subsidy_spending"]["concept"] == (
         "orr.rail.total_government_support"
@@ -205,12 +219,82 @@ def test_vendored_ratio_basis_selects_by_fiscal_start_and_geography() -> None:
         )
 
 
+def test_fiscal_year_window_ends_a_diary_column_at_the_calendar_year() -> None:
+    """A fiscal-year diary reaches calendar ``to_period``, not a quarter past it."""
+
+    bridge = {"start_year_weight": 0.75, "next_year_weight": 0.25}
+    factors, receipt = donor_uprating_factors(
+        {
+            "from_period": 2023,
+            "to_period": 2024,
+            "fiscal_year_bridge": bridge,
+            "columns": {
+                "food": {
+                    "basis": "engine_parameter",
+                    "parameter_path": CPI,
+                    "from_window": "fiscal_year",
+                },
+                "earnings": {"basis": "engine_parameter", "parameter_path": CPI},
+            },
+        },
+        parameter_reader=_fake_reader,
+    )
+    base = 0.75 * 1.51964 + 0.25 * 1.55763
+    assert factors["food"] == pytest.approx(1.55763 / base)
+    # The bridged step is three quarters of the full year's, not all of it.
+    assert factors["food"] < factors["earnings"] == pytest.approx(1.55763 / 1.51964)
+    assert receipt["fiscal_year_bridge"] == bridge
+    assert receipt["columns"]["food"]["from_window"] == "fiscal_year"
+    assert receipt["columns"]["food"]["base"] == pytest.approx(base)
+    assert "from_window" not in receipt["columns"]["earnings"]
+
+
 @pytest.mark.parametrize(
     ("parameters", "match"),
     [
         (
             {"from_period": 2024, "to_period": 2023, "columns": {"a": {}}},
             "backwards",
+        ),
+        (
+            {
+                "from_period": 2023,
+                "to_period": 2024,
+                "columns": {
+                    "a": {
+                        "basis": "engine_parameter",
+                        "parameter_path": CPI,
+                        "from_window": "fiscal_year",
+                    }
+                },
+            },
+            "no fiscal_year_bridge",
+        ),
+        (
+            {
+                "from_period": 2023,
+                "to_period": 2024,
+                "fiscal_year_bridge": {
+                    "start_year_weight": 0.5,
+                    "next_year_weight": 0.5,
+                },
+                "columns": {"a": {"basis": "engine_parameter", "parameter_path": CPI}},
+            },
+            "three quarters",
+        ),
+        (
+            {
+                "from_period": 2023,
+                "to_period": 2024,
+                "columns": {
+                    "a": {
+                        "basis": "engine_parameter",
+                        "parameter_path": CPI,
+                        "from_window": "calendar_quarter",
+                    }
+                },
+            },
+            "only a fiscal_year window",
         ),
         ({"from_period": 2023, "to_period": 2024, "columns": {}}, "no columns"),
         (

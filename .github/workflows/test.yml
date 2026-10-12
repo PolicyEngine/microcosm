@@ -16,30 +16,39 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
 
+# Every job sets timeout-minutes (GitHub's default is 360) so a hung test
+# frees its runner from the org's shared 60-runner pool. The engine-free and
+# engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08;
+# shorter jobs get at least 5 minutes and at least twice their slowest run.
+
 jobs:
-  changes:
+  select-countries:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      shared: ${{ steps.filter.outputs.shared }}
-      us: ${{ steps.filter.outputs.us }}
-      uk: ${{ steps.filter.outputs.uk }}
+      run_us: ${{ steps.plan.outputs.run_us }}
+      run_uk: ${{ steps.plan.outputs.run_uk }}
     steps:
       - uses: actions/checkout@v4
-      - name: Classify changed paths
-        id: filter
+      - name: Select country tests
+        id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tools/classify_ci_changes.py
+        run: python3 tools/ci_test_plan.py select-countries
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
       - name: Verify CI test layout
-        run: python3 tools/ci_test_groups.py --verify
+        run: python3 tools/ci_test_plan.py verify
       - name: Verify the graph acceptance burndown is monotone
         run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
@@ -48,8 +57,9 @@ jobs:
         run: uv run --no-sync ruff check .
 
   engine-free:
-    needs: changes
     runs-on: ubuntu-latest
+    # Successful legs took 26-48 min on 2026-10-07..08 (n=22).
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -59,30 +69,22 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/orrery-contract/package-lock.json
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
-        env:
-          RUN_US: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.us == 'true' }}
-          RUN_UK: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.uk == 'true' }}
-        run: |
-          groups=(engine-free-shared)
-          if [[ "$RUN_US" == "true" ]]; then groups+=(engine-free-us); fi
-          if [[ "$RUN_UK" == "true" ]]; then groups+=(engine-free-uk); fi
-          files=()
-          for group in "${groups[@]}"; do
-            while IFS= read -r file; do files+=("$file"); done < <(
-              uv run --no-sync python tools/ci_test_groups.py --list "$group"
-            )
-          done
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -n 2 --dist loadfile -v --tb=short --maxfail=1 \
-            --durations=25 -p no:cacheprovider
+        run: bash tools/run_engine_free_tests.sh
 
   engine-us:
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true'
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_us == 'true'
     runs-on: ubuntu-latest
+    # Successful legs took 40-60 min on 2026-10-07..08 (n=23).
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -95,17 +97,25 @@ jobs:
       - name: Sync workspace with the US engine
         run: uv sync --all-packages --locked --extra us
       - name: Run US engine tests
-        run: |
-          mapfile -t files < <(
-            uv run --no-sync python tools/ci_test_groups.py --list engine-us
-          )
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
+        run: bash tools/run_engine_us_tests.sh
+      - name: Add US engine timings to the job summary
+        if: always()
+        run: bash tools/add_engine_us_timing_summary.sh
+      - name: Upload US engine timing reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-us-timings-${{ matrix.python-version }}
+          path: |
+            engine-us-timings.json
+            engine-us-timings.md
+          if-no-files-found: warn
 
   engine-uk:
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true'
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -118,16 +128,11 @@ jobs:
       - name: Sync workspace with the UK engine
         run: uv sync --all-packages --locked --extra uk
       - name: Run UK engine tests
-        run: |
-          mapfile -t files < <(
-            uv run --no-sync python tools/ci_test_groups.py --list engine-uk
-          )
-          # Keep country-engine execution serial for the same bounded-memory
-          # contract as the US engine job.
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
+        run: bash tools/run_engine_uk_tests.sh
 
   integration-uk:
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_uk == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -148,6 +153,7 @@ jobs:
     # Editable installs can hide missing package directories and namespace
     # mistakes. Build each wheel once and compare its contents with source.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -155,49 +161,3 @@ jobs:
           python-version: "3.13"
       - name: Build and inspect every shard wheel
         run: tools/build_and_inspect_wheels.sh
-
-  ci-ok:
-    needs: [changes, lint, engine-free, engine-us, engine-uk, integration-uk, wheels]
-    if: always()
-    runs-on: ubuntu-latest
-    env:
-      EXPECT_US: ${{ github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true' }}
-      EXPECT_UK: ${{ github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true' }}
-    steps:
-      - name: Require all selected jobs to pass
-        env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          LINT_RESULT: ${{ needs.lint.result }}
-          ENGINE_FREE_RESULT: ${{ needs['engine-free'].result }}
-          ENGINE_US_RESULT: ${{ needs['engine-us'].result }}
-          ENGINE_UK_RESULT: ${{ needs['engine-uk'].result }}
-          INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}
-          WHEELS_RESULT: ${{ needs.wheels.result }}
-        run: |
-          set -euo pipefail
-          fail=0
-          require_success() {
-            if [[ "$2" != "success" ]]; then
-              echo "::error::$1 = $2 (expected success)"
-              fail=1
-            fi
-          }
-          require_conditional() {
-            expected=$2
-            result=$3
-            if [[ "$expected" == "true" && "$result" != "success" ]]; then
-              echo "::error::$1 = $result (expected success)"
-              fail=1
-            elif [[ "$expected" != "true" && "$result" != "skipped" ]]; then
-              echo "::error::$1 = $result (expected skipped)"
-              fail=1
-            fi
-          }
-          require_success changes "$CHANGES_RESULT"
-          require_success lint "$LINT_RESULT"
-          require_success engine-free "$ENGINE_FREE_RESULT"
-          require_success integration-uk "$INTEGRATION_UK_RESULT"
-          require_success wheels "$WHEELS_RESULT"
-          require_conditional engine-us "$EXPECT_US" "$ENGINE_US_RESULT"
-          require_conditional engine-uk "$EXPECT_UK" "$ENGINE_UK_RESULT"
-          exit "$fail"

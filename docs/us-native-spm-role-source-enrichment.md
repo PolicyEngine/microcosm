@@ -379,7 +379,7 @@ python -m pytest \
   packages/microcosm-data/tests/engine_free/shared/test_contract.py \
   packages/microcosm-data/tests/engine_free/shared/test_release.py \
   packages/microcosm-data/tests/engine_free/shared/test_publish_guard.py
-python tools/ci_test_groups.py --verify
+python3 tools/ci_test_plan.py verify
 ruff check .
 ```
 

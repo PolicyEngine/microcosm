@@ -24,12 +24,16 @@ from microcosm.build.uk_runtime.energy_pricing import (
     kwh_to_spend,
     need_geography,
     need_margins_from_facts,
+    period_quarters,
     pricing_operation,
     published_energy_level,
     published_gas_connected_shares,
     qep_prices,
     rake_energy_kwh,
     spend_to_kwh,
+)
+from microcosm.build.uk_runtime.lcfs_consumption import (
+    _recipient_energy_rake_iterations,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from test_support.paths import paths_for
@@ -59,7 +63,7 @@ def _qep_value(concept: str, region: str, component: str, fuel: str) -> float:
     rows = vendored_rows(
         "qep_energy_prices.json",
         concept=concept,
-        period_type="fiscal_year",
+        period_type="calendar_year",
         period_value=2024,
         groupby_value_id=region,
         dimensions=dims,
@@ -79,14 +83,27 @@ def test_fiscal_year_quarters() -> None:
         fiscal_year_quarters("2024-01-01")
 
 
+def test_period_quarters_cover_a_calendar_or_fiscal_year() -> None:
+    assert period_quarters("calendar_year", 2024) == (
+        "2024-01-01",
+        "2024-04-01",
+        "2024-07-01",
+        "2024-10-01",
+    )
+    assert period_quarters("fiscal_year", 2024) == fiscal_year_quarters("2024-04-01")
+    with pytest.raises(ValueError, match="calendar_year or fiscal_year"):
+        period_quarters("quarter", 2024)
+
+
 def test_prices_are_the_published_qep_averages_paid() -> None:
     prices, receipt = qep_prices(_declared())
-    # FY2024-25, all payment methods, including VAT: UK electricity 24.81 p/kWh
-    # + GBP 209.39 a year, gas 6.23 p/kWh + GBP 113.13.
-    assert prices.unit_rate[(UK, "electricity")] == pytest.approx(0.2481, abs=5e-4)
-    assert prices.fixed_cost[(UK, "electricity")] == pytest.approx(209.39, abs=0.01)
-    assert prices.unit_rate[(UK, "gas")] == pytest.approx(0.0623, abs=5e-4)
-    assert prices.fixed_cost[(UK, "gas")] == pytest.approx(113.13, abs=0.01)
+    # Calendar 2024, the base year of every LCFS spend column (microcosm#1113),
+    # all payment methods, including VAT: UK electricity 25.83 p/kWh + GBP
+    # 205.11 a year, gas 6.54 p/kWh + GBP 112.95.
+    assert prices.unit_rate[(UK, "electricity")] == pytest.approx(0.2583, abs=5e-4)
+    assert prices.fixed_cost[(UK, "electricity")] == pytest.approx(205.11, abs=0.01)
+    assert prices.unit_rate[(UK, "gas")] == pytest.approx(0.0654, abs=5e-4)
+    assert prices.fixed_cost[(UK, "gas")] == pytest.approx(112.95, abs=0.01)
     for region in sorted(set(prices.region_of_frs_region.values()) | {UK}):
         for fuel in ("electricity", "gas"):
             if (region, fuel) not in prices.unit_rate:
@@ -131,7 +148,7 @@ def test_prices_are_the_published_qep_averages_paid() -> None:
     assert receipt["gas_priced_at_uk_average"] == ["NORTHERN_IRELAND"]
     assert receipt["payment_method"] == "all"
     assert receipt["vat_treatment"] == "including_vat"
-    assert receipt["period_type"] == "fiscal_year" and receipt["period_value"] == 2024
+    assert receipt["period_type"] == "calendar_year" and receipt["period_value"] == 2024
     # Regional spread is material in the fixed cost.
     assert prices.fixed_cost[("north_east", "electricity")] > (
         prices.fixed_cost[("london", "electricity")] + 80
@@ -191,6 +208,8 @@ def test_qep_averages_paid_sit_near_the_cap_levels() -> None:
     """The cap matrix stays vendored as the regional maximum; QEP is what was paid."""
 
     prices, _ = qep_prices(_declared())
+    # The cap matrix is vendored for FY2024-25 only; the calendar-2024 averages
+    # paid sit within the same 10% of it.
     quarters = fiscal_year_quarters("2024-04-01")
 
     def cap(fuel: str, level: str, quarter: str) -> float:
@@ -372,9 +391,83 @@ def test_impose_gas_connection_skips_a_household_whose_weight_would_overshoot() 
     assert london["rows_skipped_for_weight"] == 1
 
 
-def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> None:
+def test_identity_uniform_order_spreads_disconnection_across_draw_sizes() -> None:
+    """Every group loses the same expected share of its connected mass.
+
+    One region, half the households drawing little gas (a flat-like group)
+    and half drawing a lot, all connected, published share 0.6. Walking the
+    smallest draws first takes the whole 0.4 from the low-draw group; the
+    identity-keyed uniform order takes about 0.4 of each group.
+    """
+
+    n = 4000
+    gas = np.where(np.arange(n) < n // 2, 2000.0, 15000.0) + np.arange(n)
+    region = np.array(["SCOTLAND"] * n)
+    weights = np.ones(n)
+    ids = np.arange(1, n + 1) * 100
+    low = np.arange(n) < n // 2
+    lowest_first, _ = impose_gas_connection(
+        gas, frs_region=region, weights=weights, shares={"SCOTLAND": 0.6}
+    )
+    assert not lowest_first[low][: int(0.4 * n)].any()
+    assert lowest_first[~low].all()
+    connected, receipt = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"SCOTLAND": 0.6},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        seed=0,
+    )
+    assert connected.mean() == pytest.approx(0.6)
+    for group in (low, ~low):
+        assert connected[group].mean() == pytest.approx(0.6, abs=0.03)
+    assert receipt["disconnect_rule"] == "identity_uniform_order"
+    assert receipt["seed"] == 0
+    assert receipt["salt"] == "lcfs_consumption:gas_disconnection"
+
+
+def test_identity_uniform_order_is_keyed_by_identity_not_row_order() -> None:
+    rng = np.random.default_rng(3)
+    n = 600
+    gas = rng.uniform(100.0, 20000.0, n)
+    region = rng.choice(["LONDON", "WALES", "SCOTLAND"], n)
+    weights = rng.uniform(0.5, 3.0, n)
+    ids = rng.permutation(np.arange(10_000, 10_000 + n))
+    shares = {"LONDON": 0.7, "WALES": 0.8, "SCOTLAND": 0.75}
+    kwargs = {"shares": shares, "disconnect_rule": "identity_uniform_order", "seed": 0}
+    first, _ = impose_gas_connection(
+        gas, frs_region=region, weights=weights, identity=ids, **kwargs
+    )
+    order = rng.permutation(n)
+    second, _ = impose_gas_connection(
+        gas[order],
+        frs_region=region[order],
+        weights=weights[order],
+        identity=ids[order],
+        **kwargs,
+    )
+    assert dict(zip(ids, first, strict=True)) == dict(
+        zip(ids[order], second, strict=True)
+    )
+    reseeded, _ = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        identity=ids,
+        **{**kwargs, "seed": 1},
+    )
+    assert not np.array_equal(first, reseeded)
+    with pytest.raises(ValueError, match="needs one identity per row"):
+        impose_gas_connection(gas, frs_region=region, weights=weights, **kwargs)
+
+
+def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
     level, receipt = published_energy_level(_declared())
-    quarters = fiscal_year_quarters("2024-04-01")
+    quarters = period_quarters("calendar_year", 2024)
+    assert receipt["quarters"] == list(quarters)
+    assert (receipt["period_type"], receipt["period_value"]) == ("calendar_year", 2024)
     for column, concept in (
         (ELECTRICITY_KWH, "desnz.energy_trends.domestic_electricity_consumption"),
         (GAS_KWH, "desnz.energy_trends.domestic_gas_consumption"),
@@ -392,13 +485,17 @@ def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> N
         )
         assert level[column] == pytest.approx(expected)
         assert receipt["by_fuel"][column]["total_kwh"] == pytest.approx(expected)
-    # FY2024-25: about 93 TWh of electricity and 260 TWh of gas.
-    assert level[ELECTRICITY_KWH] == pytest.approx(93.03e9, rel=1e-3)
-    assert level[GAS_KWH] == pytest.approx(260.07e9, rel=1e-3)
+    # Calendar 2024: about 91.7 TWh of electricity and 252.3 TWh of gas.
+    assert level[ELECTRICITY_KWH] == pytest.approx(91.74e9, rel=1e-3)
+    assert level[GAS_KWH] == pytest.approx(252.34e9, rel=1e-3)
     assert receipt["geography_ids"] == ["K02000001"]
     for mutation, match in (
         (lambda p: p.update(level_resource="need_energy_facts.json"), "level_resource"),
-        (lambda p: p.update(level_fiscal_start="2020-04-01"), "lacks quarters"),
+        (lambda p: p.update(level_period_value=2019), "lacks quarters"),
+        (
+            lambda p: p.update(level_period_type="quarter"),
+            "calendar_year or fiscal_year",
+        ),
         (
             lambda p: p.update(level_temperature_adjustment="weather_corrected"),
             "actual_temperature",
@@ -510,6 +607,13 @@ def test_need_margins_come_from_both_geographies_in_kwh() -> None:
         need_margins_from_facts(period_value=2019)
 
 
+def _declared_sweeps() -> int:
+    """The recipient rake's sweep count as the packaged stage declares it."""
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    return _recipient_energy_rake_iterations(stage)
+
+
 def _synthetic_rake_receipt(n: int = 1200):
     """A synthetic recipient frame raked like the stage does, with its receipt."""
 
@@ -545,7 +649,7 @@ def _synthetic_rake_receipt(n: int = 1200):
         frs_region=region,
         income=income,
         weights=weights,
-        iterations=50,
+        iterations=_declared_sweeps(),
         tenure=tenure,
         accommodation=accommodation,
         use_region_margin=True,
@@ -559,18 +663,20 @@ def _synthetic_rake_receipt(n: int = 1200):
 def test_rake_receipt_records_one_cross_margin_residual_per_sweep() -> None:
     """The IPF's terminal residual is shown to be converged, not truncated.
 
-    ``iterative_proportional_fit`` runs a fixed 50 sweeps; the receipt carries
-    the maximum absolute relative cell deviation after every sweep for each
-    fuel, and the last value is the residual the ``energy_rake`` gate holds
-    to its declared tolerance.
+    ``iterative_proportional_fit`` runs the stage's declared sweeps (200 since
+    microcosm#1012); the receipt carries the maximum absolute relative cell
+    deviation after every sweep for each fuel, and the last value is the
+    residual the ``energy_rake`` gate holds to its declared tolerance, once
+    the gate has checked the series is flat over its convergence window.
     """
 
     _, _, _, _, receipt = _synthetic_rake_receipt()
     residuals = receipt["sweep_residuals"]
     assert set(residuals) == {ELECTRICITY_KWH, GAS_KWH}
+    assert _declared_sweeps() == 200
     for fuel in (ELECTRICITY_KWH, GAS_KWH):
         series = residuals[fuel]
-        assert len(series) == receipt["iterations"] == 50
+        assert len(series) == receipt["iterations"] == 200
         assert all(np.isfinite(v) and v >= 0 for v in series)
         # Converged: the last two sweeps agree to well inside the gate's
         # tolerance, and the walk does not end higher than it started.
@@ -818,10 +924,97 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
         {"stage": "lcfs_consumption", "energy_rake": tampered},
         match="not the published",
     )
+    # Convergence is checked, not asserted: a residual still moving over the
+    # declared window is a truncated rake even inside the tolerance.
+    assert parameters["convergence_window_sweeps"] == 10
+    assert parameters["maximum_residual_change_over_window"] == 0.001
+    assert set(passed.details["residual_change_over_window"]) == {
+        ELECTRICITY_KWH,
+        GAS_KWH,
+    }
+    assert max(passed.details["residual_change_over_window"].values()) < 0.001
+    truncated = copy.deepcopy(receipt)
+    series = truncated["sweep_residuals"][ELECTRICITY_KWH]
+    series[-11] = series[-1] + 0.01
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": truncated},
+        match="truncated, not converged",
+    )
+    # A spike inside the window fails too, with both endpoints untouched: the
+    # gate reads the window's range, not its endpoints.
+    spiked = copy.deepcopy(receipt)
+    series = spiked["sweep_residuals"][GAS_KWH]
+    series[-6] = series[-1] + 0.01
+    assert series[-11] == receipt["sweep_residuals"][GAS_KWH][-11]
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": spiked},
+        match="truncated, not converged",
+    )
+    # The window presupposes more declared sweeps than its own length.
+    assert _declared_sweeps() > parameters["convergence_window_sweeps"]
+    short = copy.deepcopy(receipt)
+    short["sweep_residuals"][GAS_KWH] = short["sweep_residuals"][GAS_KWH][-10:]
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": short},
+        match="do not cover the 10-sweep convergence window",
+    )
+    failing(
+        generous,
+        {
+            "stage": "lcfs_consumption",
+            "energy_rake": {k: v for k, v in receipt.items() if k != "sweep_residuals"},
+        },
+        match="carries no sweep_residuals",
+    )
+    with pytest.raises(ValueError, match="convergence_window_sweeps"):
+        run({**generous, "convergence_window_sweeps": 0})
     with pytest.raises(ValueError, match="declares no margins"):
         run({**generous, "margins": []})
     with pytest.raises(ValueError, match="differs from the stage"):
         run({**generous, "margins_period_value": 2023})
+
+
+def test_the_recipient_rake_refuses_an_undeclared_sweep_count() -> None:
+    """No silent default: the energy_rake window presumes the declared sweeps."""
+
+    import dataclasses
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    region_rake = next(
+        operation
+        for operation in stage.operations
+        if operation.kind == "iterative_proportional_fit"
+        and "region" in operation.parameters.get("margins", ())
+    )
+    without = dataclasses.replace(
+        stage,
+        operations=tuple(
+            operation for operation in stage.operations if operation is not region_rake
+        ),
+    )
+    with pytest.raises(ValueError, match="declared iterations are required"):
+        _recipient_energy_rake_iterations(without)
+    undeclared = dataclasses.replace(
+        stage,
+        operations=tuple(
+            dataclasses.replace(
+                operation,
+                parameters={
+                    key: value
+                    for key, value in operation.parameters.items()
+                    if key != "iterations"
+                },
+            )
+            if operation is region_rake
+            else operation
+            for operation in stage.operations
+        ),
+    )
+    with pytest.raises(ValueError, match="declared iterations are required"):
+        _recipient_energy_rake_iterations(undeclared)
 
 
 def test_gas_is_raked_over_connected_rows_and_electricity_over_all() -> None:

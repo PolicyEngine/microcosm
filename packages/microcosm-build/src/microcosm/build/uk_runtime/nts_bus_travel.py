@@ -1501,7 +1501,7 @@ def published_car_availability(parameters: Mapping[str, Any]) -> dict[str, float
 def frame_car_availability(
     household: pd.DataFrame, weights: np.ndarray, *, england_regions: Sequence[str]
 ) -> dict[str, float]:
-    """The frame's design-weighted no / one / two-plus car shares over England households."""
+    """The frame's prior-weighted no / one / two-plus car shares over England households."""
 
     region = household["region"].map(_enum_name).to_numpy().astype(str)
     cars = (
@@ -1804,7 +1804,7 @@ class UKNTSBusTravelStageTransform:
                 england_regions=[r for r in columns.region_codes.values()],
             ),
             "published": published_car_availability(band_parameters),
-            "basis": "design-weighted England households; num_vehicles is the was_wealth draw",
+            "basis": "prior-weighted England households (SPI support rows included); num_vehicles is the was_wealth draw",
         }
         result = uk_national_frame(
             person=person,
@@ -1880,7 +1880,7 @@ def _trip_rate_receipt(
                 for series, column in SERIES_TRIP_COLUMNS.items()
             }
     return {
-        "basis": "design-weighted persons of the frame",
+        "basis": "prior-weighted persons of the frame (SPI support rows included)",
         "frame_trips_per_person": frame_rates,
         "published_trips_per_person": published,
         "published_period_value": int(parameters["trip_rates_period_value"]),

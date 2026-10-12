@@ -1,0 +1,23 @@
+[project]
+name = "microcosm-diagnostics"
+version = "0.1.0"
+description = "Typed schemas, validation, and atomic writing for Microcosm calibration diagnostics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "PolicyEngine" }]
+dependencies = ["pydantic>=2.10,<3"]
+
+[project.urls]
+Homepage = "https://microcosm.institute"
+Repository = "https://github.com/PolicyEngine/microcosm"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm"]

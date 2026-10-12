@@ -81,8 +81,8 @@ def test_cd_vintage_crosswalk_source_and_geography_authority_are_pinned() -> Non
     assert crosswalk_source == {
         "id": "us_congressional_district_vintage_crosswalk_117_to_119",
         "role": "congressional_district_vintage_crosswalk",
-        "sha256": ("c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"),
-        "byte_size": 77_935,
+        "sha256": ("a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"),
+        "byte_size": 78_202,
         "loader": "kernel:load_congressional_district_vintage_crosswalk",
         "vintages": ["vintage:cd_117", "vintage:cd_119"],
         "vintage_authorities": [

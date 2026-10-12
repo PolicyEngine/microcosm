@@ -74,6 +74,25 @@ class TestReformCoverageSmokeGate:
         assert not result.passed
         assert result.details["results"]["ssi_probe"]["effect"] == -1.0e10
         assert "expected a positive effect" in result.failures[0]
+        # |effect| clears the floor, so the reform binds: the message points at
+        # the probe definition, not at absent inputs.
+        assert "binds, but in the opposite direction" in result.failures[0]
+        assert "absent or degenerate" not in result.failures[0]
+
+    def test_wrong_signed_effect_below_floor_reads_as_not_binding(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        def simulate(reform):
+            return _Sim(4.0e10 - 1.0 if reform == "REFORM" else 4.0e10)
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=[_probe()], period=2024
+        )
+        assert not result.passed
+        assert "did not bind" in result.failures[0]
+        assert "opposite direction" not in result.failures[0]
 
     def test_negative_tip_effect_uses_probe_period_and_passes(
         self, monkeypatch
@@ -624,8 +643,26 @@ class TestShippedManifest:
         assert probe.budget_measure == "income_tax"
         assert probe.binding_inputs == ("alimony_expense",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert set(probe.parameter_changes) == {
-            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount"
+        # The ALD list minus alimony_expense_ald, not the divorce-year bracket:
+        # the bracket also gates recipients' taxable_alimony_income.
+        assert probe.parameter_changes == {
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "educator_expense",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                ]
+            }
         }
 
     def test_shipped_misc_itemized_probe_has_2026_period_sign_and_input(self) -> None:
@@ -680,7 +717,6 @@ class TestShippedManifest:
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -744,7 +780,6 @@ class TestShippedManifest:
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",

@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
     donor_uprating_factors,
     uprating_operation,
 )
+from microcosm.build.uk_runtime.etb_vat import UK_ETB_FAMILY_ROLE_COUNTS
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
@@ -35,6 +36,7 @@ from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipResult,
     support_clip_to_donor_with_receipt,
 )
+from microcosm.build.uk_runtime.uc_relationships import household_family_role_counts
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -51,10 +53,10 @@ UK_ETB_SERVICES_PREDICTORS = (
     "hbai_household_net_income",
 )
 # The education counts are not engine variables: the incumbent derives them
-# from person current_education (etb.py:180-186). Only these materialize.
+# from person current_education (etb.py:180-186), and the adult and child
+# counts are the household's FRS family roles (``UK_ETB_FAMILY_ROLE_COUNTS``).
+# Only these materialize.
 UK_ETB_SERVICES_ENGINE_VARIABLES = (
-    "is_adult",
-    "is_child",
     "is_SP_age",
     "dla",
     "pip",
@@ -402,7 +404,11 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
     result = pd.DataFrame(index=household.index)
     education = np.asarray(materialized["current_education"]).astype(str)
+    adults, children = household_family_role_counts(person, household)
     for predictor in UK_ETB_SERVICES_PREDICTORS:
+        if predictor in UK_ETB_FAMILY_ROLE_COUNTS:
+            result[predictor] = adults if predictor == "is_adult" else children
+            continue
         if predictor in UK_ETB_SERVICES_EDUCATION_COUNTS:
             labels = UK_ETB_SERVICES_EDUCATION_COUNTS[predictor]
             result[predictor] = person_sum(np.isin(education, labels))

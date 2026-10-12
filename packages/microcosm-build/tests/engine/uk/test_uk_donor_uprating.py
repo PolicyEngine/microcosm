@@ -11,6 +11,11 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
 
     lcfs_factors, lcfs_receipt = lcfs_donor_uprating(stages["lcfs_consumption"])
     cpi_ratio = reader(CPI, 2024) / reader(CPI, 2023)
+    # The diary columns start from the April-to-March 2023-24 year and end at
+    # calendar 2024, so they take the bridged step, not the full year's.
+    diary_ratio = reader(CPI, 2024) / (
+        0.75 * reader(CPI, 2023) + 0.25 * reader(CPI, 2024)
+    )
     cpi_columns = [
         column
         for column, spec in lcfs_receipt["columns"].items()
@@ -18,7 +23,8 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
     ]
     assert len(cpi_columns) == 13
     for column in cpi_columns:
-        assert lcfs_factors[column] == cpi_ratio, column
+        assert lcfs_factors[column] == pytest.approx(diary_ratio), column
+    assert diary_ratio < cpi_ratio
     assert lcfs_factors["employment_income"] == reader(
         "gov.economic_assumptions.indices.obr.average_earnings", 2024
     ) / reader("gov.economic_assumptions.indices.obr.average_earnings", 2023)
