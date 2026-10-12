@@ -2040,6 +2040,41 @@ def _finite_or_none(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
+def _scf_wealth_gate_record(gate: GateResult | None) -> dict[str, object] | None:
+    """The SCF-wealth gate's verdict and summary, for the diagnostics file.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216). The seed and period
+    reproduce each household's source draw. Non-finite floats become null:
+    the diagnostics writer serializes strict JSON.
+    """
+
+    if gate is None:
+        return None
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "details": finite(dict(gate.details)),
+    }
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -9652,6 +9687,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -9817,6 +9853,7 @@ def _write_release_calibration_diagnostics(
                 if validation_input_coverage_gate is not None
                 else None
             ),
+            "scf_wealth_signal": _scf_wealth_gate_record(scf_wealth_gate),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
                 dict(warm_start_calibration)
@@ -15163,6 +15200,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_gate=scf_wealth_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,

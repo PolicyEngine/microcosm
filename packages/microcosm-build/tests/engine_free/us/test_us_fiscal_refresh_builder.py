@@ -8995,6 +8995,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
     )
+    # The SIPP/SCF blend audit rides on the SCF-wealth gate's summary; the
+    # writer records the gate the stage returned (microcosm#1216).
+    assert captured["diagnostics"]["scf_wealth_gate"].details == {"checked": True}
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
@@ -12703,6 +12706,82 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     assert builds[0]["calibration_runtime"] == runtime
     assert builds[0]["release_gates"]["passed"] is False
     assert "calibration_runtime" not in builds[1]
+
+
+def test_release_calibration_diagnostics_record_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    """microcosm#1216: the SIPP/SCF blend audit lives in DataFrame.attrs and
+    the H5 writer drops it, so the diagnostics file is where a release keeps
+    it. Non-finite and NumPy values are made strict-JSON safe; direct callers
+    that pass no gate get a null block."""
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build, target_surface: builds.append(
+            build
+        ),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=[],
+    )
+    audit = {
+        "schema_version": 1,
+        "seed": np.int64(0),
+        "time_period": 2024,
+        "scf_probability": 0.5,
+        "household_count": np.int64(57_240),
+        "scf_household_count": 28_627,
+        "sipp_household_count": 28_613,
+        "scf_household_share": np.float64(28_627 / 57_240),
+        "scf_selected_bank_median": float("nan"),
+        "sipp_selected_bank_median": np.float64(1_200.0),
+    }
+    scf_wealth_gate = builder.GateResult(
+        name="scf_wealth_signal",
+        passed=True,
+        details={
+            "financial_asset_blend": audit,
+            "bank_account_assets_nonzero_share": np.float64(0.42),
+            "net_worth_nonzero_share_band": [0.7, 0.99],
+            "missing": None,
+            "is_blended": np.bool_(True),
+        },
+    )
+
+    builder._write_release_calibration_diagnostics(
+        scf_wealth_gate=scf_wealth_gate, **kwargs
+    )
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    record = builds[0]["scf_wealth_signal"]
+    assert record["passed"] is True
+    assert record["failures"] == []
+    blend = record["details"]["financial_asset_blend"]
+    assert blend["seed"] == 0 and type(blend["seed"]) is int
+    assert blend["household_count"] == 57_240
+    assert blend["scf_household_count"] + blend["sipp_household_count"] == 57_240
+    assert blend["scf_selected_bank_median"] is None
+    assert blend["sipp_selected_bank_median"] == 1_200.0
+    assert type(blend["scf_household_share"]) is float
+    assert record["details"]["is_blended"] is True
+    assert record["details"]["net_worth_nonzero_share_band"] == [0.7, 0.99]
+    json.dumps(builds[0]["scf_wealth_signal"], allow_nan=False)
+    assert builds[1]["scf_wealth_signal"] is None
 
 
 def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
