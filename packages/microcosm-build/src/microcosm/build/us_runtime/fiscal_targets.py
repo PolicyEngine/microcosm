@@ -1068,6 +1068,11 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
+    registry = _rebase_stale_soi_ht2_distributions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
     registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
         registry,
@@ -1623,15 +1628,39 @@ def _soi_capital_gains_active_totals(
     September re-pin, which re-sorted the feed by content hash, handed the
     returns control to the congressional-district US row (microcosm#1035).
     """
+    return _latest_unambiguous_soi_controls(
+        (
+            (key, fact)
+            for fact in facts
+            if (key := _soi_capital_gains_control_key_from_fact(fact)) is not None
+            and _soi_capital_gains_concept(fact) == _SOI_CAPITAL_GAINS_MODEL_CONCEPT
+        ),
+        target_period=target_period,
+        error=AmbiguousSoiCapitalGainsControlError,
+        what="SOI capital-gains control",
+        issue="microcosm#1035",
+    )
+
+
+def _latest_unambiguous_soi_controls(
+    candidates: Iterable[tuple[tuple[str, str, str], object]],
+    *,
+    target_period: int | str,
+    error: type[ValueError],
+    what: str,
+    issue: str,
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    """The latest candidate fact per key, not after the build period.
+
+    The choice depends on the fact set alone: two different candidates at the
+    winning period (different records, or one record with different values
+    or period labels) raise ``error``, and one record seen twice is one
+    candidate. A tie at a superseded period does not matter.
+    """
     controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
     tied: dict[tuple[str, str, str], set[tuple[str, float, str]]] = {}
     target_period_key = _period_key_from_value(target_period)
-    for fact in facts:
-        key = _soi_capital_gains_control_key_from_fact(fact)
-        if key is None:
-            continue
-        if _soi_capital_gains_concept(fact) != _SOI_CAPITAL_GAINS_MODEL_CONCEPT:
-            continue
+    for key, fact in candidates:
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
             continue
@@ -1653,15 +1682,15 @@ def _soi_capital_gains_active_totals(
             controls[key] = candidate
             tied[key] = {identity}
     ambiguous = {
-        key: sorted(candidates)
-        for key, candidates in tied.items()
-        if len(candidates) > 1
+        key: sorted(identities)
+        for key, identities in tied.items()
+        if len(identities) > 1
     }
     if ambiguous:
-        raise AmbiguousSoiCapitalGainsControlError(
-            "SOI capital-gains control is ambiguous: different candidates tie at "
-            f"the latest period for {ambiguous}. Deduplicate them upstream; "
-            "feed order must not pick a rebase control (microcosm#1035)."
+        raise error(
+            f"{what} is ambiguous: different candidates tie at the latest period "
+            f"for {ambiguous}. Deduplicate them upstream; feed order must not "
+            f"pick a rebase control ({issue})."
         )
     return controls
 
@@ -1778,6 +1807,360 @@ def _soi_capital_gains_uprating_index(kind: str) -> str:
     if kind == "returns":
         return "total_net_capital_gains_returns"
     return "total_net_capital_gains_amount"
+
+
+@dataclass(frozen=True)
+class _SoiHt2NationalControlRule:
+    """The national control of one Historic Table 2 column.
+
+    ``concept`` names the Form 1040 line both columns report; the control is
+    the latest ``control_measure_id`` fact of the ``control_family`` table.
+    """
+
+    control_family: str
+    control_measure_id: str
+    concept: str
+
+
+#: Historic Table 2 columns whose national level comes from a Pub 1304 table
+#: (microcosm#1243). Each pair was checked two ways for TY2020-TY2023:
+#:
+#: - The HT2 documentation guides (``20incmdocguide.doc`` to
+#:   ``23incmdocguide.doc``) define the HT2 column at the same Form 1040 line
+#:   as the Table 1.4 column.
+#: - The HT2 US row matches Table 1.4's same-year "All returns, total" cell
+#:   within 2.7%: HT2 / Table 1.4 runs from 0.974 (itemized deductions,
+#:   TY2022) to 1.009 (IRA distribution returns, TY2022). HT2 counts returns
+#:   the IRS processed in the following calendar year, so it runs slightly
+#:   below the sample-based tables. The capital-gains columns, by contrast,
+#:   differ by 2.36x because they count different populations (see
+#:   ``_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS``).
+#:
+#: The gap between an HT2 row and its control is therefore vintage. HT2 is
+#: TY2022 while the controls are TY2023, and aging the HT2 levels on the CBO
+#: AGI series cannot reproduce each column's own TY2022-TY2023 change:
+#: taxable Social Security grew 15.0% and taxable IRA distributions 0.1%.
+#:
+#: The feed carries the Table 1.4 itemized-deduction and taxable-income totals
+#: only in Table 1.2, which prints the same TY2023 cells ($690.845B and
+#: $11,944.447B). Table 1.1 supplies the return count and AGI; Table 1.2
+#: repeats them and stays a national target of equal value. A column absent
+#: from this register keeps its HT2 level and its HT2 national row.
+_SOI_HT2_NATIONAL_CONTROLS: dict[str, _SoiHt2NationalControlRule] = {
+    "return_count": _SoiHt2NationalControlRule(
+        "table_1_1", "return_count", "form_1040_returns"
+    ),
+    "adjusted_gross_income": _SoiHt2NationalControlRule(
+        "table_1_1", "adjusted_gross_income", "form_1040_line_11_agi"
+    ),
+    "wages_salaries_amount": _SoiHt2NationalControlRule(
+        "table_1_4", "wages_salaries_amount", "form_1040_line_1z_wages"
+    ),
+    "wages_salaries_returns": _SoiHt2NationalControlRule(
+        "table_1_4", "wages_salaries_returns", "form_1040_line_1z_wages"
+    ),
+    "taxable_ira_distributions_amount": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_ira_distributions_amount",
+        "form_1040_line_4b_taxable_ira_distributions",
+    ),
+    "taxable_ira_distributions_returns": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_ira_distributions_returns",
+        "form_1040_line_4b_taxable_ira_distributions",
+    ),
+    "taxable_pension_income_amount": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_pension_income_amount",
+        "form_1040_line_5b_taxable_pensions_and_annuities",
+    ),
+    "taxable_pension_income_returns": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_pension_income_returns",
+        "form_1040_line_5b_taxable_pensions_and_annuities",
+    ),
+    "unemployment_compensation_amount": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "unemployment_compensation_amount",
+        "schedule_1_line_7_unemployment_compensation",
+    ),
+    "unemployment_compensation_returns": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "unemployment_compensation_returns",
+        "schedule_1_line_7_unemployment_compensation",
+    ),
+    "taxable_social_security_amount": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_social_security_amount",
+        "form_1040_line_6b_taxable_social_security",
+    ),
+    "taxable_social_security_returns": _SoiHt2NationalControlRule(
+        "table_1_4",
+        "taxable_social_security_returns",
+        "form_1040_line_6b_taxable_social_security",
+    ),
+    "itemized_deductions_amount": _SoiHt2NationalControlRule(
+        "table_1_2",
+        "total_itemized_deductions_amount",
+        "form_1040_line_12_itemized_deductions",
+    ),
+    "taxable_income_amount": _SoiHt2NationalControlRule(
+        "table_1_2", "taxable_income_amount", "form_1040_line_15_taxable_income"
+    ),
+}
+_SOI_HT2_MEASURE_BY_CONTROL: dict[tuple[str, str], str] = {
+    (rule.control_family, rule.control_measure_id): measure_id
+    for measure_id, rule in _SOI_HT2_NATIONAL_CONTROLS.items()
+}
+
+
+class AmbiguousSoiNationalControlError(ValueError):
+    """Two different records tie for one Historic Table 2 national control."""
+
+
+def _rebase_stale_soi_ht2_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Use Historic Table 2 rows as shares of their national control (#1243).
+
+    Each column in ``_SOI_HT2_NATIONAL_CONTROLS`` counts the same Form 1040
+    line as its Pub 1304 control, so an HT2 state row is a valid share of the
+    nation but a stale level. Each all-AGI HT2 state row ships as its share of
+    the HT2 US total, scaled to the control of ``_soi_ht2_national_controls``
+    at or after its own period. The value lands at the control's period, and
+    target aging adds the remaining years from there. Before this, 14
+    quantities bound a TY2022 HT2 US row beside a TY2023 Table 1.x row,
+    0.3% to 12.2% apart, and two state families summed past the newer one.
+
+    Once a quantity's states are shares of the control, the control's row is
+    its only national level, so the HT2 lineage's national all-AGI rows of
+    that quantity retire. Two rows qualify: the HT2 US row, and the same total
+    from HT2's US workbook (``22in54us.xlsx``), which the feed packages as
+    ``irs_soi.ty2023.state_2022.us``. The control's own family may repeat the
+    total in another table (Table 1.2 prints Table 1.1's count and AGI); those
+    rows are equal to the control and stay.
+
+    A row whose control is older than the row, or whose HT2 US total is
+    missing, keeps its HT2 level, and so does its HT2 national row.
+    """
+
+    controls = _soi_ht2_national_controls(facts, target_period=target_period)
+    source_totals = _soi_ht2_us_totals(facts)
+    retired_quantities: set[tuple[object, ...]] = set()
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        measure_id = _soi_ht2_rebase_measure(spec)
+        if measure_id is None:
+            specs.append(spec)
+            continue
+        key = _soi_ht2_control_key_from_spec(spec, measure_id)
+        source_period = spec.metadata.get("source_period", "")
+        control = controls.get(key)
+        source_total = source_totals.get((*key, source_period))
+        if (
+            control is None
+            or not _period_not_before(
+                control.period_key, _period_key_from_value(source_period)
+            )
+            or source_total in (None, 0)
+        ):
+            specs.append(spec)
+            continue
+        retired_quantities.add(_soi_national_quantity(spec))
+        if _is_national_all_agi_spec(spec):
+            continue
+        concept = _SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
+        factor = control.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": f"total_{measure_id}",
+                    "uprating_from_period": source_period,
+                    # Lands at the CONTROL's period; target aging completes
+                    # the remaining links (#488).
+                    "uprating_to_period": control.source_period,
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                    "soi_source_concept": concept,
+                    "soi_control_concept": concept,
+                },
+            )
+        )
+    return TargetRegistry(
+        [
+            spec
+            for spec in specs
+            if not _is_retired_soi_ht2_national_spec(spec, retired_quantities)
+        ],
+        country=registry.country,
+    )
+
+
+def _soi_ht2_national_controls(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    """The national control per (HT2 measure, filing status, universe).
+
+    Only a national all-AGI fact of the table and column registered for the
+    HT2 measure qualifies, so HT2, congressional-district and
+    excluding-dependents rows never do, whatever their period stamp. The
+    latest qualifying period not after the build period wins. Two different
+    candidates at that period (different records, or one record with
+    different values or period labels) refuse the compile, so feed order never
+    picks a control (microcosm#1035).
+    """
+    return _latest_unambiguous_soi_controls(
+        (
+            (key, fact)
+            for fact in facts
+            if (key := _soi_ht2_control_key_from_fact(fact)) is not None
+        ),
+        target_period=target_period,
+        error=AmbiguousSoiNationalControlError,
+        what="SOI Historic Table 2 national control",
+        issue="microcosm#1243",
+    )
+
+
+def _soi_ht2_control_key_from_fact(fact: object) -> tuple[str, str, str] | None:
+    """(HT2 measure, filing status, universe) a control fact anchors, if any."""
+    if _source_name(fact) != "irs_soi":
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    if not _is_all_agi_range_fact(fact):
+        return None
+    family = _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+    measure_id = _SOI_HT2_MEASURE_BY_CONTROL.get((family, _measure_id(fact)))
+    if measure_id is None:
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    return (measure_id, status, _soi_return_universe_from_fact(fact))
+
+
+def _soi_ht2_us_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], float]:
+    """HT2 US all-AGI totals per (measure, filing status, universe, period)."""
+    totals: dict[tuple[str, str, str, str], float] = {}
+    for fact in facts:
+        if _source_name(fact) != "irs_soi":
+            continue
+        if _geography_level(fact) != "country":
+            continue
+        if not _is_all_agi_range_fact(fact):
+            continue
+        record_set_id = _str_at(fact, "layout", "record_set_id")
+        if _soi_record_set_family(record_set_id) != "historic_table_2":
+            continue
+        measure_id = _measure_id(fact)
+        if measure_id not in _SOI_HT2_NATIONAL_CONTROLS:
+            continue
+        status = _filing_status_label(_dimensions(fact).get("filing_status"))
+        if status is None:
+            continue
+        totals[
+            (
+                measure_id,
+                status,
+                _soi_return_universe_from_fact(fact),
+                str(_period_value(fact)),
+            )
+        ] = _numeric_value(fact)
+    return totals
+
+
+def _soi_ht2_rebase_measure(spec: TargetSpec) -> str | None:
+    """The registered HT2 measure of an all-AGI HT2 spec, else ``None``.
+
+    AGI-band rows are bounded and stay with ``_rebase_soi_state_agi_bands``,
+    which scales them to the state total this pass produces.
+    """
+    if spec.family != "irs_soi":
+        return None
+    measure_id = spec.metadata.get("source_measure_id", "")
+    if measure_id not in _SOI_HT2_NATIONAL_CONTROLS:
+        return None
+    record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
+    if _soi_record_set_family(record_set_id) != "historic_table_2":
+        return None
+    if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
+        return None
+    return measure_id
+
+
+def _soi_ht2_control_key_from_spec(
+    spec: TargetSpec,
+    measure_id: str,
+) -> tuple[str, str, str]:
+    return (
+        measure_id,
+        spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
+    )
+
+
+def _soi_national_quantity(spec: TargetSpec) -> tuple[object, ...]:
+    """The model quantity a spec measures, apart from its geography."""
+    metadata = spec.metadata
+    return (
+        metadata.get("variable"),
+        metadata.get("measure_mode"),
+        metadata.get("agi_lower_bound"),
+        metadata.get("agi_upper_bound"),
+        metadata.get("filing_status"),
+        metadata.get("soi_return_universe", "all_returns"),
+        metadata.get("itemized_only"),
+        tuple(
+            sorted(
+                (key, value)
+                for key, value in metadata.items()
+                if key.startswith("ledger_filter_")
+            )
+        ),
+    )
+
+
+def _is_soi_ht2_lineage_record_set(record_set_id: str) -> bool:
+    """Whether a record set publishes Historic Table 2 data.
+
+    Besides ``historic_table_2`` itself, the feed packages HT2's US workbook
+    (``22in54us.xlsx``, "Historic Table 2 state data, United States total") as
+    ``irs_soi.<ty>.state_<data year>.us``.
+    """
+    family = _soi_record_set_family(record_set_id)
+    if family == "historic_table_2":
+        return True
+    prefix, _, year = family.partition("_")
+    return prefix == "state" and year.isdigit() and len(year) == 4
+
+
+def _is_retired_soi_ht2_national_spec(
+    spec: TargetSpec,
+    retired_quantities: set[tuple[object, ...]],
+) -> bool:
+    """Whether an HT2-lineage national row lost its quantity to a control."""
+    if spec.family != "irs_soi" or not retired_quantities:
+        return False
+    if not _is_national_all_agi_spec(spec):
+        return False
+    if not _is_soi_ht2_lineage_record_set(
+        spec.metadata.get("ledger_layout_record_set_id", "")
+    ):
+        return False
+    return _soi_national_quantity(spec) in retired_quantities
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's
@@ -2428,6 +2811,11 @@ def _soi_state_agi_band_controls(
         if metadata.get("soi_return_universe", "all_returns") != "all_returns":
             continue
         source_period = metadata.get("source_period", "")
+        if "uprating_factor" in metadata:
+            # A total rebased onto its national control (#1243) holds a value
+            # at the control's period, and target aging ages it from there
+            # (``_age_spec``); its bands must land at the same period.
+            source_period = metadata.get("uprating_to_period") or source_period
         candidate = _SoiTotalControl(
             value=spec.value,
             source_period=source_period,
