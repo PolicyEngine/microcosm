@@ -81,6 +81,7 @@ from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     _exceeds_int64,
     _parsing,
     _record_fields,
@@ -264,6 +265,11 @@ class BenefitUnitRule:
         return f"{self.entity}_household_id"
 
     @property
+    def source_household_column(self) -> str:
+        """Original donor lineage, distinct from every other entity column."""
+        return f"{self.entity}_{SOURCE_HOUSEHOLD_ID_COLUMN}"
+
+    @property
     def head_column(self) -> str:
         """The unit table's column naming the unit's head."""
         return f"{self.entity}_head_person_id"
@@ -367,6 +373,8 @@ def build_benefit_units(
         ``<entity>_household_id`` and ``<entity>_head_person_id`` (all
         ``int64``); and each person's unit id (``int64``), aligned to
         ``person``'s rows and index and named ``person_<entity>_id``.
+        When the household table carries original source lineage, the unit
+        table also carries ``<entity>_source_household_id`` unchanged.
 
     Raises:
         ValueError: If a needed column is missing, the frame breaks a
@@ -391,6 +399,11 @@ def build_benefit_units(
             rule.head_column: ids[head_rows],
         }
     )
+    if SOURCE_HOUSEHOLD_ID_COLUMN in household:
+        lineage = household.set_index(_HOUSEHOLD_ID)[SOURCE_HOUSEHOLD_ID_COLUMN]
+        family[rule.source_household_column] = family[rule.household_column].map(
+            lineage
+        )
     membership = pd.Series(
         ids[head], index=person.index, name=rule.membership_column, dtype=np.int64
     )
