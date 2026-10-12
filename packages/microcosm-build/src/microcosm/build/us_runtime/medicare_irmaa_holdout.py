@@ -116,8 +116,30 @@ _MODEL_MEASURES = MappingProxyType(
         "part_b": (
             f"{_PART_B_GROSS} minus {_PART_B_BASE}, for persons with {_ENROLLED}"
         ),
-        "part_d": _PART_D_SURCHARGE,
+        "part_d": f"{_PART_D_SURCHARGE}, for persons with {_ENROLLED}",
     }
+)
+#: Every income-related premium is withheld when no enrollee pays one.
+_NO_PAYERS_REASON = (
+    "No weighted Medicare enrollee pays an income-related premium, so the "
+    "Trustees comparisons are withheld rather than reported as -100%. The "
+    "premium for a year rests on modified adjusted gross income from two years "
+    "earlier. policyengine-us 2.2.1 computes that income from the earlier "
+    "year's inputs, which a release H5 carrying only the release year's inputs "
+    "does not supply; PolicyEngine/policyengine-us#10106 adds a fallback to "
+    "the earliest input year."
+)
+_NO_ENROLLEES_REASON = (
+    "No weighted person is enrolled in Medicare, so the Trustees comparisons "
+    "are withheld."
+)
+_GATES = (
+    f"{_ENROLLED} covers Part A and/or Part B, so the Part B measure also "
+    "counts any Part A-only enrollee the engine charges. The Part D measure is "
+    "the surcharge as the engine gates it: every Medicare enrollee before "
+    "PolicyEngine/policyengine-us#10115, Part D enrollees after it. A "
+    "surcharge on a person outside Medicare enrollment is excluded and "
+    "reported as outside_enrollment_weighted_amount."
 )
 
 
@@ -149,6 +171,8 @@ def _part_row(
     amounts: np.ndarray,
     weights: np.ndarray,
     benchmark: MedicareIrmaaBenchmark | None,
+    *,
+    compare: bool,
 ) -> dict[str, Any]:
     payers = amounts > 0
     weighted_payers = float(weights[payers].sum())
@@ -161,17 +185,13 @@ def _part_row(
         "average_monthly_premium_per_payer": (
             weighted_premiums / weighted_payers / 12 if weighted_payers else None
         ),
+        "benchmark_payers": None,
+        "benchmark_aggregate_premiums": None,
+        "benchmark_average_monthly_premium_per_payer": None,
+        "payers_relative_difference": None,
+        "aggregate_premiums_relative_difference": None,
     }
     if benchmark is None:
-        row.update(
-            {
-                "benchmark_payers": None,
-                "benchmark_aggregate_premiums": None,
-                "benchmark_average_monthly_premium_per_payer": None,
-                "payers_relative_difference": None,
-                "aggregate_premiums_relative_difference": None,
-            }
-        )
         return row
     row.update(
         {
@@ -187,14 +207,15 @@ def _part_row(
             "benchmark_average_monthly_premium_per_payer": (
                 benchmark.average_monthly_premium_per_payer
             ),
-            "payers_relative_difference": _relative_difference(
-                weighted_payers, benchmark.beneficiaries_affected
-            ),
-            "aggregate_premiums_relative_difference": _relative_difference(
-                weighted_premiums, benchmark.aggregate_premiums
-            ),
         }
     )
+    if compare:
+        row["payers_relative_difference"] = _relative_difference(
+            weighted_payers, benchmark.beneficiaries_affected
+        )
+        row["aggregate_premiums_relative_difference"] = _relative_difference(
+            weighted_premiums, benchmark.aggregate_premiums
+        )
     return row
 
 
@@ -210,14 +231,20 @@ def medicare_irmaa_holdout_payload(
 ) -> dict[str, Any]:
     """Weighted IRMAA payers and annual income-related premiums by Part.
 
-    A person's Part B income-related premium is their enrollment-gated gross
-    Part B premium less the standard premium; ``base_part_b_premium`` is
-    defined for every Medicare-eligible person, so it is counted only for
-    ``medicare_enrolled`` people. The Part D amount is the engine's surcharge
-    as computed. A payer is a person with a positive annual amount. Each
-    person carries their household's calibrated weight, as supplied by the
-    written-H5 scorer's person results; the function reads its inputs and
-    never writes them.
+    Both Parts count ``medicare_enrolled`` people only. A person's Part B
+    income-related premium is their enrollment-gated gross Part B premium
+    less the standard premium; ``base_part_b_premium`` is defined for every
+    Medicare-eligible person, so a non-enrollee's base premium never counts.
+    The Part D amount is the engine's surcharge; any surcharge on a
+    non-enrollee is excluded and reported. A payer is a person with a positive
+    annual amount. Each person carries their household's calibrated weight,
+    as supplied by the written-H5 scorer's person results; the function reads
+    its inputs and never writes them.
+
+    The status is ``available`` when some weighted enrollee pays. With no
+    weighted enrollee (``no_medicare_enrollees``) or no weighted payer in
+    either Part (``no_payers``), the model totals are still reported but the
+    Trustees comparisons are withheld and a reason is given.
     """
     enrolled_values = np.asarray(enrolled)
     part_b_gross, part_b_base, part_d_surcharge, weights = (
@@ -250,6 +277,18 @@ def medicare_irmaa_holdout_payload(
         raise ValueError(
             f"{_PART_B_GROSS} is below {_PART_B_BASE} for an enrolled person."
         )
+    part_d_amount = np.where(enrolled_values, part_d_surcharge, 0.0)
+    part_d_outside = np.where(enrolled_values, 0.0, part_d_surcharge)
+
+    weighted_enrollees = float(weights[enrolled_values].sum())
+    any_payer = bool(weights[(part_b_amount > 0) | (part_d_amount > 0)].sum() > 0)
+    if weighted_enrollees <= 0:
+        status, reason = "no_medicare_enrollees", _NO_ENROLLEES_REASON
+    elif not any_payer:
+        status, reason = "no_payers", _NO_PAYERS_REASON
+    else:
+        status, reason = "available", None
+    compare = status == "available"
 
     benchmarks = MEDICARE_IRMAA_TRUSTEES_2026.get(int(period))
     parts = [
@@ -258,24 +297,30 @@ def medicare_irmaa_holdout_payload(
             part_b_amount,
             weights,
             None if benchmarks is None else benchmarks["part_b"],
+            compare=compare,
         ),
         _part_row(
             "part_d",
-            part_d_surcharge,
+            part_d_amount,
             weights,
             None if benchmarks is None else benchmarks["part_d"],
+            compare=compare,
         ),
     ]
+    parts[1]["outside_enrollment_weighted_amount"] = float(
+        (weights * part_d_outside).sum()
+    )
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "status": "available",
+        "status": status,
         "period": int(period),
         "target_role": "validation",
         "enforced": False,
         "used_for_calibration": False,
         "measure": "Medicare income-related premium (IRMAA) payers and amounts",
         "weight_basis": "person's calibrated household_weight",
-        "payer": "a person with a positive annual income-related premium",
+        "payer": "a Medicare enrollee with a positive annual income-related premium",
+        "weighted_medicare_enrollees": weighted_enrollees,
         "benchmark": {
             "source": TRUSTEES_REPORT_2026_TITLE,
             "source_url": TRUSTEES_REPORT_2026_URL,
@@ -298,14 +343,15 @@ def medicare_irmaa_holdout_payload(
             "aggregate additional premium amounts collected in a calendar "
             "year; the tables do not state whether the count is an average "
             "month, a year-end or an ever-in-year count. The model counts "
-            "persons with a "
-            "positive annual income-related premium in "
-            f"{int(period)} and sums those annual amounts. "
+            "Medicare enrollees with a positive annual income-related premium "
+            f"in {int(period)} and sums those annual amounts. {_GATES} "
             "This is a held-out diagnostic, not a calibration target or a "
             "release gate."
         ),
         "parts": parts,
     }
+    if reason is not None:
+        payload["reason"] = reason
     if release_id is not None:
         payload["release_id"] = release_id
     return payload

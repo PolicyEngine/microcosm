@@ -227,11 +227,18 @@ reported explicitly. The report records the difference between SSA's December
 It also writes `us_medicare_irmaa_holdout.json`: weighted Medicare Part B and
 Part D income-related premium (IRMAA) payers and annual amounts, compared with
 the 2026 Medicare Trustees Report's calendar-year rows in Tables V.E3 and V.E4
-(microcosm#1206). Part B counts
-`gross_medicare_part_b_premium_if_enrolled - base_part_b_premium` for
-`medicare_enrolled` people only, because the base premium is defined for every
-eligible person. It is held out the same way: no calibration row, no release
-refusal.
+(microcosm#1206). Both Parts count `medicare_enrolled` people only (Part A
+and/or Part B). Part B is
+`gross_medicare_part_b_premium_if_enrolled - base_part_b_premium`, because the
+base premium is defined for every eligible person. Part D is
+`income_adjusted_part_d_premium_surcharge`, which policyengine-us charges every
+Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
+gates it on Part D enrollment. IRMAA rests on income from two years before
+the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
+single-year release H5 has none, so a 2024 release reports `status: no_payers`
+and withholds the comparisons until the engine includes
+PolicyEngine/policyengine-us#10106. It is held out the same way: no
+calibration row, no release refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release

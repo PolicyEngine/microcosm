@@ -4079,7 +4079,10 @@ def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
     list. That is deliberate — the rows keep pinning the compile the
     supported/identity classification was reviewed against, and
     :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
-    is the arm that meets the restated keys on the live feed.
+    is the arm that meets the restated keys on the live feed. The rows also
+    predate microcosm#1206, so the Part B premium row still names
+    ``gross_medicare_part_b_premium``; the live mapping binds
+    ``gross_medicare_part_b_premium_if_enrolled``.
     """
 
     builder = _load_builder_module()

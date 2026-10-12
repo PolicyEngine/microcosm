@@ -457,6 +457,11 @@ DIRECT_LEDGER_TARGETS: dict[
     # it also charges eligible people who never enrolled. PolicyEngine-US
     # documents the enrollment-gated gross_medicare_part_b_premium_if_enrolled
     # for CMS premiums-from-enrollees targets (microcosm#1206).
+    # The target includes income-related premiums (IRMAA). On the locked
+    # policyengine-us 2.2.1 a 2024 release has none, because IRMAA rests on
+    # income two years earlier and the H5 carries 2024 inputs only, so this
+    # row reads the standard premium alone until Microcosm's engine includes
+    # PolicyEngine/policyengine-us#10106 (see microcosm#1206 for the sums).
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
         "gross_medicare_part_b_premium_if_enrolled",
         "cms_medicare",

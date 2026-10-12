@@ -82,3 +82,41 @@ def test_holdout_measures_follow_the_engine_on_a_household() -> None:
     assert part_d_row["average_monthly_premium_per_payer"] == pytest.approx(
         _TRUSTEES_2024_PART_D_TOP_MONTHLY
     )
+
+
+def test_a_single_year_household_has_no_irmaa_on_the_locked_engine() -> None:
+    """Pin today's zero so an engine bump changes it visibly (microcosm#1206).
+
+    A release H5 carries inputs for its year only. On policyengine-us 2.2.1,
+    IRMAA rests on income two years earlier, which such a household lacks, so
+    a 2024 enrollee with $600,000 of 2024 wages pays none and the holdout
+    withholds its Trustees comparisons. A policyengine-us that includes
+    PolicyEngine/policyengine-us#10106 falls back to the earliest input year;
+    when Microcosm moves to one, this test fails and should be rewritten to
+    expect the top tier.
+    """
+    from policyengine_us import Simulation
+
+    person = _person(True) | {"employment_income": {"2024": 600_000}}
+    situation = {
+        "people": {"enrollee": person},
+        "tax_units": {"tax_unit": {"members": ["enrollee"]}},
+        "families": {"family": {"members": ["enrollee"]}},
+        "spm_units": {"spm_unit": {"members": ["enrollee"]}},
+        "marital_units": {"marital_unit": {"members": ["enrollee"]}},
+        "households": {
+            "household": {"members": ["enrollee"], "state_code": {"2024": "TX"}}
+        },
+    }
+    simulation = Simulation(situation=situation)
+    values = [
+        np.asarray(simulation.calculate(variable, 2024))
+        for variable in MEDICARE_IRMAA_HOLDOUT_VARIABLES
+    ]
+    assert simulation.calculate("adjusted_gross_income", 2024)[0] >= 600_000
+    payload = medicare_irmaa_holdout_payload(*values, np.array([1.0]), period=2024)
+    assert payload["status"] == "no_payers", payload["parts"]
+    assert payload["weighted_medicare_enrollees"] == 1
+    for row in payload["parts"]:
+        assert row["weighted_payers"] == 0
+        assert row["payers_relative_difference"] is None
