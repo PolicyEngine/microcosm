@@ -78,7 +78,7 @@ def test_us_post_transfer_rewrites_are_opened_by_identity_filters() -> None:
     materialize = graph.node("materialize_multispine_agreement_outputs")
 
     assert create.structural is StructuralDelta.CREATE
-    assert len(create.outputs) == 86
+    assert len(create.outputs) == 87
     assert all(not owned.rewrite for owned in create.outputs)
 
     for stage in _STAGES[:3]:
@@ -94,6 +94,9 @@ def test_us_post_transfer_rewrites_are_opened_by_identity_filters() -> None:
     assert all(owned.rewrite for owned in derive.outputs)
     # The ESI premium pool anchor rescales transferred employer premiums.
     assert ("person", "employer_sponsored_insurance_premiums") in _coordinates(derive)
+    # The CPS record id is a string, as the survey writes it.
+    cps_record = next(owned for owned in create.outputs if owned.column == "PERIDNUM")
+    assert cps_record.dtype == "string"
 
     seed_by_coordinate = {(owned.entity, owned.column): owned for owned in seed.outputs}
     assert len(seed_by_coordinate) == 17

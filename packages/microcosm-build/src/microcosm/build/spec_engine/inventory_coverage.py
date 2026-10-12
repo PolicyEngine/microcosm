@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "5d0c9e0c8626e7d5e8ab3f65f9a6b4ce0a15d64aceac4da02ca67b2b879c623c",
     "early_families": "69ecea17171ba40d46bc26e35f0cf8c3636f4cb27e51f84572b60e94c3b01370",
-    "full_checkpoint": "03987d2ccf871324910457f699b750773cc60044591180ec269f7fb89ae55b25",
+    "full_checkpoint": "707978cb1ca6e8bad9b1a7c27d44120271bc22d13ad405587869fd82f2098dee",
     "gap_fill_schedule": "2c93d98926a267a05b9c339b087d14cca9c0dd7eb19fe5954d140a1b202454aa",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "3bfce32d85079804f869686bd6bf983dbbb7e262c05a982a9d40d85ae0f69238",
+    "late_resource_semantics": "cbac7c8fbdbb82f0f06ab356d0c9f0d3645ca930550b44af2272d93315f2e934",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
@@ -364,7 +364,7 @@ EXPECTED_HASHES = {
     # and the ordered QRF targets are unchanged.
     "seed_map": "08698f4440eb31d1e2886036e7fd0ab86d4c6a007deaa650127dc4346a2151e0",
     "seed_protocol": "303da98866edb2a87b1dc36d9ff5a0146deb3a68a4f5361416b5794c13ae4cfb",
-    "source_manifest": "b90f0b264f9357eeda5169416babb50f3f360927a70aa0fd6ec78aa54af50427",
+    "source_manifest": "629a0712659a26b2d6aa6c0e5672421f415d625e0599d6baa0a834d118953c6a",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }

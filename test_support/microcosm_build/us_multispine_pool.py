@@ -1080,6 +1080,9 @@ def _with_esi_premium_pool_surface(frame: Frame) -> Frame:
         person[column] = 100.0
     if US_ESI_PREMIUMS_WAGE_COLUMN not in person:
         person[US_ESI_PREMIUMS_WAGE_COLUMN] = 1_000.0
+    if "WAGP" not in person:
+        # The raw ACS wage behind each transferred row's mapped wage.
+        person["WAGP"] = np.where(asec, np.nan, person[US_ESI_PREMIUMS_WAGE_COLUMN])
     return _replace_person(frame, person)
 
 

@@ -18,6 +18,7 @@ import pandas as pd
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
 from microcosm.build.us_runtime.esi_premiums import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_CPS_RECORD_COLUMN,
     US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
     US_ESI_PREMIUMS_WAGE_COLUMN,
 )
@@ -71,6 +72,7 @@ ESI_RAW_EVIDENCE_COLUMNS = tuple(
     column
     for column, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items()
     if provision == "assembled_raw_asec_source_evidence"
+    and column != US_ESI_PREMIUMS_CPS_RECORD_COLUMN
 )
 _SOURCE_HOUSEHOLDS = 100
 
@@ -234,9 +236,15 @@ def _post_transfer_prerequisites(frame: Frame) -> Frame:
     if asec.sum() != 1:
         raise RuntimeError("Expected one ASEC and one ACS sampled spine row.")
     for column in ESI_RAW_EVIDENCE_COLUMNS:
-        # The coverage codes and the CPS record id mark the row the stage
-        # derived; the anchor reads only whether they are present.
+        # The coverage codes mark the row the stage derived; the anchor reads
+        # only whether they are present.
         person[column] = np.where(asec, 1.0, np.nan)
+    # The CPS record id corroborates them; the survey writes it as a string.
+    person[US_ESI_PREMIUMS_CPS_RECORD_COLUMN] = pd.array(
+        np.where(asec, "000110339935153371101", None), dtype="string[python]"
+    )
+    # The raw ACS wage behind the transferred row's mapped wage.
+    person["WAGP"] = np.where(asec, np.nan, 40_000.0)
     person[US_ESI_PREMIUMS_WAGE_COLUMN] = np.where(asec, 50_000.0, 40_000.0)
     person[US_ESI_EMPLOYER_PREMIUM_COLUMN] = np.where(asec, 8_000.0, 6_000.0)
 

@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_477
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_909
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_386
+EXPECTED_AUTHORED_FIELD_COUNT = 32_478
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_941
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_419
 
 
 class FieldUsageError(AssertionError):
@@ -377,8 +377,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
     ),
     "generated_authorities": (
-        8_743,
-        "c4a7ba2589f2ed17cab5697197fbfa528a736692d23f6932405cdf4fe5d45454",
+        8_775,
+        "f5b4a5fce343e6d5e35cd3dd6a016e675e65c6d073215d87e7668bec796fe373",
     ),
     "geography_assignment": (
         28,
@@ -485,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_748,
-        "dcc891c12eb675ee7f21c903995db98c3b8c6ccba569d71f0fd59b589abce04c",
+        1_749,
+        "d0979722ea5153bd152e5e1c1201f5d530d11b21aecad18aca38473962caa062",
     ),
     "spine_assembly_household_mass_shares": (
         2,

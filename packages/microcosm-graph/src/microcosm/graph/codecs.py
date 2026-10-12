@@ -358,6 +358,16 @@ def _dtype_map(
     return result
 
 
+def _is_text_dtype(dtype: str) -> bool:
+    """Whether a declared CSV dtype is a pandas string dtype."""
+
+    try:
+        resolved = pd.api.types.pandas_dtype(dtype)
+    except TypeError:
+        return False
+    return isinstance(resolved, pd.StringDtype)
+
+
 def _read_tables(
     source: Path,
     document: Mapping[str, Any],
@@ -365,7 +375,16 @@ def _read_tables(
 ) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
     for name, path in _table_files(source, document, schema).items():
-        table = pd.read_csv(path)
+        header = pd.read_csv(path, nrows=0).columns
+        # A column declared as a string is read as one: inferring a number
+        # first would round a long numeric identifier and drop its leading
+        # zeros before the declared dtype could apply.
+        text = {
+            column: dtype
+            for column, dtype in _dtype_map(document, name, header).items()
+            if _is_text_dtype(dtype)
+        }
+        table = pd.read_csv(path, dtype=text or None)
         dtypes = _dtype_map(document, name, table.columns)
         if dtypes:
             try:

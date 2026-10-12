@@ -70,7 +70,8 @@ EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
 ANCHOR = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"]["2024"])
 WAGES = US_ESI_PREMIUMS_WAGE_COLUMN
 RAW = esi._RAW_EVIDENCE_COLUMNS
-CPS_ID = esi._CPS_EVIDENCE_COLUMN
+CPS_ID = esi.US_ESI_PREMIUMS_CPS_RECORD_COLUMN
+RAW_WAGE = esi._RAW_ACS_WAGE_COLUMN
 _GROUPS = ("tax_unit", "spm_unit", "family", "marital_unit")
 _REPOSITORY_ROOT = paths_for("microcosm-build").repository
 
@@ -115,6 +116,11 @@ def _pool(
             record[CPS_ID] = (
                 f"cps-{origin + 1:04d}-{member}" if household["source"] else None
             )
+            # The ACS earnings universe the anchor resolves wage evidence in:
+            # adults, with the raw wage the mapped wage came from.
+            record["person_support_channel"] = "asec" if household["source"] else "acs"
+            record["age"] = 40.0
+            record[RAW_WAGE] = np.nan if household["source"] else float(wages)
             records.append(record)
     person = pd.DataFrame(records)
     person.insert(0, "person_id", np.arange(1, len(person) + 1, dtype="int64"))
@@ -164,6 +170,9 @@ _person = st.tuples(_amount, _amount)
 _weight = st.one_of(
     st.just(0.0),
     st.floats(min_value=0.5, max_value=5_000.0, allow_nan=False),
+    # Masses many orders apart, where a share's complement loses precision.
+    st.floats(min_value=1e-9, max_value=1e-3, allow_nan=False),
+    st.floats(min_value=1e6, max_value=1e10, allow_nan=False),
 )
 
 
@@ -190,8 +199,19 @@ def _record(frame: Frame, column: str) -> np.ndarray:
     return person["person_source_id"].map(by_source).to_numpy(dtype=float)
 
 
+def _masses(frame: Frame) -> tuple[float, float]:
+    """Household mass of the source-derived and the transferred households."""
+
+    person = frame.table("person")
+    source_households = set(person.loc[_source_rows(frame), "person_household_id"])
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    on_source = household["household_id"].isin(source_households).to_numpy()
+    return float(weights[on_source].sum()), float(weights[~on_source].sum())
+
+
 def _transferred_mass(frame: Frame) -> float:
-    return 1.0 - us_esi_premiums_household_mass_share(frame, _source_rows(frame))
+    return _masses(frame)[1]
 
 
 @st.composite
@@ -251,10 +271,11 @@ _SETTINGS = settings(
 def test_pool_total_is_the_source_total_over_its_mass_share(frame: Frame) -> None:
     source = _source_rows(frame)
     share = us_esi_premiums_household_mass_share(frame, source)
+    source_mass, transferred_mass = _masses(frame)
 
     anchored, receipt = with_us_esi_premium_pool_anchor(frame)
 
-    expected = _total(frame, source) / share
+    expected = _total(frame, source) * (source_mass + transferred_mass) / source_mass
     assert _total(anchored) == pytest.approx(expected, rel=1e-9)
     assert receipt["employer_premium_total"] == pytest.approx(expected, rel=1e-9)
     assert receipt["pool_employer_premium_target"] == pytest.approx(expected, rel=1e-12)
@@ -267,13 +288,13 @@ def test_both_sides_carry_the_same_premium_per_unit_of_household_mass(
     frame: Frame,
 ) -> None:
     source = _source_rows(frame)
-    share = us_esi_premiums_household_mass_share(frame, source)
-    assume(share < 1.0)
+    source_mass, transferred_mass = _masses(frame)
+    assume(transferred_mass > 0)
 
     anchored, _receipt = with_us_esi_premium_pool_anchor(frame)
 
-    assert _total(anchored, ~source) / (1.0 - share) == pytest.approx(
-        _total(anchored, source) / share, rel=1e-9
+    assert _total(anchored, ~source) / transferred_mass == pytest.approx(
+        _total(anchored, source) / source_mass, rel=1e-9
     )
 
 
@@ -599,11 +620,96 @@ def test_a_transferred_person_with_a_missing_wage_is_refused(wage: object) -> No
 
 
 def test_a_missing_wage_on_a_source_record_blocks_its_clones_too() -> None:
+    # The clone's own mapped wage is a number; its source record's is not.
     frame = _pool(_two_sided() + [_two_sided()[1]], clone_of={2: 1})
     frame = _with_person_cell(frame, 1, WAGES, np.nan)
 
-    with pytest.raises(SourceRuntimeError, match="2 transferred row"):
+    with pytest.raises(SourceRuntimeError, match="A missing wage is not a zero wage"):
         with_us_esi_premium_pool_anchor(frame)
+
+
+def test_a_zero_filled_wage_without_a_raw_wage_is_refused() -> None:
+    # The legacy PUF pass fills a missing mapped wage with zero. Census asks
+    # every person 15 or older for WAGP, so a blank raw field there is missing
+    # evidence, not a zero, however the mapped column was filled.
+    frame = _pool(_two_sided(h1={"people": [(100.0, 0.0)]}))
+    frame = _with_person_cell(frame, 1, RAW_WAGE, np.nan)
+
+    with pytest.raises(SourceRuntimeError, match=r"raw_in_universe_null_rows=1"):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+def test_a_child_without_a_raw_wage_carries_the_named_universe_zero() -> None:
+    # Below 15 Census leaves WAGP blank; the mapped zero is the universe rule's,
+    # so the drawn premium is a structural zero and is cleared.
+    frame = _pool(
+        [
+            {"source": True, "weight": 1.0, "people": [(100.0, 50_000.0)]},
+            {"source": False, "weight": 1.0, "people": [(80.0, 40_000.0)]},
+            {"source": False, "weight": 1.0, "people": [(50.0, 0.0)]},
+        ]
+    )
+    frame = _with_person_cell(frame, 2, ["age", RAW_WAGE], [9.0, np.nan])
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    np.testing.assert_array_equal(_column(anchored, EMPLOYER), [100.0, 200.0, 0.0])
+    evidence = receipt["transferred_wage_evidence"]
+    assert evidence["rule_id"] == "acs_2024_pums_wagp_age_15_plus"
+    assert evidence["structurally_absent_person_rows"] == 1
+    assert evidence["mapped_universe_zero_rows"] == 1
+    assert evidence["eligible_acs_person_rows"] == 1
+
+
+def test_a_child_with_a_nonzero_mapped_wage_is_refused() -> None:
+    frame = _pool(_two_sided())
+    frame = _with_person_cell(frame, 1, ["age", RAW_WAGE], [9.0, np.nan])
+
+    with pytest.raises(
+        SourceRuntimeError, match="out_of_universe_mapped_nonzero_rows=1"
+    ):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+@pytest.mark.parametrize("multiplier", [1.0, 0.1, 1e-3, 1e3])
+def test_a_tiny_transferred_side_keeps_one_factor_at_any_weight_scale(
+    multiplier: float,
+) -> None:
+    # Household masses 1e8 and 1e-8 with equal premium per unit of mass. Taking
+    # the transferred share as one minus the source share loses it to rounding
+    # and gave factors of 1.11 and 2.22 for the same pool at two weight scales.
+    frame = _pool(
+        [
+            {"source": True, "weight": 1e8 * multiplier, "people": [(100.0, 1.0)]},
+            {"source": False, "weight": 1e-8 * multiplier, "people": [(100.0, 1.0)]},
+        ]
+    )
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    assert receipt["scale_factor"] == pytest.approx(1.0, rel=1e-12)
+    assert receipt["transferred_household_mass"] == pytest.approx(
+        1e-8 * multiplier, rel=1e-12
+    )
+    np.testing.assert_allclose(_column(anchored, EMPLOYER), [100.0, 100.0], rtol=1e-12)
+
+
+def test_a_transferred_side_far_below_rounding_is_still_scaled() -> None:
+    # Source mass 1e16, transferred mass 1: the share rounds to exactly one,
+    # yet the transferred side holds mass and is held to the source intensity.
+    frame = _pool(
+        [
+            {"source": True, "weight": 1e16, "people": [(100.0, 1.0)]},
+            {"source": False, "weight": 1.0, "people": [(40.0, 1.0)]},
+        ]
+    )
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    assert receipt["source_household_mass_share"] == 1.0
+    assert receipt["transferred_household_mass"] == 1.0
+    assert receipt["scale_factor"] == pytest.approx(2.5, rel=1e-12)
+    np.testing.assert_allclose(_column(anchored, EMPLOYER), [100.0, 100.0], rtol=1e-12)
 
 
 def test_a_missing_wage_on_a_source_derived_row_is_not_read() -> None:
@@ -742,6 +848,8 @@ def _acs_arm(households: int = 280) -> Frame:
     person["age"] = np.where(employed, 23.0 + index % 42, 67.0 + index % 18)
     person["is_female"] = index % 2 == 1
     person[WAGES] = np.where(employed, 26_000.0 + 1_100.0 * (index % 83), 0.0)
+    # Every ACS person here is 23 or older, so Census reports a raw wage.
+    person[RAW_WAGE] = person[WAGES]
     household = frame.table("household").copy()
     household["state_fips"] = np.asarray(_STATES, dtype=np.int64)[
         (index + 3) % len(_STATES)
@@ -1224,6 +1332,27 @@ def test_transferred_support_clones_that_disagree_fail_the_signal_gate(
     assert us_esi_premiums_signal_gate(restored).passed
 
 
+@pytest.mark.parametrize("factor", [1e-12, 1e12])
+def test_the_gates_grade_a_tiny_transferred_side_against_its_own_mass(
+    stacked_pool, factor: float
+) -> None:
+    # The per-mass ratio divides each side's total by that side's own mass, so
+    # a side many orders smaller than the other still compares at 1.
+    anchored = stacked_pool["anchored"]
+    household = anchored.table("household")
+    transferred_households = household["household_id"].isin(
+        anchored.table("person").loc[~_source_rows(anchored), "person_household_id"]
+    )
+    tilted = _reweighted(anchored, np.where(transferred_households, factor, 1.0))
+
+    summary = us_esi_premiums_summary(tilted)
+
+    assert summary["transferred_household_mass_share"] > 0
+    assert summary["transferred_to_source_per_household_mass_ratio"] == pytest.approx(
+        1.0, rel=1e-9
+    )
+
+
 def test_a_row_with_only_some_raw_columns_fails_both_gates(stacked_pool) -> None:
     anchored = stacked_pool["anchored"]
     tables = {entity: anchored.table(entity).copy() for entity in anchored.entities}
@@ -1279,21 +1408,21 @@ def test_a_single_source_frame_gets_no_pool_keys(stacked_pool) -> None:
             "f001",
             (4_177, 34_293),
             (0.933, 0.930),
-            (0.072, 0.169),
+            (0.072, 0.172),
             34,
-            1.102,
-            (11_741, 12_935),
-            947.3e9,
+            1.105,
+            (10_956, 12_071),
+            884.0e9,
         ),
         (
             "f005",
             (21_133, 171_381),
             (0.975, 0.969),
-            (0.047, 0.077),
+            (0.043, 0.084),
             255,
-            1.047,
-            (12_608, 13_208),
-            924.7e9,
+            1.046,
+            (11_766, 12_325),
+            863.0e9,
         ),
     ],
 )
@@ -1311,6 +1440,19 @@ def test_the_pool_fill_receipts_reproduce_the_documented_measurements(
 
     assert receipt["target_year"] == 2024
     assert receipt["anchor"] == ANCHOR
+    # Every transferred person's wage was evidence: raw WAGP reported, or the
+    # named zero below 15.
+    evidence = anchor["transferred_wage_evidence"]
+    assert evidence["rule_id"] == "acs_2024_pums_wagp_age_15_plus"
+    assert (
+        evidence["eligible_acs_person_rows"]
+        + evidence["structurally_absent_person_rows"]
+        == rows[1]
+    )
+    assert (
+        evidence["mapped_universe_zero_rows"]
+        == evidence["structurally_absent_person_rows"]
+    )
     assert receipt["signal_gate"] == {"passed": True, "failures": []}
     assert receipt["anchor_gate"] == {"passed": True, "failures": []}
     assert receipt["gap_fill_targets"][target] == {

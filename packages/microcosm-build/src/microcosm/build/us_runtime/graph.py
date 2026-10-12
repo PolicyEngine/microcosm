@@ -20,6 +20,7 @@ from .capital_gain_distributions import (
 )
 from .esi_premiums import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_CPS_RECORD_COLUMN,
     US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
 )
 from .multispine_pool import (
@@ -124,16 +125,31 @@ _ROOT_CELLS = (
     ),
     *_QBI_ROOT_CELLS,
     # The ESI premium pool anchor reads the premium, the raw ASEC coverage
-    # fields (null on transferred rows) and wages; the provenance columns it
-    # also reads are declared above.
+    # fields and CPS record id (null on transferred rows), the mapped wage and
+    # the raw ACS wage behind it; age and the provenance columns it also reads
+    # are declared above. The record id is a string, as the survey writes it.
     _Cell("person", US_ESI_EMPLOYER_PREMIUM_COLUMN, "float64"),
     *_cells(
         "person",
         (
             column
             for column, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items()
-            if provision
-            in ("assembled_raw_asec_source_evidence", "assembled_native_person_input")
+            if column != US_ESI_PREMIUMS_CPS_RECORD_COLUMN
+            and provision
+            in (
+                "assembled_raw_asec_source_evidence",
+                "assembled_raw_acs_source_authority",
+            )
+        ),
+        "float64",
+    ),
+    _Cell("person", US_ESI_PREMIUMS_CPS_RECORD_COLUMN, "string"),
+    *_cells(
+        "person",
+        (
+            column
+            for column, provision in US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS.items()
+            if provision == "assembled_native_person_input" and column != "age"
         ),
         "float64",
     ),

@@ -363,15 +363,27 @@ transferred rows.
 3. scales the rest by one factor so those rows carry the same weighted premium
    per unit of household mass as the source-derived rows.
 
-It never rewrites a source-derived row. A transferred person's source record
-must report a wage: a missing wage is refused, not read as zero. In the
-stacked pool the wage is always a number by then, because the ACS
-earnings-universe producer writes an explicit zero below age 15 before the
-derive stage. The rule adds no refusal a pool would otherwise survive: the QBI
-reconciliation that follows in the same derive stage already refuses a blank
-ACS earnings value below age 15, and the one producer that writes those zeros
-writes wages and self-employment income together. Transferred rows that hold
-no household mass have nothing to be scaled to, and their factor stays at one.
+It never rewrites a source-derived row.
+
+**Wages must be evidence.** A transferred person's zero wage clears their
+premium, so the zero has to be a measurement. The anchor resolves the ACS
+earnings universe (`resolve_acs_pums_earnings_universe`) over the transferred
+rows. Census asks every person 15 or older for `WAGP`, so the raw field must be
+reported there. Below 15 it is blank, and the mapped wage must be the named
+universe zero. An eligible person with a blank raw `WAGP` is refused, even when
+a producer has filled the mapped wage. The legacy two-spine PUF pass does that:
+it fills missing mapped earnings with zero. A mapped wage that is missing or
+not a number is refused too.
+
+In the stacked pool none of this refuses anything real: the late ACS
+earnings-universe producer writes the zeros below 15 before the derive stage,
+and Census reports `WAGP` for everyone else. Transferred rows that hold no
+household mass have nothing to be scaled to, and their factor stays at one.
+
+**Masses.** The two sides' household masses are summed separately, and the
+factor is `source total x transferred mass / source mass`. Taking one side's
+share as one minus the other's loses a small side to rounding: two pools
+differing only in weight scale would then get different factors.
 
 **What holds.** For every pool
 (`tests/engine_free/us/test_us_esi_premiums_pool.py`, property-tested over
@@ -415,7 +427,8 @@ the stacked pool that decides this column on the real inputs: the pooled
 sample, the stage at the live mass share, the early gap-fill's weighted QRF
 for this family alone, the anchor operator, the by-origin battery and both
 gates. It skips the rest of the pool, and its fill runs without the tenure
-predictor a full build has. Target year 2024, sample seed 578.
+predictor a full build has. Target year 2024, sample seed 578, scaled to the
+BEA anchor.
 
 | | 1% of households | 5% of households |
 |---|---:|---:|
@@ -423,13 +436,13 @@ predictor a full build has. Target year 2024, sample seed 578.
 | ACS rows filled / left null | 34,293 / 0 | 171,381 / 0 |
 | People with a positive premium after the fill, ASEC / ACS | 24.6% / 22.9% | 22.6% / 22.0% |
 | ACS-over-ASEC incidence, after the fill / after the anchor | 0.933 / 0.930 | 0.975 / 0.969 |
-| Conditional quantile distance, after the fill / after the anchor | 0.072 / 0.169 | 0.047 / 0.077 |
-| Mean per person with a positive premium after the fill, ASEC / ACS | $11,741 / $11,741 | $12,608 / $12,614 |
-| Transferred rows cleared for no wages | 34 ($1.8B) | 255 ($2.9B) |
-| Scale factor on the other transferred rows | 1.102 | 1.047 |
-| Mean per person with a positive premium after the anchor, ASEC / ACS | $11,741 / $12,935 | $12,608 / $13,208 |
-| Pool column total | $947.3B | $924.7B |
-| Against the single-source column ($925.7B) | +2.3% | -0.1% |
+| Conditional quantile distance, after the fill / after the anchor | 0.072 / 0.172 | 0.043 / 0.084 |
+| Mean per person with a positive premium after the fill, ASEC / ACS | $10,956 / $10,927 | $11,766 / $11,785 |
+| Transferred rows cleared for zero wages | 34 ($1.7B) | 255 ($2.8B) |
+| Scale factor on the other transferred rows | 1.105 | 1.046 |
+| Mean per person with a positive premium after the anchor, ASEC / ACS | $10,956 / $12,071 | $11,766 / $12,325 |
+| Pool column total | $884.0B | $863.0B |
+| Against the single-source column ($863.9B) | +2.3% | -0.1% |
 | By-origin battery, signal gate, anchor gate | pass | pass |
 
 The battery passes a monetary target whose incidence ratio is between 0.8 and
@@ -438,7 +451,7 @@ The battery passes a monetary target whose incidence ratio is between 0.8 and
 The fill reproduces ASEC's premium per holder and gives slightly fewer ACS
 people one. ACS rows also carry fewer weighted people than ASEC rows at equal
 household mass (160.2M against 162.6M in the 5% sample). The scale factor
-makes up both, so ACS holders end about 5% above ASEC holders. The factor
+makes up both, so ACS holders end about 5% above ASEC holders in the 5% sample. The factor
 falls as the donor sample grows. A full build has twenty times the donors of
 the 5% sample and was not run here.
 
@@ -446,10 +459,10 @@ The stage holds the sampled ASEC rows' anchor universe to the anchor, so a
 sample's column total moves with that sample's employed share of the
 universe. That is why the two samples' totals differ from the full pool's.
 
-Every ACS wage was a number when the anchor ran. In the 5% sample the
-earnings-universe producer wrote the explicit zero on 25,511 records below age
-15, and none of the other 145,870 was missing a wage. No clone needed
-resetting, because the stacked order fills before it clones.
+Every transferred wage was evidence when the anchor ran. In the 5% sample the
+earnings-universe producer wrote the named zero on the 25,511 records below
+age 15, and Census reported `WAGP` for every one of the other 145,870. No clone
+needed resetting, because the stacked order fills before it clones.
 
 ## Gates
 

@@ -876,6 +876,10 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
                 if column != "state_fips"
             },
             ("person", "PERIDNUM"),
+            ("person", "WAGP"),
+            ("person", "age"),
+            ("person", "person_support_channel"),
+            ("person", "person_tax_unit_id"),
             ("person", "employment_income_before_lsr"),
             ("person", "person_source_id"),
             ("person", "person_support_clone_index"),
@@ -1091,9 +1095,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1075
+    assert len(manifest) == 1079
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 50, "seed": 33, "simulate": 992}
+        {"derive": 54, "seed": 33, "simulate": 992}
     )
     assert len(
         {
@@ -1106,9 +1110,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1075
+    assert receipt["entry_count"] == 1079
     assert receipt["stage_counts"] == {
-        "derive": 50,
+        "derive": 54,
         "seed": 33,
         "simulate": 992,
     }
