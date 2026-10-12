@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_scf_wealth.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_scf_wealth import *
 
 
@@ -117,6 +120,83 @@ def test_household_head_mask_is_one_per_household_at_lowest_line() -> None:
     # Head of hh 5 is the A_LINENO==1 row (index 1); head of hh 9 is index 4.
     np.testing.assert_array_equal(mask, [False, True, False, False, True])
     assert mask.sum() == 2
+
+
+def test_household_head_mask_follows_the_declared_household_head() -> None:
+    """microcosm#1215: the carry is declared ``condition: is_household_head``.
+    A household whose flag marks exactly one person carries on that person,
+    even when another member has a lower line number; a household with no
+    flagged person or two falls back to its lowest line."""
+    person = pd.DataFrame(
+        {
+            "person_household_id": [5, 5, 5, 9, 9, 12, 12, 12],
+            "A_LINENO": [1, 2, 3, 1, 2, 2, 1, 3],
+            "is_household_head": [False, True, False, False, False, True, True, False],
+        }
+    )
+    mask = _household_head_mask(person)
+    # hh 5: the flagged line-2 person; hh 9: no flag, lowest line (index 3);
+    # hh 12: two flags, lowest line (index 6).
+    np.testing.assert_array_equal(
+        mask, [False, True, False, True, False, False, True, False]
+    )
+
+
+def test_both_blend_halves_share_one_carrier_selector() -> None:
+    from microcosm.build.us_runtime import sipp_financial_assets
+
+    person = pd.DataFrame(
+        {
+            "person_household_id": [1, 1, 2],
+            "A_LINENO": [1, 2, 1],
+            "is_household_head": pd.array([False, True, pd.NA], dtype="boolean"),
+        }
+    )
+    np.testing.assert_array_equal(
+        _household_head_mask(person),
+        sipp_financial_assets.household_head_carrier_mask(person),
+    )
+    np.testing.assert_array_equal(_household_head_mask(person), [False, True, True])
+    assert _household_head_mask(person.iloc[:0]).shape == (0,)
+
+
+@settings(max_examples=100, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 6),  # household
+            st.integers(1, 9),  # line number
+            st.booleans(),  # is_household_head
+        ),
+        min_size=1,
+        max_size=40,
+    )
+)
+def test_household_head_mask_marks_exactly_one_carrier_per_household(rows) -> None:
+    # CPS line numbers are unique within a household.
+    person = (
+        pd.DataFrame(
+            rows, columns=["person_household_id", "A_LINENO", "is_household_head"]
+        )
+        .drop_duplicates(["person_household_id", "A_LINENO"])
+        .reset_index(drop=True)
+    )
+    mask = _household_head_mask(person)
+    per_household = pd.Series(mask).groupby(person["person_household_id"]).sum()
+    assert (per_household == 1).all()
+    flagged = person.groupby("person_household_id")["is_household_head"].transform(
+        "sum"
+    )
+    single = (flagged == 1).to_numpy()
+    # Where exactly one person is flagged, the carrier is that person.
+    np.testing.assert_array_equal(
+        mask[single], person["is_household_head"].to_numpy()[single]
+    )
+    # Permuting rows moves the carrier with its row.
+    order = np.random.default_rng(len(rows)).permutation(len(person))
+    np.testing.assert_array_equal(
+        _household_head_mask(person.iloc[order].reset_index(drop=True)), mask[order]
+    )
 
 
 def test_impute_head_carries_and_zeroes_non_heads() -> None:

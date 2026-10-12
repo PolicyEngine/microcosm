@@ -558,7 +558,21 @@ def _recipient_is_married(person: pd.DataFrame) -> np.ndarray:
     return np.zeros(len(person), dtype=np.float64)
 
 
-def _household_head_mask(person: pd.DataFrame) -> np.ndarray:
+def household_head_carrier_mask(person: pd.DataFrame) -> np.ndarray:
+    """One financial-asset carrier per household: the declared household head.
+
+    ``us/source_stages.json`` declares the wealth stage's carry as
+    ``head_carry`` with ``condition: is_household_head``, the CPS reference
+    person (``P_SEQ == 1``; ``relationship_inputs``), as the housing stages
+    use. A household whose flag does not mark exactly one person, or a frame
+    without the flag, falls back to its lowest ``A_LINENO``, then row order.
+    On the 2024 income year, where ``A_EXPRRP`` is observed, the flag is the
+    reference person in every household and the line rule misses 73
+    (microcosm#1215). Both the SCF and SIPP sides use this one selector.
+    """
+
+    if len(person) == 0:
+        return np.zeros(0, dtype=bool)
     household = pd.to_numeric(person[_HOUSEHOLD_ID_COLUMN], errors="coerce").to_numpy()
     if "A_LINENO" in person.columns:
         line = (
@@ -572,9 +586,18 @@ def _household_head_mask(person: pd.DataFrame) -> np.ndarray:
     first = np.empty(len(person), dtype=bool)
     first[0] = True
     first[1:] = ordered_household[1:] != ordered_household[:-1]
-    mask = np.zeros(len(person), dtype=bool)
-    mask[order[first]] = True
-    return mask
+    lowest_line = np.zeros(len(person), dtype=bool)
+    lowest_line[order[first]] = True
+    if "is_household_head" not in person.columns:
+        return lowest_line
+    flag = person["is_household_head"].fillna(False).astype(bool).to_numpy()
+    flags_in_household = (
+        pd.Series(flag.astype(np.int64))
+        .groupby(household, dropna=False, sort=False)
+        .transform("sum")
+        .to_numpy()
+    )
+    return np.where(flags_in_household == 1, flag, lowest_line)
 
 
 def _recipient_sipp_asset_predictor_table(person: pd.DataFrame) -> pd.DataFrame:
@@ -660,7 +683,7 @@ def impute_us_sipp_financial_assets(
             f"SIPP financial-asset donor table missing column(s): {missing}."
         )
 
-    head_mask = _household_head_mask(person)
+    head_mask = household_head_carrier_mask(person)
     head_features = _recipient_sipp_asset_predictor_table(person).loc[head_mask]
     augmented = head_features.copy()
     draws = pd.DataFrame(index=head_features.index)
