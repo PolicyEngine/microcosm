@@ -4,8 +4,8 @@ The US target surface pins people by state, age and sex, tax returns, and
 Social Security dollars by payment type, but no household-type, marital-status
 or beneficiary-count series. A release can therefore meet every target while
 its older population is mostly married couples and its Social Security dollars
-sit on too few, or synthetic, beneficiaries (microcosm#880 and the issues
-linked from this module's report). This module reports those margins beside
+sit on too few, or synthetic, beneficiaries (microcosm#880, #1212, #1213,
+#1214). This module reports those margins beside
 the other post-export diagnostics. It reads the written H5 directly; nothing
 here is simulated, fitted, or enforced.
 
@@ -20,10 +20,10 @@ Four comparisons, each against fixed published observations:
   child): the same snapshot's Table 2.
 
 A fifth, structural field counts people with more than one positive Social
-Security component. SSA pays each beneficiary record as one benefit type
-(dual entitlement is counted once in Table 1), so the CPS-carried split never
-produces two components on one person; a positive count identifies imputed
-benefits split across components.
+Security component. The CPS-carried split assigns each reporter's whole
+benefit to one component, so a positive count points to imputed records
+(microcosm#1214). It is not an exact entitlement check: SSA counts a dually
+entitled beneficiary once in Table 1 and under each benefit in Table 2.
 """
 
 from __future__ import annotations
@@ -214,6 +214,15 @@ def _relative(model: float, benchmark: float) -> float:
     return model / benchmark - 1.0
 
 
+def _flag(values: np.ndarray | None, shape: tuple[int, ...]) -> np.ndarray:
+    """A boolean person flag; missing values (NaN, None, NA) are False."""
+    if values is None:
+        return np.zeros(shape, dtype=bool)
+    import pandas as pd
+
+    return pd.Series(values).fillna(False).astype(bool).to_numpy()
+
+
 def _marital_status(
     marital_code: np.ndarray | None,
     *,
@@ -221,28 +230,28 @@ def _marital_status(
     is_separated: np.ndarray | None,
     spouse_present: np.ndarray,
 ) -> tuple[np.ndarray, str]:
-    """Status labels per person and the measure used to derive them."""
+    """Status labels per person and the measure used to derive them.
+
+    With ``A_MARITL``, any value outside CPS codes 1-7 (missing, 0, a donor
+    record without a CPS code) is labelled ``unknown`` and reported, so one
+    bad value never blanks the report.
+    """
     if marital_code is not None:
         codes = np.asarray(marital_code, dtype=np.float64)
-        labels = np.full(codes.shape, "", dtype=object)
+        labels = np.full(codes.shape, "unknown", dtype=object)
         for code, status in A_MARITL_STATUS.items():
             labels[codes == code] = status
-        if (labels == "").any():
-            raise ValueError(
-                "A_MARITL values must be CPS ASEC codes 1-7; "
-                f"{int((labels == '').sum())} person(s) carry other values."
-            )
         return labels, "A_MARITL (CPS ASEC marital status)"
     # Releases without the raw code: married = a resident spouse in the
     # person's marital unit; widowed and separated from the engine inputs the
-    # relationship stage derives from A_MARITL (codes 4 and 6). Divorced and
-    # never married cannot be told apart, so they are reported together.
-    labels = np.full(spouse_present.shape, "divorced_or_never_married", dtype=object)
-    if is_separated is not None:
-        labels[np.asarray(is_separated, dtype=bool)] = "separated"
-    if is_surviving_spouse is not None:
-        labels[np.asarray(is_surviving_spouse, dtype=bool)] = "widowed"
-    labels[np.asarray(spouse_present, dtype=bool)] = "married"
+    # relationship stage derives from A_MARITL (codes 4 and 6). Divorced,
+    # never married and spouse-absent people cannot be told apart, so they
+    # are reported together.
+    shape = spouse_present.shape
+    labels = np.full(shape, "other_unmarried_or_spouse_absent", dtype=object)
+    labels[_flag(is_separated, shape)] = "separated"
+    labels[_flag(is_surviving_spouse, shape)] = "widowed"
+    labels[np.asarray(spouse_present, dtype=bool)] = "married_spouse_present"
     return labels, "marital-unit spouse, is_surviving_spouse, is_separated"
 
 
@@ -324,15 +333,21 @@ def population_structure_holdout_payload(
         ("female", older & is_female, ACS_2024_B12002_65_PLUS["female"]),
         ("all", older, benchmark_all),
     ):
-        total = float(weights[mask].sum())
+        unknown = float(weights[mask & (status == "unknown")].sum())
+        total = float(weights[mask & (status != "unknown")].sum())
         benchmark_shares = benchmark.shares()
         if marital_code is None:
+            n = benchmark.total
             benchmark_shares = {
-                "married": benchmark_shares["married"],
-                "widowed": benchmark_shares["widowed"],
-                "separated": benchmark_shares["separated"],
-                "divorced_or_never_married": benchmark_shares["divorced"]
-                + benchmark_shares["never_married"],
+                "married_spouse_present": benchmark.married_spouse_present / n,
+                "widowed": benchmark.widowed / n,
+                "separated": benchmark.separated / n,
+                "other_unmarried_or_spouse_absent": (
+                    benchmark.divorced
+                    + benchmark.never_married
+                    + benchmark.married_spouse_absent_other
+                )
+                / n,
             }
         rows = []
         for label in benchmark_shares:
@@ -351,6 +366,7 @@ def population_structure_holdout_payload(
             {
                 "sex": sex,
                 "weighted_people": total,
+                "weighted_people_unknown_status": unknown,
                 "benchmark_people": benchmark.total,
                 "statuses": rows,
             }
@@ -422,9 +438,11 @@ def population_structure_holdout_payload(
             float(weights[multiple].sum()), float(weights[beneficiary].sum())
         ),
         "note": (
-            "SSA pays each beneficiary record as one benefit type, and the "
-            "CPS-carried split assigns one component per reporter. A positive "
-            "count means imputed benefits were spread across components."
+            "The CPS-carried split assigns each reporter's whole benefit to one "
+            "component, so a positive count points to imputed records spread "
+            "across components. Dual entitlement exists (SSA Table 2 counts a "
+            "dually entitled beneficiary under each benefit), so this is not "
+            "an exact entitlement check."
         ),
     }
 
@@ -482,10 +500,13 @@ def population_structure_holdout_payload(
         "comparability": (
             "SSA counts people in current-payment status in December 2024; the "
             f"model counts people with a positive annual benefit in {int(period)}, "
-            "which runs somewhat above a December count. ACS counts the 2024 "
-            "resident population; the model's household universe follows the "
-            "CPS ASEC. These are held-out diagnostics, not exact population or "
-            "period matches, calibration targets, or release gates."
+            "which runs somewhat above a December count. The CPS ASEC asks "
+            "income only of people 15 and over, so child beneficiaries under 15 "
+            "(within SSA's 3.8M children) enter the model only through "
+            "imputation. ACS counts the 2024 resident population; the model's "
+            "household universe follows the CPS ASEC. These are held-out "
+            "diagnostics, not exact population or period matches, calibration "
+            "targets, or release gates."
         ),
     }
     if release_id is not None:
@@ -499,9 +520,32 @@ def population_structure_holdout_from_h5(
     """Read the written release H5's person and household tables (no engine)."""
     import pandas as pd
 
+    wanted = [
+        "person_household_id",
+        "person_marital_unit_id",
+        "age",
+        "A_AGE",
+        "is_female",
+        "A_SEX",
+        "A_MARITL",
+        "is_surviving_spouse",
+        "is_separated",
+        *SOCIAL_SECURITY_COMPONENTS,
+    ]
     with pd.HDFStore(str(dataset_path), "r") as store:
-        person = store["person"]
-        household = store["household"]
+        storer = store.get_storer("person")
+        if storer.is_table:
+            available = set(storer.non_index_axes[0][1])
+            person = store.select(
+                "person", columns=[column for column in wanted if column in available]
+            )
+        else:
+            person = store["person"]
+        household = (
+            store.select("household", columns=["household_id", "household_weight"])
+            if store.get_storer("household").is_table
+            else store["household"]
+        )
     weight_by_household = pd.Series(
         household["household_weight"].to_numpy(dtype=np.float64),
         index=household["household_id"].to_numpy(),

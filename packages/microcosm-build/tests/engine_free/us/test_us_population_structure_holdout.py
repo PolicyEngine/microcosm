@@ -165,21 +165,50 @@ def test_without_a_maritl_the_measure_falls_back_to_unit_structure():
     )
     section = payload["marital_status_65_plus"]
     assert "marital-unit" in section["measure"]
-    assert _status(payload, "all", "married")["share"] == pytest.approx(4 / 12)
+    married = _status(payload, "all", "married_spouse_present")
+    assert married["share"] == pytest.approx(4 / 12)
     assert _status(payload, "all", "widowed")["share"] == pytest.approx(3 / 12)
-    lumped = _status(payload, "all", "divorced_or_never_married")
+    lumped = _status(payload, "all", "other_unmarried_or_spouse_absent")
     assert lumped["share"] == pytest.approx(5 / 12)
+    # Without A_MARITL the model can only see a resident spouse, so the
+    # benchmark's spouse-absent married people move to the lumped row.
     acs = ACS_2024_B12002_65_PLUS["male"] + ACS_2024_B12002_65_PLUS["female"]
+    assert married["benchmark_share"] == pytest.approx(
+        acs.married_spouse_present / acs.total
+    )
     assert lumped["benchmark_share"] == pytest.approx(
-        acs.shares()["divorced"] + acs.shares()["never_married"]
+        (acs.divorced + acs.never_married + acs.married_spouse_absent_other) / acs.total
     )
 
 
-def test_unknown_marital_codes_and_misaligned_arrays_refuse():
+def test_fallback_flags_treat_missing_values_as_false():
     fixture = _fixture()
-    fixture["marital_code"] = np.array([1, 1, 4, 5, 7, 9])
-    with pytest.raises(ValueError, match="A_MARITL"):
-        population_structure_holdout_payload(**fixture, period=2024)
+    fixture.pop("marital_code")
+    payload = population_structure_holdout_payload(
+        **fixture,
+        is_surviving_spouse=np.array([np.nan, np.nan, 1.0, np.nan, np.nan, np.nan]),
+        is_separated=None,
+        period=2024,
+    )
+    assert _status(payload, "all", "widowed")["share"] == pytest.approx(3 / 12)
+
+
+def test_unknown_marital_codes_are_reported_and_excluded_from_shares():
+    fixture = _fixture()
+    # The divorced man (66, weight 5) carries a non-CPS code.
+    fixture["marital_code"] = np.array([1, 1, 4, np.nan, 7, 7])
+    payload = population_structure_holdout_payload(**fixture, period=2024)
+    row = next(
+        r for r in payload["marital_status_65_plus"]["by_sex"] if r["sex"] == "all"
+    )
+    assert row["weighted_people_unknown_status"] == 5
+    assert row["weighted_people"] == 7
+    assert _status(payload, "all", "married")["share"] == pytest.approx(4 / 7)
+    # The other sections do not depend on marital status.
+    assert payload["living_alone_65_plus"]["share"] == pytest.approx(3 / 12)
+
+
+def test_misaligned_or_invalid_arrays_refuse():
     fixture = _fixture()
     fixture["weights"] = fixture["weights"][:-1]
     with pytest.raises(ValueError, match="aligned"):
@@ -355,7 +384,7 @@ def test_accounting_identities(population):
         shares = [s["share"] for s in row["statuses"]]
         if row["weighted_people"] > 0:
             assert sum(shares) == pytest.approx(1.0)
-            assert all(0.0 <= s <= 1.0 for s in shares)
+            assert all(-1e-12 <= s <= 1.0 + 1e-12 for s in shares)
         else:
             assert all(s is None for s in shares)
     sexes = {
@@ -378,7 +407,7 @@ def test_accounting_identities(population):
     beneficiaries = sum(c["weighted_people"] for k, c in counts.items() if k != "0")
     assert beneficiaries == pytest.approx(by_age["all"])
     alone = payload["living_alone_65_plus"]["share"]
-    assert alone is None or 0.0 <= alone <= 1.0
+    assert alone is None or -1e-12 <= alone <= 1.0 + 1e-12
 
 
 @settings(max_examples=50, deadline=None)

@@ -15783,6 +15783,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "us_ssi_social_security_holdout",
             release_dir / "us_ssi_social_security_holdout.json",
         )
+    # Every post-export engine stage has run; free the scorer's batch frames.
+    # The manifest must pin the bytes those stages scored, and both manifests
+    # carry how they were scored (Route A remediation PR-3).
+    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
+    post_export_scorer = None
+    # Reads the written H5 without an engine; after the scorer's batch frames
+    # are freed, so it adds no memory on top of them.
+    if telemetry is not None:
         telemetry.stage(
             "population_structure_holdout",
             message="Writing held-out population-structure checks.",
@@ -15795,12 +15804,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "us_population_structure_holdout",
             release_dir / "us_population_structure_holdout.json",
         )
-    # Every post-export engine stage has run; free the scorer's batch frames.
-    # The manifest must pin the bytes those stages scored, and both manifests
-    # carry how they were scored (Route A remediation PR-3).
-    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
-    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
-    post_export_scorer = None
 
     if telemetry is not None:
         telemetry.stage(
