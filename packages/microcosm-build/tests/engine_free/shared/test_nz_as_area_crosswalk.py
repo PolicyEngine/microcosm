@@ -140,8 +140,8 @@ def _shares(row: dict) -> dict[int, float]:
 @pytest.fixture(scope="module")
 def staged_sources() -> Path:
     configured = os.environ.get("NZ_AS_AREA_SOURCES")
-    directory = Path(configured) if configured else _BUILD.repository / ".hub-sources"
-    if not directory.is_dir():
+    directory = Path(configured) if configured else None
+    if directory is None or not directory.is_dir():
         pytest.skip(
             "Pinned ArcGIS bytes are distributed separately; set "
             "NZ_AS_AREA_SOURCES to their directory to replay the crosswalk"

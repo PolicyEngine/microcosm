@@ -1,10 +1,11 @@
 """Build MC9's centroid/population bridge from hash-pinned local Stats NZ pages.
 
 No network or country engine is used. Supply the published staged bytes using
-``--sources DIR`` or ``NZ_AS_AREA_SOURCES=DIR``. The spec contains the input
+``--sources DIR`` or ``NZ_AS_AREA_SOURCES=DIR``; ``tools/fetch_nz_as_area_sources.py``
+recreates DIR from the public Stats NZ URLs the spec pins. The spec contains the input
 pins; receipts in DIR are never trusted as replacement pins. Example::
 
-    python tools/build_nz_as_area_crosswalk.py --sources .hub-sources \
+    python tools/build_nz_as_area_crosswalk.py --sources nz-as-area-sources \
         --out packages/microcosm-build/src/microcosm/build/nz/as_area_crosswalk.json \
         --report .hub-scratch/as-area-report.json
 
@@ -1013,7 +1014,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.sources is None or not args.sources.is_dir():
         print(
-            "SKIPPED: supply pinned staged pages with --sources DIR or NZ_AS_AREA_SOURCES=DIR; no network fetch is performed"
+            "SKIPPED: supply pinned staged pages with --sources DIR or NZ_AS_AREA_SOURCES=DIR (tools/fetch_nz_as_area_sources.py recreates DIR); no network fetch is performed"
         )
         return
     spec = json.loads(args.spec.read_text())
