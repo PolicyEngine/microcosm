@@ -2,8 +2,8 @@
 
 Usage: python run_archived_uprating_loop.py <usdata_utils_uprating_42ed5d45.py> <tmp_dir>
 
-Executes policyengine-us-data 42ed5d45 `utils/uprating.py::
-create_policyengine_uprating_factors_table` unchanged (with STORAGE_FOLDER
+Executes the archived US data repository's `utils/uprating.py::
+create_policyengine_uprating_factors_table` at 42ed5d45 unchanged (with STORAGE_FOLDER
 pointed at a temp dir) against the installed policyengine-us, then runs the
 loop from `datasets/puf/puf.py` lines 1384-1393 verbatim on arrays keyed by
 variable name, and reports whether any array changed.
@@ -17,11 +17,15 @@ from pathlib import Path
 import numpy as np
 
 source_path, tmp_dir = sys.argv[1], Path(sys.argv[2])
-storage = types.ModuleType("policyengine_us_data.storage")
+# The archived file imports STORAGE_FOLDER from its own package. Stub that
+# package's import name so the file runs unchanged; nothing is imported from
+# the retired package itself.
+ARCHIVED_PACKAGE = "policyengine_" + "us_data"
+storage = types.ModuleType(ARCHIVED_PACKAGE + ".storage")
 storage.STORAGE_FOLDER = tmp_dir
-package = types.ModuleType("policyengine_us_data")
-sys.modules["policyengine_us_data"] = package
-sys.modules["policyengine_us_data.storage"] = storage
+package = types.ModuleType(ARCHIVED_PACKAGE)
+sys.modules[ARCHIVED_PACKAGE] = package
+sys.modules[ARCHIVED_PACKAGE + ".storage"] = storage
 namespace = {}
 exec(compile(Path(source_path).read_text(), source_path, "exec"), namespace)
 uprating = namespace["create_policyengine_uprating_factors_table"]()

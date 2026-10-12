@@ -43,13 +43,13 @@ opened.
 | `scripts/run_archived_uprating_loop.py` | The archived generator's 2021-to-2024 uprating loop, run verbatim on the archived factor table | `run_archived_uprating_loop.txt` |
 | `scripts/gross_up_reference.py`, `scripts/test_gross_up_properties.py` | Standalone reference semantics of the proposed PUF-half gross-up and Hypothesis property tests of it; they do not exercise the build | `property_tests.txt` |
 
-`puf_grid_check.py` reads `soi_targets.csv` from the archived
-policyengine-us-data commit `42ed5d45c56df80d754fbe24cce21cfeb8d05cbe`
-(`policyengine_us_data/storage/calibration_targets/soi_targets.csv`, sha256
+`puf_grid_check.py` reads `storage/calibration_targets/soi_targets.csv` from
+the archived US data repository at commit
+`42ed5d45c56df80d754fbe24cce21cfeb8d05cbe` (sha256
 `0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb`) and applies
-that commit's `datasets/puf/uprate_puf.py::get_growth`. `run_archived_uprating_loop.py` executes that
-commit's `policyengine_us_data/utils/uprating.py` (sha256
-`688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a`).
+that commit's `datasets/puf/uprate_puf.py::get_growth`.
+`run_archived_uprating_loop.py` executes that commit's `utils/uprating.py`
+(sha256 `688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a`).
 
 ## Reproduce
 

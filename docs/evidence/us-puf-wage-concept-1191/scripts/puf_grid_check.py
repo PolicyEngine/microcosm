@@ -7,7 +7,7 @@ the archived generator's uprating factors, at a relative tolerance of 1e-11. A
 continuous-uniform random control is reported. Membership does not establish
 donor identity or whether a deferral was added.
 
-The scalar tested is the archived generator's own: policyengine-us-data at
+The scalar tested is the archived generator's own: the US data repository at
 42ed5d45, datasets/puf/uprate_puf.py::get_growth(variable, 2015, year) read
 from its storage/calibration_targets/soi_targets.csv, i.e. growth of the SOI
 aggregate divided by growth of the return count. 2022 and 2023 scalars and a
