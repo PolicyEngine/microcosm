@@ -104,6 +104,48 @@ def test_csv_tables_loads_assignment_weights_json_layout(tmp_path: Path) -> None
     )
 
 
+def test_csv_tables_reads_a_declared_string_column_as_written(tmp_path: Path) -> None:
+    # A long numeric identifier, one with leading zeros, a blank and a
+    # whitespace-only value: inferring a number first would round the first,
+    # drop the zeros of the second and fail on the last.
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "person.csv").write_text(
+        "person_id,person_household_id,record\n"
+        "1,1,000110339935153371101\n"
+        "2,1,00042\n"
+        "3,2,\n"
+        "4,2,   \n"
+    )
+    (source / "household.csv").write_text("household_id\n1\n2\n")
+    (source / "schema.json").write_text(
+        json.dumps(
+            {
+                "person_entity": "person",
+                "group_entities": ["household"],
+                "dtypes": {
+                    "person": {
+                        "person_id": "int64",
+                        "person_household_id": "int64",
+                        "record": "string[python]",
+                    },
+                    "household": {"household_id": "int64"},
+                },
+            }
+        )
+    )
+    (source / "weights.json").write_text(
+        json.dumps({"household": {"kind": "design", "values": [1.0, 1.0]}})
+    )
+
+    record = load_source("csv-tables", source).table("person")["record"]
+
+    assert record.dtype == pd.StringDtype("python")
+    assert record.tolist()[:2] == ["000110339935153371101", "00042"]
+    assert record.isna().tolist() == [False, False, True, False]
+    assert record.iloc[3] == "   "
+
+
 def test_csv_tables_loads_tables_mapping_and_weights_csv_layout(
     tmp_path: Path,
 ) -> None:

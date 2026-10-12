@@ -140,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 176
+    assert len(inventory["columns"]) == 177
     assert len(inventory["artifacts"]) == 84
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 334
+    assert len(inventory["references"]) == 335
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {
