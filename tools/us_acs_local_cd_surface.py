@@ -105,8 +105,8 @@ STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = {}
 #: How far a state's Historic Table 2 / district-file ratio may sit from its
 #: measure's median across states before the district file's data for that
 #: (state, concept) is refused. The ratio mixes a common part (the file's
-#: coverage and aging gap, or a measure-wide rebase such as taxable interest's
-#: x2.47 onto Table 4.3), which the median absorbs, with a state-specific part.
+#: coverage and aging gap, or a measure-wide rebase such as a share family's
+#: control factor), which the median absorbs, with a state-specific part.
 #: A state-specific part beyond 25% means the two publications disagree about
 #: that state (Hawaii's dividends differ 2.4x from the typical gap on the
 #: pinned feed), so the district file's shares, or a bridge built on that

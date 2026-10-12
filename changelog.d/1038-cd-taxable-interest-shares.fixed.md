@@ -1,0 +1,1 @@
+Rebase congressional-district taxable interest onto the Table 4.3 control as shares of the district file's own US row, as Historic Table 2's rows already are, and retire that US row: on the full surface the file's states and districts summed to $134.6B against the $340.4B national target (0.395x) and 48.5M against 54.2M returns.

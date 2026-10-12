@@ -1715,7 +1715,7 @@ def _rebase_stale_soi_taxable_interest_distributions(
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Use stale HT2 taxable-interest rows as shares, not hard old-year totals.
+    """Use stale taxable-interest rows as shares, not hard old-year totals.
 
     The microcosm#489 adjudication, with every value from the official IRS
     workbooks: HT2 is a correct photo of its own tax year (TY2022 US A00300
@@ -1732,23 +1732,44 @@ def _rebase_stale_soi_taxable_interest_distributions(
     all-row) while sitting exactly on the Table 4.3 truth.
 
     Remedy (the net-capital-gains doctrine, x0.7719 precedent): every stale
-    HT2 interest row rebases by ONE national realized factor onto the
-    latest Pub 1304-class national actual, preserving TY2022 cross-sectional
-    shares; the stale national all-AGI rows retire because the active
-    control's own compiled row owns the national concept. Congressional-
+    interest row of a share family (``_soi_taxable_interest_share_family``:
+    Historic Table 2 and the congressional-district file) ships as its share
+    of its OWN family's national all-AGI row at its own period, scaled to the
+    latest Pub 1304-class national actual — one national realized factor per
+    family, quantity and period, preserving TY2022 cross-sectional shares.
+    Each family's national all-AGI row retires because the active control's
+    own compiled row owns the national concept, and each share row names its
+    denominator in ``soi_share_total_source_record_id``. Congressional-
     district aggregates are never controls: the CD table is a processing-
     window subset of the filing universe (US A00300 $123.791B = 92.7% of
     the same-year Table 1.4 actual) and the feed's ty2023 stamp on
     22incd.csv is a vintage error — IRS's latest congressional-district
     publication is tax year 2022. The rebase lands values at the CONTROL's
     period; target aging owns the remaining links (microcosm#488).
+
+    The congressional-district file joined the share families after
+    microcosm#1038's sweep. Before, it was barred from being a control but
+    still shipped its TY2022 rows as levels, its US row a second national
+    target beside Table 4.3: on the full surface its US row, its states and
+    its districts each summed to $134.6B against $340.4B (0.395x) and to
+    48.5M returns against 54.2M (0.896x). As shares of the file's own US row,
+    its states and its districts each sum to the control; the stamp cancels
+    in the share; and because one factor scales a family's state and
+    district rows alike, the district-to-state reconciliation that runs next
+    keeps factor 1.
+
+    A share row whose own family carries no nonzero national total cannot
+    be a share. It is dropped if it is an AGI slice (unverifiable) or if a
+    control is eligible (a stale level beside a newer control is the defect
+    this pass removes); only a full-range row with no control anywhere stays
+    a level of its own, aged generically.
     """
 
     controls = _soi_taxable_interest_active_totals(
         facts,
         target_period=target_period,
     )
-    stale_national_totals = _soi_taxable_interest_stale_national_totals(facts)
+    share_totals = _soi_taxable_interest_share_national_totals(facts)
     # The all-returns concept has exactly one live national owner: when an
     # exact all-returns control exists for a (measure, status), any compiled
     # excluding-dependents national surrogate of the same pair retires — the
@@ -1761,11 +1782,11 @@ def _rebase_stale_soi_taxable_interest_distributions(
     }
     specs: list[TargetSpec] = []
     for spec in registry.specs:
-        kind = _soi_taxable_interest_kind(spec)
-        if kind is None:
+        if _soi_taxable_interest_kind(spec) is None:
             specs.append(spec)
             continue
-        if not _is_stale_soi_historic_taxable_interest_spec(spec):
+        family = _soi_taxable_interest_share_family_from_spec(spec)
+        if family is None:
             if _is_retired_soi_interest_bridge_surrogate_spec(
                 spec, retired_bridge_owners
             ):
@@ -1778,36 +1799,40 @@ def _rebase_stale_soi_taxable_interest_distributions(
         spec_universe = spec.metadata.get("soi_return_universe", "all_returns")
         source_period = spec.metadata.get("source_period", "")
         source_total = (
-            stale_national_totals.get(
-                (measure_id, status, spec_universe, source_period)
-            )
+            share_totals.get((family, measure_id, status, spec_universe, source_period))
             if source_period
             else None
         )
-        if source_total in (None, 0):
-            # A stale AGI slice whose own family carries no national total
-            # is unverifiable — dropped, never shipped unanchored. The
-            # full-range rows ARE levels of their own and stay.
-            if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
+        # Eligibility is part of SELECTION: an unusably old control in a
+        # preferred universe must not shadow an eligible one behind it.
+        control: _SoiTotalControl | None = None
+        control_universe = ""
+        if source_period:
+            source_period_key = _period_key_from_value(source_period)
+            for universe in _soi_taxable_interest_control_universe_preference(
+                spec_universe
+            ):
+                candidate = controls.get((measure_id, status, universe))
+                if candidate is None:
+                    continue
+                if not _period_not_before(candidate.period_key, source_period_key):
+                    continue
+                control = candidate
+                control_universe = universe
+                break
+        if source_total is None or source_total.value == 0:
+            # No denominator of its own family: never divided by another
+            # family's total. An AGI slice is unverifiable, and beside an
+            # eligible control a stale level is the defect itself, so both
+            # are dropped; a full-range row with no control anywhere is a
+            # level of its own and stays.
+            if control is not None or _bounds_from_metadata(spec) != (
+                -float("inf"),
+                float("inf"),
+            ):
                 continue
             specs.append(spec)
             continue
-        # Eligibility is part of SELECTION: an unusably old control in a
-        # preferred universe must not shadow an eligible one behind it.
-        source_period_key = _period_key_from_value(source_period)
-        control: _SoiTotalControl | None = None
-        control_universe = ""
-        for universe in _soi_taxable_interest_control_universe_preference(
-            spec_universe
-        ):
-            candidate = controls.get((measure_id, status, universe))
-            if candidate is None:
-                continue
-            if not _period_not_before(candidate.period_key, source_period_key):
-                continue
-            control = candidate
-            control_universe = universe
-            break
         if control is None:
             specs.append(spec)
             continue
@@ -1815,7 +1840,7 @@ def _rebase_stale_soi_taxable_interest_distributions(
         if _is_national_all_agi_spec(spec):
             continue
 
-        factor = control.value / source_total
+        factor = control.value / source_total.value
         metadata = {
             **dict(spec.metadata),
             "uprating_index": _soi_total_uprating_index(measure_id),
@@ -1828,6 +1853,9 @@ def _rebase_stale_soi_taxable_interest_distributions(
             "uprating_index_source_record_id": control.source_record_id,
             "uprating_factor": _format_float(factor),
             "stale_distribution_rebased_to_active_total": "true",
+            # The share's denominator: this family's own national row, from
+            # the same release as the row itself.
+            "soi_share_total_source_record_id": source_total.source_record_id,
         }
         if control_universe != spec_universe:
             # A bridged control is declared, never silent: the manifest must
@@ -1843,10 +1871,10 @@ def _is_retired_soi_interest_bridge_surrogate_spec(
 ) -> bool:
     """Whether this national excluding-dependents row lost concept ownership.
 
-    True only for a non-HT2, national, full-AGI-range interest spec in the
-    bridge universe whose (measure, status) has an exact all-returns control
-    compiled — the all-returns row owns the concept and the surrogate must
-    not also bind.
+    True only for a national, full-AGI-range interest spec of no share family
+    in the bridge universe whose (measure, status) has an exact all-returns
+    control compiled — the all-returns row owns the concept and the surrogate
+    must not also bind.
     """
     if spec.family != "irs_soi":
         return False
@@ -1875,8 +1903,6 @@ def _soi_taxable_interest_active_totals(
         key = _soi_taxable_interest_control_key_from_fact(fact)
         if key is None:
             continue
-        if _is_stale_soi_historic_taxable_interest_fact(fact):
-            continue
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
             continue
@@ -1899,14 +1925,42 @@ def _soi_taxable_interest_active_totals(
     return controls
 
 
-def _soi_taxable_interest_stale_national_totals(
+class AmbiguousSoiTaxableInterestShareTotalError(ValueError):
+    """One taxable-interest share family carries two national totals for one key."""
+
+
+@dataclass(frozen=True)
+class _SoiTaxableInterestShareTotal:
+    value: float
+    source_record_id: str
+
+
+def _soi_taxable_interest_share_national_totals(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str, str], _SoiTaxableInterestShareTotal]:
+    """Each share family's national all-AGI total, the denominator of its shares.
+
+    Keyed by (family, measure, filing status, universe, period), so a Historic
+    Table 2 row divides by the Historic Table 2 US row and a
+    congressional-district row by that file's US row, never by another
+    family's. Two different values under one key refuse the compile instead of
+    letting feed order pick the denominator; equal values under two record ids
+    keep the smaller id, so the named denominator does not depend on feed order
+    either. Congressional-district packages of different boundary vintages for
+    one tax year share the ``congressional_district`` family, so their US rows
+    must agree or the compile refuses.
+    """
+    totals: dict[tuple[str, str, str, str, str], _SoiTaxableInterestShareTotal] = {}
     for fact in facts:
-        if not _is_stale_soi_historic_taxable_interest_fact(fact):
+        if _source_name(fact) != "irs_soi":
             continue
-        if _geography_level(fact) != "country":
+        measure_id = _measure_id(fact)
+        if _soi_taxable_interest_kind_from_measure(measure_id) is None:
+            continue
+        family = _soi_taxable_interest_share_family(
+            _str_at(fact, "layout", "record_set_id")
+        )
+        if family is None or _geography_level(fact) != "country":
             continue
         # Full AGI range only — filing-status slices keep their own totals
         # (keyed by status below), matching the capital-gains template.
@@ -1915,14 +1969,29 @@ def _soi_taxable_interest_stale_national_totals(
         status = _filing_status_label(_dimensions(fact).get("filing_status"))
         if status is None:
             continue
-        totals[
-            (
-                _measure_id(fact),
-                status,
-                _soi_return_universe_from_fact(fact),
-                str(_period_value(fact)),
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        key = (
+            family,
+            measure_id,
+            status,
+            _soi_return_universe_from_fact(fact),
+            str(_period_value(fact)),
+        )
+        candidate = _SoiTaxableInterestShareTotal(
+            _numeric_value(fact), source_record_id
+        )
+        current = totals.get(key)
+        if current is not None and current.value != candidate.value:
+            raise AmbiguousSoiTaxableInterestShareTotalError(
+                "SOI taxable-interest share family has two national totals for "
+                f"{key}: {current.value!r} ({current.source_record_id}) and "
+                f"{candidate.value!r} ({candidate.source_record_id}). "
+                "Deduplicate them upstream."
             )
-        ] = _numeric_value(fact)
+        if current is None or candidate.source_record_id < current.source_record_id:
+            totals[key] = candidate
     return totals
 
 
@@ -1940,20 +2009,34 @@ def _soi_taxable_interest_kind_from_measure(measure_id: str) -> str | None:
     return None
 
 
-def _is_stale_soi_historic_taxable_interest_spec(spec: TargetSpec) -> bool:
+#: Record-set families whose taxable-interest rows are stale photos of an
+#: older tax year and therefore ship only as shares of their own national
+#: all-AGI row, scaled to a Pub 1304-class control (microcosm#489, #1038):
+#: Historic Table 2 (TY2022) and the congressional-district file (22incd.csv,
+#: TY2022 data stamped ty2023, of any boundary vintage). Neither ever anchors
+#: the family as a control.
+_SOI_TAXABLE_INTEREST_SHARE_FAMILIES: dict[str, str] = {
+    ".historic_table_2.": "historic_table_2",
+    ".congressional_district_": "congressional_district",
+}
+
+
+def _soi_taxable_interest_share_family(record_set_id: str) -> str | None:
+    """The share family of a taxable-interest record set, if it is one."""
+    for marker, family in _SOI_TAXABLE_INTEREST_SHARE_FAMILIES.items():
+        if marker in record_set_id:
+            return family
+    return None
+
+
+def _soi_taxable_interest_share_family_from_spec(spec: TargetSpec) -> str | None:
     if spec.family != "irs_soi":
-        return False
+        return None
     if _soi_taxable_interest_kind(spec) is None:
-        return False
-    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
-
-
-def _is_stale_soi_historic_taxable_interest_fact(fact: object) -> bool:
-    if _source_name(fact) != "irs_soi":
-        return False
-    if _soi_taxable_interest_kind_from_measure(_measure_id(fact)) is None:
-        return False
-    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
+        return None
+    return _soi_taxable_interest_share_family(
+        spec.metadata.get("ledger_layout_record_set_id", "")
+    )
 
 
 def _soi_taxable_interest_control_key_from_fact(
@@ -1966,10 +2049,11 @@ def _soi_taxable_interest_control_key_from_fact(
         return None
     if _geography_level(fact) != "country":
         return None
-    # Congressional-district aggregates are a processing-window subset of
-    # the filing universe (and the feed's CD vintage stamp is in error —
-    # microcosm#489); they never anchor the interest family.
-    if _is_soi_congressional_district_record_set(fact):
+    # A share family never anchors the interest family: Historic Table 2 is a
+    # stale photo, and congressional-district aggregates are a
+    # processing-window subset of the filing universe whose feed vintage
+    # stamp is in error (microcosm#489).
+    if _soi_taxable_interest_share_family(_str_at(fact, "layout", "record_set_id")):
         return None
     # Full AGI range only — a filing-status total is a valid control for its
     # own status family (the key carries the status), matching the

@@ -893,10 +893,14 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,250 compiled targets after
+    """The release surface on the pinned feed: 33,248 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
+    1b318eafb174, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. The congressional-district
+    taxable-interest share rebase retired that file's two US interest rows
+    (33,250 before) and named the share denominator on the 1,034 Historic
+    Table 2 interest rows of national_state, a metadata-only change from
+    e1f9906bf0e0 (no national_state value moved). microcosm#1206 moved the
     version from f96be9f41781 by binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
@@ -906,9 +910,9 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_250
+    assert len(registry.specs) == 33_248
     assert len(surface.specs) == 6_102
-    assert surface.version == "e1f9906bf0e0"
+    assert surface.version == "1b318eafb174"
     chip = [
         spec
         for spec in surface.specs
@@ -933,6 +937,135 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+def _soi_bridged_quantity(spec, is_noop_filter) -> tuple[object, ...]:
+    """The model quantity and filters an SOI target constrains, read the way
+    the materializer reads them: a bridged return universe is the universe of
+    the control that set the row's level (``soi_return_universe_bridge``), and
+    a ledger filter the materializer treats as a no-op (``all``) constrains
+    nothing. So a rebased all-returns row compares with the excluding-
+    dependents national row it was scaled to, which names a different no-op
+    filter (income percentile range ``all``)."""
+    metadata = spec.metadata
+    return (
+        metadata.get("variable"),
+        metadata.get("measure_mode"),
+        metadata.get("agi_lower_bound"),
+        metadata.get("agi_upper_bound"),
+        metadata.get("filing_status"),
+        metadata.get(
+            "soi_return_universe_bridge",
+            metadata.get("soi_return_universe", "all_returns"),
+        ),
+        metadata.get("itemized_only"),
+        tuple(
+            sorted(
+                (key, value)
+                for key, value in metadata.items()
+                if key.startswith("ledger_filter_") and not is_noop_filter(str(value))
+            )
+        ),
+    )
+
+
+def test_pinned_feed_congressional_district_taxable_interest_takes_the_table_4_3_level(
+    pinned_feed_national_state_surface,
+) -> None:
+    """On the full surface the congressional-district file's 51 state and 436
+    district taxable-interest rows per measure are shares of that file's US
+    row times the Table 4.3 ty2023 level, and the US row retires. The states,
+    and the districts, each sum to the national target: $340.43B (aged) and
+    54,167,410 returns, where the TY2022 levels summed to $134.59B (0.395x) and
+    48,547,160 (0.896x), with the US row a second national target at $134.59B.
+
+    Invariant, two-sided: every stale taxable-interest family on the surface
+    (the district file's states and districts, Historic Table 2's states)
+    sums to within [0.85, 1] of the national target it was scaled to, compared
+    under the bridged universe key, and none is missing. Historic Table 2's
+    states sit at 0.984 (its US row includes Puerto Rico and other areas)."""
+    registry, _, _ = pinned_feed_national_state_surface
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    full, _ = builder._select_target_surface(registry.specs, "full")
+
+    def quantity(spec) -> tuple[object, ...]:
+        return _soi_bridged_quantity(spec, builder._is_noop_ledger_filter_value)
+
+    national: dict[tuple[object, ...], list[float]] = {}
+    families: dict[tuple[object, ...], dict[str, list]] = {}
+    for spec in full:
+        if spec.family != "irs_soi":
+            continue
+        if spec.metadata.get("source_measure_id") not in _INTEREST_MEASURES:
+            continue
+        level = spec.metadata["ledger_geography_level"]
+        family = fiscal_targets._soi_taxable_interest_share_family(
+            spec.metadata["ledger_layout_record_set_id"]
+        )
+        if family is None:
+            if level == "country":
+                national.setdefault(quantity(spec), []).append(spec.value)
+            continue
+        assert level != "country" or family != "congressional_district", spec.name
+        families.setdefault(
+            (family, spec.metadata["source_measure_id"], quantity(spec)),
+            {},
+        ).setdefault(level, []).append(spec)
+
+    for measure in _INTEREST_MEASURES:
+        control_id = f"{_INTEREST_T43_RECORD_SET}.all.{measure}"
+        control = next(spec for spec in full if spec.name == control_id)
+        (cd,) = [
+            levels
+            for (family, family_measure, _), levels in families.items()
+            if family == "congressional_district" and family_measure == measure
+        ]
+        assert {level: len(rows) for level, rows in cd.items()} == {
+            "state": 51,
+            "congressional_district": 436,
+        }
+        rows = [*cd["state"], *cd["congressional_district"]]
+        assert len({spec.metadata["uprating_factor"] for spec in rows}) == 1
+        for spec in rows:
+            assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["soi_share_total_source_record_id"] == (
+                f"{_INTEREST_CD_RECORD_SET}.us.{measure}"
+            )
+        for level in ("state", "congressional_district"):
+            total = math.fsum(spec.value for spec in cd[level])
+            assert math.isclose(total, control.value, rel_tol=1e-12)
+    assert math.isclose(
+        next(
+            spec.value
+            for spec in full
+            if spec.name == f"{_INTEREST_T43_RECORD_SET}.all.taxable_interest_returns"
+        ),
+        54_167_410,
+        rel_tol=1e-12,
+    )
+
+    ratios = {
+        (family, measure, level): math.fsum(spec.value for spec in rows)
+        / max(national[quantity])
+        for (family, measure, quantity), levels in families.items()
+        if quantity[2:4] == ("-inf", "inf") and quantity in national
+        for level, rows in levels.items()
+        if (family, level) != ("historic_table_2", "congressional_district")
+    }
+    assert set(ratios) == {
+        (family, measure, level)
+        for measure in _INTEREST_MEASURES
+        for family, level in (
+            ("congressional_district", "state"),
+            ("congressional_district", "congressional_district"),
+            ("historic_table_2", "state"),
+        )
+    }
+    assert {
+        key: round(ratio, 4)
+        for key, ratio in ratios.items()
+        if not 0.85 <= ratio <= 1 + 1e-9
+    } == {}
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -2884,6 +3017,9 @@ def test_stale_soi_taxable_interest_never_uses_congressional_district_controls()
         "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
         "taxable_interest_amount"
     )
+    # Beside a control the CD US row is its family's share denominator, not a
+    # second national target.
+    assert cd_fact["lineage"]["source_record_id"] not in specs
 
 
 def test_stale_soi_taxable_interest_prefers_exact_universe_control_over_bridge() -> (
@@ -3579,8 +3715,12 @@ def test_stale_soi_taxable_interest_period_selection_laws() -> None:
     assert bin_spec.metadata["uprating_to_period"] == "2022"
     assert "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount" not in specs
 
-    # An unanchored full-range state row survives unchanged when its family
-    # has no national total at all (no ht2 us.all fact in the feed).
+    # An unanchored full-range state row (no ht2 us.all fact in the feed) has
+    # no share to take. Beside an eligible control it is dropped, as the
+    # capital-gains rows are: kept, it would ship its TY2022 level against the
+    # TY2023 control, the contradiction this pass removes. With no control
+    # anywhere it survives unchanged
+    # (test_historic_table_2_taxable_interest_state_row_without_its_us_row).
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -3607,12 +3747,10 @@ def test_stale_soi_taxable_interest_period_selection_laws() -> None:
         target_period=2024,
         allow_unaged_dollar_targets=True,
     )
-    specs = {spec.name: spec for spec in registry.specs}
-    ca_broad = specs[
+    assert (
         "irs_soi.ty2022.historic_table_2.state_broad.ca.all.taxable_interest_amount"
-    ]
-    assert ca_broad.value == 25_000_000_000
-    assert "uprating_factor" not in ca_broad.metadata
+        not in {spec.name for spec in registry.specs}
+    )
 
 
 def test_compiled_interest_family_ages_coherently_end_to_end() -> None:
@@ -3682,6 +3820,628 @@ def test_compiled_interest_family_ages_coherently_end_to_end() -> None:
     # Identical remaining link on both — the bin stays an exact share of the
     # national row after aging (nothing aged twice, nothing skipped).
     assert abs(bin_spec.value / national.value - 0.2) < 1e-12
+
+
+_INTEREST_MEASURES = ("taxable_interest_returns", "taxable_interest_amount")
+_INTEREST_T43_RECORD_SET = "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents"
+_INTEREST_CD_RECORD_SET = "irs_soi.ty2023.congressional_district_2022.all_returns"
+_INTEREST_HT2_US = "irs_soi.ty2022.historic_table_2.us.all.{measure}"
+_INTEREST_HT2_CA = "irs_soi.ty2022.historic_table_2.state_broad.ca.all.{measure}"
+
+
+def _taxable_interest_t43_facts(
+    *, returns: float = 11_000_000.0, amount: float = 235_000_000_000.0
+) -> list[dict[str, object]]:
+    """Table 4.3 ty2023, all returns excluding dependents: the Pub 1304
+    control the pinned feed carries (the all-returns concept bridges to it)."""
+    return [
+        _soi_taxable_interest_fact(
+            2023,
+            source_record_id=f"{_INTEREST_T43_RECORD_SET}.all.{measure}",
+            measure_id=measure,
+            layout_record_set_id=_INTEREST_T43_RECORD_SET,
+            value=value,
+        )
+        for measure, value in zip(_INTEREST_MEASURES, (returns, amount), strict=True)
+    ]
+
+
+def _taxable_interest_ht2_facts() -> list[dict[str, object]]:
+    """TY2022 Historic Table 2 rows: US 10M / $100B and CA 2.5M / $25B."""
+    facts = []
+    for measure, us, ca in zip(
+        _INTEREST_MEASURES,
+        (10_000_000.0, 100_000_000_000.0),
+        (2_500_000.0, 25_000_000_000.0),
+        strict=True,
+    ):
+        facts.append(
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=_INTEREST_HT2_US.format(measure=measure),
+                measure_id=measure,
+                value=us,
+            )
+        )
+        facts.append(
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=_INTEREST_HT2_CA.format(measure=measure),
+                measure_id=measure,
+                geography_level="state",
+                geography_id="0400000US06",
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.state_broad.ca",
+                value=ca,
+            )
+        )
+    return facts
+
+
+def _taxable_interest_cd_package_facts(
+    *,
+    us: tuple[float, float] = (9_400_000.0, 94_000_000_000.0),
+    hawaii: tuple[float, float] = (400_000.0, 4_000_000_000.0),
+    districts: tuple[tuple[float, float], ...] = (
+        (150_000.0, 1_000_000_000.0),
+        (250_000.0, 3_000_000_000.0),
+    ),
+) -> list[dict[str, object]]:
+    """A congressional-district package's taxable-interest rows, stamped
+    ty2023 like the pinned feed: the US row, Hawaii, and Hawaii's two
+    districts, each as (returns, amount)."""
+    facts = []
+    for index, measure in enumerate(_INTEREST_MEASURES):
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                us[index],
+                groupby_value_id="us",
+                geography_level="country",
+                geography_id="0100000US",
+            )
+        )
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                hawaii[index],
+                groupby_value_id="hi_total",
+                geography_level="state",
+                geography_id="0400000US15",
+            )
+        )
+        for number, values in enumerate(districts, start=1):
+            facts.append(
+                _soi_congressional_district_fact(
+                    measure,
+                    values[index],
+                    groupby_value_id=f"hi_0{number}",
+                    geography_id=f"5001700US150{number}",
+                )
+            )
+    return facts
+
+
+def _congressional_district_taxable_interest_specs(registry) -> dict[str, object]:
+    return {
+        spec.name: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") in _INTEREST_MEASURES
+        and ".congressional_district_" in spec.metadata["ledger_layout_record_set_id"]
+    }
+
+
+def test_congressional_district_taxable_interest_rows_are_shares_of_the_control() -> (
+    None
+):
+    """The congressional-district file is TY2022 data (stamped ty2023), the
+    same stale photo as Historic Table 2, so its state and district taxable-
+    interest rows ship as shares of that file's own US row times the Pub 1304
+    control, and the US row retires. On the pinned feed they shipped as TY2022
+    levels, and the US row compiled as a second national target: $134.6B
+    against Table 4.3's $340.4B (microcosm#1038 follow-up, #489 doctrine)."""
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *_taxable_interest_ht2_facts(),
+            *_taxable_interest_cd_package_facts(),
+            *_taxable_interest_t43_facts(),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    cd = _congressional_district_taxable_interest_specs(registry)
+    assert sorted(spec.metadata["ledger_geography_level"] for spec in cd.values()) == (
+        ["congressional_district"] * 4 + ["state"] * 2
+    )
+    for measure, control, cd_us, hawaii, districts in (
+        (
+            "taxable_interest_returns",
+            11_000_000.0,
+            9_400_000.0,
+            400_000.0,
+            (150_000.0, 250_000.0),
+        ),
+        ("taxable_interest_amount", 235e9, 94e9, 4e9, (1e9, 3e9)),
+    ):
+        factor = control / cd_us
+        state = cd[f"{_INTEREST_CD_RECORD_SET}.hi_total.{measure}"]
+        children = [cd[f"{_INTEREST_CD_RECORD_SET}.hi_0{n}.{measure}"] for n in (1, 2)]
+        assert math.isclose(state.value, hawaii * factor, rel_tol=1e-12)
+        for child, raw in zip(children, districts, strict=True):
+            assert math.isclose(child.value, raw * factor, rel_tol=1e-12)
+            # One factor scales the state and its districts, so the hierarchy
+            # reconciliation that follows leaves the proportions alone.
+            assert child.metadata["hierarchy_reconciliation_factor"] == "1"
+        for spec in (state, *children):
+            assert spec.metadata["uprating_factor"] == fiscal_targets._format_float(
+                factor
+            )
+            assert spec.metadata["uprating_index_source_record_id"] == (
+                f"{_INTEREST_T43_RECORD_SET}.all.{measure}"
+            )
+            assert spec.metadata["soi_share_total_source_record_id"] == (
+                f"{_INTEREST_CD_RECORD_SET}.us.{measure}"
+            )
+            # The all-returns rows take the excluding-dependents control, and
+            # say so.
+            assert spec.metadata["soi_return_universe_bridge"] == (
+                "returns_excluding_dependents"
+            )
+            assert spec.metadata["uprating_to_period"] == "2023"
+            assert spec.metadata["stale_distribution_rebased_to_active_total"] == "true"
+
+    # Historic Table 2 rows keep dividing by the HT2 US row (x2.35 and x1.1),
+    # not by the congressional-district US row, and name it.
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    for measure, value in zip(_INTEREST_MEASURES, (2_750_000.0, 58.75e9), strict=True):
+        ca = specs[_INTEREST_HT2_CA.format(measure=measure)]
+        assert math.isclose(ca.value, value, rel_tol=1e-12)
+        assert ca.metadata["soi_share_total_source_record_id"] == (
+            _INTEREST_HT2_US.format(measure=measure)
+        )
+
+
+def _taxable_interest_cd_package_at(stamp: int) -> list[dict[str, object]]:
+    """The rows of ``_taxable_interest_cd_package_facts`` stamped ``stamp``,
+    carrying the pinned 22incd.csv's digest and raw key."""
+    digest = "137522878af78d624cfddc0e17cd36ae76a21b7bed166c7bb96ad3243a18a668"
+    record_set_id = f"irs_soi.ty{stamp}.congressional_district_2022.all_returns"
+    facts = []
+    for fact in _taxable_interest_cd_package_facts():
+        row = fact["layout"]["groupby_value_id"]
+        measure = fact["layout"]["measure_id"]
+        restamped = _dynamic_ledger_fact(
+            source_record_id=f"{record_set_id}.{row}.{measure}",
+            source_name="irs_soi",
+            measure_id=measure,
+            value=fact["value"],
+            period_value=stamp,
+            geography_level=fact["geography"]["level"],
+            geography_id=fact["geography"]["id"],
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=record_set_id,
+            groupby_dimension="irs_soi.congressional_district",
+            groupby_value_id=row,
+        )
+        restamped["source"].update(
+            {
+                "source_file": "22incd.csv",
+                "source_sha256": digest,
+                "raw_r2_key": (
+                    f"raw/irs_soi/soi-congressional-district-2022/2022/{digest}/"
+                    "22incd.csv"
+                ),
+                "vintage": f"tax_year_{stamp}",
+            }
+        )
+        facts.append(restamped)
+    return facts
+
+
+def test_congressional_district_taxable_interest_ignores_the_package_stamp() -> None:
+    """Differential: a congressional-district taxable-interest row is its share
+    of the same package's US row times the Table 4.3 level, so the package's
+    period stamp cancels. Compiled and aged to 2024, the package stamped
+    ty2023, as on the pinned feed, gives exactly the values of the same package
+    stamped truthfully at 2022, and both age from the control's 2023 period on
+    the CBO AGI link, as the Table 4.3 row does. Before, the ty2023 stamp aged
+    the levels one link (x1.087) where the truthful stamp would age two, and
+    neither reached the control (microcosm#1030, #1038)."""
+    cbo = [
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+    ]
+    compiled = {}
+    for stamp in (2023, 2022):
+        registry = compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                *_taxable_interest_cd_package_at(stamp),
+                *_taxable_interest_t43_facts(),
+                *cbo,
+            ],
+            target_period=2024,
+            age_targets=True,
+            allow_unaged_dollar_targets=True,
+        )
+        specs = {spec.name: spec for spec in registry.specs}
+        compiled[stamp] = (
+            {
+                (
+                    spec.metadata["source_measure_id"],
+                    spec.metadata["ledger_geography_id"],
+                ): spec
+                for spec in _congressional_district_taxable_interest_specs(
+                    registry
+                ).values()
+            },
+            specs[f"{_INTEREST_T43_RECORD_SET}.all.taxable_interest_amount"],
+        )
+
+    (stamped, national), (truthful, _) = compiled[2023], compiled[2022]
+    assert set(stamped) == set(truthful)
+    assert len(stamped) == 6
+    agi_link = 16_500_000_000_000 / 15_000_000_000_000
+    assert math.isclose(national.value, 235e9 * agi_link, rel_tol=1e-12)
+    for key, spec in stamped.items():
+        assert math.isclose(spec.value, truthful[key].value, rel_tol=1e-12), key
+        assert spec.metadata["uprating_to_period"] == "2023"
+        if key[0] == "taxable_interest_amount":
+            for aged in (spec, truthful[key]):
+                assert math.isclose(
+                    float(aged.metadata["aging_factor"]), agi_link, rel_tol=1e-12
+                )
+            raw = {"0400000US15": 4e9, "5001700US1501": 1e9}.get(key[1], 3e9)
+            # The share of the aged national row, exactly.
+            assert math.isclose(spec.value, raw / 94e9 * national.value, rel_tol=1e-12)
+
+
+def test_congressional_district_taxable_interest_without_a_control_keeps_its_levels() -> (
+    None
+):
+    """With no Pub 1304-class control in the feed nothing can be a share, so the
+    congressional-district rows keep their source values, as Historic Table 2's
+    do, and generic aging owns the projection (the pre-identification
+    behaviour, test_stale_soi_taxable_interest_without_control_keeps_source_values)."""
+    package = _taxable_interest_cd_package_facts()
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), *package],
+        allow_unaged_dollar_targets=True,
+    )
+
+    cd = _congressional_district_taxable_interest_specs(registry)
+    assert {name: spec.value for name, spec in cd.items()} == {
+        fiscal_targets._source_record_id(fact): fact["value"] for fact in package
+    }
+    assert not [spec.name for spec in cd.values() if "uprating_factor" in spec.metadata]
+
+
+def test_taxable_interest_share_row_without_its_family_total_is_dropped() -> None:
+    """A congressional-district row with an eligible control but no US row of
+    its own family has no defined share: it is dropped, never divided by the
+    Historic Table 2 US row and never shipped as a TY2022 level beside the
+    control. The HT2 rows beside it keep their own denominator."""
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *(
+                fact
+                for fact in _taxable_interest_cd_package_facts()
+                if fact["layout"]["groupby_value_id"] != "us"
+            ),
+            *_taxable_interest_ht2_facts(),
+            *_taxable_interest_t43_facts(),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    assert _congressional_district_taxable_interest_specs(registry) == {}
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    ca = specs[_INTEREST_HT2_CA.format(measure="taxable_interest_amount")]
+    assert math.isclose(ca.value, 58.75e9, rel_tol=1e-12)
+    assert ca.metadata["soi_share_total_source_record_id"] == (
+        _INTEREST_HT2_US.format(measure="taxable_interest_amount")
+    )
+
+
+def test_historic_table_2_taxable_interest_state_row_without_its_us_row() -> None:
+    """The same rule for Historic Table 2: a full-range state row whose US row
+    is missing is dropped beside an eligible control (it would ship a TY2022
+    level against a TY2023 national), and kept as a level only when no control
+    exists anywhere."""
+    state_only = [
+        fact
+        for fact in _taxable_interest_ht2_facts()
+        if ".state_broad." in fiscal_targets._source_record_id(fact)
+    ]
+    ca_amount = _INTEREST_HT2_CA.format(measure="taxable_interest_amount")
+
+    with_control = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), *state_only, *_taxable_interest_t43_facts()],
+        allow_unaged_dollar_targets=True,
+    )
+    without_control = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), *state_only],
+        allow_unaged_dollar_targets=True,
+    )
+
+    assert ca_amount not in {spec.name for spec in with_control.specs}
+    kept = {spec.name: spec for spec in without_control.specs}[ca_amount]
+    assert kept.value == 25e9
+    assert "uprating_factor" not in kept.metadata
+
+
+def test_taxable_interest_share_family_refuses_two_national_totals() -> None:
+    """Two different national totals for one share family, quantity and period
+    refuse the compile: feed order must not pick a share denominator."""
+    rival = _soi_congressional_district_fact(
+        "taxable_interest_amount",
+        95e9,
+        groupby_value_id="us_rival",
+        geography_level="country",
+        geography_id="0100000US",
+    )
+    facts = [
+        *packaged_reference_facts(),
+        *_taxable_interest_cd_package_facts(),
+        *_taxable_interest_t43_facts(),
+        rival,
+    ]
+
+    with pytest.raises(fiscal_targets.AmbiguousSoiTaxableInterestShareTotalError):
+        fiscal_targets._soi_taxable_interest_share_national_totals(tuple(facts))
+    with pytest.raises(fiscal_targets.AmbiguousSoiTaxableInterestShareTotalError):
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+
+
+@pytest.mark.parametrize("twin_first", [True, False], ids=["twin-first", "us-first"])
+def test_taxable_interest_share_denominator_is_order_free(twin_first: bool) -> None:
+    """Two records carrying the same national total for one share family are
+    not ambiguous, and the denominator a share row names is the smaller record
+    id whichever comes first in the feed."""
+    twin = _soi_congressional_district_fact(
+        "taxable_interest_amount",
+        94e9,
+        groupby_value_id="us_twin",
+        geography_level="country",
+        geography_id="0100000US",
+    )
+    package = _taxable_interest_cd_package_facts()
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *((twin, *package) if twin_first else (*package, twin)),
+            *_taxable_interest_t43_facts(),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    hawaii = _congressional_district_taxable_interest_specs(registry)[
+        f"{_INTEREST_CD_RECORD_SET}.hi_total.taxable_interest_amount"
+    ]
+    assert hawaii.metadata["soi_share_total_source_record_id"] == min(
+        f"{_INTEREST_CD_RECORD_SET}.us.taxable_interest_amount",
+        f"{_INTEREST_CD_RECORD_SET}.us_twin.taxable_interest_amount",
+    )
+    assert math.isclose(hawaii.value, 4e9 * 235e9 / 94e9, rel_tol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("record_set_id", "family"),
+    [
+        ("irs_soi.ty2022.historic_table_2.us", "historic_table_2"),
+        ("irs_soi.ty2022.historic_table_2.state_agi.ca", "historic_table_2"),
+        (
+            "irs_soi.ty2023.congressional_district_2022.all_returns",
+            "congressional_district",
+        ),
+        (
+            "irs_soi.ty2024.congressional_district_2024.all_returns",
+            "congressional_district",
+        ),
+        ("irs_soi.ty2023.table_4_3.all_returns_excluding_dependents", None),
+        ("irs_soi.ty2023.table_2_1.itemized_all_returns", None),
+        ("irs_soi.ty2023.table_1_4", None),
+    ],
+)
+def test_taxable_interest_share_families(record_set_id: str, family) -> None:
+    """Historic Table 2 and the congressional-district file, of any boundary
+    vintage, are stale photos that supply shares; the Pub 1304 tables are
+    controls."""
+    assert fiscal_targets._soi_taxable_interest_share_family(record_set_id) == family
+
+
+def test_taxable_interest_shares_conserve_the_control_in_any_feed_order() -> None:
+    """Property: whatever the congressional-district package, the Historic
+    Table 2 rows beside it, the Table 4.3 level and the feed order,
+    - no congressional-district row ships at the country level, and each
+      family's rows divide by, and name, their own family's US row;
+    - each district-file state row is its share of the file's US row times
+      the control, and each state's districts sum to that state row;
+    - the district-file states, and its districts, sum to the control times
+      the states' share of the US row, so never past the control (exactly the
+      control when the states partition the US row, as in 22incd.csv);
+    - the compiled registry is identical in every feed order."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    # Two-district states and one single-district state, whose source row is
+    # the state total only (22incd.csv carries no district row for it).
+    two_district_states = (("hi", "15"), ("id", "16"), ("me", "23"))
+    at_large = ("vt", "50")
+    values = st.integers(min_value=1, max_value=10_000_000)
+
+    @settings(max_examples=25, deadline=None)
+    @given(
+        measure=st.sampled_from(_INTEREST_MEASURES),
+        districts=st.lists(
+            st.tuples(values, values),
+            min_size=len(two_district_states),
+            max_size=len(two_district_states),
+        ),
+        state_excess=st.lists(
+            st.integers(min_value=0, max_value=1_000_000),
+            min_size=len(two_district_states),
+            max_size=len(two_district_states),
+        ),
+        at_large_value=values,
+        other_areas=st.integers(min_value=0, max_value=50_000_000),
+        control=values,
+        ht2=st.tuples(values, values),
+        order=st.randoms(use_true_random=False),
+    )
+    def check(
+        measure,
+        districts,
+        state_excess,
+        at_large_value,
+        other_areas,
+        control,
+        ht2,
+        order,
+    ):
+        ht2_state, ht2_rest = ht2
+        ht2_us_id = _INTEREST_HT2_US.format(measure=measure)
+        ht2_state_id = f"irs_soi.ty2022.historic_table_2.state_broad.hi.all.{measure}"
+        facts = [
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=ht2_us_id,
+                measure_id=measure,
+                value=float(ht2_state + ht2_rest),
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=ht2_state_id,
+                measure_id=measure,
+                geography_level="state",
+                geography_id="0400000US15",
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.state_broad.hi",
+                value=float(ht2_state),
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=f"{_INTEREST_T43_RECORD_SET}.all.{measure}",
+                measure_id=measure,
+                layout_record_set_id=_INTEREST_T43_RECORD_SET,
+                value=float(control),
+            ),
+        ]
+        state_values = {}
+        for (postal, fips), pair, excess in zip(
+            two_district_states, districts, state_excess, strict=True
+        ):
+            state_values[fips] = float(sum(pair) + excess)
+            facts.append(
+                _soi_congressional_district_fact(
+                    measure,
+                    state_values[fips],
+                    groupby_value_id=f"{postal}_total",
+                    geography_level="state",
+                    geography_id=f"0400000US{fips}",
+                )
+            )
+            for number, value in enumerate(pair, start=1):
+                facts.append(
+                    _soi_congressional_district_fact(
+                        measure,
+                        float(value),
+                        groupby_value_id=f"{postal}_0{number}",
+                        geography_id=f"5001700US{fips}0{number}",
+                    )
+                )
+        state_values[at_large[1]] = float(at_large_value)
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                float(at_large_value),
+                groupby_value_id=f"{at_large[0]}_total",
+                geography_level="state",
+                geography_id=f"0400000US{at_large[1]}",
+            )
+        )
+        cd_us = sum(state_values.values()) + other_areas
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                cd_us,
+                groupby_value_id="us",
+                geography_level="country",
+                geography_id="0100000US",
+            )
+        )
+
+        def compiled(feed):
+            registry = compile_us_fiscal_target_registry(
+                [*packaged_reference_facts(), *feed], allow_unaged_dollar_targets=True
+            )
+            return registry, {
+                spec.name: (spec.value, dict(spec.metadata)) for spec in registry.specs
+            }
+
+        _, canonical = compiled(facts)
+        shuffled = list(facts)
+        order.shuffle(shuffled)
+        registry, reordered = compiled(shuffled)
+        assert reordered == canonical
+
+        hawaii_ht2 = next(
+            spec
+            for spec in registry.specs
+            if spec.metadata["ledger_source_record_id"] == ht2_state_id
+        )
+        assert math.isclose(
+            hawaii_ht2.value,
+            ht2_state * control / (ht2_state + ht2_rest),
+            rel_tol=1e-12,
+        )
+        assert hawaii_ht2.metadata["soi_share_total_source_record_id"] == ht2_us_id
+
+        by_level: dict[str, list] = {}
+        for spec in _congressional_district_taxable_interest_specs(registry).values():
+            by_level.setdefault(spec.metadata["ledger_geography_level"], []).append(
+                spec
+            )
+            assert spec.metadata["uprating_index_source_record_id"] == (
+                f"{_INTEREST_T43_RECORD_SET}.all.{measure}"
+            )
+            assert spec.metadata["soi_share_total_source_record_id"] == (
+                f"{_INTEREST_CD_RECORD_SET}.us.{measure}"
+            )
+            assert spec.metadata["soi_return_universe_bridge"] == (
+                "returns_excluding_dependents"
+            )
+        assert set(by_level) == {"state", "congressional_district"}
+        assert len(by_level["state"]) == len(state_values)
+        assert len(by_level["congressional_district"]) == 2 * len(two_district_states)
+
+        factor = control / cd_us
+        state_by_fips = {}
+        for spec in by_level["state"]:
+            raw = state_values[spec.metadata["state_fips"]]
+            assert math.isclose(spec.value, raw * factor, rel_tol=1e-12)
+            state_by_fips[spec.metadata["state_fips"]] = spec.value
+        district_totals: dict[str, float] = {}
+        for spec in by_level["congressional_district"]:
+            fips = spec.metadata["state_fips"]
+            district_totals[fips] = district_totals.get(fips, 0.0) + spec.value
+        for fips, total in district_totals.items():
+            assert math.isclose(total, state_by_fips[fips], rel_tol=1e-12)
+
+        states_total = sum(state_by_fips.values())
+        expected = control * sum(state_values.values()) / cd_us
+        assert math.isclose(states_total, expected, rel_tol=1e-12)
+        assert states_total <= control * (1 + 1e-12)
+        assert sum(district_totals.values()) <= control * (1 + 1e-12)
+        if other_areas == 0:
+            assert math.isclose(states_total, control, rel_tol=1e-12)
+
+    check()
 
 
 def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> None:
