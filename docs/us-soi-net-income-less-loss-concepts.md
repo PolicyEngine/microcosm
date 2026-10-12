@@ -34,8 +34,8 @@ published combined partnership-and-S-corp columns. That year HT2 N26270
 (9,011,930) equals the combined NI + NL returns (9,001,513) within 0.12%,
 and only 65.5% of them are net-income returns. In TY2021–TY2023 Table 1.4
 splits partnership from S corporation, so no combined net-income count
-exists. HT2 A26270 equals the summed partnership and S-corp nets within
-0.2–0.35% in every year.
+exists. HT2 A26270 equals the net within 0.8% in TY2020 and the summed
+partnership and S-corp nets within 0.2–0.35% in TY2021–TY2023.
 
 **Rental and royalty income.** N25870/A25870 first appear in TY2022. Table
 1.4's "Total rental and royalty" includes Form 4835 farm rental. Schedule E
