@@ -935,6 +935,60 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     )
 
 
+_EITC_CHILD_SPLITS = (
+    "no_qualifying_children",
+    "one_qualifying_child",
+    "two_qualifying_children",
+    "three_or_more_qualifying_children",
+)
+
+
+@pytest.mark.parametrize(
+    ("measure", "active_measure", "factor"),
+    [
+        ("eitc_total", "total_earned_income_credit_amount", "1.04182361614341"),
+        ("eitc_returns", "total_earned_income_credit_returns", "0.975335982876551"),
+    ],
+)
+def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
+    pinned_feed_national_state_surface, measure, active_measure, factor
+) -> None:
+    """The four TY2023 Table 2.5 child splits' all-AGI total rows take one
+    factor, the TY2024 filing-season AGI bins over the source total rows
+    ($69,041,650,000 / $66,269,999,000; 23,837,149 / 24,439,936), so they sum
+    to those bins as the splits' 112 AGI bins do. The source sum used to count
+    each split's bins and total row both, which halved the factor (0.5209 and
+    0.4877) and shipped the total rows at about half their bins."""
+    registry, surface, _ = pinned_feed_national_state_surface
+    by_name = {spec.name: spec for spec in registry.specs}
+    on_surface = {spec.name for spec in surface.specs}
+    active = sum(
+        spec.value
+        for spec in registry.specs
+        if spec.name.startswith("irs_soi.ty2024.filing_season_week47.eitc_by_agi.")
+        and spec.metadata["source_measure_id"] == active_measure
+    )
+    record_set = "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+    totals = [
+        by_name[f"{record_set}{split}.total.{measure}"] for split in _EITC_CHILD_SPLITS
+    ]
+    bins = [
+        spec
+        for spec in registry.specs
+        if spec.name.startswith(record_set)
+        and spec.metadata["source_measure_id"] == measure
+        and spec not in totals
+    ]
+
+    assert len(bins) == 4 * 28
+    assert {spec.name for spec in [*totals, *bins]} <= on_surface
+    assert {spec.metadata["uprating_factor"] for spec in totals} == {factor}
+    assert {spec.metadata["uprating_agi_lower_bound"] for spec in totals} == {"-inf"}
+    assert {spec.metadata["uprating_agi_upper_bound"] for spec in totals} == {"inf"}
+    assert sum(spec.value for spec in totals) == pytest.approx(active, rel=1e-12)
+    assert sum(spec.value for spec in bins) == pytest.approx(active, rel=1e-12)
+
+
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
     excluded_source_record_id = (
         "hhs_acf_tanf.fy2024.cash_assistance.ar."
