@@ -110,7 +110,9 @@ def test_production_collector_cannot_be_replaced_by_environment(
         "https://untrusted.example",
     )
 
-    delivery = CollectorDelivery(EventSpool(tmp_path / "events.sqlite3"))
+    delivery = CollectorDelivery(
+        EventSpool(tmp_path / "events.sqlite3"), _registration()
+    )
 
     assert delivery.collector_url == PRODUCTION_COLLECTOR_URL
 
@@ -386,6 +388,7 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
 
     delivery = CollectorDelivery(
         spool,
+        registration,
         development_collector_url="http://127.0.0.1:8080",
     )
     assert delivery.flush_once()
@@ -416,6 +419,7 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
     monkeypatch.setattr(collector_module, "_http_post", reject)
     delivery = CollectorDelivery(
         spool,
+        registration,
         development_collector_url="http://127.0.0.1:8080",
     )
 
@@ -451,7 +455,7 @@ def test_a_settled_collector_rejection_goes_local_only_instead_of_retrying(
 
     monkeypatch.setattr(collector_module, "_http_post", fake_post)
     delivery = CollectorDelivery(
-        spool, development_collector_url="http://127.0.0.1:8080"
+        spool, registration, development_collector_url="http://127.0.0.1:8080"
     )
     assert not delivery.flush_once()
     assert spool.has_pending()
@@ -480,7 +484,7 @@ def test_identity_provider_outage_keeps_events_eligible_for_retry(
         lambda *args, **kwargs: (503, {"detail": "temporarily unavailable"}),
     )
 
-    assert not CollectorDelivery(spool).flush_once()
+    assert not CollectorDelivery(spool, registration).flush_once()
     assert spool.pending_runs() == [registration]
 
 
@@ -501,7 +505,7 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
         ),
     )
 
-    delivery = CollectorDelivery(spool)
+    delivery = CollectorDelivery(spool, registration)
     assert not delivery.flush_once()
     assert spool.pending_runs() == []
 
@@ -895,7 +899,7 @@ def test_shutdown_retries_wait_after_stop_without_exceeding_deadline(
     service = EmitterService(
         socket_path=tmp_path / "unused.sock",
         registration=_registration(),
-        spool=SimpleNamespace(has_deliverable=lambda: True),
+        spool=SimpleNamespace(run_has_deliverable=lambda run_id, producer_id: True),
         delivery=SimpleNamespace(flush_once=flush_once),
         sampler=_FakeSampler(),
         heartbeat_seconds=60,

@@ -211,8 +211,15 @@ class EmitterService:
         self._drain()
 
     def _drain(self) -> None:
+        # Only this build's run holds the service up: other builds' runs are
+        # their own services' to deliver, or are adopted while this one runs.
+        run_id = str(self.registration["run_id"])
+        producer_id = str(self.registration["producer_id"])
         deadline = time.monotonic() + self.drain_seconds
-        while self.spool.has_deliverable() and time.monotonic() < deadline:
+        while (
+            self.spool.run_has_deliverable(run_id, producer_id)
+            and time.monotonic() < deadline
+        ):
             if not self.delivery.flush_once():
                 remaining = deadline - time.monotonic()
                 if remaining > 0:
