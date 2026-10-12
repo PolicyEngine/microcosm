@@ -7,7 +7,7 @@ import os
 import socket
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,15 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SOCKET_LISTEN_BACKLOG,
     UNSUPPORTED_ACTION_ERROR,
     WORKER_INTERVAL_SECONDS,
+    WORKER_STEP_WARNING,
+)
+from microcosm.build.telemetry_emitter_service.contention import (
+    is_transient_spool_error,
+    retry_spool_contention,
+)
+from microcosm.build.telemetry_emitter_service.diagnostics import (
+    describe_error,
+    write_warning,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
@@ -100,11 +109,14 @@ class EmitterService:
         self.drain_seconds = max(0.0, drain_seconds)
         self._stop = threading.Event()
         self._last_stage = STAGE_CREATED
+        self._reported_error_types: set[str] = set()
 
     def run(self) -> None:
-        """Serve local messages until the client closes or exits."""
+        """Serve local messages until the client closes or exits.
 
-        self.spool.register(self.registration)
+        The spool must already hold this producer's registration.
+        """
+
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.socket_path.unlink(missing_ok=True)
@@ -115,7 +127,7 @@ class EmitterService:
                 server.settimeout(SOCKET_ACCEPT_TIMEOUT_SECONDS)
                 worker = threading.Thread(target=self._worker, daemon=True)
                 worker.start()
-                self._serve(server)
+                self._serve(server, worker)
                 worker.join(timeout=self.drain_seconds + WORKER_INTERVAL_SECONDS)
         finally:
             self.socket_path.unlink(missing_ok=True)
@@ -124,8 +136,11 @@ class EmitterService:
             except OSError:
                 pass
 
-    def _serve(self, server: socket.socket) -> None:
-        while not self._stop.is_set():
+    def _serve(self, server: socket.socket, worker: threading.Thread) -> None:
+        # Only the worker notices that the build died without closing, so a
+        # service whose worker has stopped must stop too, or it would serve a
+        # dead build forever.
+        while not self._stop.is_set() and worker.is_alive():
             try:
                 connection, _ = server.accept()
             except TimeoutError:
@@ -186,34 +201,99 @@ class EmitterService:
             raise ValueError(UNSUPPORTED_ACTION_ERROR)
 
     def _worker(self) -> None:
+        # A failed step is skipped for this tick only. The parent check below
+        # must keep running: it is the only thing that stops a service whose
+        # build died without closing it.
         next_heartbeat = time.monotonic() + self.heartbeat_seconds
         while not self._stop.wait(WORKER_INTERVAL_SECONDS):
             now = time.monotonic()
             # Sample every worker iteration so short-lived build children are
             # much less likely to disappear between stage and heartbeat events.
-            self.sampler.sample()
-            if now >= next_heartbeat:
-                self.spool.append(
-                    self.registration,
-                    _heartbeat_event(self._last_stage),
-                    resources=self.sampler.sample(),
-                )
+            self._attempt(self.sampler.sample)
+            # A heartbeat that fails stays due, so the next tick retries it.
+            if now >= next_heartbeat and self._attempt(self._append_heartbeat):
                 next_heartbeat = now + self.heartbeat_seconds
-            self.delivery.flush_once()
-            if not self.sampler.parent_alive():
-                self.spool.append(
-                    self.registration,
-                    _unexpected_exit_event(self._last_stage),
-                    resources=self.sampler.sample(),
-                )
+            self._attempt(self.spool.prune_if_due)
+            self._attempt(self.delivery.flush_once)
+            # A build that closed while this tick ran may already have exited
+            # cleanly; only a build that never closed died unexpectedly.
+            if not self._stop.is_set() and not self._parent_alive():
+                self._attempt(self._append_unexpected_exit)
                 self._stop.set()
                 break
+        # A build that closes within its first tick never reached the prune
+        # above, and a host of such builds would never enforce retention.
+        self._attempt(self.spool.prune_if_due)
         self._drain()
+
+    def _parent_alive(self) -> bool:
+        # A parent that cannot be checked is treated as gone: the alternative
+        # is a service that may outlive its build.
+        try:
+            return self.sampler.parent_alive()
+        except Exception as error:
+            self._report(error)
+            return False
+
+    def _append_heartbeat(self) -> None:
+        self.spool.append(
+            self.registration,
+            _heartbeat_event(self._last_stage),
+            resources=self.sampler.sample(),
+        )
+
+    def _append_unexpected_exit(self) -> None:
+        # This is the only record of a build that was killed, so it waits out
+        # lock contention for as long as the shutdown drain may take.
+        retry_spool_contention(
+            lambda: self.spool.append(
+                self.registration,
+                _unexpected_exit_event(self._last_stage),
+                resources=self.sampler.sample(),
+            ),
+            deadline=time.monotonic() + self.drain_seconds,
+            clock=time.monotonic,
+            sleep=time.sleep,
+        )
+
+    def _attempt(self, step: Callable[[], object]) -> bool:
+        """Run one worker step, reporting rather than raising its failure."""
+
+        try:
+            step()
+        except Exception as error:
+            self._report(error)
+            return False
+        return True
+
+    def _report(self, error: Exception) -> None:
+        # Lock contention clears by itself and the step runs again on a later
+        # tick, so it is not worth a line in the build's log. Anything else is
+        # reported once per error type.
+        if is_transient_spool_error(error):
+            return
+        error_type = type(error).__name__
+        if error_type in self._reported_error_types:
+            return
+        self._reported_error_types.add(error_type)
+        write_warning(
+            WORKER_STEP_WARNING.format(
+                error_type=error_type,
+                error=describe_error(error),
+            )
+        )
 
     def _drain(self) -> None:
         deadline = time.monotonic() + self.drain_seconds
-        while self.spool.has_deliverable() and time.monotonic() < deadline:
-            if not self.delivery.flush_once():
+        while time.monotonic() < deadline:
+            progressed = False
+            try:
+                if not self.spool.has_deliverable():
+                    return
+                progressed = self.delivery.flush_once()
+            except Exception as error:
+                self._report(error)
+            if not progressed:
                 remaining = deadline - time.monotonic()
                 if remaining > 0:
                     time.sleep(min(DRAIN_RETRY_SECONDS, remaining))
