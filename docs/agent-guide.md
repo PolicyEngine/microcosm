@@ -224,6 +224,14 @@ SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
 never feeds calibration or refuses a release; unavailable measurements are
 reported explicitly. The report records the difference between SSA's December
 2024 recipient snapshot and the model's positive annual benefits.
+It also writes `us_medicare_irmaa_holdout.json`: weighted Medicare Part B and
+Part D income-related premium (IRMAA) payers and annual amounts, compared with
+the 2026 Medicare Trustees Report's calendar-year rows in Tables V.E3 and V.E4
+(microcosm#1206). Part B counts
+`gross_medicare_part_b_premium_if_enrolled - base_part_b_premium` for
+`medicare_enrolled` people only, because the base premium is defined for every
+eligible person. It is held out the same way: no calibration row, no release
+refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
