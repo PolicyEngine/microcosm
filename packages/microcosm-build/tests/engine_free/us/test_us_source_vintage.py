@@ -574,6 +574,10 @@ def test_apply_refuses_a_multi_fact_spec_with_a_restamped_member() -> None:
         )
 
 
+def _vintage(correction: SourceVintageCorrection) -> tuple[str, int, int]:
+    return correction.package_id, correction.stamped_year, correction.data_year
+
+
 def test_correction_invariants_hold_for_generated_registries() -> None:
     """For any registry and any corrections, the correction refuses exactly
     when a restamped spec was rebased other than as a share of a restamped
@@ -591,8 +595,8 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
 
     record_ids = [f"irs_soi.ty2023.r{i}" for i in range(5)]
     years = st.integers(2015, 2026)
-    # A few shared vintages make same-package shares common; the free draw
-    # keeps mixed packages, stamps and data years in play.
+    # A few fixed vintages make same-package shares common; the free draw
+    # keeps any package, stamp and data year in play.
     vintages = st.one_of(
         st.sampled_from(
             [("pkg_a", 2023, 2022), ("pkg_a", 2024, 2022), ("pkg_b", 2023, 2022)]
@@ -605,10 +609,16 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
     )
 
     @st.composite
-    def cases(draw):
+    def cases(draw, well_formed):
+        # well_formed: every restamped spec that is rebased is a valid share,
+        # so the call is admitted and the admitted-share invariants get
+        # exercised; otherwise shares are free and most calls refuse.
         corrections = {}
+        # A small pool per case makes same-vintage totals common and keeps
+        # mixed packages, stamps and data years among them.
+        pool = draw(st.lists(vintages, min_size=1, max_size=3))
         for record_id in draw(st.sets(st.sampled_from(record_ids))):
-            package_id, stamped, data = draw(vintages)
+            package_id, stamped, data = draw(st.sampled_from(pool))
             corrections[record_id] = SourceVintageCorrection(
                 record_id, package_id, stamped, data
             )
@@ -625,6 +635,17 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                     st.sampled_from([correction.stamped_year, correction.data_year]),
                 )
             )
+
+        def same_vintage_totals(record_id):
+            # Other corrections of the row's own package, stamp and data year.
+            backing = corrections.get(record_id)
+            if backing is None:
+                return []
+            return [
+                other
+                for other, correction in corrections.items()
+                if other != record_id and _vintage(correction) == _vintage(backing)
+            ]
 
         specs = []
         for index in range(draw(st.integers(0, 8))):
@@ -648,14 +669,35 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 metadata["uprating_to_period"] = metadata[
                     "uprating_index_source_period"
                 ]
-                if draw(st.booleans()):
+                same = same_vintage_totals(record_id)
+                restamped = record_id in corrections
+                if draw(st.booleans()) and not (well_formed and restamped and not same):
                     metadata["uprating_factor"] = "0.5"
-                    if draw(st.integers(0, 4)):
-                        metadata["uprating_from_period"] = str(period_near(record_id))
-                    if draw(st.integers(0, 4)):
+                    if same and well_formed:
+                        # A well-formed share: a same-vintage total, read at
+                        # the stamp or the data year.
+                        correction = corrections[record_id]
                         metadata["soi_share_total_source_record_id"] = draw(
-                            st.sampled_from([*record_ids, "irs_soi.ty2023.truthful"])
+                            st.sampled_from(same)
                         )
+                        metadata["uprating_from_period"] = str(
+                            draw(
+                                st.sampled_from(
+                                    [correction.stamped_year, correction.data_year]
+                                )
+                            )
+                        )
+                    else:
+                        if draw(st.integers(0, 4)):
+                            metadata["uprating_from_period"] = str(
+                                period_near(record_id)
+                            )
+                        if draw(st.integers(0, 4)):
+                            metadata["soi_share_total_source_record_id"] = draw(
+                                st.sampled_from(
+                                    [*same, *record_ids, "irs_soi.ty2023.truthful"]
+                                )
+                            )
             specs.append(
                 _spec(
                     f"spec{index}",
@@ -683,8 +725,7 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
         )
         return (
             total is not None
-            and (total.package_id, total.stamped_year, total.data_year)
-            == (backing.package_id, backing.stamped_year, backing.data_year)
+            and _vintage(total) == _vintage(backing)
             and spec.metadata.get("uprating_from_period")
             in (str(backing.stamped_year), str(backing.data_year))
         )
@@ -697,7 +738,7 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
         )
 
     @settings(max_examples=500, deadline=None)
-    @given(cases())
+    @given(st.one_of(cases(well_formed=False), cases(well_formed=True)))
     def check(case):
         specs, corrections = case
         registry = TargetRegistry(specs, country="us")
