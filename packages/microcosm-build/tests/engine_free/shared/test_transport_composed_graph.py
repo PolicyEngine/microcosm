@@ -1043,7 +1043,6 @@ def test_cli_arguments():
 # ---------------------------------------------------------------------------
 
 _GAPS = (
-    "benefit_unit_rule.dependent_child.age_limit_years",
     "placeholder reference precal_references.",
     "placeholder reference target_references.",
     "placeholder reference holdout_references.",
@@ -1061,6 +1060,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    # The dependent-child rule is settled from the Social Security Act 2018
+    # Schedule 2, so it is no longer an activation gap.
+    assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
         for reference in spec["resources"][resource]["target_references"]:
             if reference["metadata"].get("activation_status", "active") != "active":
