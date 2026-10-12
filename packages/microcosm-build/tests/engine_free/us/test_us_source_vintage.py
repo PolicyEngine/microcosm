@@ -7,6 +7,7 @@ check live in ``test_us_fiscal_targets.py`` beside the other W-2 aging tests.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import pytest
@@ -394,13 +395,147 @@ def test_apply_moves_a_rebased_specs_control_period_to_the_controls_data_year() 
     assert corrected.metadata["source_period"] == "2022"
 
 
-def test_apply_refuses_a_restamped_fact_that_was_itself_rebased() -> None:
+_CD = "soi-congressional-district-2022"
+_CD_RECORD_SET = "irs_soi.ty2023.congressional_district_2022.all_returns"
+_CD_NJ_AMOUNT = f"{_CD_RECORD_SET}.nj_total.net_capital_gains_amount"
+_CD_US_AMOUNT = f"{_CD_RECORD_SET}.us.net_capital_gains_amount"
+_T14_AMOUNT = "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount"
+_CD_CORRECTIONS = {
+    record_id: SourceVintageCorrection(record_id, _CD, 2023, 2022)
+    for record_id in (_CD_NJ_AMOUNT, _CD_US_AMOUNT)
+}
+
+
+def _cd_share_spec(**overrides: str) -> TargetSpec:
+    """A congressional-district row rebased as a share of the same package's
+    US row times the Table 1.4 control, as microcosm#1040 compiles it. The
+    rebase runs before the correction, so it reads the stamp, 2023."""
+    metadata = {
+        "ledger_source_record_id": _CD_NJ_AMOUNT,
+        "ledger_fact_period": "2023",
+        "source_period": "2023",
+        "uprating_factor": "0.834893818418",
+        "uprating_from_period": "2023",
+        "uprating_to_period": "2023",
+        "uprating_index_source_period": "2023",
+        "uprating_index_source_record_id": _T14_AMOUNT,
+        "soi_share_total_source_record_id": _CD_US_AMOUNT,
+    }
+    metadata.update(overrides)
+    return _spec(_CD_NJ_AMOUNT, 38_463_637_000.0, **metadata)
+
+
+def test_apply_admits_a_share_of_a_restamped_total_of_the_same_package() -> None:
+    """Row and total come from one restamped file, so the stamp cancels in the
+    share; the level is the truthful Table 1.4 control's. Only the share's own
+    period moves to the data year. ``uprating_to_period``, where aging starts,
+    stays at the control's 2023: moved to 2022 it would age the control's
+    TY2022-to-TY2023 change a second time (x0.761 for net capital gains)."""
+    spec = _cd_share_spec()
+    (corrected,) = apply_source_vintage_corrections(
+        TargetRegistry([spec], country="us"), _CD_CORRECTIONS
+    ).specs
+    assert corrected.value == spec.value
+    assert corrected.metadata["uprating_factor"] == "0.834893818418"
+    assert corrected.metadata["source_period"] == "2022"
+    assert corrected.metadata["source_vintage_stamped_period"] == "2023"
+    assert corrected.metadata["uprating_from_period"] == "2022"
+    assert corrected.metadata["uprating_from_period_vintage_stamped_period"] == "2023"
+    assert corrected.metadata["uprating_to_period"] == "2023"
+    assert corrected.metadata["uprating_index_source_period"] == "2023"
+    assert "uprating_index_source_vintage_correction" not in corrected.metadata
+    assert corrected.metadata["ledger_fact_period"] == "2023"
+    again = apply_source_vintage_corrections(
+        TargetRegistry([corrected], country="us"), _CD_CORRECTIONS
+    )
+    assert again.specs == (corrected,)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "corrections"),
+    [
+        pytest.param(
+            {"soi_share_total_source_record_id": None},
+            _CD_CORRECTIONS,
+            id="no-share-total",
+        ),
+        pytest.param(
+            {
+                "soi_share_total_source_record_id": (
+                    "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+                )
+            },
+            _CD_CORRECTIONS,
+            id="truthful-share-total",
+        ),
+        pytest.param(
+            {},
+            {
+                **_CD_CORRECTIONS,
+                _CD_US_AMOUNT: SourceVintageCorrection(
+                    _CD_US_AMOUNT, "soi-state-2022", 2023, 2022
+                ),
+            },
+            id="share-total-from-another-package",
+        ),
+        pytest.param(
+            {},
+            {
+                **_CD_CORRECTIONS,
+                _CD_US_AMOUNT: SourceVintageCorrection(_CD_US_AMOUNT, _CD, 2024, 2022),
+            },
+            id="share-total-at-another-stamp",
+        ),
+        pytest.param(
+            {},
+            {
+                **_CD_CORRECTIONS,
+                _CD_US_AMOUNT: SourceVintageCorrection(_CD_US_AMOUNT, _CD, 2023, 2021),
+            },
+            id="share-total-of-another-data-year",
+        ),
+        pytest.param(
+            {"uprating_from_period": "2021"},
+            _CD_CORRECTIONS,
+            id="share-read-at-another-period",
+        ),
+        pytest.param(
+            {"uprating_from_period": None},
+            _CD_CORRECTIONS,
+            id="no-uprating-from-period",
+        ),
+    ],
+)
+def test_apply_refuses_a_rebased_restamp_that_is_not_a_same_package_share(
+    overrides: dict[str, str | None],
+    corrections: dict[str, SourceVintageCorrection],
+) -> None:
+    """A rebased restamp is admitted only as a share of a restamped total of
+    its own package, stamp and data year, read at the stamp or the data year.
+    Any other rebase (a missing or truthful denominator, a mixed-vintage share,
+    another reading period) mixes vintages the correction cannot vouch for."""
+    spec = _cd_share_spec()
+    metadata = dict(spec.metadata)
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key)
+        else:
+            metadata[key] = value
+    spec = dataclasses.replace(spec, metadata=metadata)
+    with pytest.raises(ValueError, match="was rebased, but not as a share"):
+        apply_source_vintage_corrections(
+            TargetRegistry([spec], country="us"), corrections
+        )
+
+
+def test_apply_refuses_a_restamped_fact_that_was_rebased_without_a_share() -> None:
     spec = _spec(
         "restamped",
         ledger_source_record_id=_TIPS_2023,
         ledger_fact_period="2023",
         source_period="2023",
         uprating_factor="1.1",
+        uprating_from_period="2023",
         uprating_to_period="2023",
     )
     with pytest.raises(ValueError, match="was rebased"):
@@ -440,28 +575,57 @@ def test_apply_refuses_a_multi_fact_spec_with_a_restamped_member() -> None:
 
 
 def test_correction_invariants_hold_for_generated_registries() -> None:
-    """For any registry and any corrections: values, names, periods and order
-    never move; the correction is idempotent; a spec changes if and only if
-    it is backed by, or rebased onto, a corrected fact at its stamped period;
-    and every moved period lands on that fact's data year. Hypothesis is a
-    workspace dependency; the wheels job installs no test extras, so it
-    skips there."""
+    """For any registry and any corrections, the correction refuses exactly
+    when a restamped spec was rebased other than as a share of a restamped
+    total of its own package, stamp and data year, read at the stamp or the
+    data year. Otherwise: values, names, periods and order never move; the
+    correction is idempotent; a spec changes if and only if it is backed by,
+    or rebased onto, a corrected fact at its stamped period; every moved
+    period lands on that fact's data year; ``uprating_from_period`` moves only
+    for an admitted share and ``uprating_to_period`` only for a restamped
+    control. Hypothesis is a workspace dependency; the wheels job installs no
+    test extras, so it skips there."""
     pytest.importorskip("hypothesis")
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
     record_ids = [f"irs_soi.ty2023.r{i}" for i in range(5)]
     years = st.integers(2015, 2026)
+    # A few shared vintages make same-package shares common; the free draw
+    # keeps mixed packages, stamps and data years in play.
+    vintages = st.one_of(
+        st.sampled_from(
+            [("pkg_a", 2023, 2022), ("pkg_a", 2024, 2022), ("pkg_b", 2023, 2022)]
+        ),
+        st.tuples(st.sampled_from(["pkg_a", "pkg_b"]), years).flatmap(
+            lambda pair: st.tuples(
+                st.just(pair[0]), st.just(pair[1]), st.integers(2010, pair[1] - 1)
+            )
+        ),
+    )
 
     @st.composite
     def cases(draw):
         corrections = {}
         for record_id in draw(st.sets(st.sampled_from(record_ids))):
-            stamped = draw(years)
-            data = draw(st.integers(2010, stamped - 1))
+            package_id, stamped, data = draw(vintages)
             corrections[record_id] = SourceVintageCorrection(
-                record_id, "pkg", stamped, data
+                record_id, package_id, stamped, data
             )
+
+        def period_near(record_id):
+            # Bias toward the correction's own stamp and data year, which the
+            # branches under test compare against.
+            correction = corrections.get(record_id)
+            if correction is None:
+                return draw(years)
+            return draw(
+                st.one_of(
+                    years,
+                    st.sampled_from([correction.stamped_year, correction.data_year]),
+                )
+            )
+
         specs = []
         for index in range(draw(st.integers(0, 8))):
             record_id = draw(st.sampled_from(record_ids))
@@ -478,13 +642,20 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 "source_period": str(draw(years)),
             }
             if draw(st.booleans()):
-                metadata["uprating_index_source_record_id"] = draw(
-                    st.sampled_from(record_ids)
-                )
-                metadata["uprating_index_source_period"] = str(draw(years))
+                control_id = draw(st.sampled_from(record_ids))
+                metadata["uprating_index_source_record_id"] = control_id
+                metadata["uprating_index_source_period"] = str(period_near(control_id))
                 metadata["uprating_to_period"] = metadata[
                     "uprating_index_source_period"
                 ]
+                if draw(st.booleans()):
+                    metadata["uprating_factor"] = "0.5"
+                    if draw(st.integers(0, 4)):
+                        metadata["uprating_from_period"] = str(period_near(record_id))
+                    if draw(st.integers(0, 4)):
+                        metadata["soi_share_total_source_record_id"] = draw(
+                            st.sampled_from([*record_ids, "irs_soi.ty2023.truthful"])
+                        )
             specs.append(
                 _spec(
                     f"spec{index}",
@@ -505,11 +676,35 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
             spec.metadata.get("uprating_index_source_period")
         )
 
-    @settings(max_examples=300, deadline=None)
+    def admitted_share(spec, corrections):
+        backing = corrections[spec.metadata["ledger_source_record_id"]]
+        total = corrections.get(
+            spec.metadata.get("soi_share_total_source_record_id", "")
+        )
+        return (
+            total is not None
+            and (total.package_id, total.stamped_year, total.data_year)
+            == (backing.package_id, backing.stamped_year, backing.data_year)
+            and spec.metadata.get("uprating_from_period")
+            in (str(backing.stamped_year), str(backing.data_year))
+        )
+
+    def refused(spec, corrections):
+        return (
+            backed(spec, corrections)
+            and "uprating_factor" in spec.metadata
+            and not admitted_share(spec, corrections)
+        )
+
+    @settings(max_examples=500, deadline=None)
     @given(cases())
     def check(case):
         specs, corrections = case
         registry = TargetRegistry(specs, country="us")
+        if any(refused(spec, corrections) for spec in specs):
+            with pytest.raises(ValueError, match="was rebased, but not as a share"):
+                apply_source_vintage_corrections(registry, corrections)
+            return
         once = apply_source_vintage_corrections(registry, corrections)
         twice = apply_source_vintage_corrections(once, corrections)
         assert once.specs == twice.specs
@@ -532,11 +727,23 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                     after.metadata["source_period"]
                     == (before.metadata["source_period"])
                 )
+            if is_backed and "uprating_factor" in before.metadata:
+                assert after.metadata["uprating_from_period"] == str(
+                    correction.data_year
+                )
+            else:
+                assert after.metadata.get("uprating_from_period") == (
+                    before.metadata.get("uprating_from_period")
+                )
             if is_rebased:
                 correction = corrections[
                     before.metadata["uprating_index_source_record_id"]
                 ]
                 assert after.metadata["uprating_to_period"] == str(correction.data_year)
+            else:
+                assert after.metadata.get("uprating_to_period") == (
+                    before.metadata.get("uprating_to_period")
+                )
 
     check()
 

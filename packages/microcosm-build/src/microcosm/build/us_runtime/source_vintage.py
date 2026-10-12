@@ -16,17 +16,17 @@ Chronicle owns the fix: it records each fact's publisher reference period
 Until the feed is re-pinned on that fix, microcosm reads these facts at their
 data year where aging and the period contract read a period: the
 ``source_period`` aging starts from
-(:mod:`~microcosm.build.us_runtime.target_aging`), and the
-``uprating_to_period`` a spec inherits from a restamped rebase control. Values
-and target names do not change. Two readings still see the stamp, by design,
-because moving them would change which fact wins:
+(:mod:`~microcosm.build.us_runtime.target_aging`), the
+``uprating_to_period`` a spec inherits from a restamped rebase control, and
+the ``uprating_from_period`` of a restamped row rebased as a share of its own
+package's total. Values and target names do not change. Two readings still
+see the stamp, by design, because moving them would change which fact wins:
 
 - Latest-vintage selection. It refuses the compile if a restamp would outrank
   a truthful fact dated after the restamp's data year
   (:class:`RestampShadowsNewerVintageError`).
-- The choice of a rebase control. On the pinned feed, the congressional-
-  district US ``net_capital_gains_returns`` row wins a period-2023 tie over
-  Table 1.4 only because of its stamp.
+- The choice of a rebase control. A restamped control keeps a selection its
+  stamp won; only the period its specs inherit moves.
 
 The aging bridge indexes must not contain a restamped fact at all
 (:func:`check_restamps_stay_out_of_aging_indexes`).
@@ -447,6 +447,13 @@ def apply_source_vintage_corrections(
       ``uprating_index_source_period`` become the control's data year. Aging
       starts a rebased spec from ``uprating_to_period``, so a dollar spec
       rebased onto a TY2022 total must not be aged as if it were TY2023.
+    - A restamped spec rebased as a share of a restamped total of the same
+      package, stamp and data year (its ``soi_share_total_source_record_id``):
+      ``uprating_from_period`` also becomes the data year. The stamp cancels
+      in the share and the level is the control's, so ``uprating_to_period``,
+      where aging starts, stays the control's period. Starting it at the data
+      year instead would apply the control's growth from the data year to its
+      own period twice.
 
     Values are never touched here. The one number that moves afterwards is the
     aging factor, computed from the corrected period.
@@ -454,8 +461,9 @@ def apply_source_vintage_corrections(
     Raises:
         ValueError: A restamped fact reaches a spec in a way the correction
             cannot vouch for: at a period other than its stamp (a fiscal-year
-            comparable period), as a spec that was itself rebased, as one member
-            of a multi-fact spec, or inside a pooled uprating index.
+            comparable period), as a rebased spec that is not a share of a
+            restamped total of its own package, stamp and data year, as one
+            member of a multi-fact spec, or inside a pooled uprating index.
     """
 
     if not corrections:
@@ -486,13 +494,38 @@ def apply_source_vintage_corrections(
                     "review how the period was compared."
                 )
             if "uprating_factor" in metadata:
-                # No restamped fact is itself rebased today. If one ever is,
-                # the rebase ran on the stamped period and needs review
-                # before its aging start can be corrected.
-                raise ValueError(
-                    f"Target {spec.name!r} is backed by restamped fact "
-                    f"{backing.source_record_id!r} ({backing.label}) and was "
-                    "rebased; review the rebase before correcting its period."
+                # A rebased restamp is admitted only as a within-package share:
+                # value = row / total x control, where the rebase names its
+                # total (soi_share_total_source_record_id) and the total is a
+                # restamp of the same package at the same stamp. The stamp then
+                # cancels in the share, the level and its period are the
+                # control's, and aging keeps starting at uprating_to_period.
+                # Only the share's own data year (uprating_from_period) moves.
+                share_total_id = metadata.get("soi_share_total_source_record_id", "")
+                share_total = corrections.get(share_total_id)
+                if (
+                    share_total is None
+                    or (
+                        share_total.package_id,
+                        share_total.stamped_year,
+                        share_total.data_year,
+                    )
+                    != (backing.package_id, backing.stamped_year, backing.data_year)
+                    or _period_year(metadata.get("uprating_from_period"))
+                    not in (backing.stamped_year, backing.data_year)
+                ):
+                    raise ValueError(
+                        f"Target {spec.name!r} is backed by restamped fact "
+                        f"{backing.source_record_id!r} ({backing.label}) and was "
+                        "rebased, but not as a share of a restamped total of the "
+                        f"same package, stamp and data year (share total "
+                        f"{share_total_id!r}, uprating_from_period "
+                        f"{metadata.get('uprating_from_period')!r}); review the "
+                        "rebase before correcting its period."
+                    )
+                metadata["uprating_from_period"] = str(backing.data_year)
+                metadata["uprating_from_period_vintage_stamped_period"] = str(
+                    backing.stamped_year
                 )
             metadata["source_period"] = str(backing.data_year)
             metadata["source_vintage_stamped_period"] = str(backing.stamped_year)
