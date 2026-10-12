@@ -8,30 +8,31 @@ from them by `scripts/extract_surface_receipts.py`.
 
 ## The two receipts
 
-- **Before:** `before-aca40a692.json`. The merge base `aca40a692` with only the
-  commit that adds the receipt tool (it moves no value), on the feed that
-  commit pins, Chronicle `825406f`. Review date 2026-10-10.
-- **After:** `after-bc32a49c1.json`. Branch commit `bc32a49c1`, on the feed it
-  pins, Chronicle `942a1fa`, with `--communal`. Review date 2026-10-12.
+- **Before:** `before-d1fda720b.json`. `main` at `d1fda720b`, the commit the
+  branch is rebased on, with only the commit that adds the receipt tool (it
+  moves no value), on the feed `main` pins, Chronicle `1ee7dfe`.
+- **After:** `after-67e7af074.json`. Branch commit `67e7af074`, on the feed it
+  pins, Chronicle `942a1fa`, with `--communal`.
 
-Both use the 2021 output-area ladder of the 2026-10-04 local build.
+Both use review date 2026-10-12 and the 2021 output-area ladder of the
+2026-10-04 local build.
 
 **Each receipt records what its working tree added to the commit it names**
 (`code_modifications`): every file under `packages` and `tools` that differs
 from `code_head`, with the SHA-256 of its content, and the diff of the tracked
 ones. The extracts keep the file list and the diff's digest.
 
-- **After** ran on a clean tree: no file differs from `bc32a49c1`. The hold
+- **After** ran on a clean tree: no file differs from `67e7af074`. The hold
   register is signed, so the compile needs no overlay.
-- **Before** names six files. `aca40a692` does not carry the receipt tool, so
-  the tool's commit was laid over it, uncommitted, with the provenance record
-  added to the tool. The receipt holds that 33 kB diff.
+- **Before** names six files. `main` does not carry the receipt tool, so the
+  tool's commit was laid over `d1fda720b`, uncommitted, with the provenance
+  record added to the tool. The receipt holds that diff.
 
 ## `surface-diff.json`
 
 What the surface moves between the two receipts.
 
-- **National, bound rows:** 1,167 before and 1,203 after. 36 added, none
+- **National, bound rows:** 1,164 before and 1,200 after. 36 added, none
   removed, 552 moved.
   - Added: the 12 nation household control cells and the 24 Income Tax
     liabilities Table 2.2 marginal-rate cells.
@@ -50,7 +51,7 @@ What the surface moves between the two receipts.
     widest move is 0.5%.
 
 The national count is of bound rows, after the measure exclusions. The
-reference register is larger (1,231 active references before, 1,267 after).
+reference register is larger (1,232 active references before, 1,268 after).
 
 ## `reconciliation.json`
 

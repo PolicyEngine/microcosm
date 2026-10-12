@@ -1,6 +1,6 @@
 {
  "after": {
-  "code_head": "bc32a49c12d7bb18045d2394b730fb2d8fe10382",
+  "code_head": "67e7af0742cfcd60eeaaab35140bf04960b26640",
   "code_modifications": {
    "diff_sha256": null,
    "files": []
@@ -52,17 +52,17 @@
     "version": 1
    },
    "register_completeness": {
-    "approved_reference_count": 1203,
-    "approved_registry_version": "66fe06cbc63b",
+    "approved_reference_count": 1200,
+    "approved_registry_version": "a111670c6881",
     "band_edge_registry_reconciled": true,
     "compiled_local_reference_count": 21804,
-    "compiled_reference_count": 1267,
-    "compiled_registry_version": "283ca2639630",
+    "compiled_reference_count": 1268,
+    "compiled_registry_version": "18535d11c697",
     "exclusions_evaluated_on": "2026-10-12",
     "frozen_registry_version": null,
     "local_registry_version": "27f3582a85a5",
-    "measure_exclusion_count": 64,
-    "reconciled_registry_version": "d8268f9f432f",
+    "measure_exclusion_count": 68,
+    "reconciled_registry_version": "06f19b761624",
     "validation_periods": {
      "local": [],
      "national": []
@@ -94,7 +94,7 @@
   }
  },
  "before": {
-  "code_head": "aca40a692a16ff7d0b2d2b9a7a1571341762f082",
+  "code_head": "d1fda720b77564270fa702a232c19d4055229489",
   "code_modifications": {
    "diff_sha256": "23754681fea0470955de46c3cfa240e42c2b8b5ea1975f048182a0b3a50b79c4",
    "files": [
@@ -130,32 +130,32 @@
     }
    ]
   },
-  "review_date": "2026-10-10",
+  "review_date": "2026-10-12",
   "source_validation": {
    "ledger_provenance": {
     "fact_key_epochs": [
      "ledger"
     ],
-    "fact_row_count": 344402,
+    "fact_row_count": 352549,
     "fact_schema_versions": [
      "chronicle.consumer_fact.v4"
     ],
-    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
     "manifest": {
      "schema_version": "policyengine_ledger.consumer_artifact.v2"
     },
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
     "schema_epoch": "ledger",
     "undeclared_fact_key_domains": []
    },
    "local_source_pin": {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
-    "fact_row_count": 344402,
-    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "fact_row_count": 352549,
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119",
-    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
     "source_repo": "PolicyEngine/chronicle"
    },
    "national_source_pin": {
@@ -166,27 +166,27 @@
      "chronicle.consumer_fact.v4"
     ],
     "country": "uk",
-    "fact_row_count": 344402,
-    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119",
-    "resource_sha256": "57e38bc8656564b9573206799e890d03f2094b0bda962ee501504e22e2b13f20",
+    "fact_row_count": 352549,
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+    "resource_sha256": "0f93bc8cddff173ec1b60a9b5e3140e89211f07e6551ec9777f88467b06791d3",
     "resource_size_bytes": 690,
     "scope": "uk_calibration",
-    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
     "source_repo": "PolicyEngine/chronicle",
     "version": 1
    },
    "register_completeness": {
-    "approved_reference_count": 1167,
-    "approved_registry_version": "579a0d65351e",
+    "approved_reference_count": 1164,
+    "approved_registry_version": "499195ec7f97",
     "band_edge_registry_reconciled": true,
     "compiled_local_reference_count": 20885,
-    "compiled_reference_count": 1231,
-    "compiled_registry_version": "49d52a613d08",
-    "exclusions_evaluated_on": "2026-10-10",
+    "compiled_reference_count": 1232,
+    "compiled_registry_version": "a202155ca787",
+    "exclusions_evaluated_on": "2026-10-12",
     "frozen_registry_version": null,
     "local_registry_version": "8773c453fac5",
-    "measure_exclusion_count": 64,
+    "measure_exclusion_count": 68,
     "validation_periods": {
      "local": [],
      "national": []
@@ -201,15 +201,15 @@
      "fact_key_epochs": [
       "ledger"
      ],
-     "fact_row_count": 344402,
+     "fact_row_count": 352549,
      "fact_schema_versions": [
       "chronicle.consumer_fact.v4"
      ],
-     "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+     "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
      "manifest": {
       "schema_version": "policyengine_ledger.consumer_artifact.v2"
      },
-     "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119",
+     "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
      "schema_epoch": "ledger",
      "undeclared_fact_key_domains": []
     },
@@ -5069,7 +5069,7 @@
   ],
   "moved_count": 552,
   "removed": [],
-  "rows_after": 1203,
-  "rows_before": 1167
+  "rows_after": 1200,
+  "rows_before": 1164
  }
 }
