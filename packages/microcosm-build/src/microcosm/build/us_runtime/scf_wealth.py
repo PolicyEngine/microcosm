@@ -115,6 +115,7 @@ from microcosm.build.us_runtime.sipp_financial_assets import (
     SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
     SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS,
     SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS,
+    household_head_carrier_mask,
     impute_us_sipp_financial_assets,
 )
 from microcosm.frame import Frame
@@ -673,25 +674,13 @@ US_SCF_WEALTH_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 def _household_head_mask(person: pd.DataFrame) -> np.ndarray:
     """One reference person (household head) per household.
 
-    The head is the lowest-line-number person within each household (the CPS
-    householder is line 1); ties/absent line numbers fall back to the first
-    row. This mirrors the retired pipeline's reference-person rule (the first
-    person of each household).
+    The declared ``is_household_head`` (``P_SEQ == 1``) where it marks exactly
+    one person in the household, else the lowest-line-number person, then the
+    first row. The SIPP side shares this selector so both halves of the blend
+    carry the same person (microcosm#1215).
     """
 
-    household = pd.to_numeric(person[_HOUSEHOLD_ID_COLUMN], errors="coerce").to_numpy()
-    lineno = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(9_999).to_numpy()
-    position = np.arange(len(person))
-    # Sort by household, then line number, then original position; the first
-    # row of each household group in that order is its head.
-    order = np.lexsort((position, lineno, household))
-    ordered_household = household[order]
-    is_first_in_group = np.empty(len(person), dtype=bool)
-    is_first_in_group[0] = True
-    is_first_in_group[1:] = ordered_household[1:] != ordered_household[:-1]
-    mask = np.zeros(len(person), dtype=bool)
-    mask[order[is_first_in_group]] = True
-    return mask
+    return household_head_carrier_mask(person)
 
 
 def _household_head_predictor_table(person: pd.DataFrame) -> pd.DataFrame:
