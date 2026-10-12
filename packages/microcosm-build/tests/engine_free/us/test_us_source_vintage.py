@@ -702,8 +702,8 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
         # mode "free" draws shares at random, so most calls with a rebased
         # restamp refuse. "well_formed" gives each rebased restamp a total of
         # its own vintage, so the call is admitted and the admitted-share
-        # invariants get exercised. "near_miss" gives it a total whose vintage
-        # differs in exactly one of package, stamp and data year.
+        # invariants get exercised. "near_miss" gives it exactly one defect, so
+        # each comparison the admission makes is tested alone.
         corrections = {}
         # A small pool per case makes the free mode's totals often match the
         # row's vintage or miss it narrowly, and keeps mixed packages, stamps
@@ -743,29 +743,42 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                         )
                     )
                 return keys
-            # A total of its own, restamped at the row's vintage (well-formed)
-            # or at a vintage that differs in exactly one component.
+            # A total of its own, restamped at the row's vintage, read at the
+            # stamp or the data year (well-formed). A near miss changes exactly
+            # one of these: the total's package, stamp or data year, or the
+            # reading period (another year, or none).
             package_id, stamped, data = _vintage(correction)
+            reading = draw(
+                st.sampled_from([correction.stamped_year, correction.data_year])
+            )
             if mode == "near_miss":
-                component = draw(st.sampled_from(["package", "stamp", "data"]))
+                component = draw(
+                    st.sampled_from(["package", "stamp", "data", "reading"])
+                )
                 if component == "package":
                     package_id = "pkg_b" if package_id == "pkg_a" else "pkg_a"
                 elif component == "stamp":
                     stamped += 1
-                else:
+                elif component == "data":
                     data -= 1
+                else:
+                    reading = draw(
+                        st.sampled_from(
+                            [
+                                None,
+                                correction.data_year - 1,
+                                correction.stamped_year + 1,
+                            ]
+                        )
+                    )
             total_id = f"irs_soi.ty2023.total{len(corrections)}"
             corrections[total_id] = SourceVintageCorrection(
                 total_id, package_id, stamped, data
             )
-            return {
-                "soi_share_total_source_record_id": total_id,
-                "uprating_from_period": str(
-                    draw(
-                        st.sampled_from([correction.stamped_year, correction.data_year])
-                    )
-                ),
-            }
+            keys = {"soi_share_total_source_record_id": total_id}
+            if reading is not None:
+                keys["uprating_from_period"] = str(reading)
+            return keys
 
         specs = []
         for index in range(draw(st.integers(0, 8))):
