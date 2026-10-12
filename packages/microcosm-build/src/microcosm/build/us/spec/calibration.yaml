@@ -56,6 +56,7 @@ solver:
           allocation: proportional_member_weights_sum_to_group_budget
           metadata_exclusions:
           - congressional_district_geoid
+          - diagnostic_target_label
           - geography_scope
           - hierarchy_child_ids
           - hierarchy_child_sum_raw
@@ -75,12 +76,14 @@ solver:
           - ledger_aggregate_fact_key
           - ledger_dimension_set_key
           - ledger_fact_key
+          - ledger_fact_label
           - ledger_geography_id
           - ledger_geography_level
           - ledger_geography_name
           - ledger_geography_vintage
           - ledger_layout_groupby_dimension
           - ledger_layout_groupby_value_id
+          - ledger_layout_groupby_value_label
           - ledger_layout_record_set_id
           - ledger_legacy_fact_key
           - ledger_observed_measure_key

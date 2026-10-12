@@ -2,12 +2,21 @@
 
 Invariants, each for every input Hypothesis draws:
 
-1. The move is pure: the shared module returns, bit for bit, what the
-   national release's helpers returned before it (a verbatim copy in
-   ``test_support``). That holds on random registries whose district rows
-   form multi-row concept groups, on a fixed grouped registry, for invalid
-   multipliers, and on Route A's 5,694 real targets. On Route A it also
-   reproduces the weights and the loss basis hash the release recorded.
+1. The move was pure, and one change followed it: the shared module returns,
+   bit for bit, what the national release's helpers returned before the move
+   (a verbatim copy in ``test_support``) for the same registry with the
+   ledger compiler's per-row labels (``LEDGER_PER_ROW_LABEL_METADATA``)
+   removed. On a registry without them that is the pre-move result itself.
+   That holds on random registries whose district rows form multi-row
+   concept groups, on a fixed grouped registry, for invalid multipliers, and
+   on Route A's 5,694 real targets. On Route A it also reproduces the weights
+   and the loss basis hash the release recorded.
+1a. A district row's national concept key does not depend on any metadata
+   that names its place, record or label, and the district rows of one
+   concept in one state share one key; the national mapping refuses a
+   surface where they do not. Shown on random registries, on real compiled
+   rows from the pinned feed (a fixture), and, where the feed is on disk, on
+   the whole pinned compile.
 2. Weights are finite, positive and of mean 1 (multipliers in [0.05, 20]).
 3. Without family multipliers, each value basis present carries an equal
    share of the total weight.
@@ -24,6 +33,7 @@ groups it promises, and each refusal.
 
 from __future__ import annotations
 
+import collections
 import dataclasses
 import importlib.util
 import json
@@ -78,9 +88,9 @@ def _registries(draw, max_rows: int = 30) -> TargetRegistry:
 
     District rows each pick one of a few drawn concepts and one of two
     states, so several land in one national concept group. Per-row metadata
-    the national key excludes (district ids, ledger ids) varies by row.
-    ``ledger_fact_label``, which the national key reads, is usually absent
-    and otherwise per-row, so some draws split what would be one group.
+    the national key excludes (district ids, ledger ids) varies by row, and
+    so do the compiler's per-row labels when a draw stamps them, as the
+    compiler does on every compiled row (the pre-change key read them).
     """
 
     concepts = draw(
@@ -122,8 +132,9 @@ def _registries(draw, max_rows: int = 30) -> TargetRegistry:
                 ledger_geography_id=f"5001900US{district}",
                 ledger_source_record_id=f"record.{index}",
             )
-            if draw(st.integers(0, 4)) == 0:
-                metadata["ledger_fact_label"] = f"District {district} label"
+            for label in sorted(lw.LEDGER_PER_ROW_LABEL_METADATA):
+                if draw(st.integers(0, 2)) == 0:
+                    metadata[label] = f"{label} of district {district}"
             entity, period = concept["entity"], concept["period"]
             family, row_filter = concept["family"], concept["filter"]
         else:
@@ -188,35 +199,65 @@ def _present_family_multipliers(families):
 # ---------------------------------------------------------------------------
 
 
+def _without_per_row_labels(registry: TargetRegistry) -> TargetRegistry:
+    """``registry`` with the compiler's per-row labels removed from every row."""
+
+    return TargetRegistry(
+        [
+            dataclasses.replace(
+                spec,
+                metadata={
+                    key: value
+                    for key, value in spec.metadata.items()
+                    if key not in lw.LEDGER_PER_ROW_LABEL_METADATA
+                },
+            )
+            for spec in registry.specs
+        ],
+        country="us",
+    )
+
+
 @_SETTINGS
 @given(_registries(), st.data())
-def test_shared_weights_equal_the_pre_move_helpers_bit_for_bit(registry, data) -> None:
+def test_shared_weights_are_the_pre_move_weights_without_per_row_labels(
+    registry, data
+) -> None:
     multipliers = data.draw(
         _present_family_multipliers([spec.family for spec in registry.specs])
     )
-    expected = before._fiscal_target_loss_weights(registry, multipliers or None)
+    unlabelled = _without_per_row_labels(registry)
+    expected = before._fiscal_target_loss_weights(unlabelled, multipliers or None)
     observed = lw.fiscal_target_loss_weights(registry, multipliers or None)
     groups = lw.concept_budget_groups(
         [lw.fiscal_target_concept_budget_key(spec) for spec in registry.specs]
     )
+    labelled = any(
+        lw.LEDGER_PER_ROW_LABEL_METADATA & set(spec.metadata) for spec in registry.specs
+    )
     event(f"largest concept group: {min(max(map(len, groups)), 3)}+ rows")
+    event(f"per-row labels drawn: {labelled}")
     assert observed.dtype == np.float64
     assert np.array_equal(observed, expected)
+    # The labels are all that changed: without them, nothing moved.
+    assert np.array_equal(
+        lw.fiscal_target_loss_weights(unlabelled, multipliers or None), expected
+    )
     assert np.array_equal(
         lw.fiscal_target_value_basis_weights(registry),
         before._fiscal_target_value_basis_weights(registry),
     )
     assert np.array_equal(
         lw.fiscal_target_concept_budget_weights(registry),
-        before._fiscal_target_concept_budget_weights(registry),
+        before._fiscal_target_concept_budget_weights(unlabelled),
     )
-    for spec in registry.specs:
+    for spec, bare in zip(registry.specs, unlabelled.specs, strict=True):
         assert lw.fiscal_target_value_basis(spec) == before._fiscal_target_value_basis(
             spec
         )
         assert lw.fiscal_target_concept_budget_key(
             spec
-        ) == before._fiscal_target_concept_budget_key(spec)
+        ) == before._fiscal_target_concept_budget_key(bare)
 
 
 def _grouped_registry() -> TargetRegistry:
@@ -320,15 +361,107 @@ def test_the_national_cli_parses_family_multipliers_as_before() -> None:
         assert raised.value.code == 2
 
 
-def test_moved_constants_are_the_pre_move_constants() -> None:
-    assert (
-        lw.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
-        == before.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
+def test_the_exclusions_are_the_pre_move_ones_plus_the_per_row_labels() -> None:
+    assert lw.LEDGER_PER_ROW_LABEL_METADATA == {
+        "diagnostic_target_label",
+        "ledger_fact_label",
+        "ledger_layout_groupby_value_label",
+    }
+    assert before.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS.isdisjoint(
+        lw.LEDGER_PER_ROW_LABEL_METADATA
+    )
+    assert lw.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS == (
+        before.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
+        | lw.LEDGER_PER_ROW_LABEL_METADATA
     )
     assert (
         lw.US_FISCAL_TARGET_VALUE_WEIGHT_POWER
         == before.US_FISCAL_TARGET_VALUE_WEIGHT_POWER
     )
+    # The ACS local key inherits the national exclusions; its only addition
+    # is the state_cd rebase's per-district stamp, which national rows never
+    # carry. Its exclusions are the ones it had before the labels moved.
+    assert lw.US_ACS_LOCAL_CONCEPT_METADATA_EXCLUSIONS == (
+        lw.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS | {"state_cd_cd_file_value"}
+    )
+
+
+def _district_fact(district: str, name: str) -> dict[str, object]:
+    """A minimal Chronicle district fact, as far as the label stamps read it."""
+
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{district}",
+        "label": f"{name} congressional district {district[2:]} adjusted gross income",
+        "period": {"type": "tax_year", "value": 2023},
+        "geography": {
+            "level": "congressional_district",
+            "id": f"5001900US{district}",
+            "name": f"{name} district {district[2:]}",
+        },
+        "layout": {
+            "record_set_id": "irs_soi.ty2023.congressional_district_2022.all_returns",
+            "groupby_dimension": "us:geography/congressional_district",
+            "groupby_value_id": district,
+            "groupby_value_label": f"{name} congressional district {district[2:]}",
+            "measure_id": "adjusted_gross_income",
+        },
+    }
+
+
+def test_the_compiler_stamps_exactly_the_labels_the_key_ignores() -> None:
+    """The ledger compiler's labels name the district, and the key ignores them.
+
+    A district fact compiled at its own period carries all three labels (at
+    another period, the diagnostic label is dropped); each differs between
+    two districts of one concept, and two district rows that differ only in
+    them and in their place share one national key.
+    """
+
+    from microcosm.build import ledger_targets
+
+    stamped = []
+    for district in ("5401", "5402"):
+        fact = _district_fact(district, "West Virginia")
+        metadata = {
+            **ledger_targets._ledger_metadata(fact, fact_key=f"key.{district}"),
+            **ledger_targets._diagnostic_target_label_metadata(
+                (fact,), target_period=2023
+            ),
+        }
+        assert not ledger_targets._diagnostic_target_label_metadata(
+            (fact,), target_period=2024
+        )
+        assert {key for key in metadata if "label" in key} == (
+            lw.LEDGER_PER_ROW_LABEL_METADATA
+        )
+        stamped.append(
+            TargetSpec(
+                name=f"agi_{district}",
+                entity="tax_unit",
+                measure="adjusted_gross_income",
+                value=1e10,
+                period=2023,
+                family="irs_soi",
+                source="fixture",
+                metadata={
+                    **metadata,
+                    "source_measure_id": "adjusted_gross_income",
+                    "measure_mode": "sum",
+                    "state_fips": "54",
+                    "congressional_district_geoid": district,
+                },
+            )
+        )
+    first, second = (spec.metadata for spec in stamped)
+    for label in lw.LEDGER_PER_ROW_LABEL_METADATA:
+        assert first[label] != second[label]
+    assert lw.fiscal_target_concept_budget_key(
+        stamped[0]
+    ) == lw.fiscal_target_concept_budget_key(stamped[1])
+    # The pre-change key read the labels and split the pair.
+    assert before._fiscal_target_concept_budget_key(
+        stamped[0]
+    ) != before._fiscal_target_concept_budget_key(stamped[1])
 
 
 def test_a_multiplier_for_an_absent_family_fails_as_before() -> None:
@@ -435,6 +568,298 @@ def test_the_release_tool_uses_the_shared_implementation() -> None:
     assert basis["loss_vector_sha256"] == lw.target_loss_weights_sha256(
         [lw.target_row_name(spec) for spec in registry.specs], weights
     )
+
+
+# ---------------------------------------------------------------------------
+# 1a. The districts of one concept in one state share one national budget
+# ---------------------------------------------------------------------------
+
+#: Excluded metadata that names a district row's place, record or label. The
+#: key reads the other two exclusions on purpose: ``state_fips`` scopes the
+#: budget to one state, and ``ledger_geography_level`` marks the row a
+#: district row.
+_PLACE_RECORD_AND_LABEL_KEYS = tuple(
+    sorted(
+        lw.US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
+        - {"state_fips", "ledger_geography_level"}
+    )
+)
+_DISTRICT_ROWS_FIXTURE = (
+    _TEST_PATHS.tests / "fixtures" / "us_national_district_concept_rows.json"
+)
+
+
+def _is_district(spec) -> bool:
+    return spec.metadata.get("ledger_geography_level") == "congressional_district"
+
+
+def _partition(specs, key) -> set[frozenset[str]]:
+    blocks: dict[object, set[str]] = {}
+    for spec in specs:
+        blocks.setdefault(key(spec), set()).add(spec.name)
+    return {frozenset(block) for block in blocks.values()}
+
+
+@_SETTINGS
+@given(_registries(), st.data())
+def test_a_district_key_ignores_its_place_record_and_labels(registry, data) -> None:
+    """Relabel, re-id or drop any of them: the national key does not move."""
+
+    districts = [spec for spec in registry.specs if _is_district(spec)]
+    event(f"district rows: {min(len(districts), 3)}+")
+    for spec in districts:
+        dropped = data.draw(st.sets(st.sampled_from(_PLACE_RECORD_AND_LABEL_KEYS)))
+        rewritten = data.draw(
+            st.dictionaries(
+                st.sampled_from(_PLACE_RECORD_AND_LABEL_KEYS),
+                st.text(min_size=1, max_size=12),
+                max_size=6,
+            )
+        )
+        metadata = {
+            key: value for key, value in spec.metadata.items() if key not in dropped
+        }
+        moved = dataclasses.replace(spec, metadata={**metadata, **rewritten})
+        assert lw.fiscal_target_concept_budget_key(
+            moved
+        ) == lw.fiscal_target_concept_budget_key(spec)
+
+
+@_SETTINGS
+@given(_registries())
+def test_national_district_groups_are_exactly_the_district_concepts(registry) -> None:
+    """Rows share a national key iff they are one concept in one state."""
+
+    districts = [spec for spec in registry.specs if _is_district(spec)]
+    assert _partition(districts, lw.fiscal_target_concept_budget_key) == (
+        _partition(districts, lw.district_concept_identity)
+    )
+    lw.validate_district_concept_groups(
+        districts,
+        [lw.fiscal_target_value_basis(spec) for spec in districts],
+        [lw.fiscal_target_concept_budget_key(spec) for spec in districts],
+    )
+
+
+def _district_rows_fixture():
+    fixture = json.loads(_DISTRICT_ROWS_FIXTURE.read_text())
+    specs = tuple(TargetSpec(**row) for row in fixture["rows"])
+    return fixture, specs
+
+
+def test_compiled_district_rows_share_one_budget_per_concept_per_state() -> None:
+    """On real compiled rows from the pinned feed (the fixture's 31 rows).
+
+    West Virginia's and Montana's two districts of each concept form one
+    group; Wyoming's at-large district is one row per concept; Montana's and
+    Wyoming's Historic Table 2 proxies (another record set) are their own
+    concepts. The pre-change key made every row its own group.
+    """
+
+    fixture, specs = _district_rows_fixture()
+    assert fixture["feed_facts_sha256"] == (
+        "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac"
+    )
+    assert len(specs) == 31
+    assert all(_is_district(spec) for spec in specs)
+    for spec in specs:
+        stamped = lw.LEDGER_PER_ROW_LABEL_METADATA & set(spec.metadata)
+        assert stamped == {"ledger_fact_label", "ledger_layout_groupby_value_label"}
+    groups = _partition(specs, lw.fiscal_target_concept_budget_key)
+    assert groups == _partition(specs, lw.district_concept_identity)
+    sizes = collections.Counter(
+        (
+            next(
+                iter(
+                    spec.metadata["state_fips"] for spec in specs if spec.name in group
+                )
+            ),
+            len(group),
+        )
+        for group in groups
+    )
+    # Five CD-file concepts in each state, two proxy concepts in MT and WY.
+    assert sizes == {("54", 2): 5, ("30", 2): 7, ("56", 1): 7}
+    assert len(_partition(specs, before._fiscal_target_concept_budget_key)) == 31
+    weights = lw.target_loss_weights(specs)
+    assert math.isclose(float(weights.mean()), 1.0, rel_tol=1e-12)
+    # Each group sums to its largest member's value weight before the basis
+    # budget, so the groups' shares of their basis follow from the values.
+    value_weights = lw.fiscal_target_value_basis_weights(
+        TargetRegistry(specs, country="us")
+    )
+    budgets = lw.fiscal_target_concept_budget_weights(
+        TargetRegistry(specs, country="us")
+    )
+    index = {spec.name: position for position, spec in enumerate(specs)}
+    for group in groups:
+        rows = [index[name] for name in group]
+        assert math.isclose(
+            float(budgets[rows].sum()), float(value_weights[rows].max()), rel_tol=1e-12
+        )
+
+
+def test_the_national_mapping_refuses_a_district_concept_split_by_a_per_row_key() -> (
+    None
+):
+    """A new per-district key fails the weights, naming the key, as the
+    compiler's labels would have when they started reaching the key."""
+
+    _fixture, specs = _district_rows_fixture()
+    leaking = [
+        dataclasses.replace(
+            spec, metadata={**spec.metadata, "district_note": spec.name}
+        )
+        for spec in specs
+    ]
+    with pytest.raises(
+        ValueError, match=r"land in more than one concept group"
+    ) as raised:
+        lw.target_loss_weights(leaking)
+    assert "differing: ['district_note']" in str(raised.value)
+    registry = TargetRegistry(leaking, country="us")
+    with pytest.raises(ValueError, match="land in more than one concept group"):
+        lw.fiscal_target_loss_weights(registry)
+    # The pre-change mapping, with no guard, read the labels without a word.
+    before._fiscal_target_loss_weights(TargetRegistry(specs, country="us"))
+
+
+def test_the_national_mapping_refuses_a_district_row_without_its_state() -> None:
+    _fixture, specs = _district_rows_fixture()
+    stateless = [
+        dataclasses.replace(
+            spec,
+            metadata={k: v for k, v in spec.metadata.items() if k != "state_fips"},
+        )
+        if position == 0
+        else spec
+        for position, spec in enumerate(specs)
+    ]
+    with pytest.raises(ValueError, match="without state_fips"):
+        lw.target_loss_weights(stateless)
+
+
+def test_a_district_group_spanning_states_is_refused() -> None:
+    _fixture, specs = _district_rows_fixture()
+    wv = next(spec for spec in specs if spec.metadata["state_fips"] == "54")
+    wy = next(spec for spec in specs if spec.metadata["state_fips"] == "56")
+    with pytest.raises(ValueError, match="span states"):
+        lw.validate_district_concept_groups(
+            [wv, wy], ["amount", "amount"], [("k",)] * 2
+        )
+
+
+def test_the_guard_ignores_rows_that_are_not_district_rows() -> None:
+    _fixture, specs = _district_rows_fixture()
+    state_rows = [
+        dataclasses.replace(
+            spec,
+            metadata={
+                **spec.metadata,
+                "ledger_geography_level": "state",
+                "district_note": spec.name,
+            },
+        )
+        for spec in specs
+    ]
+    lw.validate_district_concept_groups(
+        state_rows,
+        [lw.fiscal_target_value_basis(spec) for spec in state_rows],
+        [lw.fiscal_target_concept_budget_key(spec) for spec in state_rows],
+    )
+
+
+@pytest.fixture(scope="module")
+def pinned_feed_registry():
+    """The national compile of the pinned feed (skips where it is not on disk)."""
+
+    manifest_tool = (
+        _TEST_PATHS.repository / "tools" / "build_us_target_parity_manifest.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_parity_manifest_tool", manifest_tool
+    )
+    assert spec is not None and spec.loader is not None
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    feed_path = tool.DEFAULT_FEED_PATH
+    if not feed_path.exists():
+        pytest.skip(f"pinned feed not present at {feed_path}")
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+    from microcosm.build.us_runtime.fiscal_targets import (
+        compile_us_fiscal_target_registry,
+    )
+
+    facts = load_ledger_consumer_artifact(
+        feed_path,
+        expected_facts_sha256=load_us_chronicle_feed().facts_sha256,
+        expected_manifest_sha256=None,
+    ).facts
+    return compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        congressional_district_vintage_crosswalk=load_congressional_district_vintage_crosswalk(
+            default_congressional_district_vintage_crosswalk_path()
+        ),
+        age_targets=True,
+    )
+
+
+#: Census FIPS of the states with one congressional district on the pinned
+#: feed's 2022 plan: AK, DE, DC, ND, SD, VT, WY.
+_SINGLE_DISTRICT_STATES = ("02", "10", "11", "38", "46", "50", "56")
+
+
+def test_pinned_feed_district_rows_form_one_budget_per_concept_per_state(
+    pinned_feed_registry,
+) -> None:
+    """The whole pinned compile (``--target-surface full``): 24,340 district
+    rows, 3,125 concepts in states, 3,125 groups. The 665 singletons are the
+    seven single-district states' 95 concepts each (55 from the district
+    file, 40 Historic Table 2 proxies); California's 52 districts make the
+    largest groups. Before, all 24,340 rows were singletons, and district
+    rows carried 45.6% of the loss (73.2% of the targets); now 11.0%.
+    """
+
+    specs = pinned_feed_registry.specs
+    districts = [spec for spec in specs if _is_district(spec)]
+    assert len(specs) == 33_249
+    assert len(districts) == 24_340
+    keys = collections.Counter(
+        lw.fiscal_target_concept_budget_key(s) for s in districts
+    )
+    assert len(keys) == 3_125
+    assert max(keys.values()) == 52
+    assert _partition(districts, lw.fiscal_target_concept_budget_key) == (
+        _partition(districts, lw.district_concept_identity)
+    )
+    singletons = collections.Counter(
+        spec.metadata["state_fips"]
+        for spec in districts
+        if keys[lw.fiscal_target_concept_budget_key(spec)] == 1
+    )
+    assert singletons == dict.fromkeys(_SINGLE_DISTRICT_STATES, 95)
+    assert len(
+        {before._fiscal_target_concept_budget_key(spec) for spec in districts}
+    ) == len(districts)
+    weights = lw.fiscal_target_loss_weights(pinned_feed_registry)
+    district = np.asarray([_is_district(spec) for spec in specs])
+    assert round(float(weights[district].sum() / weights.sum()), 3) == 0.110
+    old = before._fiscal_target_loss_weights(pinned_feed_registry)
+    assert round(float(old[district].sum() / old.sum()), 3) == 0.456
+    # Every non-district row keeps its weight up to its basis's one rescale.
+    bases = np.asarray([lw.fiscal_target_value_basis(spec) for spec in specs])
+    for basis in ("amount", "count"):
+        ratio = (
+            weights[~district & (bases == basis)] / old[~district & (bases == basis)]
+        )
+        np.testing.assert_allclose(ratio, ratio[0], rtol=1e-12)
+        assert ratio[0] > 1.6
 
 
 # ---------------------------------------------------------------------------
@@ -739,14 +1164,28 @@ def test_acs_local_groups_are_one_per_concept_per_state() -> None:
     assert keys["pop_state_06"] != keys["pop_state_36"]
     state_rows = [spec.name for spec in surface[:5]]
     assert len({keys[name] for name in state_rows}) == len(state_rows)
-    # The national mapping as is leaves each district row its own group,
-    # because the compiler's labels and the rebase's file value name the row.
-    national = {
-        lw.fiscal_target_concept_budget_key(spec)
+    # The national key ignores the compiler's labels but not the state_cd
+    # rebase's per-district file value, which national rows never carry, so
+    # it still leaves each of these rows its own group; without that stamp it
+    # groups them as the ACS local key does.
+    districts = [
+        spec
         for spec in surface
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
-    }
-    assert len(national) == 6
+    ]
+    assert len({lw.fiscal_target_concept_budget_key(spec) for spec in districts}) == 6
+    unstamped = [
+        dataclasses.replace(
+            spec,
+            metadata={
+                key: value
+                for key, value in spec.metadata.items()
+                if key not in lw.ACS_LOCAL_PER_DISTRICT_METADATA
+            },
+        )
+        for spec in districts
+    ]
+    assert len({lw.fiscal_target_concept_budget_key(spec) for spec in unstamped}) == 2
 
 
 def test_acs_local_weights_budget_districts_and_balance_the_bases() -> None:

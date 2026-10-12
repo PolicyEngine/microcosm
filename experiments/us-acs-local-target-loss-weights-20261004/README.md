@@ -158,6 +158,14 @@ no default multiplier.
 
 ## A finding for the national release (not changed here)
 
+> **Fixed 2026-10-12** in `experiments/us-national-cd-concept-budget-20261012/`.
+> The national exclusions now list the compiler's per-row labels, and a guard
+> refuses a split district concept. On the current pinned feed (`965a29ac…`),
+> the 24,340 district rows form 3,125 groups and carry 11.0% of the loss
+> (45.6% before). The numbers below are from the 10-04 feed and the code at
+> that date. `national_cd_groups.py` now reports the fixed mapping under
+> `national_as_is`.
+
 `national_cd_groups.py` compiles the national registry from the pinned feed
 (`compile_us_fiscal_target_registry(age_targets=True)`) and keeps its 24,340
 district rows, all SOI. The national parser's default, `--target-surface
