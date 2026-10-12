@@ -850,3 +850,127 @@ def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> N
         crosswalk=crosswalk,
         level_bridges={"charitable_amount": "return_count"},
     )
+
+
+#: Exact binary scales, so a share rebase and its inverse round-trip without
+#: rounding and the band's verdicts cannot flip at an edge.
+_EXACT_SCALES = st.sampled_from([0.25, 0.5, 1.0, 2.0, 4.0])
+
+
+def _aged(spec, aging: float):
+    return dataclasses.replace(
+        spec, metadata={**spec.metadata, "aging_factor": repr(aging)}
+    )
+
+
+def _as_national_share(spec, factor: float, aging: float):
+    """``spec`` as the compiler binds it as a share of a national control:
+    its value times control / the file's US row (``factor``), aged from the
+    control's period (``aging``) instead of its own (#1250, #1229, #1040)."""
+
+    own = float(spec.metadata["aging_factor"])
+    value = spec.value * factor * aging / own
+    metadata = {
+        **spec.metadata,
+        "uprating_factor": repr(factor),
+        "soi_share_total_source_record_id": (
+            f"cdfile.us.{spec.metadata['source_measure_id']}"
+        ),
+        "aging_factor": repr(aging),
+    }
+    return dataclasses.replace(spec, value=value, signed=value < 0, metadata=metadata)
+
+
+def test_cd_file_level_undoes_a_national_share_and_its_aging() -> None:
+    row = _aged(
+        _soi_spec(
+            "cdfile.10_total.return_count",
+            "return_count",
+            200.0,
+            level="state",
+            record_set=_CD_FILE,
+            state="10",
+        ),
+        1.25,
+    )
+    share = _as_national_share(row, 1.5, 1.0)
+    assert share.value == 240.0
+    # The file's level, aged as the share is (from the control's period) ...
+    assert _CD.cd_file_level(share) == 160.0
+    # ... or as an unrebased district-file row is.
+    assert _CD.cd_file_level(share, aged_like=row) == 200.0
+    assert _CD.cd_file_level(row) == _CD.cd_file_level(row, aged_like=share) == 200.0
+
+
+@_SETTINGS
+@given(_state_cd_inputs(), st.data())
+def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
+    inputs, data
+) -> None:
+    """The compiler binds the district-file rows of some concepts as shares of
+    a national control: value x control / the file's US row, aged from the
+    control's period. ``state_cd`` uses the file for within-state shares, and
+    for level-bridge siblings through ``cd_file_level``, so the rebase moves
+    no ``state_cd`` value, drop or band verdict, with or without the band.
+
+    Only concepts Historic Table 2 carries in every state are rebased here,
+    as the compiler's registered concepts are on the feed: a rebased concept
+    without an HT2 row in a state has no registered bridge, so it refuses."""
+
+    specs, crosswalk, _layout = inputs
+    states = {spec.metadata["state_fips"] for spec in specs}
+    ht2 = {
+        (spec.metadata["state_fips"], spec.metadata["source_measure_id"])
+        for spec in specs
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _HT2
+    }
+    carried = sorted(
+        measure
+        for measure in {spec.metadata["source_measure_id"] for spec in specs}
+        if all((state, measure) in ht2 for state in states)
+    )
+    rebased = data.draw(st.lists(st.sampled_from(carried), unique=True))
+    factors = {measure: data.draw(_EXACT_SCALES) for measure in rebased}
+    own_aging, control_aging = data.draw(_EXACT_SCALES), data.draw(_EXACT_SCALES)
+    band = data.draw(st.sampled_from([math.inf, _CD.STATE_CD_FACTOR_BAND]))
+
+    def is_cd_file(spec) -> bool:
+        return spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+
+    base = [_aged(spec, own_aging) if is_cd_file(spec) else spec for spec in specs]
+    shared = [
+        _as_national_share(
+            spec, factors[spec.metadata["source_measure_id"]], control_aging
+        )
+        if is_cd_file(spec) and spec.metadata["source_measure_id"] in factors
+        else spec
+        for spec in base
+    ]
+
+    def surface(rows):
+        return _CD.state_cd_soi_surface(
+            rows,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges=_BRIDGES,
+            factor_band=band,
+        )
+
+    before, after = surface(base), surface(shared)
+    assert [spec.name for spec in after.specs] == [spec.name for spec in before.specs]
+    for old, new in zip(before.specs, after.specs, strict=True):
+        assert new.value == pytest.approx(old.value, rel=1e-12), new.name
+    for key in ("counts", "dropped"):
+        assert after.receipt[key] == before.receipt[key]
+
+    def verdicts(receipt):
+        return sorted(
+            (row["state_fips"], row["measure"], row["basis"], row["verdict"])
+            for row in receipt["factor_band"]["out_of_band"]
+        )
+
+    assert verdicts(after.receipt) == verdicts(before.receipt)
+    assert (
+        after.receipt["level_bridge_factor_by_measure"]
+        == before.receipt["level_bridge_factor_by_measure"]
+    )

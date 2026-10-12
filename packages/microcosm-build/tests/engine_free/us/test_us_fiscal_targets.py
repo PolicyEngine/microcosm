@@ -893,10 +893,12 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,235 compiled targets after
+    """The release surface on the pinned feed: 33,224 compiled targets after
     Medicaid substitution, 6,087 national_state targets at registry
     0e899cd7f893, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1243 took it from
+    other-income row and no tips return count. microcosm#1250 retired the
+    congressional-district file's 11 US rows of the Table 1.x-controlled
+    columns (from 33,235; national_state unchanged). microcosm#1243 took it from
     33,250 / 6,102 at 882f4764a248 by rebasing 14 Historic Table 2 state
     families onto their Table 1.x controls and retiring the 14 HT2 US rows
     and HT2's US-workbook return count. microcosm#1035 moved it from
@@ -912,7 +914,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_235
+    assert len(registry.specs) == 33_224
     assert len(surface.specs) == 6_087
     assert surface.version == "0e899cd7f893"
     chip = [
@@ -1145,6 +1147,140 @@ def test_pinned_feed_ht2_state_rows_take_their_national_control_level(
                 spec.metadata.get("ledger_layout_record_set_id", "")
             )
         ] == [], measure_id
+
+
+#: Per congressional-district measure on the pinned feed: the factor
+#: control / the district file's US row (22incd.csv, TY2022 stamped ty2023).
+#: The control is the measure's ``_PINNED_HT2_CONTROLS`` entry.
+_PINNED_CD_FACTORS = {
+    "adjusted_gross_income": "1.05970317276013",
+    "itemized_deductions_amount": "1.09974729652659",
+    "return_count": "1.02724364722741",
+    "taxable_ira_distributions_amount": "1.0247107152496",
+    "taxable_ira_distributions_returns": "1.02876142432905",
+    "taxable_pension_income_amount": "1.05382110367184",
+    "taxable_pension_income_returns": "1.00136008211203",
+    "taxable_social_security_amount": "1.1692464093015",
+    "taxable_social_security_returns": "1.06412503801664",
+    "unemployment_compensation_amount": "1.0546342976899",
+    "unemployment_compensation_returns": "1.02721646869479",
+}
+
+
+def test_pinned_feed_district_rows_take_their_national_control_level(
+    pinned_feed_national_state_surface,
+) -> None:
+    """On the full surface each of the 11 Table 1.x-controlled columns the
+    district file carries enters as 51 state and 436 district shares of the
+    file's US row times the control (microcosm#1250). The file's states and
+    its districts each sum to the control after aging, every district
+    reconciles to its state with factor 1, and the US row is gone."""
+    registry, _, _ = pinned_feed_national_state_surface
+    by_name = {spec.name: spec for spec in registry.specs}
+    for measure_id, factor in _PINNED_CD_FACTORS.items():
+        control_id = _PINNED_HT2_CONTROLS[measure_id][0]
+        control = by_name[control_id]
+        concept = fiscal_targets._SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
+        rows = [
+            spec
+            for spec in registry.specs
+            if spec.metadata.get("source_measure_id") == measure_id
+            and ".congressional_district_2022." in spec.name
+        ]
+        levels = {
+            level: [
+                spec
+                for spec in rows
+                if spec.metadata["ledger_geography_level"] == level
+            ]
+            for level in ("country", "state", "congressional_district")
+        }
+        assert {level: len(found) for level, found in levels.items()} == {
+            "country": 0,
+            "state": 51,
+            "congressional_district": 436,
+        }, measure_id
+        for spec in rows:
+            metadata = spec.metadata
+            assert metadata["uprating_index_source_record_id"] == control_id
+            assert metadata["uprating_factor"] == factor
+            assert metadata["uprating_to_period"] == "2023"
+            assert metadata["soi_share_total_source_record_id"] == (
+                f"irs_soi.ty2023.congressional_district_2022.all_returns.us.{measure_id}"
+            )
+            assert metadata["aging_factor"] == control.metadata["aging_factor"]
+            assert metadata["soi_source_concept"] == concept
+            assert metadata["soi_control_concept"] == concept
+        for level in ("state", "congressional_district"):
+            total = math.fsum(spec.value for spec in levels[level])
+            assert math.isclose(total, control.value, rel_tol=1e-12), (
+                measure_id,
+                level,
+            )
+        assert {
+            spec.metadata["hierarchy_reconciliation_factor"]
+            for spec in levels["congressional_district"]
+        } == {"1"}
+
+
+def test_pinned_feed_full_surface_has_one_national_value_per_controlled_quantity(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Invariant on the full surface: every model quantity a
+    ``_SOI_HT2_NATIONAL_CONTROLS`` control measures has one national all-AGI
+    value, its control's. Before microcosm#1250 the district file's US row
+    was a second value for 11 of them, 1.001x (taxable pension returns) to
+    1.169x (taxable Social Security) below the control. Table 1.2 repeats
+    Table 1.1's return count and AGI at the same value, and no state or
+    district family of these quantities sums past it."""
+    registry, _, _ = pinned_feed_national_state_surface
+    controls = {
+        spec.metadata["source_measure_id"]: spec
+        for spec in registry.specs
+        if spec.name in {entry[0] for entry in _PINNED_HT2_CONTROLS.values()}
+    }
+    quantities = {
+        fiscal_targets._soi_national_quantity(spec): spec for spec in controls.values()
+    }
+    assert len(quantities) == 14
+    national: dict[tuple[object, ...], list[object]] = {}
+    families: dict[tuple[object, ...], float] = {}
+    for spec in registry.specs:
+        if spec.family != "irs_soi":
+            continue
+        quantity = fiscal_targets._soi_national_quantity(spec)
+        if quantity not in quantities:
+            continue
+        if not spec.metadata.get("state_fips"):
+            national.setdefault(quantity, []).append(spec)
+            continue
+        key = (
+            quantity,
+            fiscal_targets._soi_record_set_family(
+                spec.metadata.get("ledger_layout_record_set_id", "")
+            ),
+            spec.metadata["ledger_geography_level"],
+        )
+        families[key] = families.get(key, 0.0) + spec.value
+    assert set(national) == set(quantities)
+    for quantity, specs in national.items():
+        control = quantities[quantity]
+        assert {
+            spec.name: spec.value
+            for spec in specs
+            if not math.isclose(spec.value, control.value, rel_tol=1e-12)
+        } == {}, control.name
+        assert not [
+            spec.name for spec in specs if ".congressional_district_" in spec.name
+        ]
+    assert {
+        key[1:]: total / quantities[key[0]].value
+        for key, total in families.items()
+        if total > quantities[key[0]].value * (1 + 1e-12)
+    } == {}
+    # Both the district file's states and its districts, and HT2's states,
+    # are compared for each of the 11 carried quantities.
+    assert len(families) == 14 + 11 * 2 + 11
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
