@@ -33,10 +33,12 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
 
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from scipy.optimize import linprog
 
 from microcosm.build.us_runtime.fiscal_targets import _rake_two_margins
 from test_support.microcosm_build.us_fiscal_targets import (
@@ -261,6 +263,112 @@ def test_a_subtotal_row_takes_the_sum_of_its_raked_bins() -> None:
     ) == pytest.approx(900, rel=1e-12)
 
 
+_MIDDLE, _TOP = (25_000.0, 50_000.0), (50_000.0, None)
+
+
+def test_a_group_with_no_eitc_in_either_year_takes_a_zero_factor() -> None:
+    """microcosm#1235 review: a $50,000-and-over group with no EITC in either
+    year made the per-row uprating fall back to the all-returns total for its
+    bins, and that used to skip the rake for the whole decomposition."""
+
+    measure, _, index = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 100, _MIDDLE: 300, _TOP: 0},
+        "two_qualifying_children": {_LOW: 100, _MIDDLE: 200, _TOP: 0},
+    }
+    by_name = _compile(
+        _decomposition_facts(
+            kind="amount", source=source, active={_LOW: 500, _MIDDLE: 900, _TOP: 0}
+        )
+    )
+
+    for split, rows in source.items():
+        total = by_name[_total_name(split, measure)].value
+        bins = [by_name[_bin_name(split, measure, bounds)] for bounds in rows]
+        assert sum(spec.value for spec in bins) == pytest.approx(total, rel=1e-12)
+        top = by_name[_bin_name(split, measure, _TOP)]
+        assert top.value == 0
+        assert top.metadata["uprating_index"] == index
+        assert top.metadata["uprating_agi_lower_bound"] == "50000"
+        assert top.metadata["uprating_factor"] == "0"
+        assert top.metadata["uprating_agi_group_factor"] == "0"
+        assert top.metadata["uprating_child_split_adjustment"] == "1"
+        assert {spec.metadata["uprating_reconciliation"] for spec in bins} == {
+            "two_margin_rake"
+        }
+
+
+def test_a_group_with_active_but_no_source_eitc_is_refused() -> None:
+    """No source bin can carry the $10 of active EITC at $50,000 and over, so
+    neither level can hold; the compile refuses rather than drop it."""
+
+    with pytest.raises(ValueError, match="has no source EITC to scale"):
+        _compile(
+            _decomposition_facts(
+                kind="amount",
+                source={
+                    "one_qualifying_child": {_LOW: 100, _MIDDLE: 300, _TOP: 0},
+                    "two_qualifying_children": {_LOW: 100, _MIDDLE: 200, _TOP: 0},
+                },
+                active={_LOW: 500, _MIDDLE: 900, _TOP: 10},
+            )
+        )
+
+
+def test_an_ill_conditioned_decomposition_is_raked() -> None:
+    """microcosm#1235 review: the splits sit almost wholly in opposite
+    groups, and the groups' margins sit near the edge of what the source
+    allows; 10,000 IPF sweeps did not converge on this."""
+
+    measure, _, _ = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 10_000, _HIGH: 1},
+        "two_qualifying_children": {_LOW: 1, _HIGH: 10_000},
+    }
+    active = {_LOW: 10_011.001, _HIGH: 9_990.999}
+    by_name = _compile(
+        _decomposition_facts(kind="amount", source=source, active=active)
+    )
+
+    for split, rows in source.items():
+        total = by_name[_total_name(split, measure)].value
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for bounds in rows
+        ) == pytest.approx(total, rel=1e-12)
+    for bounds, value in active.items():
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for split in source
+        ) == pytest.approx(value, rel=1e-11)
+
+
+def test_the_adjustment_is_relative_to_the_recorded_group_factor() -> None:
+    """microcosm#1235 review: a published subtotal ($301) can differ from its
+    bins ($200 + $100) by rounding. The per-row factor of the $25,000-and-over
+    group divides by the subtotal (900 / 501); the adjustment is relative to
+    that recorded factor, so the two multiply to the bin's factor."""
+
+    measure, _, _ = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 100, _MIDDLE: 200, _TOP: 100},
+        "two_qualifying_children": {_LOW: 100, _MIDDLE: 150, _TOP: 50},
+    }
+    facts = _decomposition_facts(
+        kind="amount", source=source, active={_LOW: 500, _HIGH: 900}
+    )
+    facts.append(_child_fact(measure, "one_qualifying_child", _HIGH, 301))
+    facts.append(_child_fact(measure, "two_qualifying_children", _HIGH, 200))
+    by_name = _compile(facts)
+
+    for split, rows in source.items():
+        for bounds in rows:
+            metadata = by_name[_bin_name(split, measure, bounds)].metadata
+            assert float(metadata["uprating_agi_group_factor"]) * float(
+                metadata["uprating_child_split_adjustment"]
+            ) == pytest.approx(float(metadata["uprating_factor"]), rel=1e-12)
+        middle = by_name[_bin_name(split, measure, _MIDDLE)].metadata
+        assert float(middle["uprating_agi_group_factor"]) == pytest.approx(900 / 501)
+
+
 def test_a_decomposition_without_total_rows_keeps_its_group_factors() -> None:
     """With no total row there is nothing to rake to: each bin keeps its AGI
     group's factor, 500 / 200 and 900 / 500."""
@@ -345,12 +453,153 @@ def test_overlapping_decomposition_rows_are_refused() -> None:
         ([[0.0, 0.0], [1.0, 1.0]], [1.0, 1.0], [1.0, 1.0], "has no EITC in any AGI"),
         # Block-diagonal: split one only in group one, split two only in group
         # two, so both margins hold only if they match, and here they don't.
-        ([[1.0, 0.0], [0.0, 1.0]], [1.0, 2.0], [2.0, 1.0], "did not converge"),
+        ([[1.0, 0.0], [0.0, 1.0]], [1.0, 2.0], [2.0, 1.0], "meets both margins"),
+        # Split two reaches only group two and fills it exactly, so split
+        # one's positive bin in group two would have to be zero.
+        ([[1.0, 1.0], [0.0, 1.0]], [1.0, 1.0], [1.0, 1.0], "meets both margins"),
     ],
 )
 def test_rake_refuses_margins_it_cannot_meet(seed, rows, columns, message) -> None:
     with pytest.raises(ValueError, match=message):
         _rake_two_margins(seed, rows, columns, label="test")
+
+
+@pytest.mark.parametrize(
+    ("seed", "rows", "columns"),
+    [
+        # microcosm#1235 review: 10,000 IPF sweeps did not converge on these.
+        ([[1e4, 1.0], [1.0, 1e4]], [10_001.0, 10_001.0], [10_011.0, 9_991.0]),
+        ([[1e4, 1.0], [1.0, 1e4]], [10_001.0, 10_001.0], [10_011.001, 9_990.999]),
+        # Factors spanning about 1e15.
+        ([[1e7, 1.0], [1.0, 1e7]], [1e7 + 1, 1e7 + 1], [2e7 + 1.9, 0.1]),
+        # Two separate blocks whose margins match.
+        ([[1.0, 0.0], [0.0, 1.0]], [2.0, 1.0], [2.0, 1.0]),
+        # A group with no EITC in either year.
+        ([[1.0, 1.0, 0.0], [2.0, 1.0, 0.0]], [3.0, 4.0], [5.0, 2.0, 0.0]),
+    ],
+)
+def test_rake_meets_feasible_ill_conditioned_margins(seed, rows, columns) -> None:
+    r, s = _rake_two_margins(seed, rows, columns, label="test")
+    _assert_meets_margins(seed, rows, columns, r, s)
+
+
+def _assert_meets_margins(seed, rows, columns, r, s) -> None:
+    for i, total in enumerate(rows):
+        fitted = sum(r[i] * s[j] * seed[i][j] for j in range(len(columns)))
+        assert fitted == pytest.approx(total, rel=1e-12, abs=1e-12)
+    for j, total in enumerate(columns):
+        fitted = sum(r[i] * s[j] * seed[i][j] for i in range(len(rows)))
+        assert fitted == pytest.approx(total, rel=1e-11, abs=1e-12)
+
+
+def _positively_scalable(seed, rows, columns) -> bool:
+    """An independent oracle: a linear program for the largest t such that
+    some matrix with the seed's positive cells, each at least t, meets both
+    margins. A positive scaling exists exactly when that t is positive
+    (zero-margin rows and columns drop out, as the rake gives them zero)."""
+
+    cells = [
+        (i, j)
+        for i, total in enumerate(rows)
+        for j, column_total in enumerate(columns)
+        if total > 0 and column_total > 0 and seed[i][j] > 0
+    ]
+    live_rows = [i for i, total in enumerate(rows) if total > 0]
+    live_columns = [j for j, total in enumerate(columns) if total > 0]
+    if not live_rows:
+        return True
+    if any(not any(c[0] == i for c in cells) for i in live_rows) or any(
+        not any(c[1] == j for c in cells) for j in live_columns
+    ):
+        return False
+    n = len(cells)
+    equalities = []
+    targets = []
+    for i in live_rows:
+        equalities.append([1.0 if c[0] == i else 0.0 for c in cells] + [0.0])
+        targets.append(rows[i])
+    for j in live_columns:
+        equalities.append([1.0 if c[1] == j else 0.0 for c in cells] + [0.0])
+        targets.append(columns[j])
+    # t - y_c <= 0 for every cell.
+    upper = [[-1.0 if k == c else 0.0 for k in range(n)] + [1.0] for c in range(n)]
+    result = linprog(
+        c=[0.0] * n + [-1.0],
+        A_ub=upper,
+        b_ub=[0.0] * n,
+        A_eq=equalities,
+        b_eq=targets,
+        bounds=[(0, None)] * n + [(0, 1)],
+        method="highs",
+    )
+    return bool(result.status == 0 and -result.fun > 1e-7)
+
+
+@st.composite
+def _sparse_margins(draw):
+    n_rows = draw(st.integers(1, 4))
+    n_columns = draw(st.integers(1, 5))
+    seed = [
+        [float(draw(st.sampled_from([0, 0, 1, 2, 5, 100]))) for _ in range(n_columns)]
+        for _ in range(n_rows)
+    ]
+    rows = [float(draw(st.integers(0, 12))) for _ in range(n_rows)]
+    total = sum(rows)
+    columns = [float(draw(st.integers(0, 12))) for _ in range(n_columns - 1)]
+    last = total - sum(columns)
+    if last < 0:
+        columns = [value * total / sum(columns) for value in columns]
+        last = 0.0
+    return seed, rows, [*columns, last]
+
+
+@given(_sparse_margins())
+@_SETTINGS
+def test_rake_succeeds_exactly_when_a_positive_scaling_exists(case) -> None:
+    """Against the linear-program oracle: the rake returns a scaling meeting
+    both margins whenever one exists, keeping the seed's cross-product
+    ratios, and refuses otherwise."""
+
+    seed, rows, columns = case
+    feasible = _positively_scalable(seed, rows, columns)
+    try:
+        r, s = _rake_two_margins(seed, rows, columns, label="test")
+    except ValueError as error:
+        assert not feasible, error
+        assert re.search(
+            "meets both margins|has no source EITC|has no EITC in any AGI", str(error)
+        )
+        return
+    assert feasible
+    _assert_meets_margins(seed, rows, columns, r, s)
+    for (i, k), (j, m) in itertools.product(
+        itertools.combinations(range(len(rows)), 2),
+        itertools.combinations(range(len(columns)), 2),
+    ):
+        corners = (seed[i][j], seed[k][m], seed[i][m], seed[k][j])
+        if min(corners) > 0 and min(r[i], r[k], s[j], s[m]) > 0:
+            fitted = (r[i] * s[j] * seed[i][j] * r[k] * s[m] * seed[k][m]) / (
+                r[i] * s[m] * seed[i][m] * r[k] * s[j] * seed[k][j]
+            )
+            assert fitted == pytest.approx(
+                (seed[i][j] * seed[k][m]) / (seed[i][m] * seed[k][j]), rel=1e-9
+            )
+
+
+@given(
+    exponents=st.lists(st.floats(-3, 7), min_size=12, max_size=12),
+    rows=st.lists(st.integers(1, 10**8), min_size=3, max_size=3),
+    shares=st.lists(st.floats(0.001, 1.0), min_size=4, max_size=4),
+)
+@_SETTINGS
+def test_rake_meets_margins_on_positive_seeds_spanning_ten_orders(
+    exponents, rows, shares
+) -> None:
+    seed = [[10.0**e for e in exponents[k * 4 : (k + 1) * 4]] for k in range(3)]
+    row_totals = [float(value) for value in rows]
+    columns = [sum(row_totals) * share / sum(shares) for share in shares]
+    r, s = _rake_two_margins(seed, row_totals, columns, label="test")
+    _assert_meets_margins(seed, row_totals, columns, r, s)
 
 
 def _two_by_two_reference(seed, rows, columns) -> list[list[float]]:

@@ -111,7 +111,18 @@ def totals_are_bin_sums(specs, **_):
                 spec.metadata["source_measure_id"],
                 str(spec.period),
             )
-            spec = replace(spec, value=sums[key])
+            # Record the factor the new value implies, so the provenance
+            # matches the value (the source value is old value / old factor).
+            source = spec.value / float(spec.metadata["uprating_factor"])
+            spec = replace(
+                spec,
+                value=sums[key],
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_factor": fiscal_targets._format_float(sums[key] / source),
+                    "uprating_reconciliation": "total_is_sum_of_bins",
+                },
+            )
         out.append(spec)
     return out
 

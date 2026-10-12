@@ -151,7 +151,7 @@
    },
    "surfaces": {
     "national_state": {
-     "version": "937b3df341a7",
+     "version": "a211cbec63ec",
      "count": 6102,
      "receipt": {
       "mode": "national_state",
@@ -169,7 +169,7 @@
      ]
     },
     "full": {
-     "version": "0f294d4f9312",
+     "version": "a83fc4bad02f",
      "count": 33250,
      "receipt": {
       "mode": "full",
@@ -213,8 +213,8 @@
     },
     "eitc_total|three_or_more_qualifying_children": {
      "total_row": 16128849583.488752,
-     "bins_sum": 16128849583.488752,
-     "total_over_bins": 1.0,
+     "bins_sum": 16128849583.488754,
+     "total_over_bins": 0.9999999999999999,
      "n_bins": 28
     },
     "eitc_returns|no_qualifying_children": {
@@ -244,7 +244,7 @@
    },
    "surfaces": {
     "national_state": {
-     "version": "31bd18096d33",
+     "version": "1aafec44dbfa",
      "count": 6102,
      "receipt": {
       "mode": "national_state",
@@ -253,16 +253,16 @@
       "dropped_congressional_district_targets": 27148
      },
      "t25_rows": 232,
-     "t25_weight_share": 0.01547966483246404,
-     "t25_total_rows_weight_share": 0.002873670369712151,
-     "max_abs_weight_ratio_minus_1_outside_t25": 0.0001488526263260237,
+     "t25_weight_share": 0.015479664832462674,
+     "t25_total_rows_weight_share": 0.002873670369712156,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.00014885262632868823,
      "t25_weight_ratio_range_vs_a": [
-      0.9256659013509838,
-      1.1014828264302272
+      0.9256659013500858,
+      1.1014828264306364
      ]
     },
     "full": {
-     "version": "ac32014f3325",
+     "version": "ec807d77a746",
      "count": 33250,
      "receipt": {
       "mode": "full",
@@ -271,12 +271,12 @@
       "dropped_congressional_district_targets": 0
      },
      "t25_rows": 232,
-     "t25_weight_share": 0.006025672944320346,
-     "t25_total_rows_weight_share": 0.001118339551549357,
-     "max_abs_weight_ratio_minus_1_outside_t25": 5.845703928364365e-05,
+     "t25_weight_share": 0.006025672944319804,
+     "t25_total_rows_weight_share": 0.001118339551549358,
+     "max_abs_weight_ratio_minus_1_outside_t25": 5.845703928453183e-05,
      "t25_weight_ratio_range_vs_a": [
-      0.9255822376919813,
-      1.101491022962775
+      0.9255822376910819,
+      1.101491022963184
      ]
     }
    }
@@ -464,7 +464,7 @@
    "a_over_total": 0.9168131214551734,
    "b_over_bins": 0.9106625238330983,
    "b_over_total": 0.9106625238330984,
-   "c_over_bins": 0.9168131214551734,
+   "c_over_bins": 0.9168131214551732,
    "c_over_total": 0.9168131214551734,
    "d_over_bins": 0.9106625238330983
   }

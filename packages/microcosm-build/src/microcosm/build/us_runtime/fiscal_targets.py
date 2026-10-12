@@ -9,13 +9,14 @@ columns.
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib.resources import files
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from microcosm.build.gates import TargetCoverageRequirement
 from microcosm.build.ledger_targets import (
@@ -1438,31 +1439,13 @@ def _uprate_cross_period_eitc_decompositions(
             )
             if source_total not in (None, 0):
                 factor = agi_uprating_group.value / source_total
-                metadata = {
-                    **dict(spec.metadata),
-                    "uprating_index": _eitc_agi_uprating_index(kind),
-                    "uprating_from_period": source_period,
-                    "uprating_to_period": str(spec.period),
-                    "uprating_index_source_period": ",".join(
-                        agi_uprating_group.source_periods
-                    ),
-                    "uprating_agi_lower_bound": _format_bound(agi_uprating_group.lower),
-                    "uprating_agi_upper_bound": _format_bound(agi_uprating_group.upper),
-                    "uprating_factor": _format_float(factor),
-                }
-                if len(agi_uprating_group.source_record_ids) == 1:
-                    metadata["uprating_index_source_record_id"] = (
-                        agi_uprating_group.source_record_ids[0]
-                    )
-                else:
-                    metadata["uprating_index_source_record_ids"] = ",".join(
-                        agi_uprating_group.source_record_ids
-                    )
                 specs.append(
                     replace(
                         spec,
                         value=spec.value * factor,
-                        metadata=metadata,
+                        metadata=_eitc_agi_uprating_metadata(
+                            spec, kind=kind, group=agi_uprating_group, factor=factor
+                        ),
                     )
                 )
                 continue
@@ -1491,9 +1474,7 @@ def _uprate_cross_period_eitc_decompositions(
     return TargetRegistry(
         _rake_eitc_child_splits(
             specs,
-            source_values={
-                (spec.name, str(spec.period)): spec.value for spec in registry.specs
-            },
+            sources={(spec.name, str(spec.period)): spec for spec in registry.specs},
             target_agi_totals=target_agi_totals,
         ),
         country=registry.country,
@@ -2531,12 +2512,49 @@ def _outermost_rows_total(
     return sum(value for _, _, value in outermost)
 
 
+def _eitc_agi_uprating_metadata(
+    spec: TargetSpec,
+    *,
+    kind: str | None,
+    group: _EitcAgiTotal,
+    factor: float,
+) -> dict[str, str]:
+    """A Table 2.5 row's metadata once it is uprated on its AGI group."""
+
+    metadata = {
+        **dict(spec.metadata),
+        "uprating_index": _eitc_agi_uprating_index(kind),
+        "uprating_from_period": spec.metadata.get("source_period", ""),
+        "uprating_to_period": str(spec.period),
+        "uprating_index_source_period": ",".join(group.source_periods),
+        "uprating_agi_lower_bound": _format_bound(group.lower),
+        "uprating_agi_upper_bound": _format_bound(group.upper),
+        "uprating_factor": _format_float(factor),
+    }
+    if len(group.source_record_ids) == 1:
+        metadata["uprating_index_source_record_id"] = group.source_record_ids[0]
+    else:
+        metadata["uprating_index_source_record_ids"] = ",".join(group.source_record_ids)
+    return metadata
+
+
 #: ``uprating_reconciliation`` of the Table 2.5 rows :func:`_rake_eitc_child_splits`
 #: reconciled: the bins it raked and the total rows it raked them to.
 _EITC_CHILD_SPLIT_RAKE = "two_margin_rake"
 #: Largest relative miss of an AGI group's raked bins from its active EITC.
 _EITC_RAKE_TOLERANCE = 1e-12
-_EITC_RAKE_MAX_ITERATIONS = 10_000
+_EITC_RAKE_MAX_NEWTON_STEPS = 200
+_EITC_RAKE_POLISH_SWEEPS = 100
+#: Sides longer than this skip the exact feasibility check (2**n subsets).
+_EITC_RAKE_MAX_CHECKED_SIDE = 16
+
+
+class _EitcRow(NamedTuple):
+    """One Table 2.5 row of a child split: its spec index and AGI bounds."""
+
+    index: int
+    lower: float
+    upper: float
 
 
 @dataclass(frozen=True)
@@ -2544,21 +2562,21 @@ class _EitcRakePlan:
     """One decomposition's rake: child splits are rows, AGI groups columns.
 
     ``leaves`` holds each bin's spec index, split and group; ``sums`` each
-    other row's spec index, split and the bins it holds; ``totals`` each
-    split's all-AGI total row.
+    subtotal row's spec index and the bins it holds; ``totals`` each split's
+    all-AGI total row.
     """
 
     splits: tuple[str, ...]
     groups: tuple[_EitcAgiTotal, ...]
     leaves: tuple[tuple[int, int, int], ...]
-    sums: tuple[tuple[int, int, tuple[int, ...]], ...]
+    sums: tuple[tuple[int, tuple[int, ...]], ...]
     totals: tuple[int, ...]
 
 
 def _rake_eitc_child_splits(
     specs: list[TargetSpec],
     *,
-    source_values: Mapping[tuple[str, str], float],
+    sources: Mapping[tuple[str, str], TargetSpec],
     target_agi_totals: Mapping[str, tuple[_EitcAgiTotal, ...]],
 ) -> list[TargetSpec]:
     """Make each EITC child split's total row equal the sum of its AGI bins.
@@ -2567,9 +2585,8 @@ def _rake_eitc_child_splits(
     split while each bin keeps its AGI group's. Where the groups grow at
     different rates the two disagree, by up to 16% per split on the pinned
     TY2024 feed, and calibration would see both. This rakes each
-    decomposition's child x AGI-group matrix of source bins (iterative
-    proportional fitting) to the uprated total rows and the active AGI
-    groups, so that:
+    decomposition's child x AGI-group matrix of source bins to the uprated
+    total rows and the active AGI groups (:func:`_rake_two_margins`), so that:
 
     * each split's bins sum to its total row, which keeps its uprated value;
     * each AGI group's bins, over all splits, sum to the group's active EITC;
@@ -2583,11 +2600,14 @@ def _rake_eitc_child_splits(
     child split, which under-predicted childless EITC in every year pair
     without a structural change to the credit.
 
-    A decomposition is raked only when every split has one all-AGI total row
-    and bins that tile AGI, and every row took an AGI-group factor. Any other
+    A decomposition is raked when every split has one all-AGI total row and
+    bins that tile AGI, and the active AGI bins give the total rows and every
+    bin an AGI group, as :func:`_eitc_agi_uprating_group` finds them. Any other
     decomposition keeps its per-row factors: one uprated on the all-returns
     total gives every row one factor, so its levels already agree, and a
-    partial one has no total row to reconcile to.
+    partial one has no total row to reconcile to. A group with no EITC in
+    either year takes a zero factor; a group with active EITC but no source
+    EITC in any split cannot be raked, and is refused.
     """
 
     decompositions: dict[tuple[str, str, str], list[int]] = {}
@@ -2611,46 +2631,56 @@ def _rake_eitc_child_splits(
         seed = [[0.0] * len(plan.groups) for _ in plan.splits]
         for index, split, group in plan.leaves:
             spec = specs[index]
-            seed[split][group] += source_values[(spec.name, str(spec.period))]
-        row_totals = [specs[index].value for index in plan.totals]
-        column_totals = [group.value for group in plan.groups]
+            seed[split][group] += sources[(spec.name, str(spec.period))].value
         row_factors, column_factors = _rake_two_margins(
-            seed, row_totals, column_totals, label=label
+            seed,
+            [specs[index].value for index in plan.totals],
+            [group.value for group in plan.groups],
+            label=label,
         )
+        agi_index = _eitc_agi_uprating_index(kind)
         for index, split, group in plan.leaves:
             spec = specs[index]
-            group_source = sum(row[group] for row in seed)
-            group_factor = (
-                plan.groups[group].value / group_source if group_source else 0.0
-            )
+            source = sources[(spec.name, str(spec.period))]
             factor = row_factors[split] * column_factors[group]
+            # The per-row uprating's factor, the group's active over source
+            # EITC; a group with no EITC in either year fell back to the
+            # all-returns total there, and takes zero here.
+            group_factor_text = (
+                spec.metadata["uprating_factor"]
+                if spec.metadata.get("uprating_index") == agi_index
+                else "0"
+            )
+            group_factor = float(group_factor_text)
+            metadata = _eitc_agi_uprating_metadata(
+                source, kind=kind, group=plan.groups[group], factor=factor
+            )
+            metadata["uprating_agi_group_factor"] = group_factor_text
+            metadata["uprating_child_split_adjustment"] = _format_float(
+                factor / group_factor if group_factor else 1.0
+            )
+            metadata["uprating_reconciliation"] = _EITC_CHILD_SPLIT_RAKE
+            raked[index] = replace(spec, value=source.value * factor, metadata=metadata)
+        for index in plan.totals:
+            # A rake margin: it keeps its value and all-AGI factor.
+            spec = specs[index]
             raked[index] = replace(
                 spec,
-                value=source_values[(spec.name, str(spec.period))] * factor,
                 metadata={
                     **dict(spec.metadata),
-                    "uprating_factor": _format_float(factor),
-                    "uprating_agi_group_factor": spec.metadata["uprating_factor"],
-                    "uprating_child_split_adjustment": _format_float(
-                        factor / group_factor if group_factor else 1.0
-                    ),
                     "uprating_reconciliation": _EITC_CHILD_SPLIT_RAKE,
                 },
             )
-        for index, _, held in plan.sums:
+        for index, held in plan.sums:
             spec = specs[index]
+            source = sources[(spec.name, str(spec.period))]
+            value = sum(raked[leaf].value for leaf in held)
             metadata = {
                 **dict(spec.metadata),
                 "uprating_reconciliation": _EITC_CHILD_SPLIT_RAKE,
             }
-            if index in plan.totals:
-                # A rake margin: it keeps its value and all-AGI factor.
-                raked[index] = replace(spec, metadata=metadata)
-                continue
-            value = sum(raked[leaf].value for leaf in held)
-            source = source_values[(spec.name, str(spec.period))]
-            if source:
-                metadata["uprating_factor"] = _format_float(value / source)
+            if source.value:
+                metadata["uprating_factor"] = _format_float(value / source.value)
             raked[index] = replace(spec, value=value, metadata=metadata)
     return raked
 
@@ -2663,44 +2693,40 @@ def _eitc_rake_plan(
     """The rake of one decomposition, or ``None`` when it has nothing to
     reconcile (see :func:`_rake_eitc_child_splits`)."""
 
-    rows_by_split: dict[str, list[tuple[int, float, float]]] = {}
+    rows_by_split: dict[str, list[_EitcRow]] = {}
     for index in indices:
-        spec = specs[index]
-        if spec.metadata.get("uprating_index") != _eitc_agi_uprating_index(
-            _eitc_total_kind(spec)
-        ):
-            return None
-        lower, upper = _bounds_from_metadata(spec)
+        lower, upper = _bounds_from_metadata(specs[index])
         rows_by_split.setdefault(
-            spec.metadata.get("ledger_layout_record_set_id", ""), []
-        ).append((index, lower, upper))
+            specs[index].metadata.get("ledger_layout_record_set_id", ""), []
+        ).append(_EitcRow(index, lower, upper))
 
     splits = tuple(sorted(rows_by_split))
     groups: list[_EitcAgiTotal] = []
     leaves: list[tuple[int, int, int]] = []
-    sums: list[tuple[int, int, tuple[int, ...]]] = []
+    sums: list[tuple[int, tuple[int, ...]]] = []
     totals: list[int] = []
     for split, record_set_id in enumerate(splits):
         rows = rows_by_split[record_set_id]
-        whole = [row for row in rows if row[1:] == (-math.inf, math.inf)]
+        whole = [row for row in rows if (row.lower, row.upper) == (-math.inf, math.inf)]
         if len(whole) != 1:
             return None
-        totals.append(whole[0][0])
+        total = whole[0]
+        # Without an all-AGI group the total row took the all-returns factor.
+        if _eitc_agi_uprating_group(specs[total.index], active_agi_totals) is None:
+            return None
+        totals.append(total.index)
         split_leaves = sorted(
             (
                 row
                 for row in rows
-                if not any(
-                    other[1:] != row[1:] and _contains_bounds(*row[1:], *other[1:])
-                    for other in rows
-                )
+                if not any(_strictly_contains(row, other) for other in rows)
             ),
-            key=lambda row: row[1:],
+            key=lambda row: (row.lower, row.upper),
         )
         if not _tiles(split_leaves, -math.inf, math.inf):
             return None
-        for index, _, _ in split_leaves:
-            agi_group = _eitc_agi_uprating_group(specs[index], active_agi_totals)
+        for leaf in split_leaves:
+            agi_group = _eitc_agi_uprating_group(specs[leaf.index], active_agi_totals)
             if agi_group is None:
                 return None
             bounds = (agi_group.lower, agi_group.upper)
@@ -2715,18 +2741,19 @@ def _eitc_rake_plan(
             if group is None:
                 groups.append(agi_group)
                 group = len(groups) - 1
-            leaves.append((index, split, group))
-        for index, lower, upper in rows:
-            if any(index == leaf[0] for leaf in split_leaves):
+            leaves.append((leaf.index, split, group))
+        leaf_indices = {leaf.index for leaf in split_leaves}
+        for row in rows:
+            if row.index in leaf_indices or row.index == total.index:
                 continue
             held = [
                 leaf
                 for leaf in split_leaves
-                if _contains_bounds(lower, upper, *leaf[1:])
+                if _contains_bounds(row.lower, row.upper, leaf.lower, leaf.upper)
             ]
-            if not _tiles(held, lower, upper):
+            if not _tiles(held, row.lower, row.upper):
                 return None
-            sums.append((index, split, tuple(leaf[0] for leaf in held)))
+            sums.append((row.index, tuple(leaf.index for leaf in held)))
 
     ordered = sorted(groups, key=lambda group: (group.lower, group.upper))
     if any(
@@ -2743,14 +2770,20 @@ def _eitc_rake_plan(
     )
 
 
-def _tiles(rows: list[tuple[int, float, float]], lower: float, upper: float) -> bool:
-    """Whether sorted ``(index, lower, upper)`` rows tile ``[lower, upper)``."""
+def _strictly_contains(outer: _EitcRow, inner: _EitcRow) -> bool:
+    return (outer.lower, outer.upper) != (inner.lower, inner.upper) and (
+        _contains_bounds(outer.lower, outer.upper, inner.lower, inner.upper)
+    )
+
+
+def _tiles(rows: list[_EitcRow], lower: float, upper: float) -> bool:
+    """Whether rows sorted by bounds tile ``[lower, upper)``."""
 
     cursor = lower
-    for _, row_lower, row_upper in rows:
-        if row_lower != cursor:
+    for row in rows:
+        if row.lower != cursor:
             return False
-        cursor = row_upper
+        cursor = row.upper
     return cursor == upper
 
 
@@ -2761,15 +2794,24 @@ def _rake_two_margins(
     *,
     label: str,
 ) -> tuple[list[float], list[float]]:
-    """Iterative proportional fitting of a nonnegative matrix to two margins.
+    """Scale a nonnegative matrix to two margins: the iterative proportional
+    fitting (IPF) solution.
 
     Returns row factors ``r`` and column factors ``s`` such that
     ``r[i] * s[j] * seed[i][j]`` sums to ``row_totals[i]`` across each row
-    and to ``column_totals[j]`` down each column. Column and row scalings
-    alternate and end on the rows, so the rows hold to rounding and the
-    columns to :data:`_EITC_RAKE_TOLERANCE`. Raises ``ValueError`` when the
-    margins disagree in total, a positive margin falls on an all-zero row or
-    column, or the seed's zero pattern keeps it from converging.
+    and to ``column_totals[j]`` down each column. With positive factors that
+    scaling is unique, keeps every cross-product ratio of the seed and is the
+    limit of IPF. IPF can take many thousands of sweeps on an ill-conditioned
+    seed, so the scaling is found by damped Newton steps on its convex dual,
+    min sum(x[i][j] * exp(u[i] + v[j])) - row_totals . u - column_totals . v.
+    Rows then hold to rounding and columns to :data:`_EITC_RAKE_TOLERANCE`. A
+    zero margin gives its row or column a zero factor.
+
+    Raises ``ValueError`` on negative input or margins that disagree in total,
+    and when no positive scaling exists (Menon 1968; Brualdi 1968): a positive
+    margin whose row or column has no positive cell, or a set of rows whose
+    totals exceed what the columns their cells reach can take, or exactly fill
+    columns that other rows also reach.
     """
 
     if any(value < 0 for row in seed for value in row) or any(
@@ -2782,59 +2824,259 @@ def _rake_two_margins(
             f"{label}: the total rows sum to {sum(row_totals)!r} but the active "
             f"AGI groups to {grand_total!r}; the rake needs one total."
         )
-    for column, target in enumerate(column_totals):
-        if target and not any(row[column] for row in seed):
+    row_factors = [0.0] * len(seed)
+    column_factors = [0.0] * len(column_totals)
+    rows = [i for i, total in enumerate(row_totals) if total > 0]
+    columns = [j for j, total in enumerate(column_totals) if total > 0]
+    for j in columns:
+        if not any(seed[i][j] > 0 for i in rows):
             raise ValueError(
-                f"{label}: an AGI group with active EITC {target!r} has no source "
-                "EITC to scale."
+                f"{label}: an AGI group with active EITC {column_totals[j]!r} has "
+                "no source EITC to scale."
             )
-    for row, target in enumerate(row_totals):
-        if target and not any(seed[row]):
+    reach = {i: frozenset(j for j in columns if seed[i][j] > 0) for i in rows}
+    for i in rows:
+        if not reach[i]:
             raise ValueError(
-                f"{label}: a child split with total {target!r} has no EITC in any "
-                "AGI bin."
+                f"{label}: a child split with total {row_totals[i]!r} has no EITC "
+                "in any AGI group with active EITC."
             )
-    not_converged = ValueError(
-        f"{label}: raking to the child-split totals and the active AGI groups did "
-        "not converge; the source's zero cells cannot meet both margins."
-    )
-    row_factors = [1.0] * len(seed)
-    column_factors = [1.0] * len(column_totals)
-    for _ in range(_EITC_RAKE_MAX_ITERATIONS):
-        for column, target in enumerate(column_totals):
-            base = sum(row_factors[row] * seed[row][column] for row in range(len(seed)))
-            if base:
-                column_factors[column] = target / base
-            elif target:
-                # Structurally nonzero, so the row factors underflowed.
-                raise not_converged
-        for row, target in enumerate(row_totals):
-            base = sum(
-                column_factors[column] * seed[row][column]
-                for column in range(len(column_totals))
-            )
-            if base:
-                row_factors[row] = target / base
-            elif target:
-                raise not_converged
-        worst = max(
-            (
-                abs(
-                    column_factors[column]
-                    * sum(
-                        row_factors[row] * seed[row][column] for row in range(len(seed))
-                    )
-                    - target
-                )
-                / target
-                for column, target in enumerate(column_totals)
-                if target
-            ),
-            default=0.0,
+    if not rows:
+        return row_factors, column_factors
+    _require_scalable(reach, row_totals, column_totals, label=label)
+
+    # Work in shares, so that the dual is well scaled.
+    seed_total = sum(seed[i][j] for i in rows for j in reach[i])
+    cells = {(i, j): seed[i][j] / seed_total for i in rows for j in reach[i]}
+    row_share = {i: row_totals[i] / grand_total for i in rows}
+    column_share = {j: column_totals[j] / grand_total for j in columns}
+    # Each connected block of the support has one free scale; pin the dual
+    # of each block's largest column to zero, which keeps the Newton system
+    # well conditioned when a block also has very small columns.
+    pinned = _largest_column_of_each_block(rows, reach, column_totals)
+    free = [("row", i) for i in rows] + [
+        ("column", j) for j in columns if j not in pinned
+    ]
+    position = {variable: k for k, variable in enumerate(free)}
+    u = {i: math.log(row_share[i] / sum(cells[(i, j)] for j in reach[i])) for i in rows}
+    v = dict.fromkeys(columns, 0.0)
+
+    def fitted(
+        u: dict[int, float], v: dict[int, float]
+    ) -> dict[tuple[int, int], float] | None:
+        try:
+            return {(i, j): x * math.exp(u[i] + v[j]) for (i, j), x in cells.items()}
+        except OverflowError:
+            return None
+
+    def objective(u: dict[int, float], v: dict[int, float]) -> float:
+        fit = fitted(u, v)
+        if fit is None:
+            return math.inf
+        return (
+            sum(fit.values())
+            - sum(row_share[i] * u[i] for i in rows)
+            - sum(column_share[j] * v[j] for j in columns)
         )
+
+    def column_miss() -> float:
+        return max(
+            abs(
+                column_factors[j]
+                * sum(row_factors[i] * seed[i][j] for i in rows if j in reach[i])
+                / column_totals[j]
+                - 1
+            )
+            for j in columns
+        )
+
+    def margin_miss(u: dict[int, float], v: dict[int, float]) -> float:
+        fit = fitted(u, v)
+        if fit is None:
+            return math.inf
+        row_sums = dict.fromkeys(rows, 0.0)
+        column_sums = dict.fromkeys(columns, 0.0)
+        for (i, j), value in fit.items():
+            row_sums[i] += value
+            column_sums[j] += value
+        return max(
+            *(abs(row_sums[i] / row_share[i] - 1) for i in rows),
+            *(abs(column_sums[j] / column_share[j] - 1) for j in columns),
+        )
+
+    for _ in range(_EITC_RAKE_MAX_NEWTON_STEPS):
+        fit = fitted(u, v)
+        row_sums = dict.fromkeys(rows, 0.0)
+        column_sums = dict.fromkeys(columns, 0.0)
+        for (i, j), value in fit.items():
+            row_sums[i] += value
+            column_sums[j] += value
+        # Scale rows to hold exactly, then check the columns.
+        scale = grand_total / seed_total
+        for i in rows:
+            row_factors[i] = scale * math.exp(u[i]) * row_share[i] / row_sums[i]
+        for j in columns:
+            column_factors[j] = math.exp(v[j])
+        worst = column_miss()
         if worst <= _EITC_RAKE_TOLERANCE:
             return row_factors, column_factors
-    raise not_converged
+        if worst <= 1e-8:
+            # Close to the solution: a few exact proportional-fitting sweeps
+            # on the factors themselves clear the rounding the duals carry.
+            for _ in range(_EITC_RAKE_POLISH_SWEEPS):
+                for j in columns:
+                    column_factors[j] = column_totals[j] / sum(
+                        row_factors[i] * seed[i][j] for i in rows if j in reach[i]
+                    )
+                for i in rows:
+                    row_factors[i] = row_totals[i] / sum(
+                        column_factors[j] * seed[i][j] for j in reach[i]
+                    )
+                if column_miss() <= _EITC_RAKE_TOLERANCE:
+                    return row_factors, column_factors
+
+        gradient = [0.0] * len(free)
+        hessian = [[0.0] * len(free) for _ in free]
+        for i in rows:
+            k = position[("row", i)]
+            gradient[k] = row_sums[i] - row_share[i]
+            hessian[k][k] = row_sums[i]
+        for j in columns:
+            if j in pinned:
+                continue
+            k = position[("column", j)]
+            gradient[k] = column_sums[j] - column_share[j]
+            hessian[k][k] = column_sums[j]
+        for (i, j), value in fit.items():
+            if j in pinned:
+                continue
+            a, b = position[("row", i)], position[("column", j)]
+            hessian[a][b] = hessian[b][a] = value
+        step = _solve_linear_system(hessian, [-g for g in gradient])
+        if step is None:
+            break
+        slope = sum(g * d for g, d in zip(gradient, step, strict=True))
+        current = objective(u, v)
+        current_miss = margin_miss(u, v)
+        length = 1.0
+        while length > 1e-12:
+            trial_u = {i: u[i] + length * step[position[("row", i)]] for i in rows}
+            trial_v = {
+                j: v[j]
+                if j in pinned
+                else v[j] + length * step[position[("column", j)]]
+                for j in columns
+            }
+            trial = objective(trial_u, trial_v)
+            # Armijo on the dual; near the optimum its gains fall below
+            # rounding, so also take a step that shrinks the worst relative
+            # margin miss without raising the dual beyond rounding.
+            if trial <= current + 1e-4 * length * slope or (
+                trial <= current + 1e-12 * max(abs(current), 1.0)
+                and margin_miss(trial_u, trial_v) < current_miss
+            ):
+                break
+            length /= 2
+        else:
+            break
+        u, v = trial_u, trial_v
+    raise ValueError(
+        f"{label}: raking to the child-split totals and the active AGI groups did "
+        f"not converge in {_EITC_RAKE_MAX_NEWTON_STEPS} Newton steps."
+    )
+
+
+def _require_scalable(
+    reach: Mapping[int, frozenset[int]],
+    row_totals: list[float],
+    column_totals: list[float],
+    *,
+    label: str,
+) -> None:
+    """Refuse margins no positive scaling of the seed can meet.
+
+    A positive scaling exists exactly when, for every set ``I`` of rows and
+    the set ``J`` of columns their positive cells reach, the rows' totals
+    are at most the columns' totals, and equal only if no other row reaches
+    ``J`` (Menon 1968; Brualdi 1968). Equality otherwise forces those other
+    rows' cells in ``J`` to zero. Checks every row set when there are at most
+    :data:`_EITC_RAKE_MAX_CHECKED_SIDE` rows (child splits, usually four).
+    """
+
+    rows = sorted(reach)
+    if len(rows) > _EITC_RAKE_MAX_CHECKED_SIDE:
+        return
+    tolerance = 1e-12 * sum(column_totals)
+    for size in range(1, len(rows)):
+        for subset in itertools.combinations(rows, size):
+            columns = frozenset().union(*(reach[i] for i in subset))
+            held = sum(row_totals[i] for i in subset)
+            room = sum(column_totals[j] for j in columns)
+            if held > room + tolerance or (
+                abs(held - room) <= tolerance
+                and any(reach[i] & columns for i in rows if i not in subset)
+            ):
+                raise ValueError(
+                    f"{label}: no scaling of the source bins meets both "
+                    f"margins: child splits {list(subset)} total {held!r}, and "
+                    f"the AGI groups their bins reach total {room!r}."
+                )
+
+
+def _largest_column_of_each_block(
+    rows: list[int],
+    reach: Mapping[int, frozenset[int]],
+    column_totals: list[float],
+) -> frozenset[int]:
+    """The largest-margin column of each connected block of the support."""
+
+    unassigned = set(rows)
+    pinned = set()
+    while unassigned:
+        frontier = [unassigned.pop()]
+        columns: set[int] = set()
+        while frontier:
+            i = frontier.pop()
+            new = reach[i] - columns
+            columns |= new
+            for other in list(unassigned):
+                if reach[other] & new:
+                    unassigned.discard(other)
+                    frontier.append(other)
+        pinned.add(max(sorted(columns), key=lambda j: column_totals[j]))
+    return frozenset(pinned)
+
+
+def _solve_linear_system(
+    matrix: list[list[float]], rhs: list[float]
+) -> list[float] | None:
+    """Solve a symmetric positive-definite system by Gaussian elimination with
+    partial pivoting, after scaling it to a unit diagonal (Jacobi); ``None``
+    if singular."""
+
+    n = len(rhs)
+    if any(matrix[k][k] <= 0 for k in range(n)):
+        return None
+    root = [math.sqrt(matrix[k][k]) for k in range(n)]
+    augmented = [
+        [*(matrix[k][c] / (root[k] * root[c]) for c in range(n)), rhs[k] / root[k]]
+        for k in range(n)
+    ]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(augmented[r][col]))
+        if abs(augmented[pivot][col]) < 1e-300:
+            return None
+        augmented[col], augmented[pivot] = augmented[pivot], augmented[col]
+        for r in range(col + 1, n):
+            ratio = augmented[r][col] / augmented[col][col]
+            if ratio:
+                for c in range(col, n + 1):
+                    augmented[r][c] -= ratio * augmented[col][c]
+    solution = [0.0] * n
+    for r in range(n - 1, -1, -1):
+        tail = sum(augmented[r][c] * solution[c] for c in range(r + 1, n))
+        solution[r] = (augmented[r][n] - tail) / augmented[r][r]
+    return [solution[k] / root[k] for k in range(n)]
 
 
 def _eitc_agi_uprating_group(
