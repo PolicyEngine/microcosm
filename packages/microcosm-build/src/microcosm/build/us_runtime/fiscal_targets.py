@@ -1402,9 +1402,12 @@ def _uprate_cross_period_eitc_decompositions(
     SOI Table 2.5 releases AGI-by-qualifying-child EITC distributions later
     than all-return totals. When Microcosm uses a prior-year decomposition for a
     target-year build, it must not treat old nominal bins as hard target-year
-    levels. Prefer active AGI-bucket EITC facts when Ledger has them, preserving
-    the latest child split inside each AGI bucket. Fall back to all-return EITC
-    totals when only totals are available.
+    levels. Prefer active AGI-bucket EITC facts when Ledger has them: each row
+    first takes its AGI group's active / source EITC, and each split's all-AGI
+    total row the all-AGI ratio, so the totals keep the latest all-AGI child
+    split. Fall back to all-return EITC totals when only totals are available.
+    :func:`_rake_eitc_child_splits` then reconciles each split's bins with its
+    total row.
     """
 
     target_totals = _eitc_active_totals(registry)
@@ -1485,7 +1488,16 @@ def _uprate_cross_period_eitc_decompositions(
                 },
             )
         )
-    return TargetRegistry(specs, country=registry.country)
+    return TargetRegistry(
+        _rake_eitc_child_splits(
+            specs,
+            source_values={
+                (spec.name, str(spec.period)): spec.value for spec in registry.specs
+            },
+            target_agi_totals=target_agi_totals,
+        ),
+        country=registry.country,
+    )
 
 
 @dataclass(frozen=True)
@@ -2517,6 +2529,312 @@ def _outermost_rows_total(
                 "its rows must nest or be disjoint."
             )
     return sum(value for _, _, value in outermost)
+
+
+#: ``uprating_reconciliation`` of the Table 2.5 rows :func:`_rake_eitc_child_splits`
+#: reconciled: the bins it raked and the total rows it raked them to.
+_EITC_CHILD_SPLIT_RAKE = "two_margin_rake"
+#: Largest relative miss of an AGI group's raked bins from its active EITC.
+_EITC_RAKE_TOLERANCE = 1e-12
+_EITC_RAKE_MAX_ITERATIONS = 10_000
+
+
+@dataclass(frozen=True)
+class _EitcRakePlan:
+    """One decomposition's rake: child splits are rows, AGI groups columns.
+
+    ``leaves`` holds each bin's spec index, split and group; ``sums`` each
+    other row's spec index, split and the bins it holds; ``totals`` each
+    split's all-AGI total row.
+    """
+
+    splits: tuple[str, ...]
+    groups: tuple[_EitcAgiTotal, ...]
+    leaves: tuple[tuple[int, int, int], ...]
+    sums: tuple[tuple[int, int, tuple[int, ...]], ...]
+    totals: tuple[int, ...]
+
+
+def _rake_eitc_child_splits(
+    specs: list[TargetSpec],
+    *,
+    source_values: Mapping[tuple[str, str], float],
+    target_agi_totals: Mapping[str, tuple[_EitcAgiTotal, ...]],
+) -> list[TargetSpec]:
+    """Make each EITC child split's total row equal the sum of its AGI bins.
+
+    After the per-row uprating, a split's total row keeps the all-AGI child
+    split while each bin keeps its AGI group's. Where the groups grow at
+    different rates the two disagree, by up to 16% per split on the pinned
+    TY2024 feed, and calibration would see both. This rakes each
+    decomposition's child x AGI-group matrix of source bins (iterative
+    proportional fitting) to the uprated total rows and the active AGI
+    groups, so that:
+
+    * each split's bins sum to its total row, which keeps its uprated value;
+    * each AGI group's bins, over all splits, sum to the group's active EITC;
+    * every bin of one split in one group takes one factor, so the source
+      shape inside each (split, group) cell is kept.
+
+    Keeping the all-AGI child split is the better-supported of the two
+    levels. In a backtest on published Table 2.5, TY2013-2023
+    (``experiments/eitc-child-split-rake-20261012/``), it predicted the next
+    year's split totals with 40-70% of the error of keeping each AGI group's
+    child split, which under-predicted childless EITC in every year pair
+    without a structural change to the credit.
+
+    A decomposition is raked only when every split has one all-AGI total row
+    and bins that tile AGI, and every row took an AGI-group factor. Any other
+    decomposition keeps its per-row factors: one uprated on the all-returns
+    total gives every row one factor, so its levels already agree, and a
+    partial one has no total row to reconcile to.
+    """
+
+    decompositions: dict[tuple[str, str, str], list[int]] = {}
+    for index, spec in enumerate(specs):
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if spec.metadata.get("requires_total_eitc_uprating") != "true":
+            continue
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        key = (kind, spec.metadata.get("source_period", ""), str(spec.period))
+        decompositions.setdefault(key, []).append(index)
+
+    raked = list(specs)
+    for (kind, source_period, period), indices in sorted(decompositions.items()):
+        plan = _eitc_rake_plan(specs, indices, target_agi_totals.get(kind, ()))
+        if plan is None:
+            continue
+        label = f"EITC decomposition ({kind}, TY{source_period} -> {period})"
+        seed = [[0.0] * len(plan.groups) for _ in plan.splits]
+        for index, split, group in plan.leaves:
+            spec = specs[index]
+            seed[split][group] += source_values[(spec.name, str(spec.period))]
+        row_totals = [specs[index].value for index in plan.totals]
+        column_totals = [group.value for group in plan.groups]
+        row_factors, column_factors = _rake_two_margins(
+            seed, row_totals, column_totals, label=label
+        )
+        for index, split, group in plan.leaves:
+            spec = specs[index]
+            group_source = sum(row[group] for row in seed)
+            group_factor = (
+                plan.groups[group].value / group_source if group_source else 0.0
+            )
+            factor = row_factors[split] * column_factors[group]
+            raked[index] = replace(
+                spec,
+                value=source_values[(spec.name, str(spec.period))] * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_factor": _format_float(factor),
+                    "uprating_agi_group_factor": spec.metadata["uprating_factor"],
+                    "uprating_child_split_adjustment": _format_float(
+                        factor / group_factor if group_factor else 1.0
+                    ),
+                    "uprating_reconciliation": _EITC_CHILD_SPLIT_RAKE,
+                },
+            )
+        for index, _, held in plan.sums:
+            spec = specs[index]
+            metadata = {
+                **dict(spec.metadata),
+                "uprating_reconciliation": _EITC_CHILD_SPLIT_RAKE,
+            }
+            if index in plan.totals:
+                # A rake margin: it keeps its value and all-AGI factor.
+                raked[index] = replace(spec, metadata=metadata)
+                continue
+            value = sum(raked[leaf].value for leaf in held)
+            source = source_values[(spec.name, str(spec.period))]
+            if source:
+                metadata["uprating_factor"] = _format_float(value / source)
+            raked[index] = replace(spec, value=value, metadata=metadata)
+    return raked
+
+
+def _eitc_rake_plan(
+    specs: list[TargetSpec],
+    indices: list[int],
+    active_agi_totals: tuple[_EitcAgiTotal, ...],
+) -> _EitcRakePlan | None:
+    """The rake of one decomposition, or ``None`` when it has nothing to
+    reconcile (see :func:`_rake_eitc_child_splits`)."""
+
+    rows_by_split: dict[str, list[tuple[int, float, float]]] = {}
+    for index in indices:
+        spec = specs[index]
+        if spec.metadata.get("uprating_index") != _eitc_agi_uprating_index(
+            _eitc_total_kind(spec)
+        ):
+            return None
+        lower, upper = _bounds_from_metadata(spec)
+        rows_by_split.setdefault(
+            spec.metadata.get("ledger_layout_record_set_id", ""), []
+        ).append((index, lower, upper))
+
+    splits = tuple(sorted(rows_by_split))
+    groups: list[_EitcAgiTotal] = []
+    leaves: list[tuple[int, int, int]] = []
+    sums: list[tuple[int, int, tuple[int, ...]]] = []
+    totals: list[int] = []
+    for split, record_set_id in enumerate(splits):
+        rows = rows_by_split[record_set_id]
+        whole = [row for row in rows if row[1:] == (-math.inf, math.inf)]
+        if len(whole) != 1:
+            return None
+        totals.append(whole[0][0])
+        split_leaves = sorted(
+            (
+                row
+                for row in rows
+                if not any(
+                    other[1:] != row[1:] and _contains_bounds(*row[1:], *other[1:])
+                    for other in rows
+                )
+            ),
+            key=lambda row: row[1:],
+        )
+        if not _tiles(split_leaves, -math.inf, math.inf):
+            return None
+        for index, _, _ in split_leaves:
+            agi_group = _eitc_agi_uprating_group(specs[index], active_agi_totals)
+            if agi_group is None:
+                return None
+            bounds = (agi_group.lower, agi_group.upper)
+            group = next(
+                (
+                    k
+                    for k, known in enumerate(groups)
+                    if (known.lower, known.upper) == bounds
+                ),
+                None,
+            )
+            if group is None:
+                groups.append(agi_group)
+                group = len(groups) - 1
+            leaves.append((index, split, group))
+        for index, lower, upper in rows:
+            if any(index == leaf[0] for leaf in split_leaves):
+                continue
+            held = [
+                leaf
+                for leaf in split_leaves
+                if _contains_bounds(lower, upper, *leaf[1:])
+            ]
+            if not _tiles(held, lower, upper):
+                return None
+            sums.append((index, split, tuple(leaf[0] for leaf in held)))
+
+    ordered = sorted(groups, key=lambda group: (group.lower, group.upper))
+    if any(
+        previous.upper > current.lower
+        for previous, current in zip(ordered, ordered[1:], strict=False)
+    ):
+        return None
+    return _EitcRakePlan(
+        splits=splits,
+        groups=tuple(groups),
+        leaves=tuple(leaves),
+        sums=tuple(sums),
+        totals=tuple(totals),
+    )
+
+
+def _tiles(rows: list[tuple[int, float, float]], lower: float, upper: float) -> bool:
+    """Whether sorted ``(index, lower, upper)`` rows tile ``[lower, upper)``."""
+
+    cursor = lower
+    for _, row_lower, row_upper in rows:
+        if row_lower != cursor:
+            return False
+        cursor = row_upper
+    return cursor == upper
+
+
+def _rake_two_margins(
+    seed: list[list[float]],
+    row_totals: list[float],
+    column_totals: list[float],
+    *,
+    label: str,
+) -> tuple[list[float], list[float]]:
+    """Iterative proportional fitting of a nonnegative matrix to two margins.
+
+    Returns row factors ``r`` and column factors ``s`` such that
+    ``r[i] * s[j] * seed[i][j]`` sums to ``row_totals[i]`` across each row
+    and to ``column_totals[j]`` down each column. Column and row scalings
+    alternate and end on the rows, so the rows hold to rounding and the
+    columns to :data:`_EITC_RAKE_TOLERANCE`. Raises ``ValueError`` when the
+    margins disagree in total, a positive margin falls on an all-zero row or
+    column, or the seed's zero pattern keeps it from converging.
+    """
+
+    if any(value < 0 for row in seed for value in row) or any(
+        value < 0 for value in (*row_totals, *column_totals)
+    ):
+        raise ValueError(f"{label}: cannot rake negative EITC.")
+    grand_total = sum(column_totals)
+    if abs(sum(row_totals) - grand_total) > 1e-9 * max(abs(grand_total), 1.0):
+        raise ValueError(
+            f"{label}: the total rows sum to {sum(row_totals)!r} but the active "
+            f"AGI groups to {grand_total!r}; the rake needs one total."
+        )
+    for column, target in enumerate(column_totals):
+        if target and not any(row[column] for row in seed):
+            raise ValueError(
+                f"{label}: an AGI group with active EITC {target!r} has no source "
+                "EITC to scale."
+            )
+    for row, target in enumerate(row_totals):
+        if target and not any(seed[row]):
+            raise ValueError(
+                f"{label}: a child split with total {target!r} has no EITC in any "
+                "AGI bin."
+            )
+    not_converged = ValueError(
+        f"{label}: raking to the child-split totals and the active AGI groups did "
+        "not converge; the source's zero cells cannot meet both margins."
+    )
+    row_factors = [1.0] * len(seed)
+    column_factors = [1.0] * len(column_totals)
+    for _ in range(_EITC_RAKE_MAX_ITERATIONS):
+        for column, target in enumerate(column_totals):
+            base = sum(row_factors[row] * seed[row][column] for row in range(len(seed)))
+            if base:
+                column_factors[column] = target / base
+            elif target:
+                # Structurally nonzero, so the row factors underflowed.
+                raise not_converged
+        for row, target in enumerate(row_totals):
+            base = sum(
+                column_factors[column] * seed[row][column]
+                for column in range(len(column_totals))
+            )
+            if base:
+                row_factors[row] = target / base
+            elif target:
+                raise not_converged
+        worst = max(
+            (
+                abs(
+                    column_factors[column]
+                    * sum(
+                        row_factors[row] * seed[row][column] for row in range(len(seed))
+                    )
+                    - target
+                )
+                / target
+                for column, target in enumerate(column_totals)
+                if target
+            ),
+            default=0.0,
+        )
+        if worst <= _EITC_RAKE_TOLERANCE:
+            return row_factors, column_factors
+    raise not_converged
 
 
 def _eitc_agi_uprating_group(
