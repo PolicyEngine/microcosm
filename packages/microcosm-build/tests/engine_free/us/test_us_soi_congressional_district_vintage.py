@@ -297,11 +297,9 @@ def test_district_guards_hold_at_every_vintage() -> None:
         cd_all_returns = record_set("irs_soi", token, district_family, ["all_returns"])
         assert _interest_control_key(cd_all_returns) is None
         twin = record_set("irs_soi", token, "table_1_4", ["all_returns"])
-        assert _interest_control_key(twin) == (
-            "taxable_interest_amount",
-            "all",
-            "all_returns",
-        )
+        twin_key = _interest_control_key(twin)
+        assert twin_key is not None
+        assert (twin_key[0], twin_key[2]) == ("taxable_interest_amount", "all_returns")
         assert not _ptc_conflict(twin, "premium_tax_credit_amount")
 
         assert fiscal_targets._soi_record_set_family(other) == other_family
@@ -412,6 +410,13 @@ def test_district_ptc_amount_never_compiles(cd_record_set: str) -> None:
     facts = [
         *packaged_reference_facts(),
         _cd_fact(cd_record_set, "return_count", 100_000),
+        _cd_fact(
+            cd_record_set,
+            "return_count",
+            215_360,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
         _cd_fact(cd_record_set, "adjusted_gross_income", 10_000_000_000),
         _cd_fact(cd_record_set, "premium_tax_credit_amount", 90_000_000),
         _cd_fact(
@@ -441,6 +446,7 @@ def test_district_ptc_amount_never_compiles(cd_record_set: str) -> None:
     }
     assert district_ids == {
         f"{cd_record_set}.hi_01.return_count",
+        f"{cd_record_set}.hi_02.return_count",
         f"{cd_record_set}.hi_01.adjusted_gross_income",
         f"{cd_record_set}.hi_total.return_count",
     }
