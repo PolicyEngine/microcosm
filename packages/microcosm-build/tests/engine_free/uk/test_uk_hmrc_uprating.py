@@ -401,6 +401,8 @@ def test_the_two_leg_index_keeps_to_one_leg_outside_the_datasets_year() -> None:
     )
     with pytest.raises(ValueError, match="never moves a value backwards"):
         _align_two_legs(late)
+
+
 def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -> None:
     """The SPI income-by-area cells carry no band: they move by HMRC's
     projected growth of all taxpayers (counts) and their total income
