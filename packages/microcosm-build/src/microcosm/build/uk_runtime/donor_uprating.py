@@ -7,7 +7,12 @@ column, the basis that moves it from ``from_period`` to ``to_period``:
 * ``engine_parameter`` — the ratio of a PolicyEngine UK parameter at the two
   January-first instants (the SPI-donor precedent in ``spi_income``), read from
   the installed engine so the factor stays lockstepped with what the engine
-  itself applies afterwards;
+  itself applies afterwards. That ratio is a full year's step. A column that
+  declares ``from_window: fiscal_year`` instead starts from the April-to-March
+  year beginning in ``from_period``, placed on the calendar-year index by the
+  operation's ``fiscal_year_bridge`` weights (three quarters in the starting
+  year, one in the next), and ends at calendar ``to_period`` (microcosm#1113:
+  a full step would carry a 2023-24 diary a quarter past calendar 2024);
 * ``vendored_litre_proxy`` — publisher outturn for road fuel: the DESNZ annual
   pump-price ratio times the HMRC fiscal-year litres ratio over the ONS
   population ratio, all read from the vendored Chronicle facts (María's ruling
@@ -34,6 +39,12 @@ UPRATE_DONOR_COLUMNS_KIND = "uprate_donor_columns"
 BASIS_ENGINE_PARAMETER = "engine_parameter"
 BASIS_VENDORED_LITRE_PROXY = "vendored_litre_proxy"
 BASIS_VENDORED_RATIO = "vendored_ratio"
+#: A column whose donor values are at the prices of the April-to-March year
+#: starting in ``from_period``, not of calendar ``from_period``.
+FROM_WINDOW_FISCAL_YEAR = "fiscal_year"
+#: Where an April-to-March year sits on a calendar-year index: three quarters
+#: in its starting year and one in the next.
+UK_FISCAL_YEAR_CALENDAR_WEIGHTS = (0.75, 0.25)
 
 ParameterReader = Callable[[str, int], float]
 
@@ -86,11 +97,21 @@ def donor_uprating_factors(
         raise ValueError(
             f"uprate_donor_columns lists exempt columns as uprated: {overlap}."
         )
+    bridge = _fiscal_year_bridge(parameters)
     reader = parameter_reader
     factors: dict[str, float] = {}
     receipt_columns: dict[str, dict[str, Any]] = {}
     for column, spec in columns.items():
         basis = str(spec.get("basis") or "")
+        window = spec.get("from_window")
+        if window is not None and (
+            basis != BASIS_ENGINE_PARAMETER or window != FROM_WINDOW_FISCAL_YEAR
+        ):
+            raise ValueError(
+                f"uprate_donor_columns column {column!r} declares from_window "
+                f"{window!r}; only a fiscal_year window on an engine_parameter "
+                "basis is supported."
+            )
         if basis == BASIS_ENGINE_PARAMETER:
             if reader is None:
                 reader = engine_parameter_reader()
@@ -98,8 +119,25 @@ def donor_uprating_factors(
             before = reader(path, from_period)
             after = reader(path, to_period)
             _require_positive(column, before, after)
-            factor = after / before
             detail = {"parameter_path": path, "before": before, "after": after}
+            if window is None:
+                factor = after / before
+            else:
+                if bridge is None:
+                    raise ValueError(
+                        f"uprate_donor_columns column {column!r} declares a "
+                        "fiscal_year window but the operation declares no "
+                        "fiscal_year_bridge."
+                    )
+                following = (
+                    after
+                    if to_period == from_period + 1
+                    else reader(path, from_period + 1)
+                )
+                _require_positive(column, before, following)
+                base = bridge[0] * before + bridge[1] * following
+                factor = after / base
+                detail.update({"from_window": window, "base": base})
         elif basis == BASIS_VENDORED_LITRE_PROXY:
             factor, detail = _litre_proxy_factor(spec, from_period, to_period)
             audit_path = spec.get("audit_parameter_path")
@@ -133,7 +171,33 @@ def donor_uprating_factors(
         "columns": receipt_columns,
         "exempt": list(exempt),
     }
+    if bridge is not None:
+        receipt["fiscal_year_bridge"] = {
+            "start_year_weight": bridge[0],
+            "next_year_weight": bridge[1],
+        }
     return factors, receipt
+
+
+def _fiscal_year_bridge(parameters: Mapping[str, Any]) -> tuple[float, float] | None:
+    """The declared calendar-year weights of the April-to-March starting year."""
+
+    declared = parameters.get("fiscal_year_bridge")
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping):
+        raise ValueError("uprate_donor_columns fiscal_year_bridge must be a mapping.")
+    weights = (
+        float(declared["start_year_weight"]),
+        float(declared["next_year_weight"]),
+    )
+    if weights != UK_FISCAL_YEAR_CALENDAR_WEIGHTS:
+        raise ValueError(
+            "uprate_donor_columns fiscal_year_bridge must be "
+            f"{UK_FISCAL_YEAR_CALENDAR_WEIGHTS}: an April-to-March year has three "
+            f"quarters in its starting year and one in the next; got {weights}."
+        )
+    return weights
 
 
 def apply_donor_uprating(

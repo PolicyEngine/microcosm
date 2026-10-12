@@ -121,6 +121,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.h5_io import (
+    US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION,
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
@@ -254,11 +255,9 @@ __all__ = [
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 """Schema version for the companion pool build manifest."""
 
-# ``--legacy-two-spine`` is a byte-stable compatibility surface.  Stacked
-# publication and checkpoint-envelope versions may advance without rewriting
-# the retiring pipeline's last supported envelope.
+# ``--legacy-two-spine`` retains the retiring publication envelope. Stacked
+# publication and checkpoint-envelope versions may advance independently.
 _LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
-_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
 
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
@@ -1268,7 +1267,7 @@ def _legacy_pool_checkpoint_base_identity(
     identity = _pool_checkpoint_base_identity(
         verified_inputs,
         policyengine_us_version=policyengine_us_version,
-        materializer_version=_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+        materializer_version=US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION,
     )
     pool_code = dict(identity["pool_code"])
     del pool_code["late_producer_schedule"]
@@ -4470,7 +4469,7 @@ def _write_outputs(
             "artifact_kind": ("populace_us_multispine_pool_checkpoint_provenance"),
             "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
             "materializer_version": (
-                _LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION
             ),
             "enabled": False,
             "agreement": {
@@ -4959,7 +4958,7 @@ def _main_legacy(args: argparse.Namespace) -> int:
     checkpoint_store = _PoolStageCheckpointStore(
         outputs.checkpoint_root,
         base_identity=_legacy_pool_checkpoint_base_identity(verified_inputs),
-        materializer_version=_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+        materializer_version=US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION,
     )
     outputs = _with_checkpoint_identity(
         outputs,

@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6be9d4f71cc00815c9ad2c93f0d58f42d7c3ba6417cb8a2ab31ad9bf4c8f73ea"
+    "9c08a68f9d63fff9f54dd21abb0a212723ff2074f0381cd7b69165e97c4c5ef6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "8e635a5f341d304b87f277a68c15e1069972836c8858ed69115b972bf6d70b67"
+    "942bc58008b07fd3477e9dd7a407a780a5c0ff37fc1c6790cf1beb858c604f1d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fea3ba9ad91bd163cd08542872e1bb7627716cb6e4579f6f87de5c8cf83b5eea"
+    "f8d079d8ce18afe076d99ddb237bc2fb45bc9f413c6fb771e3fe7348b2e27598"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -475,6 +475,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_road_fuel_incidence": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_recomposed_totals": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support_pricing": ("stage_health", "transferred"),
@@ -580,6 +584,10 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_lcfs_consumption_support",
         "uk_stage_lcfs_consumption_energy_rake",
         "uk_stage_lcfs_consumption_bus_pricing",
+        "uk_stage_lcfs_consumption_road_fuel_incidence",
+        "uk_stage_lcfs_consumption_road_fuel_level",
+        "uk_stage_lcfs_consumption_recomposed_totals",
+        "uk_stage_lcfs_consumption_basis",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
@@ -796,8 +804,12 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_nts_bus_travel_support",
@@ -851,15 +863,15 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "da12b5be6236783cb7af79279175116548d7c99da283e4e45ef40b3ba3cd3168"
+            "f84884d2213c26b7fe70fe51a5137ac929e2114ad40bd6d2e652a27a259b0339"
         ),
         "policy_sha256": (
-            "447841b7d7e57abf7e64574884b6b3db15ee44f4be09e4863cda066f0005e498"
+            "984cc9abf94cc119fca8b3c5ca1a36633cdfdf17caf060e4d17a493151e50e18"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "bb974753aa327f8d3a8c076763c427c008db4e1c8fddc418022a277d3ff25378"
+            "763df9874b4655caea7f6a54bb301fea0b02ba47dedde13f5fa65dd9428afad0"
         ),
         "policy_sha256": (
             "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
@@ -867,7 +879,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "b08c43d431859f03845327f5a321047adb32e74e78035a5fceca35346e5234f6"
+            "bf62006c78b4f2d4b903c3b869a464de532158326acbf59684681de1e03beb9e"
         ),
         "policy_sha256": (
             "5711e4f07003aa548de9a1c9b67e3949bc99294a4a7302f956735983f8b67d4c"

@@ -1894,6 +1894,8 @@ def finalize_us_puf_tax_detail_predictions(
     retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
     placement, and sparsification happen only here, after every target has
     drawn; later targets therefore always condition on raw predecessor draws.
+    CPS Social Security reporters retain their source components after
+    placement; only nonreporters receive the PUF Social Security imputation.
 
     The module tail-bound configuration is validated against the canonical
     production surface and applies whenever a configured target is present.
@@ -2147,6 +2149,11 @@ def finalize_us_puf_tax_detail_predictions(
                 person_clone_index=person_clone_index,
                 tax_unit_clone_index=tax_unit_clone_index,
             )
+    _preserve_cps_reported_social_security(
+        tables["person"],
+        source_person=frame.table("person"),
+        requested_components=person_outputs,
+    )
     return Frame(
         tables,
         frame.schema,
@@ -4157,6 +4164,66 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
         totals=calibrated_totals,
         nonnegative=False,
     )
+
+
+def _preserve_cps_reported_social_security(
+    person: pd.DataFrame,
+    *,
+    source_person: pd.DataFrame,
+    requested_components: Sequence[str],
+) -> None:
+    """Keep CPS reporters' person-level benefits on the PUF support arm (#1178).
+
+    ``SS_VAL > 0`` is the explicit source-receipt rule. The upstream
+    CPS-carried producer splits that reported amount into the four engine
+    leaves. Restore those components exactly after all PUF placement, even
+    when a PUF draw is larger: the donor observes tax-unit gross benefits
+    (E02400), not this host person's benefit or its receipt status. Taxable
+    Social Security is calculated by the engine from the resulting inputs;
+    it is not a persisted PUF tax-unit output that needs reconciliation.
+
+    Nonreporters keep the existing PUF imputation, allowing donor support for
+    survey underreporting. A frame without SS_VAL supplies no explicit CPS
+    receipt evidence and keeps that same imputation. The ASEC arm is never
+    selected. This changes finalized inputs, not the raw QRF predecessor
+    draws used to condition subsequent targets. Invalid reporter source
+    components fail explicitly rather than restoring an erased benefit.
+    """
+
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components or "SS_VAL" not in source_person:
+        return
+    reporters = puf_tax_detail_clone_mask(source_person, entity="person") & (
+        pd.to_numeric(source_person["SS_VAL"], errors="coerce").fillna(0.0) > 0.0
+    )
+    if not reporters.any():
+        return
+    source_components = (
+        source_person.loc[reporters]
+        .reindex(columns=list(components))
+        .apply(pd.to_numeric, errors="coerce")
+        .to_numpy(dtype=np.float64)
+    )
+    reported = pd.to_numeric(source_person.loc[reporters, "SS_VAL"]).to_numpy(
+        dtype=np.float64
+    )
+    source_totals = source_components.sum(axis=1)
+    valid = (
+        np.isfinite(source_components).all(axis=1)
+        & (source_components >= 0.0).all(axis=1)
+        & (source_totals >= reported)
+    )
+    if not valid.all():
+        raise ValueError(
+            "CPS-reported Social Security preservation requires nonnegative "
+            "source components covering SS_VAL; "
+            f"{int((~valid).sum())} PUF reporter row(s) violate the source contract."
+        )
+    person.loc[reporters, list(components)] = source_components
 
 
 def _reconcile_puf_social_security_components(

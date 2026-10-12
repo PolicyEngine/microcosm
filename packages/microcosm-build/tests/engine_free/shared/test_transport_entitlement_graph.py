@@ -21,12 +21,19 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     validate_transport_activation,
 )
-from microcosm.build.transport.takeup_kernels import decode_bands, decode_gap
+from microcosm.build.transport.takeup_kernels import (
+    decode_bands,
+    decode_cell_diagnostics,
+    decode_gap,
+    reporting_cell_declarations,
+)
+from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 from microcosm.graph import compile_graph, graph_to_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.transport_entitlement import (
     AS_INPUTS,
     AS_OUTPUTS,
+    EXPORT_FILENAME,
     TOY_DECLARATIONS,
     make_entitlement_fixture,
     run_entitlement_graph,
@@ -97,6 +104,311 @@ def _declared_keys(fixture, graph, exported):
             kernel_capabilities=kernel.capabilities,
         )
     return keys
+
+
+def _cell_support_fixture(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture", variants=False)
+    spec = copy.deepcopy(fixture.spec)
+    resources = spec["resources"]
+    grid = {
+        "entity": "family",
+        "measure": "toy_as_weekly",
+        "period": "2026-27",
+        "annualisation_factor": 52,
+        "tables": [
+            {
+                "name": "toy_type",
+                "axes": [
+                    {
+                        "column": "family_type",
+                        "values": [
+                            "single",
+                            "couple",
+                            "sole_parent",
+                            "couple_with_children",
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    resources["scenarios"]["gap_conventions"] = {"reporting_cells": grid}
+    resources["gates"]["gates"].append(
+        {
+            "id": "toy_cell_support",
+            "gate": "cell_support",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {
+                "required_scenarios": [
+                    row["id"] for row in resources["scenarios"]["scenarios"]
+                ],
+                "required_cells": [
+                    row["name"] for row in reporting_cell_declarations(grid)
+                ],
+                # CREATE owns and carries the declared source-household concept.
+                "aggregation_column": SOURCE_HOUSEHOLD_ID_COLUMN,
+                "required_weight_entity": "household",
+                "required_weight_kind": "calibrated",
+                "minimum_cell_ess": 100,
+                "maximum_contribution_cv": 2,
+                "maximum_single_donor_dollar_share": 0.1,
+                "target_minimum_cell_ess": 400,
+                "target_maximum_single_donor_dollar_share": 0.05,
+            },
+        }
+    )
+    return fixture.reprepare(spec)
+
+
+def test_cell_support_graph_enforces_scenario_complete_diagnostics_and_suppresses_cells(
+    tmp_path,
+):
+    fixture = _cell_support_fixture(tmp_path)
+    graph = fixture.graph()
+    collector = "nz.as.bands.cell_diagnostics"
+    gate = graph.node("nz.gates.terminal")
+    assert any(
+        edge.name == "cell_diagnostics" and edge.producer == collector
+        for edge in gate.artifact_inputs
+    )
+    manifest, store, exported = run_entitlement_graph(
+        tmp_path / "supported", fixture, graph=graph
+    )
+    assert exported.exists()
+    diagnostics = decode_cell_diagnostics(
+        _artifact(manifest, store, collector, "cell_diagnostics")
+    )
+    assert {row["scenario"] for row in diagnostics["scenarios"]} == {
+        row["id"] for row in fixture.spec["resources"]["scenarios"]["scenarios"]
+    }
+    assert all(
+        cell["suppressed"]
+        for scenario in diagnostics["scenarios"]
+        for cell in scenario["cells"]
+    )
+    assert (
+        decode_bands(_artifact(manifest, store, "nz.as.bands", "bands"))["bands"] == []
+    )
+    report = json.loads(_artifact(manifest, store, "nz.gates.terminal", "gate_report"))
+    assert report["enforcement"]["artifact_permitted"] is True
+
+
+def test_cell_support_graph_adds_diagnostics_to_explicit_gap_output_declarations(
+    tmp_path,
+):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    entitlement = spec["resources"]["entitlement_graph"]
+    node_groups = [
+        entitlement.get(template, [])
+        for template in ("nodes", "scenario_nodes", "variant_nodes")
+    ]
+    node_groups.extend(
+        scenario.get("nodes", [])
+        for scenario in spec["resources"]["scenarios"]["scenarios"]
+    )
+    for declared_nodes in node_groups:
+        for row in declared_nodes:
+            if row["kernel"] == "takeup.gap@1":
+                row["artifact_outputs"] = [
+                    {
+                        "name": "gap",
+                        "type": {"name": "microcosm.takeup.gap", "schema_version": 1},
+                    }
+                ]
+    graph = fixture.reprepare(spec).graph()
+    compile_graph(graph)
+    assert all(
+        {output.name for output in node.artifact_outputs} == {"gap", "cell_diagnostics"}
+        for node in graph.nodes
+        if node.kernel == "takeup.gap@1"
+    )
+
+
+def _with_cell_target(fixture, **overrides):
+    """Return the fixture's spec with a tracked cell-target gate appended."""
+    spec = copy.deepcopy(fixture.spec)
+    gates = spec["resources"]["gates"]["gates"]
+    contract = next(g for g in gates if g["gate"] == "cell_support")["parameters"]
+    parameters = {
+        "required_scenarios": list(contract["required_scenarios"]),
+        "required_cells": list(contract["required_cells"]),
+        "aggregation_column": contract["aggregation_column"],
+        "required_weight_entity": "household",
+        "required_weight_kind": "calibrated",
+        "minimum_cell_ess": contract["target_minimum_cell_ess"],
+        "maximum_single_donor_dollar_share": contract[
+            "target_maximum_single_donor_dollar_share"
+        ],
+    }
+    parameters.update(overrides)
+    gates.append(
+        {
+            "id": "toy_cell_support_target",
+            "gate": "cell_support_target",
+            "phase": "terminal",
+            "criticality": "diagnostic",
+            "parameters": parameters,
+        }
+    )
+    return spec
+
+
+def test_cell_support_target_matching_the_contract_builds(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    fixture.reprepare(_with_cell_target(fixture)).graph()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"minimum_cell_ess": 1_000_000},
+        {"maximum_single_donor_dollar_share": 1},
+        {"required_cells": ["toy_type/single"]},
+        {"required_scenarios": ["S0"]},
+        {"aggregation_column": "household_id"},
+    ],
+    ids=["ess", "share", "cells", "scenarios", "aggregation"],
+)
+def test_cell_support_target_drift_from_the_contract_is_refused(tmp_path, overrides):
+    fixture = _cell_support_fixture(tmp_path)
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(_with_cell_target(fixture, **overrides)).graph()
+
+
+def test_cell_support_contract_target_drift_is_refused(tmp_path):
+    # The reviewer's mutant: change only the contract's copy of the target.
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture)
+    contract = next(
+        g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
+    )
+    contract["parameters"]["target_minimum_cell_ess"] = 1_000_000
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
+def test_cell_support_target_lists_in_another_order_build(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    contract = _cell_support_contract(fixture.spec)
+    fixture.reprepare(
+        _with_cell_target(
+            fixture,
+            required_cells=list(reversed(contract["required_cells"])),
+            required_scenarios=list(reversed(contract["required_scenarios"])),
+        )
+    ).graph()
+
+
+def test_cell_support_target_with_null_not_applicable_is_checked(tmp_path):
+    # The gate parser treats "not_applicable": null as an active gate.
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture, minimum_cell_ess=1_000_000)
+    spec["resources"]["gates"]["gates"][-1]["not_applicable"] = None
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "minimum_cell_ess",
+        "maximum_single_donor_dollar_share",
+        "required_cells",
+        "required_scenarios",
+        "aggregation_column",
+    ],
+)
+def test_cell_support_target_omitting_a_shared_value_is_refused(tmp_path, key):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture)
+    del spec["resources"]["gates"]["gates"][-1]["parameters"][key]
+    with pytest.raises(ValueError, match="must both declare"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize("malformed", ["mixed", "mappings", "string"])
+def test_cell_support_target_malformed_lists_are_refused_by_name(tmp_path, malformed):
+    fixture = _cell_support_fixture(tmp_path)
+    cells = list(_cell_support_contract(fixture.spec)["required_cells"])
+    overrides = {
+        "mixed": {"required_cells": [*cells, 1]},
+        "mappings": {"required_cells": [{"name": cell} for cell in cells]},
+        # The same characters as one cell name, as a list: equal only if a
+        # string were sorted like a list.
+        "string": {"required_cells": sorted(cells[0])},
+    }[malformed]
+    if malformed == "string":
+        spec = _with_cell_target(fixture, **overrides)
+        _cell_support_contract(spec)["required_cells"] = cells[0]
+    else:
+        spec = _with_cell_target(fixture, **overrides)
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
+def test_cell_support_contract_with_null_not_applicable_is_the_contract(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    next(g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support")[
+        "not_applicable"
+    ] = None
+    nodes = {node.id: node.kernel for node in fixture.reprepare(spec).graph().nodes}
+    assert nodes == {node.id: node.kernel for node in fixture.graph().nodes}
+    assert "nz.as.bands.cell_diagnostics" in nodes
+
+
+def _cell_support_contract(spec):
+    return next(
+        g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
+    )["parameters"]
+
+
+@pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])
+def test_cell_support_graph_absence_prevents_export(tmp_path, absence):
+    fixture = _cell_support_fixture(tmp_path)
+    graph = fixture.graph()
+    if absence == "diagnostics":
+        gate = graph.node("nz.gates.terminal")
+        changed = replace(
+            gate,
+            artifact_inputs=tuple(
+                edge for edge in gate.artifact_inputs if edge.name != "cell_diagnostics"
+            ),
+        )
+        graph = replace(
+            graph,
+            nodes=tuple(
+                changed if node.id == gate.id else node for node in graph.nodes
+            ),
+        )
+    elif absence == "scenario":
+        collector = graph.node("nz.as.bands.cell_diagnostics")
+        changed = replace(collector, artifact_inputs=collector.artifact_inputs[:-1])
+        graph = replace(
+            graph,
+            nodes=tuple(
+                changed if node.id == collector.id else node for node in graph.nodes
+            ),
+        )
+    else:
+        changed_nodes = []
+        for node in graph.nodes:
+            if node.kernel == "takeup.gap@1":
+                node = replace(
+                    node,
+                    params={
+                        **node.params,
+                        "source_household_column": "missing_source_identity",
+                    },
+                )
+            changed_nodes.append(node)
+        graph = replace(graph, nodes=tuple(changed_nodes))
+    with pytest.raises((ValueError, RuntimeError), match="gate|scenario|lineage"):
+        run_entitlement_graph(tmp_path / "blocked", fixture, graph=graph)
+    assert not (tmp_path / "blocked" / EXPORT_FILENAME).exists()
 
 
 @EXECUTED

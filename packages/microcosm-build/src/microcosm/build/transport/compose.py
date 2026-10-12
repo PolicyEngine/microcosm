@@ -210,7 +210,9 @@ class TransportExtension:
     Checkpoints name nodes in the extended graph and run after calibration,
     before the skeleton H5 is written; they cannot read the exported dataset.
     ``package_inputs`` explicitly connect typed extension evidence to a
-    skeleton package receipt. No other skeleton node can gain predecessors.
+    skeleton package receipt. ``gate_inputs`` connect required extension
+    evidence to a skeleton battery, whose verdict already governs export.
+    No other skeleton node can gain predecessors.
     The factory receives a deep copy of the caller's spec.
     """
 
@@ -218,6 +220,7 @@ class TransportExtension:
     sources: tuple[SourceRef, ...] = ()
     checkpoints: tuple[str, ...] = ()
     package_inputs: tuple[tuple[str, ArtifactInput], ...] = ()
+    gate_inputs: tuple[tuple[str, ArtifactInput], ...] = ()
 
     def __post_init__(self) -> None:
         if not callable(self.factory):
@@ -238,6 +241,12 @@ class TransportExtension:
                 raise TypeError(
                     "Extension package inputs require typed artifact edges."
                 )
+        if not isinstance(self.gate_inputs, tuple):
+            raise TypeError("Extension gate inputs must be a tuple.")
+        for target, edge in self.gate_inputs:
+            _safe_node_id(target)
+            if not isinstance(edge, ArtifactInput):
+                raise TypeError("Extension gate inputs require typed artifact edges.")
 
     def __call__(
         self,
@@ -1220,9 +1229,19 @@ def compose_transport_graph(
     additional: list[Node] = []
     additional_sources: list[SourceRef] = []
     package_inputs: dict[str, list[ArtifactInput]] = {}
+    gate_inputs: dict[str, list[ArtifactInput]] = {}
     source_names = {source.name for source in skeleton.sources}
     for factory in config.extensions:
         if isinstance(factory, TransportExtension):
+            for target, edge in factory.gate_inputs:
+                if (
+                    target not in compiled.order
+                    or skeleton.node(target).kernel != "gates.battery@1"
+                ):
+                    raise ValueError(
+                        "Extension gate evidence may target only a skeleton battery node."
+                    )
+                gate_inputs.setdefault(target, []).append(edge)
             for target, edge in factory.package_inputs:
                 if (
                     target not in compiled.order
@@ -1254,12 +1273,20 @@ def compose_transport_graph(
         for node in nodes:
             _safe_node_id(node.id)
         additional.extend(nodes)
-    if not additional and not additional_sources and not package_inputs:
+    if (
+        not additional
+        and not additional_sources
+        and not package_inputs
+        and not gate_inputs
+    ):
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
-        edges = tuple(package_inputs.get(node.id, ()))
+        edges = (
+            *package_inputs.get(node.id, ()),
+            *gate_inputs.get(node.id, ()),
+        )
         aliases = [edge.name for edge in (*node.artifact_inputs, *edges)]
         if len(aliases) != len(set(aliases)):
             raise ValueError(
@@ -1280,9 +1307,11 @@ def compose_transport_graph(
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
     for node in skeleton.nodes:
-        expected = set(compiled.predecessors[node.id]) | {
-            edge.producer for edge in package_inputs.get(node.id, ())
-        }
+        expected = (
+            set(compiled.predecessors[node.id])
+            | {edge.producer for edge in package_inputs.get(node.id, ())}
+            | {edge.producer for edge in gate_inputs.get(node.id, ())}
+        )
         if set(extended.predecessors[node.id]) != expected:
             raise ValueError(
                 f"An extension would re-key skeleton node {node.id!r}; "

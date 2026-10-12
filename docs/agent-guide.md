@@ -217,6 +217,13 @@ wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
 publisher's offline `--preflight-only` check and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
+Alongside its out-of-sample reports, it writes
+`us_ssi_social_security_holdout.json`: the household-weighted share of SSI
+recipients also receiving Social Security at ages 18–64 and 65+, compared with
+SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
+never feeds calibration or refuses a release; unavailable measurements are
+reported explicitly. The report records the difference between SSA's December
+2024 recipient snapshot and the model's positive annual benefits.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
@@ -392,9 +399,13 @@ local `--spec-dir`.
 Extensions can wrap a factory in `TransportExtension` to declare additional
 sources and ordered checkpoints. Source names must be new; skeleton predecessor
 sets must stay identical except for explicit `package_inputs` artifact edges
-from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
-nodes cannot gain predecessors. Checkpoints run after calibration and before export,
-and must not depend on the exported dataset. `transport_rules_node` supplies
+from extension nodes to a terminal `transport.package@1` receipt and the
+battery evidence edges described below. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. Explicit `gate_inputs` artifact
+edges may attach required extension diagnostics to a skeleton
+`gates.battery@1` node; its existing report edge governs export permission.
+Only package receipts and battery nodes may gain these declared artifact
+predecessors. `transport_rules_node` supplies
 the prepared engine reference and period from the binding, so extensions do
 not repeat period values.
 An optional `entitlement_graph.json` legacy resource installs the entitlement
