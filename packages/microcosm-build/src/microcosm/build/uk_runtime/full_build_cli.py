@@ -2912,6 +2912,7 @@ def _run_with_telemetry(
         args,
         build_id=build_id,
         run_kind="dry_run" if args.dry_run else "calibration",
+        close_service_on_finish=False,
     )
     emitter.transition_stage(
         "preflight",

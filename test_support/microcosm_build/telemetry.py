@@ -58,10 +58,16 @@ def fake_publish_graph(
 class FakeTelemetryEmitter(LocalTelemetryEmitter):
     """Exercise real lifecycle methods without starting a service or socket."""
 
-    def __init__(self, run: TelemetryRun) -> None:
+    def __init__(
+        self, run: TelemetryRun, *, close_service_on_finish: bool = True
+    ) -> None:
         self.messages: list[Mapping[str, Any]] = []
         self._lifecycle = LifecycleState()
-        super().__init__(run=run, transport=self)
+        super().__init__(
+            run=run,
+            transport=self,
+            close_service_on_finish=close_service_on_finish,
+        )
 
     def send(self, payload: Mapping[str, Any]) -> None:
         self._lifecycle, events = process_request(self._lifecycle, payload)

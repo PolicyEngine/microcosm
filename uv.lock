@@ -848,7 +848,7 @@ requires-dist = [
     { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
-    { name = "microcosm-emitter", git = "https://github.com/PolicyEngine/microcosm-emitter?rev=e522ced07d48d402e77fc63f30b97451c733204f" },
+    { name = "microcosm-emitter", git = "https://github.com/PolicyEngine/microcosm-emitter?rev=7fef7c91641c9fc487e55d0e6b4717eb62a92376" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
@@ -966,7 +966,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 [[package]]
 name = "microcosm-emitter"
 version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microcosm-emitter?rev=e522ced07d48d402e77fc63f30b97451c733204f#e522ced07d48d402e77fc63f30b97451c733204f" }
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?rev=7fef7c91641c9fc487e55d0e6b4717eb62a92376#7fef7c91641c9fc487e55d0e6b4717eb62a92376" }
 dependencies = [
     { name = "alembic" },
     { name = "httpx" },

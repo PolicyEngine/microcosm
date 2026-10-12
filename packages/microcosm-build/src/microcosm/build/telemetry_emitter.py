@@ -35,8 +35,21 @@ from microcosm.build.telemetry_identity import runtime_identity
 class LocalTelemetryEmitter(EmitterTelemetryClient):
     """Supply build identity and select both workers in one emitter process."""
 
-    def __init__(self, *, run, transport, handle=None, graph_client=None):
-        super().__init__(run=run, transport=transport, handle=handle)
+    def __init__(
+        self,
+        *,
+        run,
+        transport,
+        handle=None,
+        graph_client=None,
+        close_service_on_finish: bool = True,
+    ):
+        super().__init__(
+            run=run,
+            transport=transport,
+            handle=handle,
+            close_service_on_finish=close_service_on_finish,
+        )
         self._graph_client = (
             graph_client if graph_client is not None else GraphPublicationClient()
         )
@@ -55,6 +68,7 @@ class LocalTelemetryEmitter(EmitterTelemetryClient):
         heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
         startup_timeout_seconds: float = 3.0,
         spool_path: Path | str | None = None,
+        close_service_on_finish: bool = True,
     ) -> LocalTelemetryEmitter:
         run = TelemetryRun(
             run_id=run_id,
@@ -88,12 +102,17 @@ class LocalTelemetryEmitter(EmitterTelemetryClient):
                 SERVICE_START_WARNING.format(error_type=type(error).__name__),
                 file=sys.stderr,
             )
-            return cls(run=run, transport=None)
+            return cls(
+                run=run,
+                transport=None,
+                close_service_on_finish=close_service_on_finish,
+            )
         return cls(
             run=run,
             transport=handle.client.for_module("telemetry"),
             handle=handle,
             graph_client=GraphPublicationClient(handle.client.for_module("orrery")),
+            close_service_on_finish=close_service_on_finish,
         )
 
     def publication_inventory(

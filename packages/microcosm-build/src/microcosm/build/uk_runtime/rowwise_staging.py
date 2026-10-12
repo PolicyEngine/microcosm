@@ -233,6 +233,7 @@ def start_telemetry_emitter(
     *,
     build_id: str,
     run_kind: str = "calibration",
+    close_service_on_finish: bool = True,
 ) -> LocalTelemetryEmitter:
     """Start or reuse the process-local emitter for one UK build attempt."""
 
@@ -253,6 +254,7 @@ def start_telemetry_emitter(
         pipeline=posture.pipeline,
         candidate_id=args.staging_candidate_id or build_id,
         run_kind=run_kind,
+        close_service_on_finish=close_service_on_finish,
     )
     return _ACTIVE_EMITTER
 

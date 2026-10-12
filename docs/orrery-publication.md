@@ -8,9 +8,14 @@ Hugging Face artifact staging, and register graph/evidence files and an
 
 Microcosm's metadata adapter starts one local emitter service with two independent
 workers: live telemetry and completed graph publication. The `microcosm-emitter` package
-own sockets, authentication, persistence, retries and resource sampling.
+owns sockets, authentication, persistence, retries and resource sampling.
 Microcosm retains graph generation, public-file selection and HF staging.
 Slow uploads cannot delay socket acknowledgement or telemetry delivery.
+
+UK full-build commands explicitly defer process shutdown when recording a completed,
+validation-refused or failed telemetry outcome. Their final cleanup closes the combined
+process after graph inventory and enqueue requests, so failure evidence uses the same
+graph socket. Other callers close the process automatically when reporting their outcome.
 
 Publication IDs do not depend on telemetry run IDs. Jobs use SQLAlchemy ORM and
 Alembic inside the emitter service's existing local SQLite database. Pending jobs survive missing or

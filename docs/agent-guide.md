@@ -103,6 +103,12 @@ and HTTP-delivery tests belong in microcosm-emitter; do not copy them
 into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
 sockets or service processes.
 
+The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
+leaves the graph worker available, and that caller's existing `finally` cleanup
+closes the combined service. Other callers close automatically when they finish.
+Keep validation-refused outcomes and structured
+failure codes intact when changing the adapter.
+
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.

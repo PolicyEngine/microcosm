@@ -101,7 +101,9 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
         run = telemetry_emitter.TelemetryRun(
             **{name: value for name, value in kwargs.items() if name in fields}
         )
-        emitter = FakeTelemetryEmitter(run)
+        emitter = FakeTelemetryEmitter(
+            run, close_service_on_finish=kwargs.get("close_service_on_finish", True)
+        )
         emitters.append(emitter)
         return emitter
 

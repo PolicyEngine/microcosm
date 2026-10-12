@@ -242,3 +242,153 @@ def test_graph_receipt_poll_uses_the_existing_module_client(monkeypatch, tmp_pat
     )
     assert receipt["status"] == "published"
     assert calls == ["enqueue", "receipt"]
+
+
+def test_adapter_assigns_host_cleanup_to_the_build_finally(monkeypatch):
+    configured = []
+
+    def initialize(self, **options):
+        configured.append(options)
+
+    monkeypatch.setattr(adapter.EmitterTelemetryClient, "__init__", initialize)
+    adapter.LocalTelemetryEmitter(
+        run=adapter.TelemetryRun("synthetic", "uk", "full"),
+        transport=None,
+        close_service_on_finish=False,
+    )
+    assert configured[0]["close_service_on_finish"] is False
+
+
+@pytest.mark.parametrize("outcome", ["blocked", "failed", "completed"])
+def test_graph_publication_precedes_host_cleanup_after_recording_an_outcome(
+    monkeypatch, tmp_path, outcome
+):
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    operations, queries = [], []
+    telemetry = FakeTelemetryEmitter(adapter.TelemetryRun("synthetic", "uk", "full"))
+    inventory = {"version": 1, "publication_id": "synthetic", "files": []}
+
+    def request(message, **options):
+        operations.append(message["command"])
+        queries.append(message)
+        if message["command"] == "inventory":
+            return {"inventory": inventory}
+        return {
+            "receipt": {
+                "version": 1,
+                "publication_id": "synthetic",
+                "status": "pending",
+                "attempts": 1,
+                "error_code": None,
+            }
+        }
+
+    def for_module(name):
+        return {
+            "telemetry": telemetry,
+            "orrery": SimpleNamespace(request=request),
+        }[name]
+
+    handle = SimpleNamespace(
+        client=SimpleNamespace(for_module=for_module),
+        close=lambda: operations.append("close"),
+    )
+    monkeypatch.setattr(adapter, "start_services", lambda *a, **k: handle)
+    monkeypatch.setattr(adapter, "runtime_identity", lambda: {"commit": "synthetic"})
+    emitter = START(
+        adapter.LocalTelemetryEmitter,
+        run_id="synthetic",
+        country_code="uk",
+        pipeline="full",
+        spool_path=tmp_path / "queue.sqlite3",
+        close_service_on_finish=False,
+    )
+    emitter.transition_stage("solve")
+    if outcome == "blocked":
+        emitter.block(
+            phase="post_calibration",
+            blocking_gate_ids=["uk.local.fit"],
+            blocking_failure_count=3,
+            gate_statuses={"uk.local.fit": "FAIL"},
+        )
+    elif outcome == "failed":
+        emitter.fail(
+            ValueError("synthetic validation refusal"),
+            error_code="BUILD_REFUSED",
+            failure_class="refused",
+            failed_during="solve",
+        )
+    else:
+        emitter.complete()
+    assert operations == []
+    assert emitter.available
+    final_events = [event for event in telemetry.events if event["event_type"] == "run"]
+    assert [event["status"] for event in final_events] == [outcome]
+    if outcome == "blocked":
+        assert final_events[0]["details"] == {
+            "phase": "post_calibration",
+            "blocking_gate_ids": ["uk.local.fit"],
+            "blocking_failure_count": 3,
+            "gate_statuses": {"uk.local.fit": "FAIL"},
+        }
+        assert telemetry.events[-2]["event_type"] == "stage"
+        assert telemetry.events[-2]["status"] == "completed"
+    elif outcome == "failed":
+        assert final_events[0]["details"]["error_code"] == "BUILD_REFUSED"
+        assert final_events[0]["details"]["failure_class"] == "refused"
+        assert final_events[0]["details"]["failed_during"] == "solve"
+    # A completed telemetry lifecycle must not prevent requests on the other
+    # module; the existing build finally owns physical service shutdown.
+    try:
+        assert emitter.publication_inventory(tmp_path, {}) == inventory
+        assert emitter.publish_graph(tmp_path, inventory, wait_seconds=0)["status"] == (
+            "pending"
+        )
+    finally:
+        emitter.close()
+    emitter.close()
+    assert [query["command"] for query in queries] == ["inventory", "enqueue"]
+    assert operations == ["inventory", "enqueue", "close"]
+    assert not emitter.available
+    assert (
+        len([event for event in telemetry.events if event["event_type"] == "run"]) == 1
+    )
+
+
+@pytest.mark.parametrize("outcome", ["complete", "fail"])
+def test_default_finish_releases_host_without_an_outer_build_cleanup(outcome):
+    closed = []
+    emitter = adapter.LocalTelemetryEmitter(
+        run=adapter.TelemetryRun("synthetic", "us", "release"),
+        transport=SimpleNamespace(send=lambda message: None),
+        handle=SimpleNamespace(close=lambda: closed.append(True)),
+    )
+    if outcome == "complete":
+        emitter.complete()
+    else:
+        emitter.fail(ValueError("synthetic failure"), error_code="BUILD_FAILED")
+    assert closed == [True]
+    assert not emitter.available
+    emitter.close()
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("outcome", ["block", "fail"])
+def test_outcome_on_disabled_transport_is_safe_and_cannot_restart_service(
+    monkeypatch, outcome
+):
+    monkeypatch.setattr(
+        adapter,
+        "start_services",
+        lambda *a, **k: pytest.fail("outcome started a replacement service"),
+    )
+    emitter = adapter.LocalTelemetryEmitter(
+        run=adapter.TelemetryRun("synthetic", "uk", "full"), transport=None
+    )
+    if outcome == "block":
+        emitter.block(phase="preflight", blocking_gate_ids=[], blocking_failure_count=1)
+    else:
+        emitter.fail(ValueError("refused"), error_code="BUILD_REFUSED")
+    assert not emitter.available
+    emitter.close()
