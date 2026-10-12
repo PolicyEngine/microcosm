@@ -270,6 +270,11 @@ from microcosm.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from microcosm.build.us_runtime.population_structure_holdout import (
+    population_structure_holdout_from_h5,
+    population_structure_holdout_unavailable,
+    write_population_structure_holdout,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
@@ -311,11 +316,6 @@ from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
-)
-from microcosm.build.us_runtime.population_structure_holdout import (
-    population_structure_holdout_from_h5,
-    population_structure_holdout_unavailable,
-    write_population_structure_holdout,
 )
 from microcosm.build.us_runtime.ssi_social_security_holdout import (
     ssi_social_security_holdout_from_sim,
