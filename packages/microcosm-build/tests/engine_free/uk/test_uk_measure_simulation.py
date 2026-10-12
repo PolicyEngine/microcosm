@@ -645,7 +645,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 61
+    assert len(names) == len(set(names)) == 65
     band_h_region_cells = [
         entry
         for entry in exclusions

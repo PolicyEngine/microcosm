@@ -401,3 +401,47 @@ def test_the_two_leg_index_keeps_to_one_leg_outside_the_datasets_year() -> None:
     )
     with pytest.raises(ValueError, match="never moves a value backwards"):
         _align_two_legs(late)
+def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -> None:
+    """The SPI income-by-area cells carry no band: they move by HMRC's
+    projected growth of all taxpayers (counts) and their total income
+    (amounts), Table 2.5's all-ranges rows in the calendar-2025 window
+    (microcosm#1123)."""
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        align_hmrc_row_by_itl_all_band_growth,
+    )
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc.employment_income.count@E14001063@2025",
+                value=40_000.0,
+                lower_bound=None,
+            ),
+        ),
+        country="uk",
+    )
+    counted = align_hmrc_row_by_itl_all_band_growth(
+        _reference("hmrc.itl_2026.taxpayer_count_growth_all_bands"),
+        registry,
+        index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
+    )
+    expected_count = (0.25 * 38.6e6 + 0.75 * 39.8e6) / 36.7e6
+    (count,) = counted.specs
+    assert float(count.metadata["uprating_factor"]) == pytest.approx(expected_count)
+    assert count.value == pytest.approx(40_000.0 * expected_count)
+    amounted = align_hmrc_row_by_itl_all_band_growth(
+        _reference("hmrc.itl_2026.total_income_growth_all_bands"),
+        registry,
+        index_concept="hmrc.itl_2026.total_income_growth_all_bands",
+    )
+    (amount,) = amounted.specs
+    assert float(amount.metadata["uprating_factor"]) == pytest.approx(
+        (0.25 * 1.66e12 + 0.75 * 1.76e12) / 1.53e12
+    )
+    passthrough = align_hmrc_row_by_itl_all_band_growth(
+        _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+        registry,
+        index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
+    )
+    assert passthrough is registry

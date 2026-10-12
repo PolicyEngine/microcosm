@@ -834,7 +834,11 @@
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
-      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095)."
+      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
+      "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nisra.households.northern_ireland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {

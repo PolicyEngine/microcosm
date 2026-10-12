@@ -62,13 +62,11 @@ membership carries the uprated value with its receipt.
   others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses. Employment income follows `obr.average_earnings`, self-employment
-  `obr.per_capita.mixed_income`, dividends and property `obr.per_capita.gdp`,
-  private pensions `obr.private_pension_index`. Savings interest takes two
-  legs (microcosm#1095): `ons.household_interest_income`, the index of its
+  uses: dividends `obr.per_capita.gdp`. Savings interest takes two legs
+  (microcosm#1095): `ons.household_interest_income`, the index of its
   history, to the dataset's year, then `obr.per_capita.gdp`, the index the
   engine's dataset projection applies, to the calibration year (1.1420 x
-  1.0438 = 1.1920 on policyengine-uk 2.122.2). The state pension follows
+  1.0438 = 1.1920 on the pinned engine values). The state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
   (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the
   2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and, for household
