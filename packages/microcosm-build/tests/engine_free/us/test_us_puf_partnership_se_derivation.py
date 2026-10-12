@@ -3,7 +3,7 @@
 ``puf_support._person_source_values`` derives this leaf from raw PUF columns
 only when the donor arrays carry neither the leaf nor the processed
 ``partnership_se_income`` column. The derivation ports the archived
-processed-PUF pipeline (PolicyEngine/policyengine-us-data at
+processed-PUF pipeline (the retired enhanced-CPS repository at
 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, ``datasets/puf/puf.py`` lines
 723-746), copied below as ``_archived_partnership_se``.
 

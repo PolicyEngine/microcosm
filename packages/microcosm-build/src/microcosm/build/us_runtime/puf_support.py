@@ -4385,10 +4385,10 @@ def _puf_partnership_se_net_earnings_from_raw_columns(
     """Derive partnership self-employment net earnings from raw PUF columns.
 
     This ports, operation for operation, the derivation the archived
-    processed-PUF pipeline used for this leaf (PolicyEngine/policyengine-us-data
-    at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
-    ``policyengine_us_data/datasets/puf/puf.py`` lines 723-746), which matches
-    ``part_se`` in Yale Budget Lab Tax-Data's ``src/process_puf.R``. It is a
+    processed-PUF pipeline used for this leaf (the retired enhanced-CPS
+    repository at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
+    ``datasets/puf/puf.py`` lines 723-746), which matches ``part_se`` in Yale
+    Budget Lab Tax-Data's ``src/process_puf.R``. It is a
     residual, not a read of a Schedule K-1 box 14 field: gross self-employment
     earnings less the Schedule C and Schedule F amounts.
 
@@ -4404,8 +4404,10 @@ def _puf_partnership_se_net_earnings_from_raw_columns(
       where it is exactly zero has no partnership activity and gets zero.
 
     No S corporation column (``E26180``, ``E26190``) enters the derivation. A
-    missing or nonnumeric value counts as zero, as the archived ``fillna(0)``
-    did.
+    missing value counts as zero, as the archived ``fillna(0)`` did.
+    ``_numeric_array`` also turns a nonnumeric value into zero, where the
+    archived arithmetic would raise; on numeric float64 arrays the result
+    equals the archived formula bit for bit.
 
     Args:
         arrays: Mapping carrying every column of
