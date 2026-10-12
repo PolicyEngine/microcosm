@@ -194,9 +194,22 @@ def recover_source_dividends(
         (non_qualified + qualified) / carried_ordinary,
         qualified / carried_qualified,
     )
+    # Rounding enters through the stored products, at their own magnitude, and
+    # is divided back by the carried factor.
+    stored_magnitudes = (
+        np.maximum.reduce(
+            [
+                np.abs(non_qualified),
+                np.abs(qualified),
+                np.abs(non_qualified + qualified),
+            ]
+        )
+        / carried_ordinary,
+        np.abs(qualified) / carried_qualified,
+    )
     snapped = tuple(np.rint(values) for values in recovered)
-    for values, grid in zip(recovered, snapped, strict=True):
-        if not np.all(on_dollar_grid(values, grid)):
+    for values, grid, stored in zip(recovered, snapped, stored_magnitudes, strict=True):
+        if not np.all(on_dollar_grid(values, grid, stored)):
             raise RebaseError("recovered dividends are not whole TY2015 dollars")
         if np.any(grid < 0):
             raise RebaseError("recovered dividends are negative")
@@ -209,20 +222,25 @@ GRID_ULPS = 8
 GRID_LIMIT = 2.0**52
 
 
-def on_dollar_grid(values: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    """Within GRID_ULPS units in the last place of a whole dollar.
+def on_dollar_grid(
+    values: np.ndarray, grid: np.ndarray, stored_magnitude: np.ndarray
+) -> np.ndarray:
+    """Within the rounding a recovery by division can add, of a whole dollar.
 
-    Recovering a stored amount by division adds a few units of rounding; on
-    the donor's regular records the largest deviation is 2 (the audit
-    receipt's ``dividends.recovery_max_ulps``), so 8 leaves fourfold room and
-    refuses a quarter dollar at 1e13. Whole dollars are only exact below 2**52,
-    so larger values are refused outright.
+    The allowance is GRID_ULPS units in the last place, of the whole-dollar
+    value or of the stored magnitude it was divided out of, whichever is
+    larger. When the two carried factors are close, as on the donor
+    (1.3914 and 1.3628), that is about 8 units of the value; the donor's
+    regular records deviate by at most 2 (the audit receipt's
+    ``dividends.recovery_max_ulps``). A quarter dollar at 1e13 is refused.
+    Whole dollars are exact only below 2**52, so larger values are refused.
     """
 
     magnitude = np.maximum(np.abs(grid), 1.0)
-    return (magnitude < GRID_LIMIT) & (
-        np.abs(values - grid) <= GRID_ULPS * np.spacing(magnitude)
+    allowance = GRID_ULPS * np.maximum(
+        np.spacing(magnitude), np.spacing(np.maximum(stored_magnitude, 1.0))
     )
+    return (magnitude < GRID_LIMIT) & (np.abs(values - grid) <= allowance)
 
 
 def rebase_dividends(

@@ -58,8 +58,8 @@ MUTATIONS = {
         "        ):\n",
     ),
     "the dollar grid uses a relative tolerance": (
-        "        np.abs(values - grid) <= GRID_ULPS * np.spacing(magnitude)\n",
-        "        np.abs(values - grid) <= 1e-6 * magnitude\n",
+        "    return (magnitude < GRID_LIMIT) & (np.abs(values - grid) <= allowance)\n",
+        "    return (magnitude < GRID_LIMIT) & (np.abs(values - grid) <= 1e-6 * magnitude)\n",
     ),
     "synthetic non-qualified dividends follow the qualified series": (
         "        table.growth(non_qualified_series, SOURCE_YEAR, build_year) / carried_ordinary\n",
@@ -111,7 +111,13 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
-        caught = re.findall(r"FAILED \S+::(\S+)", run.stdout)
+        # A test that errors (for example a Hypothesis health check) is not a
+        # catch; only an assertion or a raised RebaseError counts.
+        caught = [
+            name
+            for name in re.findall(r"FAILED \S+::(\S+)", run.stdout)
+            if "FailedHealthCheck" not in run.stdout
+        ]
         if caught:
             print(f"{name}: caught by {caught[0]}")
         else:

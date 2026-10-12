@@ -111,11 +111,16 @@ def test_sign_split_legs_follow_their_own_series(
 
 
 @SETTINGS
-@given(amounts, positive, st.integers(min_value=0, max_value=59), st.floats(1e-6, 1.0))
-def test_verify_gate_rejects_any_perturbed_record(source, carried, index, delta):
+@given(amounts, positive, st.floats(1e-6, 1.0), st.data())
+def test_verify_gate_rejects_any_perturbed_record(source, carried, delta, data):
     """Invariant 1: one record off its carried factor fails verification."""
 
-    assume(index < len(source) and abs(source[index]) >= 1.0)
+    # The index is drawn inside the array and the record is made nonzero, so
+    # no example is discarded.
+    index = data.draw(st.integers(0, len(source) - 1))
+    source = source.copy()
+    if abs(source[index]) < 1.0:
+        source[index] = 1.0
     donor = source * carried
     assert verify_carried(donor, source, carried)
     donor[index] *= 1.0 + delta
@@ -162,15 +167,15 @@ def test_rebase_refuses_a_donor_that_does_not_verify(source, carried, table, yea
     positive,
     level_tables(),
     build_years,
-    st.integers(0, 59),
     st.floats(1.0, 1e7),
+    st.data(),
 )
 def test_a_nonzero_donor_value_on_a_zero_source_record_fails_the_gate(
-    source, pos, neg, table, year, index, planted
+    source, pos, neg, table, year, planted, data
 ):
     """Invariant 1 on a sign-split column: a source zero is checked too."""
 
-    assume(index < len(source))
+    index = data.draw(st.integers(0, len(source) - 1))
     source = source.copy()
     source[index] = 0.0
     column = Column(
@@ -293,13 +298,18 @@ def spliced_series(draw):
     return pivot, actuals, projection
 
 
+ordered_years = st.integers(2015, 2025).flatmap(
+    lambda start: st.tuples(st.just(start), st.integers(start + 1, 2026))
+)
+
+
 @SETTINGS
-@given(spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026))
-def test_growth_across_the_pivot_counts_it_once(series, start, end):
+@given(spliced_series(), ordered_years)
+def test_growth_across_the_pivot_counts_it_once(series, years):
     """Invariant 4: observed growth to the pivot times projected growth from it."""
 
     pivot, actuals, projection = series
-    assume(start < end)
+    start, end = years
     level = splice(actuals, projection)
     growth = level[end] / level[start]
     if end <= pivot:
@@ -321,16 +331,14 @@ def test_growth_across_the_pivot_counts_it_once(series, start, end):
 
 
 @SETTINGS
-@given(
-    spliced_series(), spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026)
-)
-def test_per_return_growth_across_the_pivot(series, counts, start, end):
+@given(spliced_series(), spliced_series(), ordered_years)
+def test_per_return_growth_across_the_pivot(series, counts, years):
     """Invariant 4 per return: growth divides the spliced aggregate by the
     spliced return count, each counted once across its own pivot."""
 
     _, actuals, projection = series
     _, count_actuals, count_projection = counts
-    assume(start < end)
+    start, end = years
     levels = splice(actuals, projection)
     returns = splice(count_actuals, count_projection)
     table = LevelTable({"line": levels}, returns)
@@ -342,15 +350,16 @@ def test_per_return_growth_across_the_pivot(series, counts, start, end):
 
 
 @SETTINGS
-@given(spliced_series(), st.integers(2015, 2026), st.integers(2015, 2026))
-def test_splice_agrees_with_target_aging(series, start, end):
+@given(spliced_series(), st.data())
+def test_splice_agrees_with_target_aging(series, data):
     """Invariant 4, differential: given the same series, the reference's
     aggregate splice equals the factor ``target_aging._projection_factor``
     gives targets for the same span. Return-count division is tested above."""
 
     target_aging = pytest.importorskip("microcosm.build.us_runtime.target_aging")
     pivot, actuals, projection = series
-    assume(start < end and end >= pivot)
+    end = data.draw(st.integers(max(pivot, 2016), 2026))
+    start = data.draw(st.integers(2015, end - 1))
     result = target_aging._projection_factor(
         {"line": {year: (value, f"cbo.{year}") for year, value in projection.items()}},
         {"line": {year: (value, f"soi.{year}") for year, value in actuals.items()}},

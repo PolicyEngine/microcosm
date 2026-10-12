@@ -28,6 +28,7 @@ import argparse
 import csv
 import gzip
 import hashlib
+import io
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -387,7 +388,12 @@ def main() -> None:
             and row["filing_status"] in ("All", None)
         }
         csv_path = args.out.with_name(args.out.stem + "_targets.csv.gz")
-        with gzip.open(csv_path, "wt", newline="") as handle:
+        # mtime=0 keeps the compressed bytes identical across runs.
+        with (
+            open(csv_path, "wb") as raw,
+            gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as packed,
+            io.TextIOWrapper(packed, newline="") as handle,
+        ):
             writer = csv.writer(handle)
             scalar = [k for k in next(iter(decomposition.values())) if k != "channels"]
             parts = [

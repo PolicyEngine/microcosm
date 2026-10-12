@@ -5319,6 +5319,11 @@
   "source_qualified_exceeds_ordinary_records": 0,
   "source_ordinary_equals_qualified_and_positive_records": 23817,
   "stored_non_qualified_nonzero_where_source_difference_zero": 23817,
+  "recovery_max_ulps": {
+   "ordinary": 2.0,
+   "qualified": 2.0
+  },
+  "recovery_max_whole_dollar_value": 125500000.0,
   "synthetic": {
    "records": 3985,
    "with_any_dividend": 3376,
