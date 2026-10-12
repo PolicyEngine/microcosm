@@ -111,8 +111,8 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
-        # A test that errors (for example a Hypothesis health check) is not a
-        # catch; only an assertion or a raised RebaseError counts.
+        # A run that failed a Hypothesis health check is not counted as a
+        # catch: such a failure says nothing about the seeded fault.
         caught = [
             name
             for name in re.findall(r"FAILED \S+::(\S+)", run.stdout)

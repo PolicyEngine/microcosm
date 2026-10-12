@@ -233,7 +233,9 @@ def on_dollar_grid(
     (1.3914 and 1.3628), that is about 8 units of the value; the donor's
     regular records deviate by at most 2 (the audit receipt's
     ``dividends.recovery_max_ulps``). A quarter dollar at 1e13 is refused.
-    Whole dollars are exact only below 2**52, so larger values are refused.
+    Values at or above 2**52, a chosen domain limit far above any PUF amount
+    (the donor's largest is $125.5M), are refused; near that limit the
+    allowance itself approaches half a dollar.
     """
 
     magnitude = np.maximum(np.abs(grid), 1.0)
