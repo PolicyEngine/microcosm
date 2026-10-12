@@ -165,8 +165,10 @@ ARM_ROWS = [
     ),
 ]
 
-# (label, target, source table). Where one measure has two national
-# all-return rows of different vintages that disagree, both are listed.
+# (label, target, source table). Ordinary dividends and taxable Social
+# Security each have two national rows that differ by more than 10%; both are
+# listed. Other measures with two rows (wages, pensions, IRA distributions)
+# show one.
 RELEASE_ROWS = [
     (
         "Wages",

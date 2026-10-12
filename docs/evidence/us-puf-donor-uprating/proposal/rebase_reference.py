@@ -205,11 +205,24 @@ def recover_source_dividends(
     return snapped
 
 
-def on_dollar_grid(values: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    """Within float64 rounding of a whole dollar: an absolute tolerance that
-    grows only with the few units in the last place a division can add."""
+GRID_ULPS = 8
+GRID_LIMIT = 2.0**52
 
-    return np.abs(values - grid) <= 1e-6 + 1e-13 * np.abs(grid)
+
+def on_dollar_grid(values: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Within GRID_ULPS units in the last place of a whole dollar.
+
+    Recovering a stored amount by division adds a few units of rounding; on
+    the donor's regular records the largest deviation is 2 (the audit
+    receipt's ``dividends.recovery_max_ulps``), so 8 leaves fourfold room and
+    refuses a quarter dollar at 1e13. Whole dollars are only exact below 2**52,
+    so larger values are refused outright.
+    """
+
+    magnitude = np.maximum(np.abs(grid), 1.0)
+    return (magnitude < GRID_LIMIT) & (
+        np.abs(values - grid) <= GRID_ULPS * np.spacing(magnitude)
+    )
 
 
 def rebase_dividends(

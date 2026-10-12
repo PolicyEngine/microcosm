@@ -58,8 +58,8 @@ MUTATIONS = {
         "        ):\n",
     ),
     "the dollar grid uses a relative tolerance": (
-        "    return np.abs(values - grid) <= 1e-6 + 1e-13 * np.abs(grid)\n",
-        "    return np.abs(values - grid) <= 1e-6 * np.maximum(1.0, np.abs(grid))\n",
+        "        np.abs(values - grid) <= GRID_ULPS * np.spacing(magnitude)\n",
+        "        np.abs(values - grid) <= 1e-6 * magnitude\n",
     ),
     "synthetic non-qualified dividends follow the qualified series": (
         "        table.growth(non_qualified_series, SOURCE_YEAR, build_year) / carried_ordinary\n",

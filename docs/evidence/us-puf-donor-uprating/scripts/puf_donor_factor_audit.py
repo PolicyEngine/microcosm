@@ -777,10 +777,16 @@ def main() -> None:
     stored_non_qualified = table_regular["non_qualified_dividend_income"].to_numpy(
         np.float64
     )
-    recovered_ordinary = np.rint(
-        (stored_non_qualified + stored_qualified) / carried_ordinary
-    )
-    recovered_qualified = np.rint(stored_qualified / carried_qualified)
+    ordinary_raw = (stored_non_qualified + stored_qualified) / carried_ordinary
+    qualified_raw = stored_qualified / carried_qualified
+    recovered_ordinary = np.rint(ordinary_raw)
+    recovered_qualified = np.rint(qualified_raw)
+
+    def max_ulps(values: np.ndarray, grid: np.ndarray) -> float:
+        return float(
+            (np.abs(values - grid) / np.spacing(np.maximum(np.abs(grid), 1.0))).max()
+        )
+
     source_ordinary = raw["E00600"].to_numpy(np.float64)
     source_qualified = raw["E00650"].to_numpy(np.float64)
     receipt["dividends"] = {
@@ -799,6 +805,13 @@ def main() -> None:
         ),
         "stored_non_qualified_nonzero_where_source_difference_zero": int(
             ((stored_non_qualified != 0) & (source_ordinary == source_qualified)).sum()
+        ),
+        "recovery_max_ulps": {
+            "ordinary": max_ulps(ordinary_raw, recovered_ordinary),
+            "qualified": max_ulps(qualified_raw, recovered_qualified),
+        },
+        "recovery_max_whole_dollar_value": float(
+            max(np.abs(recovered_ordinary).max(), np.abs(recovered_qualified).max())
         ),
     }
 

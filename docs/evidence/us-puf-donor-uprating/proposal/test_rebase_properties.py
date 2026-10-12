@@ -424,9 +424,13 @@ def test_dividends_off_the_dollar_grid_are_refused():
         )
 
 
-@pytest.mark.parametrize("value", [1_000_000.4, 1e9 + 0.3, 123.5, 7.25e10 + 0.5])
+@pytest.mark.parametrize(
+    "value",
+    [1_000_000.4, 1e9 + 0.3, 123.5, 7.25e10 + 0.5, 1e12 + 0.1, 1e13 + 0.25, 2.0**53],
+)
 def test_large_off_grid_dividends_are_refused(value):
-    """Invariant 10: an absolute tolerance refuses off-grid values at any size."""
+    """Invariant 10: off-grid values are refused at every size the grid can
+    represent, and values past 2**52 are refused outright."""
 
     with pytest.raises(RebaseError):
         recover_source_dividends(

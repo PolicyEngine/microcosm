@@ -244,7 +244,8 @@ def main() -> None:
         }
 
         # Stored inputs by arm, at design and final weights: the level the
-        # frame's PUF arm carries for each donor column before any target.
+        # frame's PUF arm carries for each donor column after the release's
+        # value repairs and before calibration.
         household_ids = group[by_name["household_id"]]["values"][()]
         household_position = {int(h): i for i, h in enumerate(household_ids)}
         person_household = np.array(
