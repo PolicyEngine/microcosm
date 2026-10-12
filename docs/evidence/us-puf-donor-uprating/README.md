@@ -17,7 +17,7 @@ Evidence for the finding that the processed PUF donor Microcosm US reads carries
 | Calibration weights | `populace_us_2024_calibration.npz`, same release | `d1403f75c549f030dcc13c2df3c2e4f7365b67105caa1bb0440e9ab8683f2d55` |
 | Calibration diagnostics | `calibration_diagnostics.json`, same release | `64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80` |
 
-The four PUF files are restricted IRS microdata. They were read from a local folder outside every repository, kept only until the review of these receipts closes and then deleted. Every receipt here is an aggregate: counts, shares, factors and weighted totals.
+The four PUF files are restricted IRS microdata. They were read from a local folder outside every repository and deleted on 2026-10-12, after the receipts were generated and reviewed. Every receipt here is an aggregate: counts, shares, factors and weighted totals.
 
 ## What the folder holds
 
