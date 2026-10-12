@@ -113,12 +113,16 @@ def _control_fact(
     )
 
 
-def _state_2022_us_fact(measure_id: str, value: float) -> dict[str, object]:
-    """HT2's US workbook (22in54us.xlsx) as the feed packages it: TY2022 data
-    stamped ty2023 under ``state_2022`` (PolicyEngine/chronicle#292)."""
-    record_set_id = f"irs_soi.ty2023.state_2022.us.{measure_id}"
+def _state_2022_us_fact(
+    measure_id: str, value: float, *, data_year: int = 2022
+) -> dict[str, object]:
+    """HT2's US workbook (22in54us.xlsx) as the feed packages it: data for
+    ``data_year`` stamped the following year under ``state_<data_year>``
+    (PolicyEngine/chronicle#292)."""
+    stamp = data_year + 1
+    record_set_id = f"irs_soi.ty{stamp}.state_{data_year}.us.{measure_id}"
     return _soi_fact(
-        2023,
+        stamp,
         record_set_id=record_set_id,
         measure_id=measure_id,
         value=value,
@@ -310,7 +314,7 @@ def test_ht2_rows_keep_their_level_without_an_ht2_us_total() -> None:
 
 def test_a_control_at_the_hts_own_period_still_rebases() -> None:
     """When HT2 and its control share a tax year, the factor is the
-    processing-year gap alone (HT2 runs a little below the sample tables)."""
+    same-year HT2 / Pub 1304 difference alone."""
     measure_id = "return_count"
     specs = _by_record(
         _compile(
@@ -324,6 +328,130 @@ def test_a_control_at_the_hts_own_period_still_rebases() -> None:
     assert ca.value == pytest.approx(251.0, rel=1e-12)
     assert ca.metadata["uprating_to_period"] == "2023"
     assert _ht2_us_id(measure_id, period=2023) not in specs
+
+
+def test_a_newer_hts_national_row_survives_an_older_control() -> None:
+    """Mixed vintages (microcosm#1243 review): CA has TY2023 HT2 data, NY only
+    TY2022, and the control is TY2022. NY becomes a share of the control; CA
+    and the TY2023 HT2 US row keep their levels, because the control does
+    not cover their year."""
+    measure_id = "taxable_social_security_amount"
+    facts = [
+        *_ht2_facts(measure_id, period=2023, us=1_100.0, states=(500.0,)),
+        _soi_fact(
+            2022,
+            record_set_id="irs_soi.ty2022.historic_table_2.us",
+            measure_id=measure_id,
+            value=1_000.0,
+        ),
+        _soi_fact(
+            2022,
+            record_set_id="irs_soi.ty2022.historic_table_2.state_broad.ny",
+            measure_id=measure_id,
+            value=400.0,
+            geography_level="state",
+            geography_id="0400000US36",
+        ),
+        _control_fact(measure_id, period=2022, value=800.0),
+    ]
+    specs = _by_record(_compile(facts))
+    assert specs[_ht2_state_id(measure_id, "ny")].value == 320.0
+    assert specs[_ht2_state_id(measure_id, "ca", period=2023)].value == 500.0
+    assert specs[_ht2_us_id(measure_id, period=2023)].value == 1_100.0
+
+
+@pytest.mark.parametrize(
+    ("data_year", "retired"), [(2022, True), (2023, False)], ids=["ty2022", "ty2023"]
+)
+def test_the_us_workbook_retires_by_its_data_year(data_year, retired) -> None:
+    """The workbook's period is stamped a year late, so its data year comes
+    from ``state_<year>``: a TY2022 control retires the TY2022 workbook
+    (stamped ty2023) but not a TY2023 one."""
+    measure_id = "return_count"
+    workbook = _state_2022_us_fact(measure_id, 1_000.0, data_year=data_year)
+    specs = _by_record(
+        _compile(
+            [
+                *_ht2_facts(measure_id),
+                workbook,
+                _control_fact(measure_id, period=2022, value=1_010.0),
+            ]
+        )
+    )
+    assert (workbook["lineage"]["source_record_id"] not in specs) is retired
+
+
+def test_conflicting_hts_us_totals_refuse_the_compile() -> None:
+    """Two HT2 US records for one key would let feed order pick the rebase
+    denominator (microcosm#1243 review); one record seen twice is fine."""
+    measure_id = "taxable_ira_distributions_amount"
+    us, *states = _ht2_facts(measure_id, states=(600.0, 400.0))
+    rival = _soi_fact(
+        2022,
+        record_set_id="irs_soi.ty2022.historic_table_2.us",
+        measure_id=measure_id,
+        value=500.0,
+        record_id=f"irs_soi.ty2022.historic_table_2.us.v2.{measure_id}",
+    )
+    for ordered in ((us, rival), (rival, us)):
+        with pytest.raises(
+            fiscal_targets.AmbiguousSoiNationalControlError,
+            match="Historic Table 2 US total",
+        ):
+            fiscal_targets._soi_ht2_us_totals(ordered)
+    assert fiscal_targets._soi_ht2_us_totals((us, us)) == {
+        (measure_id, "All", "all_returns", "2022"): 1_000.0
+    }
+    with pytest.raises(fiscal_targets.AmbiguousSoiNationalControlError):
+        _compile([us, rival, *states, _control_fact(measure_id)])
+
+
+def test_retirement_follows_each_rows_own_year() -> None:
+    """Property over compiles: with HT2 states at one vintage, the newest
+    HT2 US row at that vintage or later, an optional US workbook and any
+    control vintage, (a) the states rebase iff the control is eligible for
+    their year, (b) the newest US row retires iff the control is eligible
+    for its year, and (c) the workbook retires iff the states' quantity was
+    rebased and the control is at or after the workbook's data year."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        st.sampled_from(sorted(REGISTER)),
+        st.integers(min_value=2021, max_value=2023),
+        st.integers(min_value=0, max_value=1),
+        st.one_of(st.none(), st.integers(min_value=2020, max_value=2025)),
+        st.one_of(st.none(), st.integers(min_value=2021, max_value=2023)),
+    )
+    def check(measure_id, state_year, us_lead, control_year, workbook_year) -> None:
+        us_year = state_year + us_lead
+        facts = _ht2_facts(measure_id, period=state_year, states=(250.0,))
+        if us_lead:
+            facts += _ht2_facts(measure_id, period=us_year, us=1_050.0, states=())
+        if control_year is not None:
+            facts.append(_control_fact(measure_id, period=control_year))
+        workbook = None
+        if workbook_year is not None:
+            workbook = _state_2022_us_fact(measure_id, 1_000.0, data_year=workbook_year)
+            facts.append(workbook)
+        specs = _by_record(_compile(facts))
+
+        def eligible(year: int) -> bool:
+            return control_year is not None and year <= control_year <= 2024
+
+        state = specs[_ht2_state_id(measure_id, "ca", period=state_year)]
+        assert ("uprating_factor" in state.metadata) is eligible(state_year)
+        assert (_ht2_us_id(measure_id, period=us_year) not in specs) is eligible(
+            us_year
+        )
+        if workbook is not None:
+            assert (workbook["lineage"]["source_record_id"] not in specs) is (
+                eligible(state_year) and control_year >= workbook_year
+            )
+
+    check()
 
 
 # --------------------------------------------------------------------------
@@ -546,7 +674,10 @@ def test_rebased_states_conserve_shares_and_one_national_level_remains() -> None
             states=tuple(float(value) for value in state_values),
         )
         if with_workbook:
-            facts.append(_state_2022_us_fact(measure_id, national))
+            # HT2's US workbook for the same data year, stamped a year late.
+            facts.append(
+                _state_2022_us_fact(measure_id, national, data_year=ht2_period)
+            )
         if control_period is not None:
             facts.append(
                 _control_fact(

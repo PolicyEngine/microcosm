@@ -46,12 +46,17 @@ for every year:
 - The feed carries the Table 1.4 itemized-deduction and taxable-income
   totals (cols 135-136 and 141-142) only in Table 1.2. Table 1.2 prints the
   same TY2023 cells: $690.845B and $11,944.447B.
-- HT2 tabulates returns the IRS processed in the following calendar year,
-  with prior-year returns standing in for late filers, so it usually runs a
-  little below the sample-based tables. The widest gap is itemized deductions in
-  TY2022 (HT2 is 2.6% below). None approaches the 2.36x of the capital-gains
-  columns, which count different populations
-  ([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)).
+- The same-year differences are small, and HT2 is usually the lower. The
+  widest is itemized deductions in TY2022 (HT2 is 2.6% below). None
+  approaches the 2.36x of the capital-gains columns, which count different
+  populations ([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)).
+- Their cause is not established. HT2 tabulates the full population of
+  returns the IRS processed in the following calendar year, using prior-year
+  returns as a proxy for late filers. The HT2 guide's endnote 1 says that
+  practice is consistent with SOI's national tabulations, and Pub 1304's
+  sample is drawn from the same processing year (Pub 1304, "Domain of
+  Study"). Sampling error and SOI's record editing are candidates, untested
+  here. Either way, the share step below removes the difference.
 - Both rows of each pair map to the same model variable and measure mode.
   `test_each_registered_column_and_its_control_bind_the_same_model_quantity`
   checks this against the compile's measure maps.
@@ -70,8 +75,8 @@ The aged HT2 US row differs from the aged control by two factors:
 - **Vintage.** HT2 amounts age from TY2022 to TY2023 by realized AGI growth
   (wages by realized wage growth); counts do not age. Each column's own
   change differed.
-- **Processing year.** HT2's TY2022 total is a little below Table 1.4's
-  (previous section).
+- **Same-year difference.** HT2's TY2022 total differs slightly from Table
+  1.4's (previous section).
 
 | Quantity | Table 1.4 TY2023 / TY2022 | HT2 aging link | Vintage factor | HT2 / Table 1.4, TY2022 | National max / min |
 |---|---:|---:|---:|---:|---:|
@@ -114,14 +119,22 @@ before the state AGI bands.
   id, and `soi_source_concept` / `soi_control_concept` (the Form 1040 line,
   equal on both sides).
 - **One national level.** Once a quantity's states are shares of the
-  control, the HT2-lineage national all-AGI rows of that quantity retire: the
-  HT2 US row and HT2's US workbook row. Matching is by model quantity
+  control, the HT2-lineage national all-AGI rows of that quantity retire:
+  the HT2 US row and HT2's US workbook row. Matching is by model quantity
   (variable, mode, filing status, universe and filters), so the workbook's
   EITC row, which shares the `return_count` measure id, stays. Table 1.2's
   copies of Table 1.1's count and AGI equal the control and stay.
-- **No eligible control.** When the control is older than the HT2 row, after
-  the build period, or missing, or when the HT2 US total is missing, the HT2
-  rows keep their levels and the HT2 US row stays.
+- **Per-row eligibility.** A row is rebased or retired only when the
+  control is at or after its own data year. The workbook's data year comes
+  from its family name (`state_2022`), not its ty2023 stamp. Where HT2
+  vintages mix (a state falling back to an older year), the older rows
+  become shares and a newer HT2 US row keeps its level.
+- **No eligible control.** When the control is older than the HT2 row,
+  after the build period, or missing, or when the HT2 US total is missing,
+  the HT2 rows keep their levels and the HT2 US row stays.
+- **One denominator.** Two different HT2 US records for one measure, filing
+  status, universe and year raise `AmbiguousSoiNationalControlError`, so
+  feed order cannot pick the rebase denominator.
 - **State AGI bands.** The #940 bands are shares of the state total that
   binds. A rebased state total sits at its control's period, and
   `_soi_state_agi_band_controls` now reads that landing period
@@ -180,7 +193,7 @@ evidence folder.
   #940 bands). If Chronicle packages its state totals under the same record
   sets, latest-vintage selection, which strips the period from record-set
   ids, keeps them instead, and this pass rebases them onto the TY2023
-  controls by the processing-year factor alone
+  controls by the same-year difference alone
   (`test_a_control_at_the_hts_own_period_still_rebases`).
 - **Congressional-district rows** of these columns stay TY2022 levels on the
   `full` surface. They are not on `national_state`; #1040, #1229 and #1231

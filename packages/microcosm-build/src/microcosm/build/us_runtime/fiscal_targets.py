@@ -1830,14 +1830,15 @@ class _SoiHt2NationalControlRule:
 #:   as the Table 1.4 column.
 #: - The HT2 US row matches Table 1.4's same-year "All returns, total" cell
 #:   within 2.7%: HT2 / Table 1.4 runs from 0.974 (itemized deductions,
-#:   TY2022) to 1.009 (IRA distribution returns, TY2022). HT2 counts returns
-#:   the IRS processed in the following calendar year, so it runs slightly
-#:   below the sample-based tables. The capital-gains columns, by contrast,
-#:   differ by 2.36x because they count different populations (see
-#:   ``_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS``).
+#:   TY2022) to 1.009 (IRA distribution returns, TY2022). The cause of that
+#:   small same-year difference is not established: HT2 is the full
+#:   population of returns processed in the following calendar year, and
+#:   Pub 1304 samples the same processing year. The capital-gains columns,
+#:   by contrast, differ by 2.36x because they count different populations
+#:   (see ``_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS``).
 #:
 #: The gap between an aged HT2 US row and its control is therefore vintage
-#: times that processing-year shortfall, not a concept difference. HT2 is
+#: times that same-year difference, not a concept difference. HT2 is
 #: TY2022 while the controls are TY2023, and HT2 amounts age 2022->2023 by
 #: realized AGI growth (wages by realized wage growth), which cannot reproduce
 #: each column's own change: taxable Social Security grew 15.0% and taxable
@@ -1939,20 +1940,25 @@ def _rebase_stale_soi_ht2_distributions(
     0.3% to 12.2% apart, and two state families summed past the newer one.
 
     Once a quantity's states are shares of the control, the control's row is
-    its only national level, so the HT2 lineage's national all-AGI rows of
-    that quantity retire. Two rows qualify: the HT2 US row, and the same total
-    from HT2's US workbook (``22in54us.xlsx``), which the feed packages as
-    ``irs_soi.ty2023.state_2022.us``. The control's own family may repeat the
-    total in another table (Table 1.2 prints Table 1.1's count and AGI); those
-    rows are equal to the control and stay.
+    its national level, so the HT2 lineage's national all-AGI rows of that
+    quantity retire if the control is at or after their own data year. Two
+    rows qualify: the HT2 US row, and the same total from HT2's US workbook
+    (``22in54us.xlsx``), which the feed packages as
+    ``irs_soi.ty2023.state_2022.us`` (TY2022 data; its data year comes from
+    the family name, not the ty2023 stamp). The control's own family may
+    repeat the total in another table (Table 1.2 prints Table 1.1's count
+    and AGI); those rows are equal to the control and stay.
 
-    A row whose control is older than the row, or whose HT2 US total is
-    missing, keeps its HT2 level, and so does its HT2 national row.
+    Eligibility is per row. A row whose control is older than the row, or
+    whose HT2 US total is missing, keeps its HT2 level; a national row newer
+    than the control stays even when older state rows of its quantity are
+    rebased (a mixed-vintage fallback).
     """
 
     controls = _soi_ht2_national_controls(facts, target_period=target_period)
     source_totals = _soi_ht2_us_totals(facts)
-    retired_quantities: set[tuple[object, ...]] = set()
+    # Per rebased quantity, the period of the control its rows took.
+    retired: dict[tuple[object, ...], tuple[int, int, str]] = {}
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         measure_id = _soi_ht2_rebase_measure(spec)
@@ -1972,7 +1978,7 @@ def _rebase_stale_soi_ht2_distributions(
         ):
             specs.append(spec)
             continue
-        retired_quantities.add(_soi_national_quantity(spec))
+        retired[_soi_national_quantity(spec)] = control.period_key
         if _is_national_all_agi_spec(spec):
             continue
         concept = _SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
@@ -2001,7 +2007,7 @@ def _rebase_stale_soi_ht2_distributions(
         [
             spec
             for spec in specs
-            if not _is_retired_soi_ht2_national_spec(spec, retired_quantities)
+            if not _is_retired_soi_ht2_national_spec(spec, retired)
         ],
         country=registry.country,
     )
@@ -2056,8 +2062,14 @@ def _soi_ht2_control_key_from_fact(fact: object) -> tuple[str, str, str] | None:
 def _soi_ht2_us_totals(
     facts: tuple[object, ...],
 ) -> dict[tuple[str, str, str, str], float]:
-    """HT2 US all-AGI totals per (measure, filing status, universe, period)."""
+    """HT2 US all-AGI totals per (measure, filing status, universe, period).
+
+    The total is a rebase denominator, so feed order must not pick it: two
+    different candidates for one key (different records, or one record with
+    different values) raise. One record seen twice is one candidate.
+    """
     totals: dict[tuple[str, str, str, str], float] = {}
+    candidates: dict[tuple[str, str, str, str], set[tuple[str, float]]] = {}
     for fact in facts:
         if _source_name(fact) != "irs_soi":
             continue
@@ -2074,14 +2086,26 @@ def _soi_ht2_us_totals(
         status = _filing_status_label(_dimensions(fact).get("filing_status"))
         if status is None:
             continue
-        totals[
-            (
-                measure_id,
-                status,
-                _soi_return_universe_from_fact(fact),
-                str(_period_value(fact)),
-            )
-        ] = _numeric_value(fact)
+        key = (
+            measure_id,
+            status,
+            _soi_return_universe_from_fact(fact),
+            str(_period_value(fact)),
+        )
+        value = _numeric_value(fact)
+        candidates.setdefault(key, set()).add((_source_record_id(fact), value))
+        totals[key] = value
+    ambiguous = {
+        key: sorted(identities)
+        for key, identities in candidates.items()
+        if len(identities) > 1
+    }
+    if ambiguous:
+        raise AmbiguousSoiNationalControlError(
+            "SOI Historic Table 2 US total is ambiguous: different candidates "
+            f"share a key: {ambiguous}. Deduplicate them upstream; feed order "
+            "must not pick a rebase denominator (microcosm#1243)."
+        )
     return totals
 
 
@@ -2143,27 +2167,50 @@ def _is_soi_ht2_lineage_record_set(record_set_id: str) -> bool:
     (``22in54us.xlsx``, "Historic Table 2 state data, United States total") as
     ``irs_soi.<ty>.state_<data year>.us``.
     """
-    family = _soi_record_set_family(record_set_id)
-    if family == "historic_table_2":
+    if _soi_record_set_family(record_set_id) == "historic_table_2":
         return True
-    prefix, _, year = family.partition("_")
-    return prefix == "state" and year.isdigit() and len(year) == 4
+    return _soi_ht2_lineage_data_year(record_set_id) is not None
 
 
 def _is_retired_soi_ht2_national_spec(
     spec: TargetSpec,
-    retired_quantities: set[tuple[object, ...]],
+    retired: Mapping[tuple[object, ...], tuple[int, int, str]],
 ) -> bool:
-    """Whether an HT2-lineage national row lost its quantity to a control."""
-    if spec.family != "irs_soi" or not retired_quantities:
+    """Whether an HT2-lineage national row lost its quantity to a control.
+
+    Only when the quantity was rebased and that control is at or after the
+    row's own data year: a newer HT2 national row keeps its level.
+    """
+    if spec.family != "irs_soi" or not retired:
         return False
     if not _is_national_all_agi_spec(spec):
         return False
-    if not _is_soi_ht2_lineage_record_set(
-        spec.metadata.get("ledger_layout_record_set_id", "")
-    ):
+    record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
+    if not _is_soi_ht2_lineage_record_set(record_set_id):
         return False
-    return _soi_national_quantity(spec) in retired_quantities
+    control_period_key = retired.get(_soi_national_quantity(spec))
+    if control_period_key is None:
+        return False
+    return _period_not_before(
+        control_period_key,
+        _period_key_from_value(
+            _soi_ht2_lineage_data_year(record_set_id)
+            or spec.metadata.get("source_period", "")
+        ),
+    )
+
+
+def _soi_ht2_lineage_data_year(record_set_id: str) -> str | None:
+    """The data year a ``state_<year>`` US-workbook record set names.
+
+    The feed stamps ``irs_soi.ty2023.state_2022.us`` ty2023 although it holds
+    TY2022 data (PolicyEngine/chronicle#292); the family name carries the
+    data year. Other record sets return ``None``.
+    """
+    prefix, _, year = _soi_record_set_family(record_set_id).partition("_")
+    if prefix == "state" and year.isdigit() and len(year) == 4:
+        return year
+    return None
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's
