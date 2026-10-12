@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -42,7 +43,8 @@ from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 TREE = Path.cwd()
-LCFS = Path("/Users/mariajuaristi/Desktop/PolicyEngine/data/ukds/lcfs_2023_24")
+PE = Path(os.environ.get("PE", Path.home() / "Desktop" / "PolicyEngine"))
+LCFS = PE / "data" / "ukds" / "lcfs_2023_24"
 
 
 def _tool():
@@ -124,7 +126,7 @@ def main() -> None:
         )
         gates[gate.id] = {"passed": checked.passed, "failures": list(checked.failures)}
     report = {
-        "spine": str(spine),
+        "spine": spine.name,
         "households": int(len(weights)),
         "seconds": round(time.time() - started, 1),
         "before_head_r3": before,

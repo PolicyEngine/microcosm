@@ -1061,6 +1061,37 @@ def test_division_capture_compares_each_division_with_ons() -> None:
     assert capture["gated"] is False
 
 
+def test_report_only_diagnostics_fail_closed_on_ambiguous_rows(monkeypatch) -> None:
+    """A duplicate or ambiguous vendored row is a data fault, not a missing year
+    (the #1167 re-review): it raises a plain ValueError that nothing records."""
+
+    from microcosm.build.uk_runtime import lcfs_consumption as module
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        DiagnosticUnavailableError,
+        desnz_cars_share_by_fuel,
+        division_capture_or_reason,
+    )
+
+    draws = pd.DataFrame(
+        {column: [1.0e3, 2.0e3] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    weights = np.array([1.0e7, 5.0e6])
+    real = module.vendored_rows
+
+    def doubled(*args, **kwargs):
+        rows = list(real(*args, **kwargs))
+        return rows + rows
+
+    monkeypatch.setattr(module, "vendored_rows", doubled)
+    with pytest.raises(ValueError, match="expected one") as error:
+        division_capture_or_reason(draws, weights=weights, period_value=2024)
+    assert not isinstance(error.value, DiagnosticUnavailableError)
+    with pytest.raises(ValueError, match="duplicate") as error:
+        desnz_cars_share_by_fuel(2024)
+    assert not isinstance(error.value, DiagnosticUnavailableError)
+
+
 def test_report_only_diagnostics_record_a_missing_year_and_do_not_raise(
     monkeypatch,
 ) -> None:
@@ -1082,11 +1113,11 @@ def test_report_only_diagnostics_record_a_missing_year_and_do_not_raise(
     )
     weights = np.array([1.0e7, 5.0e6])
     # No Consumer Trends row is vendored for 2031.
-    with pytest.raises(DiagnosticUnavailableError, match="expected one"):
+    with pytest.raises(DiagnosticUnavailableError, match="row for 2031"):
         division_capture(draws, weights=weights, period_value=2031)
     recorded = division_capture_or_reason(draws, weights=weights, period_value=2031)
     assert recorded["available"] is False and recorded["gated"] is False
-    assert "expected one" in recorded["reason"]
+    assert "row for 2031" in recorded["reason"]
     assert "divisions" not in recorded
     assert "available" not in division_capture_or_reason(
         draws, weights=weights, period_value=2024
@@ -1543,6 +1574,32 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         2.0,
         3.0,
     ]
+    # Without uprating factors every part is at the parent's factor: no residue.
+    for parent in receipt["parents"].values():
+        assert parent["uprating_residue"]["weighted_residue_gbp"] == 0.0
+
+    # With the parent on a 1.02 bridge, drawn energy and bus left at 1.0 and
+    # petrol at 0.9, the remainders keep the gap between the factors: housing
+    # (2 x 2000 + 900) x 0.02; transport 1600 x (1.02 / 0.9 - 1) + 700 x 0.02
+    # + 350 x 0.02 (the #1167 re-review's item 2, recorded not corrected).
+    _, with_factors = recompose_parent_totals(
+        draws,
+        drawn=drawn,
+        parameters=_recompose_declaration(),
+        weights=weights,
+        uprating_factors={
+            "housing_water_and_electricity_consumption": 1.02,
+            "transport_consumption": 1.02,
+            "petrol_spending": 0.9,
+        },
+    )
+    housing = with_factors["parents"]["housing_water_and_electricity_consumption"]
+    transport = with_factors["parents"]["transport_consumption"]
+    assert housing["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(98.0)
+    assert transport["uprating_residue"]["weighted_residue_gbp"] == pytest.approx(
+        1600.0 * (1.02 / 0.9 - 1.0) + 700.0 * 0.02 + 350.0 * 0.02
+    )
+    assert transport["uprating_residue"]["part_factors"]["petrol_spending"] == 0.9
     housing = receipt["parents"]["housing_water_and_electricity_consumption"]
     assert housing["drawn_subtracts"] == ["domestic_energy_consumption"]
     assert housing["weighted_drawn_total"] == 2.0 * 7000.0 + 600.0 + 3.0 * 800.0
