@@ -315,7 +315,7 @@ class TestShippedManifest:
             manifest.reviewed_exclusions
         )
         assert len(manifest.compiled_families) == 32
-        assert len(manifest.reviewed_exclusions) == 52
+        assert len(manifest.reviewed_exclusions) == 53
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()

@@ -70,6 +70,7 @@ from microcosm.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.esi_premiums import US_ESI_EMPLOYER_PREMIUM_COLUMN
 from microcosm.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
@@ -209,6 +210,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+        US_ESI_EMPLOYER_PREMIUM_COLUMN,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_FORM_4952_OUTPUT_COLUMNS,
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,

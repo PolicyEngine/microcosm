@@ -6097,6 +6097,13 @@ def _run_dry_run_release(
     assert not out.exists()
     inputs = payload["inputs"]
     assert inputs["git_dirty"] is True
+    # The fixture's feed check finds no difference (microcosm#454).
+    assert inputs["esi_anchor_feed"] == {
+        "enforced": True,
+        "matches": True,
+        "mismatches": [],
+    }
+    assert inputs["waivers"]["allow_unpinned_feed"] is False
     # The stop point's time is taken before any grading.
     if mode == "dry_run_refusal":
         assert inputs["seconds_to_stop_point"] is None
@@ -6493,10 +6500,29 @@ def _run_green_register_release(
         ),
     }
     expected_gate_evidence = {
+        "esi_premiums": "bound",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+    }
+    # microcosm#454: the ESI premium signal gate graded the base before the
+    # solve and the export after it; the anchor gate graded the export at the
+    # release period and its verdict is the bound esi_premiums evidence, with
+    # both signal verdicts recorded beside it.
+    assert captured["esi_premiums_signal_gate_calls"] == 2
+    assert captured["esi_premiums_anchor_periods"] == [builder.PERIOD]
+    signal_evidence = {"evaluated": True, "passed": True, "failures": []}
+    assert json.loads((release_dir / "esi_premiums.json").read_text()) == {
+        "schema_version": 3,
+        "enforced": True,
+        "esi_premiums": {
+            "passed": True,
+            "failures": [],
+            "details": {"checked": True},
+        },
+        "anchor_feed": {"enforced": True, "matches": True, "mismatches": []},
+        "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
     for block in (build_manifest, release_manifest["build"]):
         assert block["gate_evidence"] == expected_gate_evidence
@@ -7151,9 +7177,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     # The invented feed is not the committed pin; this test is about the
-    # corridor contract, not the pin, which has its own tests.
+    # corridor contract, not the pin, which has its own tests. Nor does it
+    # carry the ESI anchor's B4923C facts (checked in test_us_esi_premiums).
     monkeypatch.setattr(
         builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_feed_mismatches", lambda facts: []
     )
     monkeypatch.setattr(
         builder,
@@ -8342,6 +8372,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "us_other_health_insurance_signal_gate",
         fake_other_health_insurance_signal_gate,
+    )
+
+    def fake_esi_premiums_signal_gate(frame):
+        # Called on the base before the solve and on the export after it.
+        captured["esi_premiums_signal_gate_calls"] = (
+            captured.get("esi_premiums_signal_gate_calls", 0) + 1
+        )
+        return builder.GateResult(
+            name="esi_premiums_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    def fake_esi_premiums_anchor_gate(frame, *, time_period):
+        captured.setdefault("esi_premiums_anchor_periods", []).append(time_period)
+        return builder.GateResult(
+            name="esi_premiums_anchor",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_signal_gate", fake_esi_premiums_signal_gate
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_gate", fake_esi_premiums_anchor_gate
     )
     monkeypatch.setattr(
         builder,
@@ -12574,7 +12630,7 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
     """Route A remediation PR-3: a certified waiver must ship with the
-    release. The four gate verdicts become release artifacts, and both
+    release. The five gate verdicts become release artifacts, and both
     manifests record the register the tail gate evaluated, the export-mass
     reference, the solve's thread geometry and the exclusion receipt."""
     from microcosm.data.contract import (
@@ -12611,7 +12667,11 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         == []
     )
     assert failures == []
-    for filename in ("input_coverage.json", "input_mass_parity.json"):
+    for filename in (
+        "esi_premiums.json",
+        "input_coverage.json",
+        "input_mass_parity.json",
+    ):
         (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
     (release_dir / "reform_coverage_smoke.json").write_text(
         '{"schema_version": 1, "enforced": true}'
@@ -12737,6 +12797,7 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
     assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
     # A verdict that was not written is named, never silently missing.
     assert build["gate_evidence"] == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "not_evaluated",
         "input_mass_parity": "not_evaluated",
         "qrf_tail_concentration": "bound",
@@ -12761,13 +12822,14 @@ def test_build_manifests_without_gate_evidence_binds_none() -> None:
 def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
     """A skipped smoke and a gate that crashed under earlier failures both
     leave no verdict; the status block tells them apart. A gate cannot be
-    both skipped and bound, and only the four bound gates can be skipped."""
+    both skipped and bound, and only the five bound gates can be skipped."""
     builder = _load_builder_module()
     bound = {"input_coverage": {}, "input_mass_parity": {}}
 
     assert builder._gate_evidence_status(
         bound, skipped_gates=("reform_coverage_smoke",)
     ) == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "not_evaluated",
@@ -16336,6 +16398,83 @@ def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
     assert source.count("_check_committed_us_ledger_feed_pin(") == 1
 
 
+def test_main_holds_the_esi_anchor_to_the_feed_before_compiling_targets() -> None:
+    """microcosm#454: the anchor-versus-feed check runs on the pinned feed."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    anchored = source.index(
+        "_check_us_esi_anchor_against_feed(\n        ledger_artifact.facts"
+    )
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert checked < anchored < compiled
+    assert source.count("_check_us_esi_anchor_against_feed(") == 1
+    # The same list reaches the evidence file.
+    assert "_esi_anchor_feed_evidence(\n" in source
+
+
+def _b4923c_facts(values: dict[int, int]) -> list[dict]:
+    return [
+        {
+            "layout": {
+                "record_set_id": f"bea_nipa.cy{year}.private_group_health_insurance"
+            },
+            "value": value,
+        }
+        for year, value in values.items()
+    ]
+
+
+def test_the_esi_anchor_feed_check_passes_on_the_banked_series() -> None:
+    builder = _load_builder_module()
+    facts = _b4923c_facts(
+        {2023: 923_195_000_000, 2024: 977_034_000_000, 2025: 1_027_929_000_000}
+    )
+    assert (
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+        == []
+    )
+
+
+def test_the_esi_anchor_feed_check_refuses_a_feed_that_disagrees() -> None:
+    """A revised or missing B4923C fact stops a release build."""
+    builder = _load_builder_module()
+    # BEA's pre-revision 2024 value, and no 2025 fact.
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    with pytest.raises(SystemExit, match="anchor differs from the Chronicle feed"):
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("allow_unpinned_feed", "allow_esi_premium_gaps"),
+    [(True, False), (False, True), (True, True)],
+)
+def test_a_waived_esi_anchor_feed_mismatch_stays_on_the_record(
+    allow_unpinned_feed, allow_esi_premium_gaps
+) -> None:
+    """A diagnostic flag lets the build go on; the difference is recorded."""
+    builder = _load_builder_module()
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    mismatches = builder._check_us_esi_anchor_against_feed(
+        facts,
+        allow_unpinned_feed=allow_unpinned_feed,
+        allow_esi_premium_gaps=allow_esi_premium_gaps,
+    )
+    assert len(mismatches) == 2
+    evidence = builder._esi_anchor_feed_evidence(mismatches, enforced=False)
+    assert evidence == {
+        "enforced": False,
+        "matches": False,
+        "mismatches": mismatches,
+    }
+    assert any("1002920000000" in item for item in evidence["mismatches"])
+    assert any("cy2025" in item for item in evidence["mismatches"])
+
+
 # SPM measurement composition refusal
 # ---------------------------------------------------------------------------
 
@@ -17134,3 +17273,63 @@ def test_main_reports_actual_dry_run_outcome(
     if expected_status == "failed":
         assert str(exit_code) in run_events[0]["message"]
         assert run_events[0]["details"]["failure_class"] == "build_failure"
+
+
+def test_a_dry_run_reports_a_waived_esi_anchor_feed_mismatch() -> None:
+    """microcosm#454: a dry run stops before esi_premiums.json, so the report
+    carries a B4923C difference that --allow-unpinned-feed let through."""
+
+    builder = _load_builder_module()
+    args = SimpleNamespace(
+        evidence_release=False,
+        allow_qrf_tail_concentration=False,
+        allow_input_mass_drift=False,
+        allow_ecps_parity_gaps=False,
+        allow_input_coverage_gaps=False,
+        allow_esi_premium_gaps=False,
+        allow_unpinned_feed=True,
+    )
+    dry_run = builder._ReleaseDryRun(
+        args=args,
+        argv=("--allow-unpinned-feed",),
+        report_path=Path("report.json"),
+        margins=SimpleNamespace(to_dict=lambda: {}),
+        git_dirty=False,
+        started=0.0,
+    )
+    assert dry_run.inputs()["esi_anchor_feed"] == {
+        "enforced": False,
+        "matches": True,
+        "mismatches": [],
+    }
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    dry_run.esi_anchor_feed_mismatches = builder._check_us_esi_anchor_against_feed(
+        facts, allow_unpinned_feed=True, allow_esi_premium_gaps=False
+    )
+    inputs = dry_run.inputs()
+    assert inputs["waivers"]["allow_unpinned_feed"] is True
+    assert inputs["esi_anchor_feed"]["enforced"] is False
+    assert inputs["esi_anchor_feed"]["matches"] is False
+    assert len(inputs["esi_anchor_feed"]["mismatches"]) == 2
+
+
+def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> None:
+    """microcosm#454: --allow-esi-premium-gaps records, it does not erase.
+
+    The evidence file carries the base and export signal verdicts, so a build
+    that waived an assignment failure still says which check was red. A gate
+    that never ran (it crashed under earlier failures) is recorded as such.
+    """
+
+    builder = _load_builder_module()
+    failed = builder.GateResult(
+        name="esi_premiums_signal",
+        passed=False,
+        failures=("ESI premiums: 100 employer premium(s) outside employed ...",),
+    )
+    assert builder._esi_premiums_signal_evidence(failed) == {
+        "evaluated": True,
+        "passed": False,
+        "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
+    }
+    assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
