@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_us_fiscal_targets.py."""
 
 # ruff: noqa: F403, F405
+import dataclasses
+
 from test_support.microcosm_build.us_fiscal_targets import *
 
 
@@ -5140,16 +5142,22 @@ def test_soi_return_count_targets_expose_count_mode_without_base_variable() -> N
     assert "base_variables" not in spec.metadata
 
 
-def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
-    source_record_id = (
-        "cms_medicare.cy2024.part_b_premium_income."
-        "premiums_from_enrollees.actual_amount"
-    )
+_MEDICARE_PART_B_PREMIUM_RECORD_ID = (
+    "cms_medicare.cy2024.part_b_premium_income.premiums_from_enrollees.actual_amount"
+)
+_MEDICARE_PART_B_PREMIUM_KEY = (
+    "cms_medicare",
+    "actual_amount",
+    "premiums_from_enrollees",
+)
+
+
+def _compiled_medicare_part_b_premium_spec():
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _dynamic_ledger_fact(
-                source_record_id=source_record_id,
+                source_record_id=_MEDICARE_PART_B_PREMIUM_RECORD_ID,
                 source_name="cms_medicare",
                 measure_id="actual_amount",
                 groupby_value_id="premiums_from_enrollees",
@@ -5158,13 +5166,63 @@ def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
         ],
         allow_unaged_dollar_targets=True,
     )
-
     specs = {spec.name: spec for spec in registry.specs}
-    spec = specs[source_record_id]
+    return specs[_MEDICARE_PART_B_PREMIUM_RECORD_ID]
+
+
+def test_medicare_part_b_premium_reference_uses_enrolled_gross_premium() -> None:
+    """CMS premiums from enrollees bind the enrollment-gated gross premium.
+
+    ``gross_medicare_part_b_premium`` is defined for ``is_medicare_eligible``
+    and so also charges eligible non-enrollees (microcosm#1206).
+    """
+
+    spec = _compiled_medicare_part_b_premium_spec()
     assert spec.family == "cms_medicare"
+    assert spec.value == 139_837_000_000
     assert spec.metadata["target_role"] == "medicare_part_b_premium_total"
-    assert spec.metadata["base_variable"] == "gross_medicare_part_b_premium"
+    assert spec.metadata["base_variable"] == (
+        "gross_medicare_part_b_premium_if_enrolled"
+    )
     assert spec.metadata["source_measure_id"] == "actual_amount"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert "calibration_role" not in spec.metadata
+
+
+def test_medicare_part_b_premium_remap_changes_only_the_bound_variable(
+    monkeypatch,
+) -> None:
+    """Differential invariant for microcosm#1206's remap.
+
+    Compiling the same ledger fact under the pre-#1206 mapping and the
+    current one yields the same target (name, value, period, entity,
+    family, sign, hierarchy and every metadata key) except the bound
+    variable. The value the calibration matches is the fact's value both
+    times.
+    """
+
+    current = _compiled_medicare_part_b_premium_spec()
+    base_variable, family, metadata = fiscal_targets.DIRECT_LEDGER_TARGETS[
+        _MEDICARE_PART_B_PREMIUM_KEY
+    ]
+    assert base_variable == "gross_medicare_part_b_premium_if_enrolled"
+    monkeypatch.setitem(
+        fiscal_targets.DIRECT_LEDGER_TARGETS,
+        _MEDICARE_PART_B_PREMIUM_KEY,
+        ("gross_medicare_part_b_premium", family, metadata),
+    )
+    previous = _compiled_medicare_part_b_premium_spec()
+
+    assert previous.metadata["base_variable"] == "gross_medicare_part_b_premium"
+    current_metadata = dict(current.metadata)
+    previous_metadata = dict(previous.metadata)
+    assert current_metadata.pop("base_variable") != previous_metadata.pop(
+        "base_variable"
+    )
+    assert current_metadata == previous_metadata
+    assert dataclasses.replace(current, metadata={}) == dataclasses.replace(
+        previous, metadata={}
+    )
 
 
 def test_census_pep_population_age_facts_compile_to_count_targets() -> None:

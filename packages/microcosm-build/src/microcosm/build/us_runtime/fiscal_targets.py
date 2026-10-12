@@ -452,8 +452,13 @@ DIRECT_LEDGER_TARGETS: dict[
             ),
         },
     ),
+    # 2025 Trustees Report Table III.C3 Part B premiums from enrollees.
+    # gross_medicare_part_b_premium is defined for is_medicare_eligible, so
+    # it also charges eligible people who never enrolled. PolicyEngine-US
+    # documents the enrollment-gated gross_medicare_part_b_premium_if_enrolled
+    # for CMS premiums-from-enrollees targets (microcosm#1206).
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
-        "gross_medicare_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
