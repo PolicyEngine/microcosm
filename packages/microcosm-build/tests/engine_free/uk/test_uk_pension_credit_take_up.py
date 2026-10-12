@@ -159,7 +159,7 @@ class _StubEngine:
         return {name: values[name] for name in variables}
 
 
-def _frame():
+def _frame(time_period: str = "2024"):
     person = pd.DataFrame(
         {
             "person_id": [11, 21, 31],
@@ -183,8 +183,21 @@ def _frame():
         household=household,
         household_weights=np.asarray([10.0, 10.0, 10.0]),
         weight_kind=WeightKind.IMPORTANCE,
-        time_period="2024",
+        time_period=time_period,
     )
+
+
+def test_redraw_refuses_a_frame_outside_the_declared_dataset_year() -> None:
+    # The stage declares the frame's values as survey-year values and has the
+    # engine project them from that year. A frame stamped with another year
+    # would be projected from the wrong one.
+    engine = _StubEngine()
+
+    with pytest.raises(ValueError, match="survey_year 2024 values"):
+        redraw_pension_credit_take_up(
+            _frame("2025"), engine=engine, contract=load_uk_take_up_contract()
+        )
+    assert engine.calls == []
 
 
 def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc() -> (

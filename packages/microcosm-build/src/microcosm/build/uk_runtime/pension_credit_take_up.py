@@ -49,7 +49,10 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
     _household_to_benunit_weights,
 )
 from microcosm.frame import Frame
-from microcosm.frame.rules import assert_rules_engine_country
+from microcosm.frame.rules import (
+    ProjectingRulesEngine,
+    assert_rules_engine_country,
+)
 
 PENSION_CREDIT_TAKE_UP_STAGE_NAME = "pension_credit_take_up"
 PENSION_CREDIT_TAKE_UP_OUTPUT = "would_claim_pc"
@@ -166,7 +169,7 @@ class UKPensionCreditTakeUpStageTransform:
 def redraw_pension_credit_take_up(
     frame: Frame,
     *,
-    engine: object,
+    engine: ProjectingRulesEngine,
     contract: UKTakeUpContract,
 ) -> UKPensionCreditTakeUpResult:
     """Redraw ``would_claim_pc`` by component band from engine entitlement."""
@@ -200,6 +203,19 @@ def redraw_pension_credit_take_up(
             )
     period = uk_time_period(frame)
     entitlement_year = resolve_uk_year_rule(PENSION_CREDIT_ENTITLEMENT_YEAR_RULE)
+    # The declared rules name the year the frame's values belong to. The stage
+    # reads the frame's own period for it, so a frame from another year is
+    # refused rather than projected from the wrong one.
+    for rule in (
+        PENSION_CREDIT_SAVING_YEAR_RULE,
+        PENSION_CREDIT_ENTITLEMENT_DATASET_YEAR_RULE,
+    ):
+        declared_year = resolve_uk_year_rule(rule)
+        if int(period) != declared_year:
+            raise ValueError(
+                f"Pension Credit take-up reads the frame as {rule} "
+                f"{declared_year} values, but the frame's period is {period}."
+            )
     # The engine's own default for the mixed-age saving, evaluated once at the
     # frame's survey-year period on the post-SPI receipts and stored, so the
     # entitlement below and every later model year read the same answer: a
