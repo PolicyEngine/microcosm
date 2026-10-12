@@ -30,8 +30,8 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
-    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
     PROPERTY_CAPITAL_OWNER_COLUMN,
+    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
     UC_PROPERTY_CAPITAL_SHARE,
     UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
     UC_PROPERTY_CAPITAL_SOURCES,

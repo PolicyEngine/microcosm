@@ -30,6 +30,7 @@ Commits, in order:
 - R `cf42d8a7a`: this file.
 - Review round 1 (below): `887d36de4` the stage fixes, `0495c4f33` and `c38e370f6` savings interest and
   its parity receipts, `2792b21cd` the rate-class check, `78ea6b695` the deferral kept.
+- `cf91835c9`: María's D3 ruling of 2026-10-12, the reference person's unit holds the property at 90%.
 
 ## María's rulings of 2026-10-10
 
@@ -256,14 +257,56 @@ changes the evidence reader and its tests only; spine and calibration come from 
 ### What the review left open
 
 - **D3, the owner and the value of the property.** The −1 sentinel is on fewer than 10 benefit units,
-  so the recorded figure decides alone. Shared pro rata, £104bn of property sits on 0.99m benefit
-  units that are not the household reference person's. On the head's calibrated weights at 2025,
-  before recalibration: if the reference person's unit held it all, at 90% of its value, UC would be
-  £0.65bn higher and 170k more benefit units would be paid; the 10% alone moves UC by £0.003bn. On
-  the WAS donor file, mortgages on other property are 26% of its value, and countable value less 10%
-  and secured debt is 64% of gross. María's ruling is owed.
+  so the recorded figure decides alone. Shared pro rata, £104bn of property sat on 0.99m benefit
+  units that are not the household reference person's. On that head's calibrated weights at 2025,
+  before recalibration: with the reference person's unit holding it all, at 90% of its value, UC was
+  £0.65bn higher and 170k more benefit units were paid; the 10% alone moved UC by £0.003bn. On the
+  WAS donor file, mortgages on other property are 26% of its value, and countable value less 10% and
+  secured debt is 64% of gross.
 - **The signed differences.** The committed `uc-reported-capital-net-new-column` text predates D3;
   its redraft, and drafts for D1, D5, D4 and Pension Credit capital, wait for María's signature.
+
+## María's rulings of 2026-10-12
+
+1. **D3, who holds the property.** The household reference person's benefit unit holds all of the
+   household's property, and no other unit records any. WAS records property for the household, each
+   means test counts the claimant's and partner's own capital, and the reference person is the best
+   single reading of the owner.
+2. **D3, the value.** The property counts at 90% of its value, market value less 10% for the costs of
+   sale. Secured debt goes with the WAS property draw: `was_wealth` draws the mortgages on other
+   property but does not emit them (pe-uk#1969 is the engine side).
+3. **Main's weight-ratio breach.** This PR proceeds, and the breach is resolved apart from it.
+
+Commit `cf91835c9` applies 1 and 2. The Pension Credit share no longer reads the qualifying age, so
+the capital stage and its gate take no population policy. The engine reads
+`pension_credit_reported_capital` only for a unit with a member at that age.
+
+### What the ruling changes
+
+Built and calibrated as above (`cf91835c9` plus #1188's commit, spine and calibration from the same
+tree). "Before" is the review-round-1 head.
+
+- **The spine, at design weights.** UC property is £931bn across 3.21m benefit units (£1,032bn across
+  4.21m before). Pension Credit property on units with a member at qualifying age is £285bn across
+  0.97m units (£338bn across 1.02m before).
+- **The stage's receipt.** 29 FRS-channel benefit units that report UC keep their receipt (51
+  before), and 26 of them would have gone above £16,000 (44 before). The redraw trains on 4,104
+  units (4,029 before; 4,191 on main).
+- **The calibration.** Loss 0.00685 (before 0.00691; control 0.00702), 98.5% of 1,168 targets within
+  10% (1,151; before 1,150), ESS 4,809 (before 4,849). Six of the 7 calibrated-seam gates and the
+  input-mass gate pass.
+  - `uk_weight_ratio` fails at 1,176 (before 1,155; control 1,213), on the same FRS household. That
+    household's weight fell 2%; the positive median fell 4%.
+  - The West Midlands cell is at +25.3% (before +26.9%), under its deferral.
+  - Design UC is £51.90bn (before £51.70bn) and design Pension Credit £4.24bn (before £4.21bn);
+    both calibrate to target. 108 of 111 UC cells are within 10%, as before.
+- **Who is paid UC, at each run's calibrated weights in 2025.** The total is on target both times.
+  - Units over the capital limit through property: 1.50m (before 2.65m). Of those, units that are
+    not the reference person's: fewer than 10 (before 1.16m).
+  - In households with other property, units that are not the reference person's are paid £1.16bn
+    of UC across 216k units (before £0.60bn across 85k).
+  - `uk_uc_capital_coherence` passes with the new rule, and `uk_take_up_signal` passes with
+    `would_claim_uc` at 0.557 against 0.55.
 
 ## Verification
 
@@ -291,6 +334,12 @@ changes the evidence reader and its tests only; spine and calibration come from 
     and salary-sacrifice diagnostics resolve their exact facts;
   - `ruff` on the 66 changed Python files, `tools/ci_test_plan.py verify` and
     `tools/graph_acceptance_burndown.py --verify` pass.
+- With the D3 ruling, head `cf91835c9`:
+  - the `engine-free` lane's 534 test files: 16,152 passed and 141 skipped, with the same three
+    environmental failures;
+  - the `engine-uk` lane's 41 test files: 179 passed;
+  - the commit changes no target, reference or parity file, so the pinned-feed run above stands;
+  - `ruff`, `tools/ci_test_plan.py verify` and `tools/graph_acceptance_burndown.py --verify` pass.
 
 ## Signature drafts
 
@@ -304,6 +353,7 @@ as for #1100 and #1121.
 
 - The sparse-band support floor, as its own PR.
 - SPI incomes drawn by employment status (uk-data#529), with microcosm#840. It removes D1's SPI rule.
-- The WAS property draw: a landlord stratum and a benefit-income predictor.
+- The WAS property draw: a landlord stratum, a benefit-income predictor, and the mortgages on
+  other property carried to the frame so that recorded capital nets them.
 - The low UC awards below the top band, which the unbound band hides.
 - The weight year, and the renewals of the exclusions that expire from 15 October.
