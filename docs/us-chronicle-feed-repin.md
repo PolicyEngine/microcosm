@@ -213,7 +213,10 @@ chosen by concept and period alone
 counts are unchanged and `national_state` is `65e4dde11c83` on this feed. On
 the 2026-10-04 `51aa40f` re-pin, whose capital-gains cells are identical, the
 same 60 return counts move and `national_state` goes from `e1f9906bf0e0` to
-`882f4764a248` at 6,102 targets.
+`882f4764a248` at 6,102 targets. microcosm#1243 then rebases 14 more Historic
+Table 2 state families onto their Table 1.x controls and retires 15 stale
+national rows: 33,235 compiled and 6,087 on `national_state` (`0e899cd7f893`)
+([us-soi-national-controls.md](us-soi-national-controls.md)).
 
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's

@@ -893,10 +893,13 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,250 compiled targets after
-    Medicaid substitution, 6,102 national_state targets at registry
-    882f4764a248, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1035 moved it from
+    """The release surface on the pinned feed: 33,235 compiled targets after
+    Medicaid substitution, 6,087 national_state targets at registry
+    0e899cd7f893, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1243 took it from
+    33,250 / 6,102 at 882f4764a248 by rebasing 14 Historic Table 2 state
+    families onto their Table 1.x controls and retiring the 14 HT2 US rows
+    and HT2's US-workbook return count. microcosm#1035 moved it from
     e1f9906bf0e0 at the same counts by choosing the capital-gains control by
     concept and period, which returns the 51 Historic Table 2 state return
     counts to Table 1.4 shares. microcosm#1206 moved the
@@ -909,9 +912,9 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_250
-    assert len(surface.specs) == 6_102
-    assert surface.version == "882f4764a248"
+    assert len(registry.specs) == 33_235
+    assert len(surface.specs) == 6_087
+    assert surface.version == "0e899cd7f893"
     chip = [
         spec
         for spec in surface.specs
@@ -988,49 +991,160 @@ def test_pinned_feed_no_soi_state_family_sums_past_its_national_target(
     pinned_feed_national_state_surface,
 ) -> None:
     """Invariant: the states partition the nation (HT2 state rows omit only
-    other areas and Puerto Rico), so on national_state no SOI state family may
-    sum past every national target of the same model quantity and filters.
-    Before microcosm#1035 the capital_gains_gross return counts, one of the 63
-    compared families, summed to 2.39x theirs. Some quantities still carry
-    both a stale HT2 US row and a newer Table 1.x row, a few percent apart, so
-    the bound is the larger of them."""
+    other areas and Puerto Rico), so on national_state each SOI state family
+    sums to at most every national target of the same model quantity and
+    filters, and those national targets agree on one value. Before
+    microcosm#1035 the capital_gains_gross return counts, one of the 63
+    compared families, summed to 2.39x theirs. Before microcosm#1243, 14
+    quantities bound a stale HT2 US row beside a newer Table 1.x row, 0.3% to
+    12.2% apart, and two state families (ira_distributions sum,
+    taxable_pension_income count) summed past the smaller one. Table 1.2
+    repeats Table 1.1's return count and AGI at the same value."""
     _, surface, _ = pinned_feed_national_state_surface
-
-    def quantity(spec) -> tuple[object, ...]:
-        metadata = spec.metadata
-        return (
-            metadata.get("variable"),
-            metadata.get("measure_mode"),
-            metadata.get("agi_lower_bound"),
-            metadata.get("agi_upper_bound"),
-            metadata.get("filing_status"),
-            metadata.get("soi_return_universe", "all_returns"),
-            metadata.get("itemized_only"),
-            tuple(
-                sorted(
-                    (key, value)
-                    for key, value in metadata.items()
-                    if key.startswith("ledger_filter_")
-                )
-            ),
-        )
 
     national: dict[tuple[object, ...], list[float]] = {}
     states: dict[tuple[object, ...], float] = {}
     for spec in surface.specs:
         if spec.family != "irs_soi":
             continue
+        quantity = fiscal_targets._soi_national_quantity(spec)
         if spec.metadata.get("state_fips"):
-            states[quantity(spec)] = states.get(quantity(spec), 0.0) + spec.value
+            states[quantity] = states.get(quantity, 0.0) + spec.value
         else:
-            national.setdefault(quantity(spec), []).append(spec.value)
+            national.setdefault(quantity, []).append(spec.value)
     compared = {key: total for key, total in states.items() if key in national}
     assert len(compared) == 63
     assert {
-        key[:2]: total / max(national[key])
-        for key, total in compared.items()
-        if total > max(national[key])
+        key[:2]: max(national[key]) / min(national[key])
+        for key in compared
+        if not math.isclose(max(national[key]), min(national[key]), rel_tol=1e-12)
     } == {}
+    assert {
+        key[:2]: total / min(national[key])
+        for key, total in compared.items()
+        if total > min(national[key])
+    } == {}
+
+
+#: Per Historic Table 2 measure on the pinned feed: the control, the factor
+#: control / HT2 US, and the 51 states' share of the control after aging,
+#: which equals their share of the HT2 US row in 22in55cmcsv.csv.
+_PINNED_HT2_CONTROLS = {
+    "adjusted_gross_income": (
+        "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+        "1.03406226790832",
+        0.9927705794863034,
+    ),
+    "itemized_deductions_amount": (
+        "irs_soi.ty2023.table_1_2.all_returns.all.total_itemized_deductions_amount",
+        "1.06199716446366",
+        0.9967186110188511,
+    ),
+    "return_count": (
+        "irs_soi.ty2023.table_1_1.all.return_count",
+        "1.0059553340395",
+        0.9941038386589074,
+    ),
+    "taxable_income_amount": (
+        "irs_soi.ty2023.table_1_2.all_returns.all.taxable_income_amount",
+        "1.02269332455933",
+        0.9918572450214445,
+    ),
+    "taxable_ira_distributions_amount": (
+        "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_amount",
+        "1.00797641266581",
+        0.9966807616472636,
+    ),
+    "taxable_ira_distributions_returns": (
+        "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_returns",
+        "1.0160787779413",
+        0.9973079699427512,
+    ),
+    "taxable_pension_income_amount": (
+        "irs_soi.ty2023.table_1_4.all.taxable_pension_income_amount",
+        "1.03728909060027",
+        0.9950132662033392,
+    ),
+    "taxable_pension_income_returns": (
+        "irs_soi.ty2023.table_1_4.all.taxable_pension_income_returns",
+        "0.986313541255929",
+        0.9955834839393801,
+    ),
+    "taxable_social_security_amount": (
+        "irs_soi.ty2023.table_1_4.all.taxable_social_security_amount",
+        "1.15610313337446",
+        0.9976736652240566,
+    ),
+    "taxable_social_security_returns": (
+        "irs_soi.ty2023.table_1_4.all.taxable_social_security_returns",
+        "1.05073211171031",
+        0.9968155377569604,
+    ),
+    "unemployment_compensation_amount": (
+        "irs_soi.ty2023.table_1_4.all.unemployment_compensation_amount",
+        "1.03338314589632",
+        0.9965852213837815,
+    ),
+    "unemployment_compensation_returns": (
+        "irs_soi.ty2023.table_1_4.all.unemployment_compensation_returns",
+        "1.01068061430422",
+        0.9978699874781082,
+    ),
+    "wages_salaries_amount": (
+        "irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+        "1.05100939239557",
+        0.992058516190872,
+    ),
+    "wages_salaries_returns": (
+        "irs_soi.ty2023.table_1_4.all.wages_salaries_returns",
+        "1.00693407716956",
+        0.9947092345961839,
+    ),
+}
+
+
+def test_pinned_feed_ht2_state_rows_take_their_national_control_level(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Each of the 14 registered Historic Table 2 families enters as 51
+    shares of its TY2023 Table 1.x control (microcosm#1243): the control and
+    the states age by the same factor, so after aging the states are exactly
+    their HT2 share of the control, and no HT2-lineage national row of the
+    quantity is left beside it."""
+    assert set(_PINNED_HT2_CONTROLS) == set(fiscal_targets._SOI_HT2_NATIONAL_CONTROLS)
+    _, surface, _ = pinned_feed_national_state_surface
+    by_name = {spec.name: spec for spec in surface.specs}
+    for measure_id, (control_id, factor, share) in _PINNED_HT2_CONTROLS.items():
+        concept = fiscal_targets._SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
+        rows = [
+            spec
+            for spec in surface.specs
+            if ".historic_table_2.state_broad." in spec.name
+            and spec.metadata.get("source_measure_id") == measure_id
+        ]
+        assert len(rows) == 51, measure_id
+        control = by_name[control_id]
+        for spec in rows:
+            assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["uprating_factor"] == factor
+            assert spec.metadata["uprating_to_period"] == "2023"
+            assert spec.metadata["aging_factor"] == control.metadata["aging_factor"]
+            assert spec.metadata["soi_source_concept"] == concept
+            assert spec.metadata["soi_control_concept"] == concept
+        total = sum(spec.value for spec in rows)
+        assert math.isclose(total / control.value, share, rel_tol=1e-12), measure_id
+        assert total < control.value
+        quantity = fiscal_targets._soi_national_quantity(rows[0])
+        assert [
+            spec.name
+            for spec in surface.specs
+            if spec.family == "irs_soi"
+            and not spec.metadata.get("state_fips")
+            and fiscal_targets._soi_national_quantity(spec) == quantity
+            and fiscal_targets._is_soi_ht2_lineage_record_set(
+                spec.metadata.get("ledger_layout_record_set_id", "")
+            )
+        ] == [], measure_id
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
