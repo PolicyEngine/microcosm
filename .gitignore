@@ -14,6 +14,7 @@ out/
 
 # Release alert webhooks (real file is machine-local; .example is tracked)
 tools/release.env
+tools/route_a/route_a.env
 /inputs/
 
 # Finder metadata — never payload

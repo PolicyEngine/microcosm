@@ -30,6 +30,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from microcosm.build.staging_v2 import (
     StagingContractError,
     disabled_staging_delivery,
@@ -39,6 +41,10 @@ from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data.contract import (
     _check_uk_incumbent_surface_evaluation,
     validate_release_dir,
+)
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    parse_calibration_diagnostics,
 )
 
 _REPO_ID = "policyengine/populace-uk-private"
@@ -87,6 +93,36 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")
     temporary.replace(path)
+
+
+def _write_release_diagnostics(
+    path: Path,
+    *,
+    source: Path,
+    diagnostics: Mapping[str, object],
+    measured_source_sha256: str,
+    households: int,
+) -> None:
+    """Copy current diagnostics exactly; adapt only legacy candidate evidence."""
+
+    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        try:
+            parse_calibration_diagnostics(diagnostics)
+        except ValidationError as error:
+            raise SystemExit(
+                "error: candidate calibration diagnostics do not satisfy the "
+                f"canonical schema: {error}"
+            ) from error
+        shutil.copyfile(source, path)
+        return
+
+    shipped_diagnostics = {
+        **diagnostics,
+        "households": households,
+        "n_targets": len(list(diagnostics.get("targets") or [])),
+        "source_diagnostics_sha256": measured_source_sha256,
+    }
+    _write_json(path, shipped_diagnostics)
 
 
 def _clone_file(source: Path, destination: Path) -> None:
@@ -464,15 +500,13 @@ def _stage_and_finalize(
     weights = _mapping(manifest.get("weights"), "weights")
     n_targets = len(list(diagnostics.get("targets") or []))
     households = int(solve.get("n_households") or diagnostics.get("n_records") or 0)
-    shipped_diagnostics = {
-        **diagnostics,
-        # The local-area contract reads these two; the driver's schema-6
-        # diagnostics carry the same facts under n_records / len(targets).
-        "households": households,
-        "n_targets": n_targets,
-        "source_diagnostics_sha256": measured["diagnostics"],
-    }
-    _write_json(release_dir / "calibration_diagnostics.json", shipped_diagnostics)
+    _write_release_diagnostics(
+        release_dir / "calibration_diagnostics.json",
+        source=source_paths["source_calibration_diagnostics.json"],
+        diagnostics=diagnostics,
+        measured_source_sha256=measured["diagnostics"],
+        households=households,
+    )
     gates = _mapping(report.get("gates"), "report.gates")
     gate_summary = {
         "schema_version": 1,

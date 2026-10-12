@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import frs_disability, spi_income
-from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
@@ -126,6 +126,8 @@ def _dead_support(
         "person_benunit_id": np.arange(201, 205, dtype="int64"),
         "age": [30, 40, 50, 60],
         "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
+        # Each one-person benefit unit is its own claimant.
+        "is_uc_claimant": np.ones(4, dtype=bool),
     }
     for position, column in enumerate(SPI_INCOME_IMPUTATION_COLUMNS, start=1):
         if column == drop_income_component:

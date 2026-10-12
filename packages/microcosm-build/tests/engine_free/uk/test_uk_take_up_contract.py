@@ -16,6 +16,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "child_benefit",
         "child_benefit_opts_out_rate",
         "pension_credit",
+        "pension_credit_guarantee_credit",
+        "pension_credit_savings_credit_only",
         "universal_credit",
         "marriage_allowance",
         "tax_free_childcare",
@@ -31,6 +33,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.89,
         0.23,
         0.7,
+        0.69,
+        0.37,
         0.55,
         0.5,
         0.88,
@@ -109,7 +113,10 @@ def test_rate_without_source_is_refused(monkeypatch) -> None:
 def test_frozen_and_fitted_status_blocks_are_required(monkeypatch) -> None:
     raw = _resource()
     mutated = copy.deepcopy(raw)
-    del mutated["programs"][3]["source"]["freeze"]
+    universal_credit = next(
+        entry for entry in mutated["programs"] if entry["key"] == "universal_credit"
+    )
+    del universal_credit["source"]["freeze"]
     _reload_with(monkeypatch, mutated)
     with pytest.raises(ValueError, match="freeze block"):
         load_uk_take_up_contract()
@@ -180,7 +187,7 @@ def test_tfc_routed_share_series_matches_pinned_chronicle_feed_when_present() ->
 
 
 def test_forbidden_source_dependency_strings_absent_from_uk_resources() -> None:
-    for resource in ("take_up_contract.json", "brma_rent_counts.json"):
+    for resource in ("take_up_contract.json", "brma_private_rented_households.json"):
         text = files("microcosm.build.uk").joinpath(resource).read_text().lower()
         assert "policyengine_" + "uk_data" not in text
         assert "policyengine-" + "uk-data" not in text

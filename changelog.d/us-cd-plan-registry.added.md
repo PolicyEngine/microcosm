@@ -1,0 +1,1 @@
+Add a SHA-pinned US block -> congressional-district plan registry: every populated 2020 block's district under the 117th (SOI's geography; North Carolina carried from its 2019 plan), 118th, 119th and 120th (November 2026, Missouri on its 2022 map) plans, with a validating loader, a Census-sourced builder and property tests.

@@ -1,0 +1,195 @@
+{
+  "country": "nz",
+  "reference_set": "calibration",
+  "description": "New Zealand v0 weight-calibration references: the D1 method-card MC5 list (region by age band, household composition, census family type, tenure by region, IRD taxable-income bands, MSD main-benefit recipients, NZ Super and Veterans Pension recipients). Observed values and source lineage live only in Chronicle. Every row is an unactivated placeholder until Chronicle supplies cell-pinned facts and a reviewed Frame column and period bridge, so compilation refuses it. Pre-calibration inputs live in precal_references.json and held-out comparators in holdout_references.json; the three files are separate resources so that editing one set cannot change the resource digest another set's graph nodes carry.",
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "target_references": [
+    {
+      "name": "stats_nz_population_by_age_sex_region",
+      "ledger_selector": {
+        "source_name": "stats_nz_population_estimates",
+        "source_measure_id": "estimated_resident_population_by_age_sex_region",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "geography_vintage": "2025",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Primary age-band x sex x region population surface. Chronicle must supply one dimension- and region-pinned fact per selected cell, the complete region roster, uncertainty, and a reviewed bridge from the 30 June 2025 reference date to the 2026-27 build basis."
+    },
+    {
+      "name": "stats_nz_census_households_by_composition",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_households",
+        "source_measure_id": "households_by_composition",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "households",
+      "period": 2023,
+      "family": "household_structure",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Household and family composition is the structural control for WFF family assembly. Chronicle must expand the published categories and supply a reviewed 2023-to-2026 basis before activation."
+    },
+    {
+      "name": "stats_nz_census_families_by_type",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_families",
+        "source_measure_id": "families_by_family_type",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "census_families",
+      "period": 2023,
+      "family": "household_structure",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Census 2023 family type (couple without children, couple with children, one parent with children), the MC5 family-type margin. Census families are not the MC7 benefit units: the reviewed Frame column counts census families per household, emitted as household columns with no second group entity. Chronicle must expand the published categories and supply a reviewed 2023-to-2026 basis before activation.",
+      "filter": "census_family_type_cell_indicator"
+    },
+    {
+      "name": "stats_nz_census_households_by_tenure_region",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_households",
+        "source_measure_id": "households_by_tenure_region",
+        "geography_level": "region"
+      },
+      "entity": "household",
+      "measure": "households",
+      "filter": "housing_tenure_cell_indicator",
+      "period": 2023,
+      "family": "housing_tenure",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_prepared_indicators",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Each tenure x region cell needs its own deterministic indicator binding. Market-rent amounts are validation/input evidence for Accommodation Supplement, not household-count calibration rows."
+    },
+    {
+      "name": "ird_taxable_income_people_by_band",
+      "ledger_selector": {
+        "source_name": "ird_taxable_income_distribution",
+        "source_measure_id": "individuals_by_taxable_income_band",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "people",
+      "filter": "taxable_income_band_indicator",
+      "period": 2024,
+      "family": "income",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Administrative count backbone. Chronicle must emit one income-band fact and reviewed prepared indicator per cell; the target basis must be advanced explicitly to the build period."
+    },
+    {
+      "name": "ird_taxable_income_total_by_band",
+      "ledger_selector": {
+        "source_name": "ird_taxable_income_distribution",
+        "source_measure_id": "total_taxable_income_by_band_nzd",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "taxable_income_nzd",
+      "filter": "taxable_income_band_indicator",
+      "period": 2024,
+      "family": "income",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_candidate_column_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Dollar companion to the count bands. Activation requires a destination-NZD taxable-income column with a reviewed donor bridge; US-dollar values may never be compared directly with NZD thresholds."
+    },
+    {
+      "name": "msd_main_benefit_recipients_by_program_age",
+      "ledger_selector": {
+        "source_name": "msd_quarterly_benefit_facts",
+        "source_measure_id": "main_benefit_recipients_by_program_age",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_main_benefit",
+      "period": "2026-03",
+      "family": "main_benefits",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Count-only administrative cells constrain an explicit receipt/take-up layer. They must never be bound to Axiom full-entitlement outputs or used to force entitlement dollars to equal actual expenditure."
+    },
+    {
+      "name": "msd_nz_super_veterans_pension_recipients",
+      "ledger_selector": {
+        "source_name": "msd_nz_super_veterans_pension_facts",
+        "source_measure_id": "nz_super_veterans_pension_recipients",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_nz_super_or_veterans_pension",
+      "period": "2025-06",
+      "family": "superannuation",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "calibration",
+        "reference_set": "calibration",
+        "method_card_row": "MC5"
+      },
+      "notes": "Recipient stock is a receipt-state target, not an entitlement-output target. Expenditure is validation evidence and stays outside the calibration manifest."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}

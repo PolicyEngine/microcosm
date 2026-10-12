@@ -1,0 +1,516 @@
+{
+  "built_on": "2026-09-15",
+  "issues": {
+    "chronicle_registration": "PolicyEngine/chronicle#269",
+    "umbrella": "PolicyEngine/microcosm#931"
+  },
+  "kind": "uk_atomic_area_supports_provenance",
+  "ladder_diff": {
+    "areas": 239023,
+    "changed_areas_by_column": {
+      "constituency_code": 0,
+      "households": 0,
+      "itl3_code": 87985,
+      "local_authority_code": 0,
+      "lsoa_code": 0,
+      "msoa_code": 0,
+      "population": 0,
+      "region_code": 0,
+      "ward_code": 37426
+    },
+    "unexpected_moves": {}
+  },
+  "ladder_reference": {
+    "path": "uk_oa_ladder_2021.npz",
+    "sha256": "bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd"
+  },
+  "notes": [
+    "E&W local_authority_code is the April 2023 LAD code set as published in the December 2024 OA->PARNCP->LAD->Region file (field LAD24CD); the 1 April 2025 Barnsley/Sheffield recode is a vintage-translation follow-up.",
+    "E&W region_code is read per OA from the same December 2024 file (RGN24CD); Wales carries the W99999999 sentinel, Scotland S99999999, NI N99999999.",
+    "The Ward 2024 file's LAD column is never read; the ITL 2025 file is joined on the April 2023 LAD codes (exact key join, #205 rule).",
+    "The ONS LAD->ITL file lists North Ayrshire (S12000021) under two ITL3 rows (TLM20 Arran and Cumbrae first, TLM93 North Ayrshire mainland second); the shared loader keeps the first row, so North Ayrshire carries TLM20, as the ladder's loader did with the January 2021 file. Follow-up: prefer the mainland LAU or an explicit override.",
+    "Scotland households are census 2022 occupied households summed from the NRS postcode index (cell-key perturbed)."
+  ],
+  "publisher_files": {
+    "lad_itl": {
+      "chronicle_package_id": "ons-lad-dec2024-itl-jan2025-lookup",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2025,
+      "item_id": "15bdb6b0ff1c4a64b34a64e2e39f8caf",
+      "product": "Local Authority District (December 2024) to LAU1 to ITL3 to ITL2 to ITL1 (January 2025) Lookup in the UK",
+      "publisher": "ONS",
+      "retrieved_at": "2026-09-15",
+      "sha256": "2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284",
+      "size_bytes": 45097,
+      "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/15bdb6b0ff1c4a64b34a64e2e39f8caf/csv?layers=0",
+      "vintage": "2025_itl"
+    },
+    "ni_geojson": {
+      "chronicle_package_id": "nisra-dz2021-geojson",
+      "chronicle_source_id": "nisra",
+      "chronicle_year": 2021,
+      "item_id": "",
+      "product": "Data Zone 2021 GeoJSON (SDZ2021, LGD2014 and DEA2014 properties)",
+      "publisher": "NISRA",
+      "retrieved_at": "2026-08-19",
+      "sha256": "3acb357ebdecae64dbc2fb645e62c68f529a00f7ae9c19684bd3b7a10e62676b",
+      "size_bytes": 26823947,
+      "url": "https://www.nisra.gov.uk/files/nisra/publications/geography-dz2021-geojson.zip",
+      "vintage": "2021_census"
+    },
+    "ni_households": {
+      "chronicle_package_id": "nisra-census2021-dz21-households",
+      "chronicle_source_id": "nisra",
+      "chronicle_year": 2021,
+      "item_id": "",
+      "product": "Census 2021 table builder, households by DZ21",
+      "publisher": "NISRA",
+      "retrieved_at": "2026-08-19",
+      "sha256": "fa97a7f61036f9a3ec40ea6e3812249d87d0010375f0ff7df0b5d9f77864563d",
+      "size_bytes": 108641,
+      "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+      "vintage": "2021_census"
+    },
+    "ni_parlcon24_lookup": {
+      "chronicle_package_id": "nisra-dz-sdz-lookups-v3",
+      "chronicle_source_id": "nisra",
+      "chronicle_year": 2025,
+      "item_id": "",
+      "product": "Geography Data Zone and Super Data Zone Lookups V3, DZ2021_Admin_geog_lookup (PARLCON2024, SDZ2021, LGD2014, DEA2014)",
+      "publisher": "NISRA",
+      "retrieved_at": "2026-09-09",
+      "sha256": "8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+      "size_bytes": 603543,
+      "url": "https://www.nisra.gov.uk/files/nisra/documents/2025-04/geography-data-zone-and-super-data-zone-lookups-v3.xlsx",
+      "vintage": "2024_pcon"
+    },
+    "ni_population": {
+      "chronicle_package_id": "nisra-census2021-dz21-people",
+      "chronicle_source_id": "nisra",
+      "chronicle_year": 2021,
+      "item_id": "",
+      "product": "Census 2021 table builder, usual residents by DZ21",
+      "publisher": "NISRA",
+      "retrieved_at": "2026-08-19",
+      "sha256": "5fea5eb724034b4d8d749c67114d903383074dca090e8203a8e819a0d6dd445b",
+      "size_bytes": 108660,
+      "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=PEOPLE&v=DZ21",
+      "vintage": "2021_census"
+    },
+    "oa_constituency": {
+      "chronicle_package_id": "ons-oa21-pcon-jul2024-lookup",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2024,
+      "item_id": "5968b5b2c0f14dd29ba277beaae6dec3",
+      "product": "Output Area (2021) to Westminster Parliamentary Constituency (July 2024) Best Fit Lookup in EW",
+      "publisher": "ONS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "e4ec577416bde73d5718ef133af4adeaae9b95a41867aeb006b5fc0260c790c0",
+      "size_bytes": 12879604,
+      "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/5968b5b2c0f14dd29ba277beaae6dec3/csv?layers=0",
+      "vintage": "2024_pcon"
+    },
+    "oa_hierarchy": {
+      "chronicle_package_id": "ons-oa21-lsoa-msoa-lad22-lookup",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2021,
+      "item_id": "b9ca90c10aaa4b8d9791e9859a38ca67",
+      "product": "Output Area (2021) to LSOA to MSOA to LAD (December 2021) Exact Fit Lookup in EW",
+      "publisher": "ONS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "1b7e715936374c586efbe669d82e3f3d6d093dc5295c2d99ce6ea2349f85153a",
+      "size_bytes": 18193283,
+      "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/b9ca90c10aaa4b8d9791e9859a38ca67/csv?layers=0",
+      "vintage": "2021_census"
+    },
+    "oa_households": {
+      "chronicle_package_id": "ons-census2021-ts041-oa",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2021,
+      "item_id": "",
+      "product": "Census 2021 TS041 number of households by Output Area",
+      "publisher": "ONS (Nomis)",
+      "retrieved_at": "2026-08-19",
+      "sha256": "e4f11fc0ea22393fe3be444027878e67b51d2a44687e122c37439d19a548cb9f",
+      "size_bytes": 1511641,
+      "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+      "vintage": "2021_census"
+    },
+    "oa_parncp_lad_region": {
+      "chronicle_package_id": "ons-oa21-parncp-lad-rgn-ctry-dec2024-lookup",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2024,
+      "item_id": "7507c0292db546ed83e4ba60f1115b1d",
+      "product": "Output Area (2021) to Parish/NCP to LAD to Region to Country (December 2024) Lookup in EW V2",
+      "publisher": "ONS",
+      "retrieved_at": "2026-09-15",
+      "sha256": "e01842a57c26036641fa5d6c2769dd5ac67af03a64d6790d4f35883f04eb2694",
+      "size_bytes": 27249403,
+      "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/7507c0292db546ed83e4ba60f1115b1d/csv?layers=0",
+      "vintage": "2023_april_lad"
+    },
+    "oa_population": {
+      "chronicle_package_id": "ons-census2021-ts001-oa",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2021,
+      "item_id": "",
+      "product": "Census 2021 TS001 usual resident population by Output Area",
+      "publisher": "ONS (Nomis)",
+      "retrieved_at": "2026-08-19",
+      "sha256": "b724c1208b7628c7c558156fcc619446486353a12d0b6e0bf388add225653dc6",
+      "size_bytes": 1870128,
+      "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts001.zip",
+      "vintage": "2021_census"
+    },
+    "oa_ward": {
+      "chronicle_package_id": "ons-oa21-wd24-lad24-lookup",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2024,
+      "item_id": "b21c632804094c149ccdfea1ae59c8c8",
+      "product": "Output Area (2021) to Ward (2024) to LAD (May 2024) Best Fit Lookup in EW V2",
+      "publisher": "ONS",
+      "retrieved_at": "2026-09-15",
+      "sha256": "f2d2df158c6e3e29da09a96d456c718a065e1229590d27f6f5349e45689d7b67",
+      "size_bytes": 12628147,
+      "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/b21c632804094c149ccdfea1ae59c8c8/csv?layers=0",
+      "vintage": "2024_wd"
+    },
+    "scotland_census_index": {
+      "chronicle_package_id": "nrs-census2022-index",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2022,
+      "item_id": "",
+      "product": "Census 2022 index: OA_TO_HIGHER_AREAS (EW2022 electoral ward) and Postcode_To_OA (occupied household counts, cell-key perturbed)",
+      "publisher": "NRS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "0e4096a321cba2318dc5d2e35c197bf815ac333aebdf4cb0ddce82112b57a261",
+      "size_bytes": 2922015,
+      "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+      "vintage": "2022_census"
+    },
+    "scotland_constituency": {
+      "chronicle_package_id": "nrs-oa22-ukpc24-lookup",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2024,
+      "item_id": "",
+      "product": "OA2022 to UK Parliamentary Constituency 2024 lookup",
+      "publisher": "NRS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "b63829d28cdf93606d17ffd12999ec12f54a8bc3065cc40fbf9e975629e4689a",
+      "size_bytes": 181009,
+      "url": "https://www.nrscotland.gov.uk/media/njkmhppf/oa22_ukpc24.zip",
+      "vintage": "2024_pcon"
+    },
+    "scotland_dz_iz": {
+      "chronicle_package_id": "nrs-oa22-dz22-iz22-lookup",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2022,
+      "item_id": "",
+      "product": "OA2022 to Data Zone 2022 to Intermediate Zone 2022 lookup",
+      "publisher": "NRS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "3565794561306479b6c618aaa3915f1f29fdce31ee798fdcdab45f880a7ba4aa",
+      "size_bytes": 237841,
+      "url": "https://www.nrscotland.gov.uk/media/iz3evrqt/oa22_dz22_iz22.zip",
+      "vintage": "2022_census"
+    },
+    "scotland_lau": {
+      "chronicle_package_id": "nrs-oa22-lau25-itl25-lookup",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2025,
+      "item_id": "",
+      "product": "OA2022 to LAU 2025 to ITL 2025 lookup (council area via CA19)",
+      "publisher": "NRS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "4d94e959dfcc83ce6bcd0c09cfc073ad597fb89812eab1d8ab664f4ccbc6ba77",
+      "size_bytes": 369739,
+      "url": "https://www.nrscotland.gov.uk/media/qsxon3dm/oa22_lau25_itl25.zip",
+      "vintage": "2019_council_area"
+    },
+    "scotland_population": {
+      "chronicle_package_id": "nrs-census2022-oa22-usual-resident-population",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2022,
+      "item_id": "",
+      "product": "Output Area 2022 usual resident population",
+      "publisher": "NRS",
+      "retrieved_at": "2026-08-19",
+      "sha256": "f7af756710c56f335d9332c08f95a68a5775aec4f25f17b21ab979257ed40148",
+      "size_bytes": 678338,
+      "url": "https://www.nrscotland.gov.uk/media/owpknvgk/outputarea2022_usualresidentpopulation.csv",
+      "vintage": "2022_census"
+    }
+  },
+  "reviewed_differences": [],
+  "schema_version": 1,
+  "supports": {
+    "uk_ew_output_area_2021": {
+      "areas": 188880,
+      "column_metadata": {
+        "area": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-oa21-lsoa-msoa-lad22-lookup@sha256:1b7e715936374c586efbe669d82e3f3d6d093dc5295c2d99ce6ea2349f85153a",
+          "vintage": "2021_census"
+        },
+        "constituency_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "ons-oa21-pcon-jul2024-lookup@sha256:e4ec577416bde73d5718ef133af4adeaae9b95a41867aeb006b5fc0260c790c0",
+          "vintage": "2024_pcon"
+        },
+        "frs_region": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "sha256:e30ae45c88a9a2a3368ca58365b73268e8ace4fae0c824e0fefecf4dcee5401a",
+          "vintage": "frs_region_enum_v1"
+        },
+        "households": {
+          "basis": "census_2021_households",
+          "kind": "weight",
+          "source": "ons-census2021-ts041-oa@sha256:e4f11fc0ea22393fe3be444027878e67b51d2a44687e122c37439d19a548cb9f"
+        },
+        "itl1_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-3",
+          "vintage": "2025_itl"
+        },
+        "itl2_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-4",
+          "vintage": "2025_itl"
+        },
+        "itl3_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284",
+          "vintage": "2025_itl"
+        },
+        "local_authority_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "ons-oa21-parncp-lad-rgn-ctry-dec2024-lookup@sha256:e01842a57c26036641fa5d6c2769dd5ac67af03a64d6790d4f35883f04eb2694",
+          "vintage": "2023_april_lad"
+        },
+        "lsoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-oa21-lsoa-msoa-lad22-lookup@sha256:1b7e715936374c586efbe669d82e3f3d6d093dc5295c2d99ce6ea2349f85153a",
+          "vintage": "2021_census"
+        },
+        "msoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-oa21-lsoa-msoa-lad22-lookup@sha256:1b7e715936374c586efbe669d82e3f3d6d093dc5295c2d99ce6ea2349f85153a",
+          "vintage": "2021_census"
+        },
+        "population": {
+          "basis": "census_2021_usual_residents",
+          "kind": "weight",
+          "source": "ons-census2021-ts001-oa@sha256:b724c1208b7628c7c558156fcc619446486353a12d0b6e0bf388add225653dc6"
+        },
+        "region_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "ons-oa21-parncp-lad-rgn-ctry-dec2024-lookup@sha256:e01842a57c26036641fa5d6c2769dd5ac67af03a64d6790d4f35883f04eb2694",
+          "vintage": "2024_rgn"
+        },
+        "ward_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "ons-oa21-wd24-lad24-lookup@sha256:f2d2df158c6e3e29da09a96d456c718a065e1229590d27f6f5349e45689d7b67",
+          "vintage": "2024_wd"
+        }
+      },
+      "constituencies": 575,
+      "filename": "uk_ew_output_area_2021_support.npz",
+      "households_total": 24783304,
+      "local_authorities": 318,
+      "population_total": 59597747,
+      "sha256": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797",
+      "size_bytes": 1828698,
+      "wards": 7563
+    },
+    "uk_ni_data_zone_2021": {
+      "areas": 3780,
+      "column_metadata": {
+        "area": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2021_census"
+        },
+        "constituency_code": {
+          "kind": "code",
+          "relation": "official_tabulation",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2024_pcon"
+        },
+        "frs_region": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "sha256:bb46c714718dc9e2dbe7c8a87f678be5138ca55cd43ef72a3800d3d656a25561",
+          "vintage": "frs_region_enum_v1"
+        },
+        "households": {
+          "basis": "census_2021_households",
+          "kind": "weight",
+          "source": "nisra-census2021-dz21-households@sha256:fa97a7f61036f9a3ec40ea6e3812249d87d0010375f0ff7df0b5d9f77864563d"
+        },
+        "itl1_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-3",
+          "vintage": "2025_itl"
+        },
+        "itl2_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-4",
+          "vintage": "2025_itl"
+        },
+        "itl3_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284",
+          "vintage": "2025_itl"
+        },
+        "local_authority_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2014_lgd"
+        },
+        "lsoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2021_census"
+        },
+        "msoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2021_census"
+        },
+        "population": {
+          "basis": "census_2021_usual_residents",
+          "kind": "weight",
+          "source": "nisra-census2021-dz21-people@sha256:5fea5eb724034b4d8d749c67114d903383074dca090e8203a8e819a0d6dd445b"
+        },
+        "region_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz2021-geojson@sha256:3acb357ebdecae64dbc2fb645e62c68f529a00f7ae9c19684bd3b7a10e62676b",
+          "vintage": "frs_region_sentinel"
+        },
+        "ward_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nisra-dz-sdz-lookups-v3@sha256:8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2014_dea"
+        }
+      },
+      "constituencies": 18,
+      "filename": "uk_ni_data_zone_2021_support.npz",
+      "households_total": 768813,
+      "local_authorities": 11,
+      "population_total": 1903168,
+      "sha256": "facb9923f589cb68eefa8fad37911e618b6137964ff58a231976ef62584b669f",
+      "size_bytes": 44638,
+      "wards": 80
+    },
+    "uk_scotland_output_area_2022": {
+      "areas": 46363,
+      "column_metadata": {
+        "area": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nrs-oa22-dz22-iz22-lookup@sha256:3565794561306479b6c618aaa3915f1f29fdce31ee798fdcdab45f880a7ba4aa",
+          "vintage": "2022_census"
+        },
+        "constituency_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "nrs-oa22-ukpc24-lookup@sha256:b63829d28cdf93606d17ffd12999ec12f54a8bc3065cc40fbf9e975629e4689a",
+          "vintage": "2024_pcon"
+        },
+        "frs_region": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "sha256:f5e648f338a06ab0ccf183baf7a20379d2d8955f3085609b645d2d174fdddc64",
+          "vintage": "frs_region_enum_v1"
+        },
+        "households": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed",
+          "kind": "weight",
+          "source": "nrs-census2022-index@sha256:0e4096a321cba2318dc5d2e35c197bf815ac333aebdf4cb0ddce82112b57a261"
+        },
+        "itl1_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-3",
+          "vintage": "2025_itl"
+        },
+        "itl2_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284#prefix-4",
+          "vintage": "2025_itl"
+        },
+        "itl3_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "ons-lad-dec2024-itl-jan2025-lookup@sha256:2db528a486fdefebfb03a3fb89d706d037cd10f06692c98cdef60a9b7796b284",
+          "vintage": "2025_itl"
+        },
+        "local_authority_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nrs-oa22-lau25-itl25-lookup@sha256:4d94e959dfcc83ce6bcd0c09cfc073ad597fb89812eab1d8ab664f4ccbc6ba77",
+          "vintage": "2019_council_area"
+        },
+        "lsoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nrs-oa22-dz22-iz22-lookup@sha256:3565794561306479b6c618aaa3915f1f29fdce31ee798fdcdab45f880a7ba4aa",
+          "vintage": "2022_census"
+        },
+        "msoa_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nrs-oa22-dz22-iz22-lookup@sha256:3565794561306479b6c618aaa3915f1f29fdce31ee798fdcdab45f880a7ba4aa",
+          "vintage": "2022_census"
+        },
+        "population": {
+          "basis": "census_2022_usual_residents",
+          "kind": "weight",
+          "source": "nrs-census2022-oa22-usual-resident-population@sha256:f7af756710c56f335d9332c08f95a68a5775aec4f25f17b21ab979257ed40148"
+        },
+        "region_code": {
+          "kind": "code",
+          "relation": "exact",
+          "source": "nrs-oa22-dz22-iz22-lookup@sha256:3565794561306479b6c618aaa3915f1f29fdce31ee798fdcdab45f880a7ba4aa",
+          "vintage": "frs_region_sentinel"
+        },
+        "ward_code": {
+          "kind": "code",
+          "relation": "best_fit",
+          "source": "nrs-census2022-index@sha256:0e4096a321cba2318dc5d2e35c197bf815ac333aebdf4cb0ddce82112b57a261",
+          "vintage": "2022_ew"
+        }
+      },
+      "constituencies": 57,
+      "filename": "uk_scotland_output_area_2022_support.npz",
+      "households_total": 2508715,
+      "local_authorities": 32,
+      "population_total": 5440284,
+      "sha256": "1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443",
+      "size_bytes": 440439,
+      "wards": 355
+    }
+  },
+  "tool": "tools/build_uk_atomic_area_supports.py"
+}

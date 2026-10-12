@@ -103,3 +103,66 @@ def test_stage_transform_rewrites_property_and_records_its_receipt() -> None:
     assert receipt.reason == UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
     assert receipt.old_total == receipt.new_total == 40.0
     assert receipt.declared_factor == 1.0
+
+
+def test_regional_property_uprating_factor_excludes_spi_support_rows() -> None:
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "region": ["LONDON", "LONDON", "LONDON", "LONDON"],
+            "household_support_channel": ["frs", "frs", "spi", "spi"],
+            "main_residence_value": [100.0, 300.0, 1_000.0, 0.0],
+            "property_wealth": [100.0, 300.0, 1_500.0, 50.0],
+        }
+    )
+    resource = {
+        "values": [{"region": "LONDON", "avg_house_price": 400.0, "dwellings": 1}]
+    }
+
+    uprated = uprate_household_property_by_region(household, resource)
+
+    # The FRS-base owner mean is 200, so the factor is 2 for every owner,
+    # the SPI owner included; the SPI non-owner is untouched.
+    assert uprated["main_residence_value"].tolist() == pytest.approx(
+        [200.0, 600.0, 2_000.0, 0.0]
+    )
+    assert uprated["property_wealth"].tolist() == pytest.approx(
+        [200.0, 600.0, 3_000.0, 50.0]
+    )
+
+
+def test_regional_property_uprating_keeps_the_total_the_sum_of_its_components():
+    """The factor scales the total and every component of it the frame carries
+    (microcosm#1063), so the total an owner holds stays the sum of its parts;
+    a renter's other property is untouched, as before."""
+
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2],
+            "region": ["LONDON", "LONDON"],
+            "main_residence_value": [100.0, 0.0],
+            "owned_land": [10.0, 4.0],
+            "other_residential_property_value": [30.0, 5.0],
+            "non_residential_property_value": [10.0, 1.0],
+            "property_wealth": [150.0, 10.0],
+        }
+    )
+    resource = {"values": [{"region": "LONDON", "avg_house_price": 300.0}]}
+
+    uprated = uprate_household_property_by_region(household, resource)
+
+    components = [
+        "main_residence_value",
+        "owned_land",
+        "other_residential_property_value",
+        "non_residential_property_value",
+    ]
+    assert uprated.loc[0, components].tolist() == [300.0, 30.0, 90.0, 30.0]
+    assert uprated.loc[0, "property_wealth"] == pytest.approx(450.0)
+    assert uprated.loc[1, [*components, "property_wealth"]].tolist() == [
+        0.0,
+        4.0,
+        5.0,
+        1.0,
+        10.0,
+    ]

@@ -48,7 +48,79 @@ def test_disability_flag_operator_asymmetry_and_afcs() -> None:
     )
 
     assert result["is_enhanced_disabled_for_benefits"].tolist() == [False, False]
-    assert result["is_severely_disabled_for_benefits"].tolist() == [True, True]
+    # DLA care at the highest rate counts; an Armed Forces Compensation Scheme
+    # payment alone does not, since FRS code 8 cannot be told apart from Armed
+    # Forces Independence Payment (pe-uk#1946, uk-data#494).
+    assert result["is_severely_disabled_for_benefits"].tolist() == [True, False]
+
+
+@pytest.mark.parametrize(
+    ("attendance_allowance", "severe"),
+    [(0.0, False), (10.0, False), (20.0, True)],
+)
+def test_severe_flag_counts_only_higher_rate_attendance_allowance(
+    attendance_allowance: float, severe: bool
+) -> None:
+    person = pd.DataFrame(
+        {
+            "attendance_allowance_reported": [attendance_allowance * WEEKS_IN_YEAR],
+            "dla_sc_reported": [0.0],
+            "dla_m_reported": [0.0],
+            "pip_m_reported": [0.0],
+            "pip_dl_reported": [0.0],
+        }
+    )
+
+    result = derive_frs_disability(
+        person, category_rates=_category_rates(), flag_rates=_flags()
+    )
+
+    assert result["is_severely_disabled_for_benefits"].tolist() == [severe]
+
+
+def test_severe_flag_is_the_tax_credit_condition_on_the_categories() -> None:
+    """Every row's flag equals the category rule, across the rate boundaries."""
+
+    rates = _category_rates()
+    offsets = (0.0, 0.5, -0.5, -0.99, -1.0, -1.01, -1.5)
+    rows = []
+    for column, levels in (
+        ("attendance_allowance_reported", (rates.aa_lower, rates.aa_higher)),
+        (
+            "dla_sc_reported",
+            (rates.dla_sc_lower, rates.dla_sc_middle, rates.dla_sc_higher),
+        ),
+        ("pip_dl_reported", (rates.pip_dl_standard, rates.pip_dl_enhanced)),
+    ):
+        for level in levels:
+            for offset in offsets:
+                row = dict.fromkeys(
+                    (
+                        "attendance_allowance_reported",
+                        "dla_sc_reported",
+                        "dla_m_reported",
+                        "pip_m_reported",
+                        "pip_dl_reported",
+                    ),
+                    0.0,
+                )
+                row[column] = (level + offset) * WEEKS_IN_YEAR
+                rows.append(row)
+    person = pd.DataFrame(rows)
+
+    result = derive_frs_disability(person, category_rates=rates, flag_rates=_flags())
+
+    expected = (
+        (result["aa_category"] == "HIGHER")
+        | (result["dla_sc_category"] == "HIGHER")
+        | (result["pip_dl_category"] == "ENHANCED")
+    )
+    assert result["is_severely_disabled_for_benefits"].tolist() == expected.tolist()
+    # Not vacuous: middle-rate DLA care and standard PIP daily living rows
+    # are present, and the flag takes both values.
+    assert (result["dla_sc_category"] == "MIDDLE").any()
+    assert (result["pip_dl_category"] == "STANDARD").any()
+    assert expected.any() and not expected.all()
 
 
 @pytest.mark.parametrize("operation_index", [0, 1])

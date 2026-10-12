@@ -27,11 +27,13 @@ reference together through the run.
 
 ## 1. Calibrate the national candidate
 
-Use the rowwise driver's national release role and record the input digest
-rather than relying on a mutable path:
+Use the UK build driver's national release role (`microcosm-build-uk`,
+`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub
+over the same driver, and the role dispatches to the retained calibration
+seam) and record the input digest rather than relying on a mutable path:
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role national \
+uv run --no-sync python tools/build_uk_full.py --release-role national \
   --input-h5 <spine-h5> \
   --input-sha256 <spine-h5-sha256> \
   --ledger-facts <ledger-consumer-facts> \

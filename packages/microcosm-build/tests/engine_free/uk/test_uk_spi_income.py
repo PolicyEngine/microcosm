@@ -94,6 +94,36 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
     )
 
 
+def test_spi_uc_start_up_period_holds_only_while_the_row_stays_self_employed() -> None:
+    """A redrawn row keeps its donor's start-up period only while self-employed."""
+
+    person = pd.DataFrame(
+        {
+            "employment_status": [
+                "FT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "FT_EMPLOYED",
+                "FT_EMPLOYED",
+            ],
+            # Row 20 keeps a self-employed status, row 30 keeps imputed
+            # self-employment income, row 40 is a base row whose flag stays.
+            "self_employment_income": [0.0, 0.0, 800.0, 0.0],
+            "uc_is_in_startup_period": [True, True, True, True],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([True, True, True, False], index=person.index)
+
+    result = spi_income._refresh_uc_start_up_period(person, spi_people=spi_people)
+
+    assert result["uc_is_in_startup_period"].tolist() == [False, True, True, True]
+    assert result["uc_is_in_startup_period"].dtype == bool
+    bare = pd.DataFrame({"employment_status": ["FT_EMPLOYED"]}, index=[1])
+    assert "uc_is_in_startup_period" not in spi_income._refresh_uc_start_up_period(
+        bare, spi_people=pd.Series([True], index=[1])
+    )
+
+
 def test_finite_numeric_diagnostic_names_columns_and_counts() -> None:
     frame = pd.DataFrame(
         {

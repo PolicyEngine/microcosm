@@ -1,0 +1,2904 @@
+"""Axiom adapter surfaces for graph nodes: periods, nesting, dtypes, engine refs.
+
+Everything above the ``needs_engine`` classes runs without
+``axiom_rules_engine``: period and nesting checks run before the engine is
+touched, the graph dtype cast is a pure function, ``axiom_engine_ref`` reads
+only bytes on disk, and materialization is exercised through a recording
+stand-in for the dense surface that returns exactly the array types the native
+extension returns (int8 judgment codes, float64 decimals, int64 integers, bool,
+and Python string lists for text and dates).
+
+The ``needs_engine`` classes run the real engine on the ``rulespec-zz``
+fixture (the existing skip pattern): a graph-typed ``simulate.rules@1`` node
+in a FILTER-free graph, the ``tax_year`` period label, family-level judgment
+codes, and ``simulate.rules_by_ref@1`` with two Axiom bindings in one run.
+"""
+
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import tarfile
+import unicodedata
+from collections.abc import Collection, Iterable, Mapping
+from itertools import permutations
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+from hypothesis import HealthCheck, event, given, settings
+from hypothesis import strategies as st
+
+from microcosm.frame import ExportContract, Frame, WeightKind, Weights
+from microcosm.frame.adapters import axiom as axiom_adapter
+from microcosm.frame.adapters.axiom import (
+    BE_SCHEMA,
+    NZ_NESTING,
+    NZ_SCHEMA,
+    AxiomEngine,
+    AxiomPeriod,
+    _graph_output,
+    assert_no_relations,
+    axiom_engine_ref,
+    rulespec_tree_digest,
+)
+from microcosm.frame.kernels import SimulateRulesKernel
+from microcosm.frame.rules_kernels import SimulateRulesByRefKernel
+from microcosm.graph import (
+    Capabilities,
+    ContentStore,
+    Determinism,
+    Graph,
+    KernelBase,
+    KernelContext,
+    KernelRegistry,
+    KernelResult,
+    Node,
+    Numeric,
+    Owned,
+    SeedSource,
+    Slice,
+    SourceRef,
+    StructuralDelta,
+    compile_graph,
+    run_graph,
+)
+from microcosm.graph.canonical import canonical_json, sha256_domain
+from microcosm.graph.keys import _directory_identity, source_content_key
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-frame")
+
+_ENGINE_INSTALLED = importlib.util.find_spec("axiom_rules_engine") is not None
+if _ENGINE_INSTALLED:
+    from axiom_rules_engine.dense import NativeCompiledDenseProgram
+
+    _DENSE_AVAILABLE = NativeCompiledDenseProgram is not None
+else:
+    _DENSE_AVAILABLE = False
+
+needs_engine = pytest.mark.skipif(
+    not _DENSE_AVAILABLE,
+    reason="axiom_rules_engine (with the dense native extension) is not installed",
+)
+needs_tables = pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None,
+    reason="pytables (microcosm-frame[axiom]) is not installed",
+)
+
+FIXTURE_RULESPEC_ROOT = _TEST_PATHS.tests / "fixtures" / "rulespec-zz"
+FIXTURE_MODULE = FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_country.yaml"
+FAMILY_FIXTURE_MODULE = (
+    FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_family.yaml"
+)
+FIXTURE_RULESPEC_ROOTS = (FIXTURE_RULESPEC_ROOT,)
+
+TAX_YEAR = AxiomPeriod(start="2026-04-01", end="2027-03-31", kind="tax_year")
+ENGINE_COMMIT = "a" * 40
+WHEEL_SHA256 = "b" * 64
+RULESPEC_COMMIT = "c" * 40
+
+# A full override of every git setting a test repository depends on, so the
+# developer's global configuration (hooks, signing) never reaches it.
+_GIT_ENV = {
+    **os.environ,
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_NOSYSTEM": "1",
+}
+
+
+def _git(root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=microcosm-test",
+            "-c",
+            "user.email=microcosm-test@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            f"core.hooksPath={os.devnull}",
+            "-C",
+            str(root),
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=_GIT_ENV,
+    )
+    return completed.stdout.strip()
+
+
+# ----------------------------------------------------------------------
+# Frames
+# ----------------------------------------------------------------------
+
+
+def _nz_frame(
+    person_households: list[int],
+    person_families: list[int],
+    household_weights: list[float],
+    *,
+    family_columns: Mapping[str, list[object]] | None = None,
+    person_columns: Mapping[str, list[object]] | None = None,
+) -> Frame:
+    """An NZ_SCHEMA frame with household-only design weights."""
+
+    count = len(person_households)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, count + 1, dtype=np.int64),
+            "person_household_id": np.asarray(person_households, dtype=np.int64),
+            "person_family_id": np.asarray(person_families, dtype=np.int64),
+            **(person_columns or {}),
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": np.unique(np.asarray(person_households, dtype=np.int64))}
+    )
+    family = pd.DataFrame(
+        {
+            "family_id": np.unique(np.asarray(person_families, dtype=np.int64)),
+            **(family_columns or {}),
+        }
+    )
+    return Frame(
+        {"person": person, "household": household, "family": family},
+        NZ_SCHEMA,
+        {
+            "household": Weights(
+                values=np.asarray(household_weights, dtype=np.float64),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+@st.composite
+def nz_populations(draw: st.DrawFn) -> dict[str, object]:
+    """A nested NZ population, optionally with one family split across households.
+
+    Households hold one to three families and families one to three persons,
+    so every family nests in exactly one household. When ``split`` is drawn,
+    one person of a family with at least two members moves to another
+    household while keeping the family, and that family then spans two
+    households. Weights are drawn equal or distinct so a test can show weight
+    agreement never hides the split.
+    """
+
+    household_count = draw(st.integers(min_value=2, max_value=5))
+    person_households: list[int] = []
+    person_families: list[int] = []
+    family_household: dict[int, int] = {}
+    next_family = 10
+    for household in range(1, household_count + 1):
+        for _ in range(draw(st.integers(min_value=1, max_value=3))):
+            family = next_family
+            next_family += 1
+            family_household[family] = household
+            for _ in range(draw(st.integers(min_value=1, max_value=3))):
+                person_households.append(household)
+                person_families.append(family)
+    splittable = [
+        family for family in family_household if person_families.count(family) >= 2
+    ]
+    split = bool(splittable) and draw(st.booleans())
+    if split:
+        family = draw(st.sampled_from(splittable))
+        position = person_families.index(family)
+        others = [
+            household
+            for household in range(1, household_count + 1)
+            if household != family_household[family]
+        ]
+        person_households[position] = draw(st.sampled_from(others))
+    equal_weights = draw(st.booleans())
+    weights = [
+        250.0 if equal_weights else float(100 + 37 * household)
+        for household in range(1, household_count + 1)
+    ]
+    return {
+        "person_households": person_households,
+        "person_families": person_families,
+        "household_weights": weights,
+        "split": split,
+    }
+
+
+# ----------------------------------------------------------------------
+# A recording stand-in for the dense surface
+# ----------------------------------------------------------------------
+
+
+class _Metadata:
+    """The authoring metadata fields the adapter reads."""
+
+    def __init__(self, name: str, entity: str, dtype: str, period: str = "Year"):
+        self.name = name
+        self.entity = entity
+        self.dtype = dtype
+        self.period = period
+
+
+class _Relation:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+_FAKE_METADATA = (
+    _Metadata("person_benefit", "Person", "decimal"),
+    _Metadata("family_assets_ok", "Family", "judgment"),
+    _Metadata("family_assistance", "Family", "decimal"),
+    _Metadata("family_band", "Family", "integer"),
+    _Metadata("family_is_large", "Family", "bool"),
+    _Metadata("family_category", "Family", "text"),
+    _Metadata("family_review_date", "Family", "date"),
+)
+
+
+class _FakeProgram:
+    """One entity's dense program; outputs mirror the native return types."""
+
+    def __init__(self, entity: str, relations: tuple[_Relation, ...] = ()) -> None:
+        self.entity = entity
+        self.root_inputs = ["family_rent", "person_income"]
+        self.relations = list(relations)
+        self.derived_metadata = list(_FAKE_METADATA)
+        self.calls: list[dict[str, object]] = []
+
+    def execute(self, *, period_kind, start, end, inputs, outputs):
+        self.calls.append(
+            {
+                "period_kind": period_kind,
+                "start": start,
+                "end": end,
+                "inputs": sorted(inputs),
+                "outputs": list(outputs),
+            }
+        )
+        rows = len(next(iter(inputs.values())))
+        codes = np.resize(np.asarray([1, -1, 0], dtype=np.int8), rows)
+        available = {
+            "person_benefit": np.full(rows, 12.5),
+            "family_assets_ok": codes,
+            "family_assistance": np.linspace(0.0, 70.25, rows),
+            "family_band": np.arange(rows, dtype=np.int64),
+            "family_is_large": codes > 0,
+            "family_category": ["small"] * rows,
+            "family_review_date": ["2026-04-01"] * rows,
+        }
+        return {
+            "row_count": rows,
+            "outputs": {name: available[name] for name in outputs},
+        }
+
+    execute_f64 = execute
+
+
+def _fake_engine(
+    adapter: AxiomEngine,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    relations: tuple[_Relation, ...] = (),
+) -> dict[str, _FakeProgram]:
+    """Swap the adapter's engine import for the recording stand-in."""
+
+    programs: dict[str, _FakeProgram] = {}
+
+    class _Compiled:
+        @classmethod
+        def from_file(cls, path, *, rulespec_roots, entity):
+            if entity not in {"Person", "Family"}:
+                raise ValueError(
+                    "dense compilation could not find derived outputs for entity "
+                    f"`{entity}`"
+                )
+            program = _FakeProgram(entity, relations)
+            program.module_path = Path(path)
+            programs[entity] = program
+            return program
+
+    class _Engine:
+        CompiledDenseProgram = _Compiled
+
+    monkeypatch.setattr(adapter, "_import_engine", lambda: _Engine)
+    return programs
+
+
+def _fake_frame() -> Frame:
+    return _nz_frame(
+        [1, 1, 2, 2, 2],
+        [10, 10, 20, 21, 21],
+        [300.0, 500.0],
+        family_columns={"family_rent": [320.0, 0.0, 180.0]},
+        person_columns={"person_income": [1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+
+
+def _nz_adapter(**kwargs) -> AxiomEngine:
+    return AxiomEngine(
+        FIXTURE_MODULE,
+        schema=NZ_SCHEMA,
+        rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+        **kwargs,
+    )
+
+
+# ----------------------------------------------------------------------
+# NZ schema
+# ----------------------------------------------------------------------
+
+
+class TestNzSchema:
+    def test_nz_schema_has_households_and_families(self) -> None:
+        assert NZ_SCHEMA.entities == ("person", "household", "family")
+        assert dict(NZ_NESTING) == {"family": "household"}
+
+    def test_nz_nesting_is_read_only(self) -> None:
+        with pytest.raises(TypeError):
+            NZ_NESTING["family"] = "person"  # type: ignore[index]
+
+    @settings(max_examples=60, deadline=None)
+    @given(population=nz_populations())
+    def test_household_weights_resolve_onto_families(self, population) -> None:
+        """Invariant (layout half): families inherit their household's weight.
+
+        With household-only weights, every family's effective weight is its
+        one household's weight, and the adapter's export tables persist
+        ``household_weight`` alone. The enforcing half, an export refusing any
+        other explicit weight, is
+        ``test_property_only_household_weights_reach_an_export``.
+        """
+
+        if population["split"]:
+            return
+        frame = _nz_frame(
+            population["person_households"],
+            population["person_families"],
+            population["household_weights"],
+        )
+        assert frame.weighted_entities == ("household",)
+        household_weight = dict(
+            zip(
+                frame.table("household")["household_id"],
+                population["household_weights"],
+                strict=True,
+            )
+        )
+        person = frame.table("person")
+        family_household = person.groupby("person_family_id")[
+            "person_household_id"
+        ].first()
+        expected = [
+            household_weight[family_household[family]]
+            for family in frame.table("family")["family_id"]
+        ]
+        np.testing.assert_array_equal(
+            frame.resolve_weights("family").values, np.asarray(expected)
+        )
+        tables = _nz_adapter(nesting=NZ_NESTING)._engine_tables(frame)
+        assert "household_weight" in tables["household"].columns
+        assert "family_weight" not in tables["family"].columns
+        assert "person_weight" not in tables["person"].columns
+
+
+#: The New Zealand export rule #821 carried: weights persist on households
+#: only, so the person and family weight columns are forbidden.
+_NZ_WEIGHT_CONTRACT = ExportContract(
+    required=(),
+    forbidden=("person_weight", "family_weight"),
+    optional=(),
+    formula_owned_excluded=(),
+)
+
+
+class TestExportWeights:
+    @settings(max_examples=60, deadline=None)
+    @given(
+        population=nz_populations(),
+        extra=st.sets(st.sampled_from(["person", "family"]), min_size=1),
+    )
+    def test_property_only_household_weights_reach_an_export(
+        self, tmp_path_factory, population, extra
+    ) -> None:
+        """Invariant: only households carry explicit weights in an NZ export.
+
+        The executor hands a kernel resolved weights for every entity it
+        projects (``G/executor.py`` builds ``KernelContext.weights`` for each
+        one), so ``materialize`` cannot refuse explicit family weights. The
+        export can: with the NZ contract, any explicit person or family weight
+        blocks the write, and nothing is written.
+        """
+
+        if population["split"]:
+            return
+        base = _nz_frame(
+            population["person_households"],
+            population["person_families"],
+            population["household_weights"],
+        )
+        weights = {"household": base.weights_for("household")}
+        for entity in extra:
+            weights[entity] = Weights(
+                values=np.full(base.n(entity), 7.0), kind=WeightKind.DESIGN
+            )
+        frame = Frame(
+            {entity: base.table(entity) for entity in NZ_SCHEMA.entities},
+            NZ_SCHEMA,
+            weights,
+        )
+        adapter = _nz_adapter(nesting=NZ_NESTING, contract=_NZ_WEIGHT_CONTRACT)
+        forbidden = sorted(f"{entity}_weight" for entity in extra)
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            _fake_engine(adapter, monkeypatch)
+            path = tmp_path_factory.mktemp("export") / "weighted.h5"
+            with pytest.raises(
+                ValueError,
+                match=f"forbidden column\\(s\\) present: {re.escape(repr(forbidden))}",
+            ):
+                adapter.write_dataset(frame, path, 2026)
+            assert not path.exists()
+
+    @needs_tables
+    def test_a_household_weighted_frame_exports_household_weight_alone(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
+
+        adapter = _nz_adapter(nesting=NZ_NESTING, contract=_NZ_WEIGHT_CONTRACT)
+        _fake_engine(adapter, monkeypatch)
+        path = tmp_path / "household_weighted.h5"
+        adapter.write_dataset(_nz_frame([1, 1, 2], [1, 1, 2], [2.0, 3.0]), path, 2026)
+        reloaded = AxiomEntityTableDataset(file_path=path)
+        assert reloaded.household["household_weight"].tolist() == [2.0, 3.0]
+        assert "family_weight" not in reloaded.family.columns
+        assert "person_weight" not in reloaded.person.columns
+
+
+# ----------------------------------------------------------------------
+# Periods
+# ----------------------------------------------------------------------
+
+
+class TestAxiomPeriod:
+    def test_bounds_are_the_dense_executor_tuple(self) -> None:
+        assert TAX_YEAR.bounds() == ("2026-04-01", "2027-03-31", "tax_year")
+
+    def test_refuses_reversed_dates(self) -> None:
+        with pytest.raises(ValueError, match="start.*end"):
+            AxiomPeriod(start="2027-03-31", end="2026-04-01", kind="tax_year")
+
+    @pytest.mark.parametrize(
+        "start", ["2026-02-30", "20260401", "2026-4-1", "", None, 20260401]
+    )
+    def test_refuses_dates_that_are_not_canonical_iso(self, start) -> None:
+        with pytest.raises(ValueError, match="ISO"):
+            AxiomPeriod(start=start, end="2027-03-31", kind="tax_year")
+
+    @pytest.mark.parametrize("kind", ["", "   ", " tax_year", "tax_year\n", None])
+    def test_refuses_an_empty_or_padded_kind(self, kind) -> None:
+        with pytest.raises(ValueError, match="kind"):
+            AxiomPeriod(start="2026-04-01", end="2027-03-31", kind=kind)
+
+    def test_a_single_day_period_is_valid(self) -> None:
+        assert AxiomPeriod("2026-04-01", "2026-04-01", "day").bounds()[0] == (
+            "2026-04-01"
+        )
+
+
+class TestPeriodLabels:
+    def test_a_mapped_label_resolves_to_its_explicit_bounds(self) -> None:
+        adapter = _nz_adapter(periods={"2026-27": TAX_YEAR})
+        assert adapter._materialization_period("2026-27") == TAX_YEAR.bounds()
+
+    def test_int_and_string_labels_are_one_label(self) -> None:
+        adapter = _nz_adapter(periods={2026: TAX_YEAR})
+        assert adapter._materialization_period(2026) == TAX_YEAR.bounds()
+        assert adapter._materialization_period("2026") == TAX_YEAR.bounds()
+
+    @pytest.mark.parametrize("label", ["2026", 2026, "2026-04", "2027-28", "2026-27 "])
+    def test_an_unmapped_label_fails_closed(self, label) -> None:
+        adapter = _nz_adapter(periods={"2026-27": TAX_YEAR})
+        with pytest.raises(ValueError, match="No explicit Axiom period bounds"):
+            adapter._materialization_period(label)
+
+    def test_explicit_bounds_pass_through_a_mapping(self) -> None:
+        other = AxiomPeriod("2025-04-01", "2026-03-31", "tax_year")
+        adapter = _nz_adapter(periods={"2026-27": TAX_YEAR})
+        assert adapter._materialization_period(other) == other.bounds()
+
+    def test_without_a_mapping_calendar_labels_are_unchanged(self) -> None:
+        adapter = _nz_adapter()
+        assert adapter._materialization_period(2025) == (
+            "2025-01-01",
+            "2025-12-31",
+            "calendar_year",
+        )
+        # "2026-27" reads as month 27 of 2026 and fails; it never becomes
+        # the April-to-March tax year without an explicit mapping.
+        with pytest.raises(ValueError, match="Invalid month"):
+            adapter._materialization_period("2026-27")
+
+    def test_duplicate_string_forms_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate"):
+            _nz_adapter(periods={2026: TAX_YEAR, "2026": TAX_YEAR})
+
+    @pytest.mark.parametrize("label", [True, "", 2026.0, None])
+    def test_labels_must_be_ints_or_non_empty_strings(self, label) -> None:
+        with pytest.raises(TypeError, match="labels"):
+            _nz_adapter(periods={label: TAX_YEAR})
+
+    def test_values_must_be_axiom_periods(self) -> None:
+        with pytest.raises(TypeError, match="AxiomPeriod"):
+            _nz_adapter(periods={"2026-27": ("2026-04-01", "2027-03-31", "x")})
+
+    def test_an_empty_mapping_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="at least one label"):
+            _nz_adapter(periods={})
+
+    @settings(max_examples=100, deadline=None)
+    @given(
+        labels=st.sets(
+            st.text(alphabet="0123456789-ab", min_size=1, max_size=9),
+            min_size=1,
+            max_size=6,
+        ),
+        query=st.text(alphabet="0123456789-ab", min_size=1, max_size=9),
+    )
+    def test_property_a_label_resolves_iff_it_is_mapped(self, labels, query) -> None:
+        """Invariant: an unmapped period label fails closed, never defaults."""
+
+        periods = {
+            label: AxiomPeriod("2026-04-01", f"2027-03-{10 + index:02d}", "tax_year")
+            for index, label in enumerate(sorted(labels))
+        }
+        adapter = _nz_adapter(periods=periods)
+        if query in periods:
+            assert adapter._materialization_period(query) == periods[query].bounds()
+        else:
+            with pytest.raises(ValueError, match="No explicit Axiom period bounds"):
+                adapter._materialization_period(query)
+
+    def test_materialize_hands_the_mapped_bounds_to_the_engine(
+        self, monkeypatch
+    ) -> None:
+        adapter = _nz_adapter(periods={"2026-27": TAX_YEAR})
+        programs = _fake_engine(adapter, monkeypatch)
+        adapter.materialize(_fake_frame(), ["family_assistance"], "2026-27")
+        assert programs["Family"].calls == [
+            {
+                "period_kind": "tax_year",
+                "start": "2026-04-01",
+                "end": "2027-03-31",
+                "inputs": ["family_rent"],
+                "outputs": ["family_assistance"],
+            }
+        ]
+
+    def test_materialize_refuses_an_unmapped_label_before_the_engine(
+        self, monkeypatch
+    ) -> None:
+        adapter = _nz_adapter(periods={"2026-27": TAX_YEAR})
+        programs = _fake_engine(adapter, monkeypatch)
+        with pytest.raises(ValueError, match="No explicit Axiom period bounds"):
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert programs == {}
+
+
+# ----------------------------------------------------------------------
+# Nesting
+# ----------------------------------------------------------------------
+
+
+class TestNesting:
+    @pytest.mark.parametrize(
+        ("nesting", "message"),
+        [
+            ({"family": "tax_unit"}, "not a group entity"),
+            ({"person": "household"}, "not a group entity"),
+            ({"family": "family"}, "to itself"),
+            ({"family": "household", "household": "family"}, "cyclic"),
+        ],
+    )
+    def test_declarations_are_validated_against_the_schema(
+        self, nesting, message
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            _nz_adapter(nesting=nesting)
+
+    def test_a_non_mapping_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="nesting"):
+            _nz_adapter(nesting=[("family", "household")])
+
+    def test_cross_household_family_is_refused_from_memberships_alone(
+        self,
+    ) -> None:
+        # Equal household weights: the family weight still resolves, so weight
+        # agreement cannot be what detects the split.
+        frame = _nz_frame([1, 2], [1, 1], [2.0, 2.0])
+        assert frame.resolve_weights("family").values.tolist() == [2.0]
+        with pytest.raises(ValueError, match="exactly one 'household'.*\\[1\\]"):
+            _nz_adapter(nesting=NZ_NESTING).materialize(frame, [], 2026)
+
+    def test_without_a_declaration_the_split_is_not_checked(self) -> None:
+        frame = _nz_frame([1, 2], [1, 1], [2.0, 2.0])
+        assert _nz_adapter().materialize(frame, [], 2026) == {}
+
+    def test_a_nested_population_passes(self) -> None:
+        frame = _nz_frame([1, 1, 2, 2], [1, 1, 2, 3], [2.0, 3.0])
+        assert _nz_adapter(nesting=NZ_NESTING).materialize(frame, [], 2026) == {}
+
+    def test_the_split_blocks_an_export_before_anything_is_written(
+        self, tmp_path
+    ) -> None:
+        frame = _nz_frame([1, 2], [1, 1], [2.0, 2.0])
+        path = tmp_path / "split.h5"
+        with pytest.raises(ValueError, match="exactly one 'household'"):
+            _nz_adapter(nesting=NZ_NESTING).write_dataset(frame, path, 2026)
+        assert not path.exists()
+
+    def test_explicit_relation_column_disagreeing_with_membership_is_refused(
+        self,
+    ) -> None:
+        frame = _nz_frame(
+            [1, 2], [1, 1], [2.0, 2.0], family_columns={"family_household_id": [1]}
+        )
+        with pytest.raises(ValueError, match="family_household_id.*membership"):
+            _nz_adapter().materialize(frame, [], 2026)
+
+    def test_explicit_relation_column_agreeing_with_membership_passes(
+        self,
+    ) -> None:
+        frame = _nz_frame(
+            [1, 1, 2],
+            [1, 1, 2],
+            [2.0, 3.0],
+            family_columns={"family_household_id": [1, 2]},
+        )
+        assert _nz_adapter().materialize(frame, [], 2026) == {}
+
+    def test_relation_column_on_the_wrong_entity_blocks_materialize_and_export(
+        self, tmp_path
+    ) -> None:
+        frame = _nz_frame(
+            [1, 2], [1, 1], [2.0, 2.0], person_columns={"family_household_id": [1, 2]}
+        )
+        adapter = _nz_adapter()
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.materialize(frame, [], 2026)
+        path = tmp_path / "wrong_owner.h5"
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.write_dataset(frame, path, 2026)
+        assert not path.exists()
+
+    def test_a_required_relation_column_is_an_export_rule(self, tmp_path) -> None:
+        # A graph node need not slice an export-only column to materialize;
+        # the export itself refuses the frame and writes nothing.
+        contract = ExportContract(
+            required=("family_household_id",),
+            forbidden=(),
+            optional=(),
+            formula_owned_excluded=(),
+        )
+        frame = _nz_frame([1, 1, 2], [1, 1, 2], [2.0, 3.0])
+        adapter = _nz_adapter(contract=contract)
+        assert adapter.materialize(frame, [], 2026) == {}
+        path = tmp_path / "missing_relation.h5"
+        with pytest.raises(ValueError, match="Required relation column"):
+            adapter.write_dataset(frame, path, 2026)
+        assert not path.exists()
+
+    @settings(
+        max_examples=80,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    @given(population=nz_populations())
+    def test_property_refused_iff_a_family_spans_households(self, population) -> None:
+        """Invariant: a family nests in exactly one household.
+
+        The declared nesting refuses a population exactly when some family
+        has members in two households, whatever the weights.
+        """
+
+        frame = _nz_frame(
+            population["person_households"],
+            population["person_families"],
+            population["household_weights"],
+        )
+        person = frame.table("person")
+        spans = (
+            person.groupby("person_family_id")["person_household_id"].nunique() > 1
+        ).any()
+        assert bool(spans) == population["split"]
+        adapter = _nz_adapter(nesting=NZ_NESTING)
+        if spans:
+            with pytest.raises(ValueError, match="exactly one 'household'"):
+                adapter.materialize(frame, [], 2026)
+        else:
+            assert adapter.materialize(frame, [], 2026) == {}
+
+
+# ----------------------------------------------------------------------
+# Graph output dtypes
+# ----------------------------------------------------------------------
+
+
+class TestGraphOutputCast:
+    def test_judgment_int8_codes_become_int64(self) -> None:
+        codes = np.asarray([1, -1, 0, 1], dtype=np.int8)
+        cast = _graph_output("j", "judgment", codes)
+        assert cast.dtype == np.dtype(np.int64)
+        assert cast.tolist() == [1, -1, 0, 1]
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        codes=st.lists(st.sampled_from([-1, 0, 1]), min_size=0, max_size=64),
+        source=st.sampled_from([np.int8, np.int16, np.int32, np.int64]),
+    )
+    def test_property_judgment_codes_survive_the_cast_losslessly(
+        self, codes, source
+    ) -> None:
+        """Invariant: graph-typed judgments are lossless (codes -1/0/1)."""
+
+        native = np.asarray(codes, dtype=source)
+        cast = _graph_output("j", "judgment", native)
+        assert cast.dtype == np.dtype(np.int64)
+        assert cast.astype(source).tobytes() == native.tobytes()
+
+    @pytest.mark.parametrize("bad", [2, -2, 127])
+    def test_judgment_codes_outside_the_tri_state_are_refused(self, bad) -> None:
+        with pytest.raises(ValueError, match="outside -1/0/1"):
+            _graph_output("j", "judgment", np.asarray([0, bad], dtype=np.int8))
+
+    def test_unsigned_judgment_codes_cast_when_in_range(self) -> None:
+        cast = _graph_output("j", "judgment", np.asarray([0, 1], dtype=np.uint8))
+        assert cast.dtype == np.dtype(np.int64) and cast.tolist() == [0, 1]
+
+    @pytest.mark.parametrize(
+        ("engine_dtype", "values", "expected"),
+        [
+            ("integer", np.asarray([3, -4], dtype=np.int32), np.int64),
+            ("integer", np.asarray([3, 4], dtype=np.uint16), np.int64),
+            ("decimal", np.asarray([1.25, -0.5], dtype=np.float64), np.float64),
+            ("decimal", np.asarray([1.25, -0.5], dtype=np.float32), np.float64),
+            ("bool", np.asarray([True, False]), np.bool_),
+        ],
+    )
+    def test_each_supported_dtype_casts_to_its_graph_dtype(
+        self, engine_dtype, values, expected
+    ) -> None:
+        cast = _graph_output("v", engine_dtype, values)
+        assert cast.dtype == np.dtype(expected)
+        np.testing.assert_array_equal(cast, values)
+
+    @pytest.mark.parametrize(
+        ("engine_dtype", "values"),
+        [
+            ("integer", np.asarray([1.5, 2.0])),
+            ("integer", np.asarray([True, False])),
+            ("decimal", np.asarray([1, 2], dtype=np.int64)),
+            ("decimal", np.asarray(["1.5"])),
+            ("bool", np.asarray([0, 1], dtype=np.int8)),
+            ("judgment", np.asarray([0.0, 1.0])),
+            ("integer", np.asarray([2**64 - 1], dtype=np.uint64)),
+        ],
+    )
+    def test_a_lossy_or_mismatched_array_is_refused(self, engine_dtype, values) -> None:
+        with pytest.raises(ValueError, match="'v'"):
+            _graph_output("v", engine_dtype, values)
+
+    @pytest.mark.parametrize("engine_dtype", ["text", "date", "unknown"])
+    def test_text_and_date_have_no_graph_dtype(self, engine_dtype) -> None:
+        with pytest.raises(ValueError, match="no graph"):
+            _graph_output("v", engine_dtype, np.asarray(["a"]))
+
+
+class TestGraphTypedMaterialize:
+    def test_output_dtypes_must_be_native_or_graph(self) -> None:
+        with pytest.raises(ValueError, match="output_dtypes"):
+            _nz_adapter(output_dtypes="pandas")
+
+    def test_native_default_returns_the_engine_arrays_unchanged(
+        self, monkeypatch
+    ) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        results = adapter.materialize(
+            _fake_frame(), ["family_assets_ok", "family_category"], 2026
+        )
+        assert results["family_assets_ok"].dtype == np.dtype(np.int8)
+        assert results["family_category"].tolist() == ["small"] * 3
+
+    def test_native_outputs_are_numpy_arrays_text_and_dates_included(
+        self, monkeypatch
+    ) -> None:
+        # The module docstring's claim: every output, text and dates
+        # included, comes back as a numpy array, uncast.
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        variables = ["family_assets_ok", "family_category", "family_review_date"]
+        results = adapter.materialize(_fake_frame(), variables, 2026)
+        assert all(isinstance(results[name], np.ndarray) for name in variables)
+        assert results["family_assets_ok"].dtype == np.dtype(np.int8)
+        assert results["family_category"].dtype.kind == "U"
+        assert results["family_review_date"].dtype.kind == "U"
+        assert results["family_review_date"].tolist() == ["2026-04-01"] * 3
+
+    def test_graph_mode_returns_graph_ownable_dtypes(self, monkeypatch) -> None:
+        adapter = _nz_adapter(output_dtypes="graph", periods={"2026-27": TAX_YEAR})
+        _fake_engine(adapter, monkeypatch)
+        variables = [
+            "person_benefit",
+            "family_assets_ok",
+            "family_assistance",
+            "family_band",
+            "family_is_large",
+        ]
+        results = adapter.materialize(_fake_frame(), variables, "2026-27")
+        assert {name: results[name].dtype.str for name in variables} == {
+            "person_benefit": np.dtype(np.float64).str,
+            "family_assets_ok": np.dtype(np.int64).str,
+            "family_assistance": np.dtype(np.float64).str,
+            "family_band": np.dtype(np.int64).str,
+            "family_is_large": np.dtype(np.bool_).str,
+        }
+        assert results["family_assets_ok"].tolist() == [1, -1, 0]
+        assert results["person_benefit"].shape == (5,)
+
+    @pytest.mark.parametrize("variable", ["family_category", "family_review_date"])
+    def test_graph_mode_refuses_text_and_date_before_the_engine_runs(
+        self, monkeypatch, variable
+    ) -> None:
+        adapter = _nz_adapter(output_dtypes="graph")
+        programs = _fake_engine(adapter, monkeypatch)
+        with pytest.raises(
+            ValueError, match=f"{variable}.*refused|refused.*{variable}"
+        ):
+            adapter.materialize(_fake_frame(), ["family_assistance", variable], 2026)
+        assert all(not program.calls for program in programs.values())
+
+    def test_graph_dtype_refuses_a_native_adapter(self, monkeypatch) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        with pytest.raises(ValueError, match="output_dtypes='graph' adapters only"):
+            adapter.graph_dtype("family_assets_ok")
+
+    def test_graph_dtype_names_the_owned_column_token(self, monkeypatch) -> None:
+        adapter = _nz_adapter(output_dtypes="graph")
+        _fake_engine(adapter, monkeypatch)
+        assert {
+            name: adapter.graph_dtype(name)
+            for name in (
+                "person_benefit",
+                "family_assets_ok",
+                "family_band",
+                "family_is_large",
+            )
+        } == {
+            "person_benefit": "float64",
+            "family_assets_ok": "int64",
+            "family_band": "int64",
+            "family_is_large": "bool",
+        }
+        with pytest.raises(ValueError, match="no graph column"):
+            adapter.graph_dtype("family_category")
+        with pytest.raises(ValueError, match="Unknown Axiom variable"):
+            adapter.graph_dtype("not_a_variable")
+
+
+# ----------------------------------------------------------------------
+# Relations
+# ----------------------------------------------------------------------
+
+
+class TestAssertNoRelations:
+    def test_a_relation_free_program_passes(self, monkeypatch) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        assert assert_no_relations(adapter, "family") is None
+
+    def test_relations_are_refused_naming_the_module_path(self, monkeypatch) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(
+            adapter, monkeypatch, relations=(_Relation("member_of_household"),)
+        )
+        with pytest.raises(
+            NotImplementedError,
+            match="zz/policies/tests/axiom_toy_country.yaml.*member_of_household",
+        ):
+            assert_no_relations(adapter, "family")
+
+    def test_an_entity_without_derived_rules_is_named(self, monkeypatch) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        with pytest.raises(ValueError, match="no derived rules.*Household"):
+            assert_no_relations(adapter, "household")
+
+    def test_only_axiom_engines_are_accepted(self) -> None:
+        with pytest.raises(TypeError, match="AxiomEngine"):
+            assert_no_relations(object(), "family")  # type: ignore[arg-type]
+
+
+# ----------------------------------------------------------------------
+# Engine references
+# ----------------------------------------------------------------------
+
+_MODULE = "zz/policies/tests/toy.yaml"
+_OTHER_MODULE = "zz/policies/tests/other.yaml"
+#: An auxiliary RuleSpec file whose directory and name are spelled in NFD.
+_DECOMPOSED = "zz/re\u0300gles/cafe\u0301.yaml"
+_BASE_TREE = {
+    _MODULE: b"format: rulespec/v1\nrules: []\n",
+    "zz/policies/shared/rates.yaml": b"format: rulespec/v1\nrules:\n  - name: r\n",
+    ".axiom/toolchain.toml": b'engine = "pinned"\n',
+    "README.md": b"RuleSpec fixture tree.\n",
+}
+
+
+def _write_tree(root: Path, files: Mapping[str, bytes]) -> Path:
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    return root
+
+
+def _ref(root: Path, **engine_kwargs) -> str:
+    engine = AxiomEngine(
+        root / _MODULE, schema=NZ_SCHEMA, rulespec_roots=(root,), **engine_kwargs
+    )
+    return axiom_engine_ref(
+        engine,
+        engine_commit=ENGINE_COMMIT,
+        wheel_sha256=WHEEL_SHA256,
+        rulespec_root=root,
+        rulespec_commit=RULESPEC_COMMIT,
+    )
+
+
+_NAME = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyz0123456789_-", min_size=1, max_size=6
+)
+
+
+@st.composite
+def rulespec_trees(draw: st.DrawFn) -> dict[str, bytes]:
+    """A random RuleSpec-like tree that always holds the module.
+
+    Directory components carry a ``d_`` prefix and files a ``.yaml`` suffix,
+    so no path is both a file and a directory; names are lower case, so a
+    case-insensitive file system cannot fold two of them together.
+    """
+
+    paths = draw(
+        st.sets(
+            st.builds(
+                lambda directories, name: "/".join(
+                    [*(f"d_{part}" for part in directories), f"{name}.yaml"]
+                ),
+                st.lists(_NAME, max_size=3),
+                _NAME,
+            ),
+            max_size=6,
+        )
+    )
+    files = {path: draw(st.binary(min_size=1, max_size=48)) for path in sorted(paths)}
+    files[_MODULE] = draw(st.binary(min_size=1, max_size=48))
+    return files
+
+
+class TestRulespecTreeDigest:
+    @settings(max_examples=60, deadline=None)
+    @given(files=rulespec_trees())
+    def test_differential_digest_equals_the_graph_directory_identity(
+        self, tmp_path_factory, files
+    ) -> None:
+        """Two implementations of one formula: adapter and graph agree."""
+
+        root = _write_tree(tmp_path_factory.mktemp("tree"), files)
+        digest, size = rulespec_tree_digest(root)
+        assert (digest, size) == _directory_identity(root)
+        assert size == sum(len(content) for content in files.values())
+        # The public source key wraps exactly this digest and size.
+        assert source_content_key("rulespec_nz", root) == sha256_domain(
+            "source", canonical_json(("rulespec_nz", digest, size))
+        )
+
+    def test_a_file_is_not_a_root(self, tmp_path) -> None:
+        (tmp_path / "file.yaml").write_bytes(b"x")
+        with pytest.raises(ValueError, match="not a directory"):
+            rulespec_tree_digest(tmp_path / "file.yaml")
+
+
+class TestAxiomEngineRef:
+    def test_the_reference_is_canonical_json_of_every_pin(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec-zz", _BASE_TREE)
+        reference = _ref(
+            root, periods={"2026-27": TAX_YEAR}, nesting=NZ_NESTING, arithmetic="f64"
+        )
+        document = json.loads(reference)
+        assert reference == canonical_json(document).decode("utf-8")
+        digest, size = rulespec_tree_digest(root)
+        assert document == {
+            "format": "microcosm.frame.axiom-engine-ref/1",
+            "engine": "axiom-rules-engine",
+            "engine_commit": ENGINE_COMMIT,
+            "engine_wheel_sha256": WHEEL_SHA256,
+            "rulespec_commit": RULESPEC_COMMIT,
+            "rulespec_tree_sha256": digest,
+            "rulespec_tree_bytes": size,
+            "module": _MODULE,
+            "module_sha256": hashlib.sha256(_BASE_TREE[_MODULE]).hexdigest(),
+            "arithmetic": "f64",
+            "output_dtypes": "native",
+            "person_entity": "person",
+            "group_entities": ["household", "family"],
+            "entity_names": {
+                "family": "Family",
+                "household": "Household",
+                "person": "Person",
+            },
+            "periods": {
+                "2026-27": {
+                    "start": "2026-04-01",
+                    "end": "2027-03-31",
+                    "kind": "tax_year",
+                }
+            },
+            "nesting": {"family": "household"},
+        }
+        assert str(tmp_path) not in reference
+
+    def test_determinism_relocation_and_timestamps_leave_it_unchanged(
+        self, tmp_path
+    ) -> None:
+        root = _write_tree(tmp_path / "one", _BASE_TREE)
+        first = _ref(root)
+        assert _ref(root) == first
+        relocated = tmp_path / "elsewhere" / "two"
+        shutil.copytree(root, relocated)
+        os.utime(relocated / _MODULE, (0, 0))
+        assert _ref(relocated) == first
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"arithmetic": "f64"},
+            {"output_dtypes": "graph"},
+            {"periods": {"2026-27": TAX_YEAR}},
+            {"nesting": NZ_NESTING},
+            {
+                "entity_names": {
+                    "person": "Person",
+                    "household": "Household",
+                    "family": "BenefitUnit",
+                }
+            },
+        ],
+    )
+    def test_every_configuration_field_moves_it(self, tmp_path, change) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        assert _ref(root, **change) != _ref(root)
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("engine_commit", "d" * 40),
+            ("wheel_sha256", "e" * 64),
+            ("rulespec_commit", "f" * 40),
+        ],
+    )
+    def test_every_declared_pin_moves_it(self, tmp_path, field, value) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        engine = AxiomEngine(root / _MODULE, rulespec_roots=(root,))
+        pins = {
+            "engine_commit": ENGINE_COMMIT,
+            "wheel_sha256": WHEEL_SHA256,
+            "rulespec_commit": RULESPEC_COMMIT,
+        }
+        base = axiom_engine_ref(engine, rulespec_root=root, **pins)
+        moved = axiom_engine_ref(engine, rulespec_root=root, **{**pins, field: value})
+        assert moved != base
+
+    @settings(max_examples=60, deadline=None)
+    @given(files=rulespec_trees(), data=st.data())
+    def test_property_it_moves_iff_a_pinned_byte_moves(
+        self, tmp_path_factory, files, data
+    ) -> None:
+        """Invariant: ``engine_ref`` changes iff a pinned byte changes.
+
+        The same bytes in another place give the same reference; editing any
+        one byte of any file under the root gives a different one.
+        """
+
+        root = _write_tree(tmp_path_factory.mktemp("base"), files)
+        reference = _ref(root)
+        copy = tmp_path_factory.mktemp("copy")
+        shutil.copytree(root, copy, dirs_exist_ok=True)
+        assert _ref(copy) == reference
+        name = data.draw(st.sampled_from(sorted(files)))
+        content = files[name]
+        offset = data.draw(st.integers(min_value=0, max_value=len(content) - 1))
+        replacement = data.draw(
+            st.integers(min_value=0, max_value=255).filter(
+                lambda value: value != content[offset]
+            )
+        )
+        edited = bytearray(content)
+        edited[offset] = replacement
+        (copy / name).write_bytes(bytes(edited))
+        assert _ref(copy) != reference
+
+    def test_adding_or_renaming_a_file_moves_it(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        reference = _ref(root)
+        (root / "zz/policies/shared/new.yaml").write_bytes(b"x")
+        added = _ref(root)
+        assert added != reference
+        (root / "zz/policies/shared/new.yaml").rename(
+            root / "zz/policies/shared/renamed.yaml"
+        )
+        assert _ref(root) not in {reference, added}
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("engine_commit", "a" * 39, "engine_commit"),
+            ("engine_commit", "A" * 40, "engine_commit"),
+            ("engine_commit", "a" * 12, "engine_commit"),
+            ("rulespec_commit", "main", "rulespec_commit"),
+            ("rulespec_commit", None, "rulespec_commit"),
+            ("wheel_sha256", "b" * 63, "wheel_sha256"),
+            ("wheel_sha256", "B" * 64, "wheel_sha256"),
+        ],
+    )
+    def test_malformed_pins_are_refused(self, tmp_path, field, value, message) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        engine = AxiomEngine(root / _MODULE, rulespec_roots=(root,))
+        pins = {
+            "engine_commit": ENGINE_COMMIT,
+            "wheel_sha256": WHEEL_SHA256,
+            "rulespec_commit": RULESPEC_COMMIT,
+            field: value,
+        }
+        with pytest.raises(ValueError, match=message):
+            axiom_engine_ref(engine, rulespec_root=root, **pins)
+
+    def test_a_64_hex_commit_is_accepted(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        engine = AxiomEngine(root / _MODULE, rulespec_roots=(root,))
+        assert axiom_engine_ref(
+            engine,
+            engine_commit="a" * 64,
+            wheel_sha256=WHEEL_SHA256,
+            rulespec_root=root,
+            rulespec_commit="c" * 64,
+        )
+
+    def test_the_root_must_be_the_adapters_only_root(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        other = _write_tree(tmp_path / "other", {"x.yaml": b"x"})
+        pins = {
+            "engine_commit": ENGINE_COMMIT,
+            "wheel_sha256": WHEEL_SHA256,
+            "rulespec_commit": RULESPEC_COMMIT,
+        }
+        two_roots = AxiomEngine(root / _MODULE, rulespec_roots=(root, other))
+        with pytest.raises(ValueError, match="only root"):
+            axiom_engine_ref(two_roots, rulespec_root=root, **pins)
+        one_root = AxiomEngine(root / _MODULE, rulespec_roots=(root,))
+        with pytest.raises(ValueError, match="only root"):
+            axiom_engine_ref(one_root, rulespec_root=other, **pins)
+
+    def test_the_module_must_be_a_file_under_the_root(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        outside = _write_tree(tmp_path / "outside", {"m.yaml": b"x"}) / "m.yaml"
+        pins = {
+            "engine_commit": ENGINE_COMMIT,
+            "wheel_sha256": WHEEL_SHA256,
+            "rulespec_commit": RULESPEC_COMMIT,
+        }
+        for module in (outside, root / "zz/missing.yaml"):
+            engine = AxiomEngine(module, rulespec_roots=(root,))
+            with pytest.raises(ValueError, match="not a file under"):
+                axiom_engine_ref(engine, rulespec_root=root, **pins)
+
+    def test_a_symbolic_link_under_the_root_is_refused(self, tmp_path) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        target = _write_tree(tmp_path / "linked", {"hidden.yaml": b"x"})
+        (root / "zz/policies/linked").symlink_to(target, target_is_directory=True)
+        with pytest.raises(ValueError, match="symbolic link zz/policies/linked"):
+            _ref(root)
+
+    def test_only_axiom_engines_are_accepted(self, tmp_path) -> None:
+        with pytest.raises(TypeError, match="AxiomEngine"):
+            axiom_engine_ref(
+                object(),  # type: ignore[arg-type]
+                engine_commit=ENGINE_COMMIT,
+                wheel_sha256=WHEEL_SHA256,
+                rulespec_root=tmp_path,
+                rulespec_commit=RULESPEC_COMMIT,
+            )
+
+
+class TestEngineRefPin:
+    """The adapter computes only from the bytes its reference names."""
+
+    def _adapter(self, root: Path) -> AxiomEngine:
+        return AxiomEngine(
+            root / _MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=(root,),
+            output_dtypes="graph",
+        )
+
+    def _reference(self, adapter: AxiomEngine, root: Path) -> str:
+        return axiom_engine_ref(
+            adapter,
+            engine_commit=ENGINE_COMMIT,
+            wheel_sha256=WHEEL_SHA256,
+            rulespec_root=root,
+            rulespec_commit=RULESPEC_COMMIT,
+        )
+
+    def test_a_reference_then_unchanged_compiles_succeed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        _fake_engine(adapter, monkeypatch)
+        reference = self._reference(adapter, root)
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        adapter.materialize(_fake_frame(), ["person_benefit"], 2026)
+        assert self._reference(adapter, root) == reference
+
+    def test_an_edit_after_the_reference_blocks_the_next_compile(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        programs = _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        (root / "zz/policies/shared/rates.yaml").write_bytes(b"edited")
+        with pytest.raises(ValueError, match="changed after this adapter"):
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert programs == {}
+
+    def test_an_edit_after_the_reference_blocks_a_second_reference(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        (root / _MODULE).write_bytes(b"edited")
+        with pytest.raises(ValueError, match="changed after this adapter"):
+            self._reference(adapter, root)
+
+    def test_a_symbolic_link_added_after_the_reference_blocks_the_next_compile(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        # The digest does not descend into a linked directory, so it cannot
+        # see the link; the compile-time check must refuse it directly.
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        programs = _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        before = rulespec_tree_digest(root)
+        target = _write_tree(tmp_path / "linked", {"hidden.yaml": b"x"})
+        (root / "zz/policies/linked").symlink_to(target, target_is_directory=True)
+        assert rulespec_tree_digest(root) == before
+        with pytest.raises(ValueError, match="symbolic link zz/policies/linked"):
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert programs == {}
+
+    def test_a_reference_after_compiling_is_refused(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        _fake_engine(adapter, monkeypatch)
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        with pytest.raises(ValueError, match="before the adapter compiles"):
+            self._reference(adapter, root)
+
+    def _linked_adapter(self, tmp_path: Path) -> tuple[AxiomEngine, Path, Path]:
+        """An adapter whose module path is a link outside the root."""
+
+        root = _write_tree(
+            tmp_path / "rulespec",
+            {**_BASE_TREE, _OTHER_MODULE: b"format: rulespec/v1\n"},
+        )
+        link = tmp_path / "links" / "module.yaml"
+        link.parent.mkdir()
+        link.symlink_to(root / _MODULE)
+        return self._adapter_at(link, root), root, link
+
+    def _adapter_at(self, module: Path, root: Path) -> AxiomEngine:
+        return AxiomEngine(
+            module, schema=NZ_SCHEMA, rulespec_roots=(root,), output_dtypes="graph"
+        )
+
+    def test_a_module_link_left_alone_compiles_the_referenced_file(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        adapter, root, link = self._linked_adapter(tmp_path)
+        programs = _fake_engine(adapter, monkeypatch)
+        reference = self._reference(adapter, root)
+        assert json.loads(reference)["module"] == _MODULE
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert {program.module_path for program in programs.values()} == {link}
+        assert self._reference(adapter, root) == reference
+
+    def test_a_module_link_repointed_after_the_reference_blocks_the_next_compile(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        # The review's scenario: the link lies outside the root, so repointing
+        # it at another file under the root moves no digest the pin checks.
+        adapter, root, link = self._linked_adapter(tmp_path)
+        programs = _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        before = rulespec_tree_digest(root)
+        link.unlink()
+        link.symlink_to(root / _OTHER_MODULE)
+        assert rulespec_tree_digest(root) == before
+        with pytest.raises(ValueError) as refused:
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert str(refused.value) == (
+            f"Module {link} resolves to "
+            f"{(root / _OTHER_MODULE).resolve()}, not the file "
+            f"{(root / _MODULE).resolve()} this adapter's engine_ref named; "
+            "construct a new adapter and reference."
+        )
+        assert programs == {}
+
+    def test_a_module_link_repointed_after_the_reference_blocks_a_second_reference(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        adapter, root, link = self._linked_adapter(tmp_path)
+        _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        link.unlink()
+        link.symlink_to(root / _OTHER_MODULE)
+        with pytest.raises(ValueError, match="not the file .* engine_ref named"):
+            self._reference(adapter, root)
+
+    @settings(
+        max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    )
+    @given(files=rulespec_trees(), data=st.data())
+    def test_property_it_compiles_only_from_the_referenced_bytes(
+        self, tmp_path_factory, files, data
+    ) -> None:
+        """Invariant: a referenced adapter compiles only from referenced bytes.
+
+        After the reference the test makes one random change, or none: edits
+        one byte, adds, removes or renames a file, adds a directory or
+        dangling link, or repoints the module's outside link at another file.
+        The adapter compiles iff nothing changed. When it compiles, the root
+        still hashes to the pinned digest and the engine was handed a module
+        path that resolves to the referenced file.
+        """
+
+        base = tmp_path_factory.mktemp("pin")
+        # A second module is always present, for the link to be repointed at.
+        files = {**files, _OTHER_MODULE: b"format: rulespec/v1\n"}
+        root = _write_tree(base / "rulespec", files)
+        names = sorted(files)
+        others = [name for name in names if name != _MODULE]
+        change = data.draw(
+            st.sampled_from(
+                [
+                    "none",
+                    "edit",
+                    "add",
+                    "remove",
+                    "rename",
+                    "dir link",
+                    "dangling link",
+                    "repoint",
+                ]
+            ),
+            label="change",
+        )
+        # Repointing needs the module path to be a link outside the root.
+        via_link = change == "repoint" or data.draw(st.booleans(), label="via_link")
+        module = root / _MODULE
+        if via_link:
+            link = base / "links" / "module.yaml"
+            link.parent.mkdir()
+            link.symlink_to(module)
+            module = link
+        adapter = self._adapter_at(module, root)
+        with pytest.MonkeyPatch.context() as patch:
+            programs = _fake_engine(adapter, patch)
+            self._reference(adapter, root)
+            pinned, _ = rulespec_tree_digest(root)
+            if change == "edit":
+                name = data.draw(st.sampled_from(names), label="file")
+                content = bytearray(files[name])
+                offset = data.draw(st.integers(0, len(content) - 1), label="offset")
+                content[offset] ^= data.draw(st.integers(1, 255), label="mask")
+                (root / name).write_bytes(bytes(content))
+            elif change == "add":
+                (root / "added.bin").write_bytes(b"")
+            elif change == "remove":
+                (root / data.draw(st.sampled_from(names), label="file")).unlink()
+            elif change == "rename":
+                name = data.draw(st.sampled_from(names), label="file")
+                (root / name).rename(root / f"{name}.renamed")
+            elif change == "dir link":
+                outside = _write_tree(base / "outside", {"hidden.yaml": b"x"})
+                (root / "linked").symlink_to(outside, target_is_directory=True)
+            elif change == "dangling link":
+                (root / "dangling.yaml").symlink_to(base / "nowhere.yaml")
+            elif change == "repoint":
+                link.unlink()
+                link.symlink_to(root / data.draw(st.sampled_from(others), label="file"))
+            try:
+                adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+            except ValueError:
+                compiled = False
+            else:
+                compiled = True
+        assert compiled == (change == "none")
+        if compiled:
+            assert rulespec_tree_digest(root)[0] == pinned
+            assert {program.module_path.resolve() for program in programs.values()} == {
+                (root / _MODULE).resolve()
+            }
+        else:
+            assert programs == {}
+
+    def test_an_adapter_without_a_reference_never_hashes_its_root(
+        self, monkeypatch
+    ) -> None:
+        # The Belgian path is unchanged: no reference, no digest on compile.
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+
+        def refuse(root):
+            raise AssertionError("an unreferenced adapter hashed its root")
+
+        monkeypatch.setattr(
+            "microcosm.frame.adapters.axiom.rulespec_tree_digest", refuse
+        )
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+
+
+#: Variables git lists as local to one repository, each set by the property
+#: test to name a clean copy (``GIT_CONFIG_COUNT`` carries core.worktree).
+_REDIRECTING_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG_COUNT",
+)
+
+#: Changes that leave a committed checkout short of exactly its commit.
+_CHECKOUT_CHANGES = (
+    "none",
+    "edit",
+    "untracked file",
+    "ignored file",
+    "staged edit, reverted on disk",
+    "skip-worktree",
+    "assume-unchanged edit",
+    "submodule",
+    "HEAD moved on",
+    "another commit declared",
+    "replace ref",
+    "stat-cache edit",
+    "clean-filter edit",
+    "fsmonitor-hidden edit",
+    "nested .git file",
+    "symbolic link as a plain file",
+    "executable mode hidden by core.filemode",
+    "core.worktree elsewhere",
+)
+
+
+def _aim_git_at(
+    patch: pytest.MonkeyPatch, repository: Path, names: Iterable[str]
+) -> None:
+    """Set each named repository-selecting variable to point at ``repository``.
+
+    ``GIT_CONFIG_COUNT`` carries ``-c core.worktree=<repository>``.
+    """
+
+    values = {
+        "GIT_DIR": repository / ".git",
+        "GIT_WORK_TREE": repository,
+        "GIT_INDEX_FILE": repository / ".git" / "index",
+        "GIT_OBJECT_DIRECTORY": repository / ".git" / "objects",
+        "GIT_COMMON_DIR": repository / ".git",
+    }
+    for name in names:
+        if name == "GIT_CONFIG_COUNT":
+            patch.setenv("GIT_CONFIG_COUNT", "1")
+            patch.setenv("GIT_CONFIG_KEY_0", "core.worktree")
+            patch.setenv("GIT_CONFIG_VALUE_0", str(repository))
+        else:
+            patch.setenv(name, str(values[name]))
+
+
+class TestAxiomEngineRefGitCheckout:
+    @pytest.fixture
+    def checkout(self, tmp_path) -> tuple[Path, str]:
+        root = _write_tree(
+            tmp_path / "rulespec-git",
+            {**_BASE_TREE, ".gitignore": b"*.local.yaml\n"},
+        )
+        _git(root, "init", "-q")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fixture")
+        return root, _git(root, "rev-parse", "HEAD")
+
+    def _checkout_ref(self, root: Path, commit: str) -> str:
+        engine = AxiomEngine(root / _MODULE, rulespec_roots=(root,))
+        return axiom_engine_ref(
+            engine,
+            engine_commit=ENGINE_COMMIT,
+            wheel_sha256=WHEEL_SHA256,
+            rulespec_root=root,
+            rulespec_commit=commit,
+        )
+
+    def test_a_clean_checkout_at_the_declared_commit_is_accepted(
+        self, checkout
+    ) -> None:
+        root, head = checkout
+        first = self._checkout_ref(root, head)
+        # The status check takes no optional locks, so it cannot rewrite the
+        # index and move the digest between two calls.
+        assert self._checkout_ref(root, head) == first
+        assert json.loads(first)["rulespec_commit"] == head
+
+    def test_a_modified_file_is_refused(self, checkout) -> None:
+        root, head = checkout
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [edited]\n")
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    def test_an_untracked_file_is_refused(self, checkout) -> None:
+        root, head = checkout
+        (root / "zz/untracked.yaml").write_bytes(b"x")
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    def test_an_ignored_file_is_refused(self, checkout) -> None:
+        # The digest would hash it, but the declared commit does not hold it.
+        root, head = checkout
+        (root / "zz/override.local.yaml").write_bytes(b"x")
+        assert _git(root, "status", "--porcelain") == ""
+        with pytest.raises(ValueError, match="ignored"):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+    def test_an_edit_hidden_by_an_index_flag_is_refused(self, checkout, flag) -> None:
+        # git status trusts the flag and reports nothing, so the checkout would
+        # pass as clean while the module no longer holds the commit's bytes.
+        root, head = checkout
+        _git(root, "update-index", flag, _MODULE)
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [hidden]\n")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} is flagged "
+            "skip-worktree or assume-unchanged (1 flagged file(s)), so git status "
+            "does not report edits to it; clear the flags or reference a git "
+            "archive export instead."
+        )
+
+    @pytest.mark.parametrize(
+        ("flag", "unflag"),
+        [
+            ("--skip-worktree", "--no-skip-worktree"),
+            ("--assume-unchanged", "--no-assume-unchanged"),
+        ],
+    )
+    def test_a_clean_checkout_with_its_index_flags_cleared_is_accepted(
+        self, checkout, flag, unflag
+    ) -> None:
+        root, head = checkout
+        _git(root, "update-index", flag, _MODULE)
+        with pytest.raises(ValueError, match="flagged"):
+            self._checkout_ref(root, head)
+        _git(root, "update-index", unflag, _MODULE)
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+
+    def test_a_checkout_reference_is_clone_specific_and_an_export_is_not(
+        self, checkout, tmp_path
+    ) -> None:
+        # Documented: a checkout's .git is hashed, so its reference names that
+        # clone; exports of the same commit agree wherever they land.
+        root, head = checkout
+        archive = tmp_path / "export.tar"
+        _git(root, "archive", "--format=tar", "-o", str(archive), "HEAD")
+        exports = []
+        for name in ("export-one", "export-two"):
+            destination = tmp_path / name
+            with tarfile.open(archive) as bundle:
+                bundle.extractall(destination, filter="data")
+            exports.append(self._checkout_ref(destination, head))
+        assert exports[0] == exports[1]
+        assert self._checkout_ref(root, head) != exports[0]
+
+    def test_a_checkout_at_another_commit_is_refused(self, checkout) -> None:
+        root, head = checkout
+        other = "0" * 40 if head != "0" * 40 else "1" * 40
+        with pytest.raises(ValueError, match="not the declared rulespec_commit"):
+            self._checkout_ref(root, other)
+
+    # -- submodules ------------------------------------------------------
+
+    def test_a_clean_submodule_is_refused(self, checkout) -> None:
+        # The commit records the submodule's commit, not its files.
+        root, _ = checkout
+        head, _ = _commit_submodule(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} contains the submodule zz/vendor "
+            f"(1 submodule(s)); commit {head} records a submodule's commit, not "
+            "its files, and git status does not report every change inside one. "
+            "Reference a git archive export instead."
+        )
+
+    @pytest.mark.parametrize(
+        "change", ["edit under ignore=all", "assume-unchanged edit", "ignored file"]
+    )
+    def test_a_change_inside_a_submodule_that_git_status_misses_is_refused(
+        self, checkout, change
+    ) -> None:
+        # The review's A1, D1 and E1: git status reports nothing for each, so
+        # the checkout used to pass with rulespec_commit equal to HEAD.
+        root, _ = checkout
+        head, vendor = _commit_submodule(
+            root, ignore="all" if change == "edit under ignore=all" else None
+        )
+        if change == "edit under ignore=all":
+            (vendor / "vendor.yaml").write_bytes(b"vendor: edited\n")
+        elif change == "assume-unchanged edit":
+            _git(vendor, "update-index", "--assume-unchanged", "vendor.yaml")
+            (vendor / "vendor.yaml").write_bytes(b"vendor: hidden\n")
+        else:
+            (vendor / "build.tmp").write_bytes(b"x")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="contains the submodule zz/vendor"):
+            self._checkout_ref(root, head)
+
+    # -- the caller's git environment --------------------------------------
+
+    @pytest.mark.parametrize(
+        "variables",
+        [
+            ("GIT_DIR", "GIT_WORK_TREE"),
+            ("GIT_WORK_TREE",),
+            ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"),
+        ],
+        ids="+".join,
+    )
+    def test_an_inherited_git_environment_cannot_vouch_for_a_dirty_root(
+        self, checkout, tmp_path, monkeypatch, variables
+    ) -> None:
+        # The variables name a clean copy at the same commit while the root
+        # itself is edited; git must examine the root.
+        root, head = checkout
+        decoy = tmp_path / "decoy"
+        shutil.copytree(root, decoy, symlinks=True)
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+        _aim_git_at(monkeypatch, decoy, variables)
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    def test_an_inherited_git_environment_cannot_vouch_for_another_head(
+        self, checkout, tmp_path, monkeypatch
+    ) -> None:
+        # The root holds the declared commit's bytes, but its HEAD has moved
+        # on; a copy still at the declared commit must not answer for it.
+        root, head = checkout
+        decoy = tmp_path / "decoy"
+        shutil.copytree(root, decoy, symlinks=True)
+        _git(root, "commit", "-q", "--allow-empty", "-m", "moved")
+        moved = _git(root, "rev-parse", "HEAD")
+        monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+        monkeypatch.setenv("GIT_WORK_TREE", str(decoy))
+        with pytest.raises(
+            ValueError, match=f"is at {moved}, not the declared rulespec_commit {head}"
+        ):
+            self._checkout_ref(root, head)
+
+    def test_a_clean_root_is_accepted_whatever_the_inherited_git_environment(
+        self, checkout, tmp_path, monkeypatch
+    ) -> None:
+        root, head = checkout
+        other = _write_tree(tmp_path / "other", {"other.yaml": b"other\n"})
+        _git(other, "init", "-q")
+        _git(other, "add", "-A")
+        _git(other, "commit", "-q", "-m", "other")
+        _aim_git_at(monkeypatch, other, _REDIRECTING_VARIABLES)
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+
+    def test_the_root_must_be_its_repositorys_top_level(
+        self, checkout, tmp_path
+    ) -> None:
+        # core.worktree points the repository at a clean copy while the root
+        # itself is edited, so git status examines the copy.
+        root, head = checkout
+        elsewhere = tmp_path / "elsewhere"
+        shutil.copytree(root, elsewhere, ignore=shutil.ignore_patterns(".git"))
+        _git(root, "config", "core.worktree", str(elsewhere))
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} is not the top level of its git "
+            f"repository, whose work tree is {elsewhere.resolve()}; reference a "
+            "git archive export instead."
+        )
+
+    def test_a_replace_ref_cannot_stand_in_for_the_declared_commit(
+        self, checkout
+    ) -> None:
+        # refs/replace makes the declared commit read as another whose tree
+        # the root holds; HEAD still names the declared commit.
+        root, head = checkout
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [other]\n")
+        _git(root, "commit", "-q", "-a", "-m", "other")
+        other = _git(root, "rev-parse", "HEAD")
+        _git(root, "replace", head, other)
+        _git(root, "update-ref", "HEAD", head)
+        assert _git(root, "rev-parse", "HEAD") == head
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    # -- bytes git status does not see ----------------------------------------
+
+    def test_a_same_size_edit_the_stat_cache_hides_is_refused(self, tmp_path) -> None:
+        # With core.trustctime=false git trusts size and mtime; an in-place
+        # edit of the same size with its mtime put back is invisible to it.
+        root, head = _old_mtime_checkout(tmp_path / "stat-cache")
+        _hide_a_same_size_edit_from_the_stat_cache(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value).startswith(
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} is not the blob "
+        )
+
+    def test_a_same_size_edit_a_clean_filter_hides_is_refused(self, checkout) -> None:
+        # A clean filter maps the edited bytes back to the committed blob, so
+        # git status sees no change.
+        root, head = checkout
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=f"{_MODULE} is not the blob"):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("hidden", ["edit", "deletion"])
+    def test_a_change_a_quiet_file_system_monitor_hides_is_refused(
+        self, checkout, tmp_path, hidden
+    ) -> None:
+        # git status trusts core.fsmonitor for which tracked files changed; a
+        # monitor that reports nothing hides an edit or a deletion.
+        root, head = checkout
+        _quiet_file_system_monitor(root, tmp_path / "quiet-fsmonitor")
+        if hidden == "edit":
+            (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [quiet]\n")
+            expected = f"{_MODULE} is not the blob"
+        else:
+            (root / "README.md").unlink()
+            expected = "lacks README.md, unlike commit"
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=expected):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("entry", ["file", "directory"])
+    def test_a_nested_dot_git_entry_git_status_skips_is_refused(
+        self, checkout, entry
+    ) -> None:
+        # git's untracked scan skips every entry named .git, so bytes the
+        # digest hashes, and the commit does not hold, pass git status.
+        root, head = checkout
+        _plant_nested_dot_git(root, entry)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="holds zz/policies/.git"):
+            self._checkout_ref(root, head)
+
+    def test_a_symbolic_link_checked_out_as_a_plain_file_is_refused(
+        self, checkout
+    ) -> None:
+        # Under core.symlinks=false git writes a committed link as a plain
+        # file holding the link's blob, which git status calls unchanged. The
+        # bytes match the blob; the mode does not.
+        root, _ = checkout
+        head = _commit_symlink_as_a_plain_file(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: commit {head} records "
+            f"{_ALIAS} with mode 120000, not as a regular file, though the "
+            "checkout holds a plain file there; reference a git archive export "
+            "instead."
+        )
+
+    @pytest.mark.parametrize(
+        ("committed_mode", "changed_mode"), [(0o644, 0o755), (0o755, 0o644)]
+    )
+    def test_an_executable_mode_change_git_status_hides_is_refused(
+        self, checkout, committed_mode, changed_mode
+    ) -> None:
+        root, head = checkout
+        module = root / _MODULE
+        if committed_mode == 0o755:
+            module.chmod(committed_mode)
+            _git(root, "update-index", "--chmod=+x", _MODULE)
+            _git(root, "commit", "-q", "-m", "executable module")
+            head = _git(root, "rev-parse", "HEAD")
+        _hide_an_executable_mode_change(root, changed_mode)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        expected_mode = "100755" if committed_mode == 0o755 else "100644"
+        actual_mode = "100755" if changed_mode == 0o755 else "100644"
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} has mode "
+            f"{actual_mode}, not the mode {expected_mode} commit {head} records "
+            "for it, though git status reports no change; reference a git "
+            "archive export instead."
+        )
+
+    def test_a_sha256_repository_is_accepted_and_checked_byte_for_byte(
+        self, tmp_path
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec-sha256", _BASE_TREE)
+        _git(root, "init", "-q", "--object-format=sha256")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fixture")
+        head = _git(root, "rev-parse", "HEAD")
+        assert len(head) == 64
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=f"{_MODULE} is not the blob"):
+            self._checkout_ref(root, head)
+
+    # -- names git and the file system spell differently ---------------------
+
+    def _decomposed_checkout(self, root: Path) -> tuple[Path, str]:
+        """Commit a tree holding ``_DECOMPOSED``; skip unless git records it in NFC.
+
+        Git on macOS with ``core.precomposeunicode=true`` records the NFC
+        spelling, while the file system lists the NFD name the file was
+        created under. Where git records the name as listed, the two never
+        diverge and the case does not arise.
+        """
+
+        _write_tree(root, {**_BASE_TREE, _DECOMPOSED: b"rules: aux\n"})
+        _git(root, "init", "-q")
+        _git(root, "config", "core.precomposeunicode", "true")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "decomposed names")
+        recorded = _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0")
+        listed = axiom_adapter._checkout_files(root)
+        composed = unicodedata.normalize("NFC", _DECOMPOSED)
+        if composed not in recorded or _DECOMPOSED not in listed:
+            pytest.skip(
+                "git here records the decomposed name as the file system lists "
+                "it, so a commit's NFC name and an NFD file never name one file"
+            )
+        assert composed not in listed and _DECOMPOSED not in recorded
+        assert (root / composed).samefile(root / _DECOMPOSED)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        return root, _git(root, "rev-parse", "HEAD")
+
+    def test_a_clean_checkout_with_decomposed_names_is_accepted(self, tmp_path) -> None:
+        # The review of microcosm#1139: git lists the commit's NFC path, the
+        # file system the NFD one, and both open the same file; comparing the
+        # two path sets as strings refused this clean checkout.
+        root, head = self._decomposed_checkout(tmp_path / "rulespec-git")
+        reference = self._checkout_ref(root, head)
+        assert json.loads(reference)["rulespec_commit"] == head
+        assert self._checkout_ref(root, head) == reference
+
+    @pytest.mark.parametrize("hidden", ["clean-filter edit", "executable bit"])
+    def test_a_hidden_change_to_a_decomposed_file_is_refused(
+        self, tmp_path, hidden
+    ) -> None:
+        # A file paired through an equivalent spelling still has its bytes and
+        # mode checked; the error names the path as the commit records it.
+        root, head = self._decomposed_checkout(tmp_path / "rulespec-git")
+        composed = unicodedata.normalize("NFC", _DECOMPOSED)
+        if hidden == "clean-filter edit":
+            _hide_a_same_size_edit_behind_a_clean_filter(root, _DECOMPOSED)
+            expected = (
+                f"RuleSpec checkout {root.resolve()}: {composed} is not the blob "
+            )
+        else:
+            _hide_an_executable_mode_change(root, 0o755, _DECOMPOSED)
+            expected = (
+                f"RuleSpec checkout {root.resolve()}: {composed} has mode 100755, "
+                "not the mode 100644 "
+            )
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value).startswith(expected)
+
+    def test_one_file_cannot_stand_for_two_committed_spellings(
+        self, checkout, tmp_path
+    ) -> None:
+        # A commit can record one accented name twice, once in NFC and once in NFD,
+        # here with the same bytes. Where the file system opens one file under
+        # both names, the checkout holds one file and git status stays clean;
+        # pairing by normalized name, or letting one file answer for both
+        # paths, would accept it. Where the file system keeps the names apart,
+        # the checkout holds two files and each pairs with its own path.
+        root, _ = checkout
+        composed, decomposed = "caf\u00e9.yaml", "cafe\u0301.yaml"
+        source = tmp_path / "spelled-twice"
+        source.write_bytes(b"spelled: twice\n")
+        blob = _git(root, "hash-object", "-w", "--no-filters", str(source))
+        for name in (composed, decomposed):
+            # Without precomposition git keeps the NFD spelling as given.
+            _git(
+                root,
+                "-c",
+                "core.precomposeunicode=false",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"100644,{blob},{name}",
+            )
+        _git(root, "commit", "-q", "-m", "two spellings")
+        head = _git(root, "rev-parse", "HEAD")
+        _git(root, "reset", "-q", "--hard")
+        recorded = _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0")
+        assert {composed, decomposed} <= set(recorded)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        listed = set(axiom_adapter._checkout_files(root)) & {composed, decomposed}
+        if listed == {composed, decomposed}:
+            assert not (root / composed).samefile(root / decomposed)
+            assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+            return
+        (lost,) = {composed, decomposed} - listed
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} lacks {lost}, unlike commit "
+            f"{head} (1 path(s) differ), though git status reports no change; "
+            "reference a git archive export instead."
+        )
+
+    # -- the invariant -------------------------------------------------------
+
+    @settings(
+        max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    )
+    @given(
+        change=st.sampled_from(_CHECKOUT_CHANGES),
+        variables=st.sets(st.sampled_from(_REDIRECTING_VARIABLES)),
+    )
+    def test_property_accepted_iff_the_root_holds_exactly_the_commit(
+        self, tmp_path_factory, git_template, change, variables
+    ) -> None:
+        """Invariant: a git root is accepted iff it is exactly the declared commit.
+
+        The root is a copy of a committed checkout holding ``_DECOMPOSED``,
+        whose NFC record pairs with its NFD file on macOS. The test makes one change
+        that leaves it short of exactly the declared commit, or none, and sets
+        any subset of git's repository-selecting variables to a clean copy
+        at the same commit. The root is accepted iff nothing changed, and
+        then the reference records its own HEAD.
+        """
+
+        template, decoy, head = git_template
+        root = tmp_path_factory.mktemp("checkout") / "rulespec-git"
+        shutil.copytree(template, root, symlinks=True)
+        declared = _apply_checkout_change(root, change, head, tmp_path_factory)
+        with pytest.MonkeyPatch.context() as patch:
+            _aim_git_at(patch, decoy, variables)
+            try:
+                reference = self._checkout_ref(root, declared)
+            except ValueError:
+                reference = None
+        assert (reference is not None) == (change == "none")
+        if reference is not None:
+            assert json.loads(reference)["rulespec_commit"] == head
+
+
+class TestGitBlobId:
+    @settings(max_examples=60, deadline=None)
+    @given(content=st.binary(max_size=512))
+    def test_differential_blob_ids_equal_git_hash_object(
+        self, blob_repositories, content
+    ) -> None:
+        """The byte check's blob ids are the ones git computes, in both formats."""
+
+        for algorithm, repository in blob_repositories.items():
+            expected = (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(repository),
+                        "hash-object",
+                        "--no-filters",
+                        "--stdin",
+                    ],
+                    input=content,
+                    capture_output=True,
+                    check=True,
+                    env=_GIT_ENV,
+                )
+                .stdout.decode("ascii")
+                .strip()
+            )
+            assert axiom_adapter._git_blob_id(content, algorithm) == expected
+
+
+#: Spellings of one name: canonically equivalent (one NFD form) within a
+#: group, distinct across groups. The third spellings are the Angstrom sign
+#: and combining marks out of canonical order. "Plain" and "plain" differ only
+#: in case, which is not equivalence, though a case-insensitive file system
+#: opens one file under both.
+_NAME_SPELLINGS = (
+    ("caf\u00e9", "cafe\u0301"),
+    ("\u00c5", "A\u030a", "\u212b"),
+    ("\u1e69", "s\u0323\u0307", "s\u0307\u0323"),
+    ("plain",),
+    ("Plain",),
+)
+_DIRECTORY_SPELLINGS = (("r\u00e8gles", "re\u0300gles"),)
+_PATH_SHAPES = st.tuples(
+    st.sampled_from((None, *range(len(_DIRECTORY_SPELLINGS)))),
+    st.integers(0, len(_NAME_SPELLINGS) - 1),
+)
+
+
+def _spellings_of(shape: tuple[int | None, int]) -> list[str]:
+    """Every spelling of one path shape (an optional directory and a name)."""
+
+    directory, name = shape
+    stems = [f"{stem}.yaml" for stem in _NAME_SPELLINGS[name]]
+    if directory is None:
+        return stems
+    return [
+        f"{part}/{stem}" for part in _DIRECTORY_SPELLINGS[directory] for stem in stems
+    ]
+
+
+@st.composite
+def checkout_spellings(draw: st.DrawFn) -> tuple[list[str], list[str]]:
+    """Paths a commit records, and the paths then written, in writing order.
+
+    Each recorded path is written as recorded, respelled within its group, or
+    not at all; up to two further paths are written too. Two recorded paths
+    can be spellings of one name.
+    """
+
+    recorded: dict[str, tuple[int | None, int]] = {}
+    for shape in draw(st.lists(_PATH_SHAPES, min_size=1, max_size=4)):
+        recorded.setdefault(draw(st.sampled_from(_spellings_of(shape))), shape)
+    written = []
+    for path, shape in recorded.items():
+        action = draw(st.sampled_from(("as recorded", "respelled", "absent")))
+        if action == "as recorded":
+            written.append(path)
+        elif action == "respelled":
+            written.append(draw(st.sampled_from(_spellings_of(shape))))
+    for shape in draw(st.lists(_PATH_SHAPES, max_size=2)):
+        written.append(draw(st.sampled_from(_spellings_of(shape))))
+    return list(recorded), draw(st.permutations(written))
+
+
+def _pairs_one_to_one(
+    root: Path, recorded: Collection[str], present: Mapping[str, Path]
+) -> bool:
+    """Brute force: can every recorded path take its own entry, using them all?
+
+    A path may take an entry of the same name, or of a canonically equivalent
+    name when the path opens that entry's file.
+    """
+
+    def may_pair(path: str, entry: str) -> bool:
+        if path == entry:
+            return True
+        if unicodedata.normalize("NFD", path) != unicodedata.normalize("NFD", entry):
+            return False
+        try:
+            return (root / path).samefile(present[entry])
+        except OSError:
+            return False
+
+    paths = sorted(recorded)
+    if len(paths) != len(present):
+        return False
+    return any(
+        all(may_pair(path, entry) for path, entry in zip(paths, order, strict=True))
+        for order in permutations(present)
+    )
+
+
+class TestMatchCheckoutPaths:
+    @pytest.mark.parametrize("composed_file", ["absent", "another file"])
+    def test_an_equivalent_name_pairs_only_with_the_file_its_path_opens(
+        self, tmp_path, composed_file
+    ) -> None:
+        # An entry under an equivalent spelling pairs only when the recorded
+        # path opens that entry's file. ``present`` is built by hand, so the
+        # guard is exercised on every file system: on one that keeps NFC and
+        # NFD names apart, a lone NFD file is exactly the "absent" case.
+        (tmp_path / "other.yaml").write_bytes(b"other\n")
+        if composed_file == "another file":
+            (tmp_path / "caf\u00e9.yaml").write_bytes(b"composed\n")
+        present = {"cafe\u0301.yaml": tmp_path / "other.yaml"}
+        assert axiom_adapter._match_checkout_paths(
+            tmp_path, ["caf\u00e9.yaml"], present
+        ) == ({}, ["caf\u00e9.yaml"], ["cafe\u0301.yaml"])
+
+    def test_an_ambiguous_spelling_pairs_nothing(self, tmp_path) -> None:
+        # Two recorded spellings (NFC and the Angstrom sign) are equivalent to
+        # one NFD entry. Where the file system opens that file under both, either
+        # could take it; neither does, and the refusal names all three.
+        (tmp_path / "A\u030a.yaml").write_bytes(b"one file\n")
+        present = axiom_adapter._checkout_files(tmp_path)
+        assert axiom_adapter._match_checkout_paths(
+            tmp_path, ["\u212b.yaml", "\u00c5.yaml"], present
+        ) == ({}, sorted(["\u212b.yaml", "\u00c5.yaml"]), ["A\u030a.yaml"])
+
+    def test_distinct_nfc_and_nfd_files_are_not_merged(self, tmp_path) -> None:
+        composed, decomposed = "caf\u00e9.yaml", "cafe\u0301.yaml"
+        (tmp_path / composed).write_bytes(b"composed\n")
+        (tmp_path / decomposed).write_bytes(b"decomposed\n")
+        present = axiom_adapter._checkout_files(tmp_path)
+        if len(present) == 1:
+            pytest.skip(
+                "this file system opens one file under both spellings, so it "
+                "cannot hold two files whose names differ only in normalization"
+            )
+        match = axiom_adapter._match_checkout_paths
+        files = {composed: tmp_path / composed, decomposed: tmp_path / decomposed}
+        assert match(tmp_path, [composed], present) == (
+            {composed: files[composed]},
+            [],
+            [decomposed],
+        )
+        assert match(tmp_path, [decomposed], present) == (
+            {decomposed: files[decomposed]},
+            [],
+            [composed],
+        )
+        assert match(tmp_path, [composed, decomposed], present) == (files, [], [])
+
+    @settings(max_examples=150, deadline=None)
+    @given(spellings=checkout_spellings())
+    def test_property_paths_pair_one_to_one_with_the_files_they_open(
+        self, tmp_path_factory, spellings
+    ) -> None:
+        """Invariant: the pairing is one to one and complete iff a pairing exists.
+
+        The files are real, on the test's own file system: where it opens one
+        file under equivalent or case-differing names, writes collide as they
+        would in a checkout. Every pair is a path and an entry of the same
+        name, or of an equivalent name the path opens; no entry pairs twice;
+        the pairs and leftovers partition both sides; and nothing is left
+        over exactly when a brute-force search finds a complete pairing.
+        """
+
+        recorded, written = spellings
+        root = tmp_path_factory.mktemp("spellings")
+        for index, path in enumerate(written):
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_bytes(b"%d\n" % index)
+        present = axiom_adapter._checkout_files(root)
+        paired, lacking, extra = axiom_adapter._match_checkout_paths(
+            root, recorded, present
+        )
+        entry_of = {file: entry for entry, file in present.items()}
+        entries = [entry_of[file] for file in paired.values()]
+        assert len(set(entries)) == len(entries)
+        assert sorted([*paired, *lacking]) == sorted(recorded)
+        assert sorted([*entries, *extra]) == sorted(present)
+        for path, file in paired.items():
+            entry = entry_of[file]
+            assert entry == path or (
+                unicodedata.normalize("NFD", entry)
+                == unicodedata.normalize("NFD", path)
+                and (root / path).samefile(file)
+            )
+        complete = not lacking and not extra
+        assert complete == _pairs_one_to_one(root, recorded, present)
+        event("complete" if complete else "refused")
+        respelled = sum(entry_of[file] != path for path, file in paired.items())
+        event(f"pairs through an equivalent spelling: {respelled}")
+
+
+@pytest.fixture(scope="module")
+def blob_repositories(tmp_path_factory) -> dict[str, Path]:
+    repositories = {}
+    for algorithm in ("sha1", "sha256"):
+        repository = tmp_path_factory.mktemp(f"blob-{algorithm}")
+        _git(repository, "init", "-q", f"--object-format={algorithm}")
+        assert _git(repository, "rev-parse", "--show-object-format") == algorithm
+        repositories[algorithm] = repository
+    return repositories
+
+
+@pytest.fixture(scope="module")
+def git_template(tmp_path_factory) -> tuple[Path, Path, str]:
+    """A committed checkout to copy, a clean decoy copy of it, and its commit.
+
+    Every file carries an old mtime, so an in-place edit can restore it and
+    leave the stat cache matching (the ``stat-cache edit`` change).
+    """
+
+    root, head = _old_mtime_checkout(
+        tmp_path_factory.mktemp("template") / "rulespec-git"
+    )
+    decoy = tmp_path_factory.mktemp("decoy") / "rulespec-git"
+    shutil.copytree(root, decoy, symlinks=True)
+    return root, decoy, head
+
+
+def _commit_submodule(root: Path, *, ignore: str | None = None) -> tuple[str, Path]:
+    """Commit an embedded repository at ``zz/vendor`` as a submodule of ``root``."""
+
+    vendor = _write_tree(
+        root / "zz/vendor", {"vendor.yaml": b"vendor: 1\n", ".gitignore": b"*.tmp\n"}
+    )
+    _git(vendor, "init", "-q")
+    _git(vendor, "add", "-A")
+    _git(vendor, "commit", "-q", "-m", "vendor")
+    _git(root, "add", "zz/vendor")
+    if ignore is not None:
+        (root / ".gitmodules").write_text(
+            '[submodule "zz/vendor"]\n\tpath = zz/vendor\n\turl = ./zz/vendor\n'
+            f"\tignore = {ignore}\n",
+            encoding="utf-8",
+        )
+        _git(root, "add", ".gitmodules")
+    _git(root, "commit", "-q", "-m", "vendor")
+    return _git(root, "rev-parse", "HEAD"), vendor
+
+
+_OLD_MTIME = 1_600_000_000
+
+
+def _old_mtime_checkout(root: Path) -> tuple[Path, str]:
+    """A committed checkout whose files all carry an old mtime.
+
+    It holds ``_DECOMPOSED``, so on macOS, where git records that name in NFC
+    while the file system lists it in NFD, every check pairs the two.
+    """
+
+    _write_tree(
+        root,
+        {**_BASE_TREE, ".gitignore": b"*.local.yaml\n", _DECOMPOSED: b"rules: aux\n"},
+    )
+    for path in root.rglob("*"):
+        if path.is_file():
+            os.utime(path, (_OLD_MTIME, _OLD_MTIME))
+    _git(root, "init", "-q")
+    _git(root, "config", "core.precomposeunicode", "true")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "fixture")
+    return root, _git(root, "rev-parse", "HEAD")
+
+
+def _hide_a_same_size_edit_from_the_stat_cache(root: Path) -> None:
+    """Edit the module in place, same size, and put its old mtime back.
+
+    With core.trustctime=false git's stat check ignores the ctime the edit
+    moves, so it sees size and mtime unchanged.
+    """
+
+    _git(root, "config", "core.trustctime", "false")
+    # Record this copy's own inode and ctime in the index first.
+    _git(root, "update-index", "--refresh")
+    module = root / _MODULE
+    content = module.read_bytes()
+    edited = content.replace(b"rules: []", b"rules: [x")
+    assert len(edited) == len(content) and edited != content
+    module.write_bytes(edited)
+    os.utime(module, (_OLD_MTIME, _OLD_MTIME))
+
+
+def _quiet_file_system_monitor(root: Path, hook: Path) -> None:
+    """Install a core.fsmonitor hook that never reports a change.
+
+    The index records the monitor and marks every entry valid, so git status
+    then takes the hook's word that nothing changed.
+    """
+
+    hook.write_text("#!/bin/sh\nprintf 'quiet\\0'\n", encoding="utf-8")
+    hook.chmod(0o755)
+    _git(root, "config", "core.fsmonitor", str(hook))
+    _git(root, "update-index", "--fsmonitor")
+    _git(root, "status")
+    _git(root, "status")
+
+
+def _plant_nested_dot_git(root: Path, entry: str) -> None:
+    """Add a ``.git`` file or directory below the root that is no repository."""
+
+    if entry == "file":
+        (root / "zz/policies/.git").write_bytes(b"gitdir: nowhere\n")
+    else:
+        _write_tree(root / "zz/policies/.git", {"notes.txt": b"not a repository\n"})
+
+
+_ALIAS = "zz/policies/tests/alias.yaml"
+
+
+def _commit_symlink_as_a_plain_file(root: Path) -> str:
+    """Commit a symbolic link, then hold it as a plain file under core.symlinks=false."""
+
+    alias = root / _ALIAS
+    alias.symlink_to(Path(_MODULE).name)
+    _git(root, "add", _ALIAS)
+    _git(root, "commit", "-q", "-m", "alias")
+    _git(root, "config", "core.symlinks", "false")
+    alias.unlink()
+    alias.write_bytes(Path(_MODULE).name.encode("utf-8"))
+    _git(root, "update-index", "--refresh")
+    assert _git(root, "ls-files", "--stage", _ALIAS).startswith("120000 ")
+    return _git(root, "rev-parse", "HEAD")
+
+
+def _hide_a_same_size_edit_behind_a_clean_filter(
+    root: Path, path: str = _MODULE
+) -> None:
+    """Edit ``path``, same size, behind a clean filter that undoes the edit."""
+
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "attributes").write_text(
+        "*.yaml filter=restore\n", encoding="utf-8"
+    )
+    _git(root, "config", "filter.restore.clean", "sed s/HIDDEN/rules:/")
+    module = root / path
+    content = module.read_bytes()
+    edited = content.replace(b"rules:", b"HIDDEN")
+    assert len(edited) == len(content) and edited != content
+    module.write_bytes(edited)
+
+
+def _hide_an_executable_mode_change(
+    root: Path, mode: int = 0o755, path: str = _MODULE
+) -> None:
+    """Change ``path``'s executable bit while git ignores worktree modes."""
+
+    _git(root, "config", "core.filemode", "false")
+    (root / path).chmod(mode)
+
+
+def _apply_checkout_change(root: Path, change: str, head: str, tmp_path_factory) -> str:
+    """Apply one ``_CHECKOUT_CHANGES`` entry to ``root``; return the commit to declare."""
+
+    module = root / _MODULE
+    if change == "edit":
+        module.write_bytes(b"format: rulespec/v1\nrules: [edited]\n")
+    elif change == "untracked file":
+        (root / "zz/untracked.yaml").write_bytes(b"x")
+    elif change == "ignored file":
+        (root / "zz/override.local.yaml").write_bytes(b"x")
+    elif change == "staged edit, reverted on disk":
+        content = module.read_bytes()
+        module.write_bytes(b"format: rulespec/v1\nrules: [staged]\n")
+        _git(root, "add", _MODULE)
+        module.write_bytes(content)
+    elif change == "skip-worktree":
+        _git(root, "update-index", "--skip-worktree", _MODULE)
+    elif change == "assume-unchanged edit":
+        _git(root, "update-index", "--assume-unchanged", _MODULE)
+        module.write_bytes(b"format: rulespec/v1\nrules: [hidden]\n")
+    elif change == "submodule":
+        head, _ = _commit_submodule(root)
+    elif change == "HEAD moved on":
+        _git(root, "commit", "-q", "--allow-empty", "-m", "moved")
+    elif change == "another commit declared":
+        return "1" * len(head) if head != "1" * len(head) else "2" * len(head)
+    elif change == "replace ref":
+        module.write_bytes(b"format: rulespec/v1\nrules: [other]\n")
+        _git(root, "commit", "-q", "-a", "-m", "other")
+        _git(root, "replace", head, _git(root, "rev-parse", "HEAD"))
+        _git(root, "update-ref", "HEAD", head)
+    elif change == "stat-cache edit":
+        _hide_a_same_size_edit_from_the_stat_cache(root)
+    elif change == "clean-filter edit":
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+    elif change == "fsmonitor-hidden edit":
+        _quiet_file_system_monitor(root, root.parent / "quiet-fsmonitor")
+        module.write_bytes(b"format: rulespec/v1\nrules: [quiet]\n")
+    elif change == "nested .git file":
+        _plant_nested_dot_git(root, "file")
+    elif change == "symbolic link as a plain file":
+        head = _commit_symlink_as_a_plain_file(root)
+    elif change == "executable mode hidden by core.filemode":
+        _hide_an_executable_mode_change(root)
+    elif change == "core.worktree elsewhere":
+        elsewhere = tmp_path_factory.mktemp("elsewhere") / "rulespec-git"
+        shutil.copytree(root, elsewhere, ignore=shutil.ignore_patterns(".git"))
+        _git(root, "config", "core.worktree", str(elsewhere))
+        module.write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+    else:
+        assert change == "none", change
+    return head
+
+
+# ----------------------------------------------------------------------
+# Real engine (skipped without axiom_rules_engine)
+# ----------------------------------------------------------------------
+
+
+_FIXTURE_COMMIT = "0" * 40
+
+
+def _fixture_ref(engine: AxiomEngine) -> str:
+    """A reference for the in-repo fixture; the commit is a test placeholder."""
+
+    return axiom_engine_ref(
+        engine,
+        engine_commit=_FIXTURE_COMMIT,
+        wheel_sha256=WHEEL_SHA256,
+        rulespec_root=FIXTURE_RULESPEC_ROOT,
+        rulespec_commit=_FIXTURE_COMMIT,
+    )
+
+
+class _ToyPopulation(KernelBase):
+    """CREATE kernel loading the toy population from a JSON source."""
+
+    ref = "test.toy_population@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        seed_source=SeedSource.NONE,
+        structural=StructuralDelta.CREATE,
+    )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        document = json.loads(context.sources["population"].read_text())
+        schema = NZ_SCHEMA if "family" in document else BE_SCHEMA
+        tables = {
+            entity: pd.DataFrame(
+                {
+                    column: np.asarray(values, dtype=document["dtypes"][column])
+                    for column, values in document[entity].items()
+                }
+            )
+            for entity in schema.entities
+        }
+        frame = Frame(
+            tables,
+            schema,
+            {
+                "household": Weights(
+                    np.asarray(document["household_weights"], dtype=np.float64),
+                    WeightKind.DESIGN,
+                )
+            },
+        )
+        return KernelResult(frame=frame, receipt={"persons": len(tables["person"])})
+
+
+_TOY_COUNTRY_DOCUMENT = {
+    "person": {
+        "person_id": [1, 2, 3],
+        "person_household_id": [1, 1, 2],
+        "toy_taxable_income": [5_000.0, 10_000.0, 20_000.0],
+        "toy_is_exempt": [False, False, False],
+        "toy_child_count": [0, 2, 1],
+    },
+    "household": {"household_id": [1, 2], "toy_household_rent": [7_200.0, 4_800.0]},
+    "household_weights": [1500.0, 900.0],
+    "dtypes": {
+        "person_id": "int64",
+        "person_household_id": "int64",
+        "toy_taxable_income": "float64",
+        "toy_is_exempt": "bool",
+        "toy_child_count": "int64",
+        "household_id": "int64",
+        "toy_household_rent": "float64",
+    },
+}
+
+_TOY_FAMILY_DOCUMENT = {
+    "person": {
+        "person_id": [1, 2, 3, 4, 5],
+        "person_household_id": [1, 1, 2, 2, 2],
+        "person_family_id": [10, 10, 20, 21, 21],
+        "toy_taxable_income": [5_000.0, 10_000.0, 20_000.0, 0.0, 0.0],
+        "toy_is_exempt": [False, False, False, False, False],
+        "toy_child_count": [0, 0, 0, 1, 0],
+    },
+    "household": {"household_id": [1, 2]},
+    "family": {
+        "family_id": [10, 20, 21],
+        "toy_family_weekly_rent": [300.0, 80.0, 180.0],
+        "toy_family_cash_assets": [9_000.0, 1_000.0, 8_000.0],
+        "toy_family_size": [2, 1, 3],
+    },
+    "household_weights": [1200.0, 800.0],
+    "dtypes": {
+        "person_id": "int64",
+        "person_household_id": "int64",
+        "person_family_id": "int64",
+        "toy_taxable_income": "float64",
+        "toy_is_exempt": "bool",
+        "toy_child_count": "int64",
+        "household_id": "int64",
+        "family_id": "int64",
+        "toy_family_weekly_rent": "float64",
+        "toy_family_cash_assets": "float64",
+        "toy_family_size": "int64",
+    },
+}
+
+
+def _source_node(document: Mapping[str, object]) -> Node:
+    outputs = tuple(
+        Owned(entity, column, document["dtypes"][column])
+        for entity in ("person", "household", "family")
+        if entity in document
+        for column in document[entity]
+        if not column.endswith("_id")
+    )
+    return Node(
+        "population",
+        _ToyPopulation.ref,
+        outputs=outputs,
+        structural=StructuralDelta.CREATE,
+        sources=("population",),
+    )
+
+
+def _run(
+    tmp_path: Path,
+    document: Mapping[str, object],
+    nodes: tuple[Node, ...],
+    kernels: tuple[object, ...],
+):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    source = tmp_path / "population.json"
+    source.write_text(json.dumps(document))
+    registry = KernelRegistry()
+    registry.register(_ToyPopulation())
+    for kernel in kernels:
+        registry.register(kernel)
+    graph = Graph(
+        "axiom-graph-adapter",
+        (SourceRef("population", "raw-bytes-v1"),),
+        (_source_node(document), *nodes),
+    )
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        compile_graph(graph),
+        sources={"population": source},
+        store=store,
+        kernels=registry,
+        resume="forbid",
+        decisions=(),
+    )
+    return manifest, store
+
+
+def _column(manifest, store, node_id: str, entity: str, column: str) -> pd.Series:
+    return store.load_column(manifest.nodes[node_id].artifacts[(entity, column)])
+
+
+@needs_engine
+class TestRealEngineOnTheGraph:
+    def test_graph_typed_simulate_rules_runs_in_a_filter_free_graph(
+        self, tmp_path
+    ) -> None:
+        engine = AxiomEngine(
+            FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS, output_dtypes="graph"
+        )
+        engine_ref = _fixture_ref(engine)
+        variables = ("toy_income_tax", "toy_housing_allowance")
+        node = Node(
+            "toy_rules",
+            SimulateRulesKernel.ref,
+            inputs=(
+                Slice(
+                    "person",
+                    ("toy_taxable_income", "toy_is_exempt", "toy_child_count"),
+                ),
+                Slice("household", ("toy_household_rent",)),
+            ),
+            outputs=tuple(
+                Owned(
+                    engine.variable_metadata(name).entity,
+                    name,
+                    engine.graph_dtype(name),
+                )
+                for name in variables
+            ),
+            params={"engine_ref": engine_ref, "variables": variables, "period": 2025},
+        )
+        manifest, store = _run(
+            tmp_path,
+            _TOY_COUNTRY_DOCUMENT,
+            (node,),
+            (SimulateRulesKernel(engine_ref, engine),),
+        )
+        tax = _column(manifest, store, "toy_rules", "person", "toy_income_tax")
+        allowance = _column(
+            manifest, store, "toy_rules", "household", "toy_housing_allowance"
+        )
+        assert tax.dtype == np.dtype(np.float64)
+        np.testing.assert_allclose(tax.to_numpy(), [500.0, 1_000.0, 3_500.0])
+        np.testing.assert_allclose(allowance.to_numpy(), [1_200.0, 0.0])
+
+    def test_the_tax_year_label_reaches_the_engine_as_explicit_bounds(
+        self, monkeypatch
+    ) -> None:
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            periods={"2026-27": TAX_YEAR},
+            output_dtypes="graph",
+        )
+        program = adapter._program("person")
+        calls: list[tuple[str, str, str]] = []
+        original = program.execute
+
+        def recording_execute(*, period_kind, start, end, **kwargs):
+            calls.append((start, end, period_kind))
+            return original(period_kind=period_kind, start=start, end=end, **kwargs)
+
+        monkeypatch.setattr(program, "execute", recording_execute)
+        frame = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": [1, 2],
+                        "person_household_id": [1, 2],
+                        "toy_taxable_income": [5_000.0, 20_000.0],
+                        "toy_is_exempt": [False, False],
+                        "toy_child_count": [0, 1],
+                    }
+                ),
+                "household": pd.DataFrame({"household_id": [1, 2]}),
+            },
+            BE_SCHEMA,
+            {"household": Weights(np.asarray([1.0, 1.0]), WeightKind.DESIGN)},
+        )
+        results = adapter.materialize(frame, ["toy_income_tax"], "2026-27")
+        assert calls == [("2026-04-01", "2027-03-31", "tax_year")]
+        np.testing.assert_allclose(results["toy_income_tax"], [500.0, 3_500.0])
+        with pytest.raises(ValueError, match="No explicit Axiom period bounds"):
+            adapter.materialize(frame, ["toy_income_tax"], 2026)
+
+    def test_family_judgments_are_lossless_graph_codes(self) -> None:
+        adapter = AxiomEngine(
+            FAMILY_FIXTURE_MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            nesting=NZ_NESTING,
+        )
+        typed = AxiomEngine(
+            FAMILY_FIXTURE_MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            nesting=NZ_NESTING,
+            output_dtypes="graph",
+        )
+        assert_no_relations(adapter, "family")
+        frame = _nz_frame(
+            [1, 1, 2, 2, 2],
+            [10, 10, 20, 21, 21],
+            [1200.0, 800.0],
+            family_columns={
+                "toy_family_weekly_rent": [300.0, 80.0, 180.0],
+                "toy_family_cash_assets": [9_000.0, 1_000.0, 8_000.0],
+                "toy_family_size": np.asarray([2, 1, 3], dtype=np.int64),
+            },
+        )
+        variables = [
+            "toy_family_assets_within_limit",
+            "toy_family_rent_assistance",
+            "toy_family_size_band",
+            "toy_family_is_large",
+        ]
+        native = adapter.materialize(frame, variables, 2026)
+        graph = typed.materialize(frame, variables, 2026)
+        judgment = "toy_family_assets_within_limit"
+        assert native[judgment].dtype == np.dtype(np.int8)
+        assert graph[judgment].dtype == np.dtype(np.int64)
+        assert graph[judgment].tolist() == [-1, 1, 1]
+        assert graph[judgment].astype(np.int8).tobytes() == native[judgment].tobytes()
+        np.testing.assert_allclose(
+            graph["toy_family_rent_assistance"], [100.0, 0.0, 40.0]
+        )
+        assert graph["toy_family_size_band"].dtype == np.dtype(np.int64)
+        assert graph["toy_family_size_band"].tolist() == [1, 1, 2]
+        assert graph["toy_family_is_large"].dtype == np.dtype(np.bool_)
+        assert graph["toy_family_is_large"].tolist() == [False, False, True]
+        assert {name: typed.graph_dtype(name) for name in variables} == {
+            "toy_family_assets_within_limit": "int64",
+            "toy_family_rent_assistance": "float64",
+            "toy_family_size_band": "int64",
+            "toy_family_is_large": "bool",
+        }
+
+    def test_rules_by_ref_runs_two_axiom_engines_in_one_graph(self, tmp_path) -> None:
+        person_engine = AxiomEngine(
+            FIXTURE_MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            nesting=NZ_NESTING,
+            output_dtypes="graph",
+            periods={"2026-27": TAX_YEAR},
+        )
+        family_engine = AxiomEngine(
+            FAMILY_FIXTURE_MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            nesting=NZ_NESTING,
+            output_dtypes="graph",
+            periods={"2026-27": TAX_YEAR},
+        )
+        person_ref = _fixture_ref(person_engine)
+        family_ref = _fixture_ref(family_engine)
+        assert person_ref != family_ref
+        person_variables = ("toy_income_tax",)
+        family_variables = (
+            "toy_family_assets_within_limit",
+            "toy_family_rent_assistance",
+        )
+
+        def node(node_id, kernel_ref, engine, engine_ref, variables, inputs):
+            return Node(
+                node_id,
+                kernel_ref,
+                inputs=inputs,
+                outputs=tuple(
+                    Owned(
+                        engine.variable_metadata(name).entity,
+                        name,
+                        engine.graph_dtype(name),
+                    )
+                    for name in variables
+                ),
+                params={
+                    "engine_ref": engine_ref,
+                    "variables": variables,
+                    "period": "2026-27",
+                },
+            )
+
+        person_inputs = (
+            Slice(
+                "person",
+                ("toy_taxable_income", "toy_is_exempt", "toy_child_count"),
+            ),
+        )
+        # A family-only node still slices one person data column: the
+        # kernel rebuilds group tables from the person table it is given.
+        family_inputs = (
+            Slice(
+                "family",
+                (
+                    "toy_family_weekly_rent",
+                    "toy_family_cash_assets",
+                    "toy_family_size",
+                ),
+            ),
+            Slice("person", ("toy_taxable_income",)),
+        )
+        by_ref = SimulateRulesByRefKernel(
+            {person_ref: person_engine, family_ref: family_engine}
+        )
+        manifest, store = _run(
+            tmp_path / "by-ref",
+            _TOY_FAMILY_DOCUMENT,
+            (
+                node(
+                    "rules.person",
+                    by_ref.ref,
+                    person_engine,
+                    person_ref,
+                    person_variables,
+                    person_inputs,
+                ),
+                node(
+                    "rules.family",
+                    by_ref.ref,
+                    family_engine,
+                    family_ref,
+                    family_variables,
+                    family_inputs,
+                ),
+            ),
+            (by_ref,),
+        )
+        np.testing.assert_allclose(
+            _column(
+                manifest, store, "rules.person", "person", "toy_income_tax"
+            ).to_numpy(),
+            [500.0, 1_000.0, 3_500.0, 0.0, 0.0],
+        )
+        codes = _column(
+            manifest, store, "rules.family", "family", "toy_family_assets_within_limit"
+        )
+        assert codes.dtype == np.dtype(np.int64)
+        assert codes.tolist() == [-1, 1, 1]
+
+        # Differential: each node equals a single-engine simulate.rules@1 run.
+        for node_id, engine, engine_ref, variables, inputs in (
+            (
+                "rules.person",
+                person_engine,
+                person_ref,
+                person_variables,
+                person_inputs,
+            ),
+            (
+                "rules.family",
+                family_engine,
+                family_ref,
+                family_variables,
+                family_inputs,
+            ),
+        ):
+            single, single_store = _run(
+                tmp_path / f"single-{node_id}",
+                _TOY_FAMILY_DOCUMENT,
+                (
+                    node(
+                        node_id,
+                        SimulateRulesKernel.ref,
+                        engine,
+                        engine_ref,
+                        variables,
+                        inputs,
+                    ),
+                ),
+                (SimulateRulesKernel(engine_ref, engine),),
+            )
+            assert single.nodes[node_id].receipt == manifest.nodes[node_id].receipt
+            for name in variables:
+                entity = engine.variable_metadata(name).entity
+                expected = _column(single, single_store, node_id, entity, name)
+                actual = _column(manifest, store, node_id, entity, name)
+                pd.testing.assert_series_equal(actual, expected)
+                assert actual.to_numpy().tobytes() == expected.to_numpy().tobytes()

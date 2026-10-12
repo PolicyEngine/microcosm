@@ -252,7 +252,7 @@ python -m pytest \
   packages/microcosm-data/tests/engine_free/shared/test_source_enrichment.py \
   packages/microcosm-build/tests/engine_free/us/test_us_spm_role_enrichment_builder.py \
   packages/microcosm-data/tests/engine_free/shared/test_release.py
-python tools/ci_test_groups.py --verify
+python3 tools/ci_test_plan.py verify
 ```
 
 These tests use invented populations and pins. Passing them does not certify

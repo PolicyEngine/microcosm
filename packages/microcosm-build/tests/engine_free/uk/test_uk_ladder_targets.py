@@ -188,6 +188,7 @@ def test_households_metric_is_in_the_computed_surface() -> None:
 
     class FakeUKSimulation:
         person_household = np.asarray([0, 0, 1, 2])
+        person_benunit = np.asarray([0, 0, 1, 2])
         benunit_household = np.asarray([0, 1, 2])
         data = {
             "household_id": [101, 102, 103],
@@ -196,7 +197,13 @@ def test_households_metric_is_in_the_computed_surface() -> None:
             "income_tax": [1.0, 0.0, 2.0, 3.0],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
-            "num_children": [1, 0, 2],
+            "is_uc_claimant": [False, True, True, False],
+            "is_child_or_qualifying_young_person_for_universal_credit": [
+                True,
+                False,
+                False,
+                True,
+            ],
             "is_child": [1.0, 0.0, 0.0, 1.0],
         }
 
@@ -206,11 +213,14 @@ def test_households_metric_is_in_the_computed_surface() -> None:
         def map_result(self, values, from_entity, to_entity):
             values = np.asarray(values, dtype=float)
             out = np.zeros(3, dtype=float)
-            mapping = (
-                self.person_household
-                if from_entity == "person"
-                else self.benunit_household
-            )
+            if to_entity == "benunit":
+                mapping = self.person_benunit
+            else:
+                mapping = (
+                    self.person_household
+                    if from_entity == "person"
+                    else self.benunit_household
+                )
             for index, household_index in enumerate(mapping):
                 out[household_index] += values[index]
             return out
