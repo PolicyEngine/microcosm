@@ -29,7 +29,9 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
         "gov.economic_assumptions.indices.obr.average_earnings", 2024
     ) / reader("gov.economic_assumptions.indices.obr.average_earnings", 2023)
     assert lcfs_factors["petrol_spending"] == pytest.approx(0.9846, abs=5e-4)
-    assert lcfs_factors["diesel_spending"] == pytest.approx(0.8977, abs=5e-4)
+    # ONS's revised mid-2024 population (the 942a1fa feed) moves both per-head
+    # fuel factors by 0.036%; diesel crosses its old pin (microcosm#1123).
+    assert lcfs_factors["diesel_spending"] == pytest.approx(0.8985, abs=5e-4)
     audits = {
         column: lcfs_receipt["columns"][column]["engine_audit"]
         for column in ("petrol_spending", "diesel_spending")
