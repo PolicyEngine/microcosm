@@ -2081,18 +2081,30 @@ def _scf_wealth_gate_record(
         return value
 
     ids = np.unique(
-        pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy(
-            dtype=np.int64
+        pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    )
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = bool(
+        np.issubdtype(ids.dtype, np.integer)
+        or (
+            np.isfinite(ids).all()
+            and (ids == np.round(ids)).all()
+            and (np.abs(ids) < 2**63).all()
         )
     )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
     return {
         "passed": bool(gate.passed),
         "failures": list(gate.failures),
         "scope": "blend_stage_frame",
         "blend_household_ids": {
             "count": int(ids.size),
-            "sha256": hashlib.sha256(ids.astype("<i8").tobytes()).hexdigest(),
-            "encoding": "sorted unique household_id, little-endian int64",
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
         },
         "details": finite(dict(gate.details)),
     }

@@ -12773,6 +12773,22 @@ def test_asset_blend_gate_record_is_strict_json_and_pins_the_id_set() -> None:
         np.array([2, 1, 3, 1]),
     )
     assert shuffled["blend_household_ids"] == record["blend_household_ids"]
+    # Fractional ids keep their values: distinct sets never share a digest.
+    fractional = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        [1.1, 1.2],
+    )["blend_household_ids"]
+    subset = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        [1.2],
+    )["blend_household_ids"]
+    assert fractional["encoding"].endswith("float64")
+    assert fractional["sha256"] != subset["sha256"]
+    float_integral = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        [3.0, 1.0, 2.0],
+    )["blend_household_ids"]
+    assert float_integral == record["blend_household_ids"]
 
 
 def test_release_calibration_diagnostics_record_the_asset_blend_audit(
