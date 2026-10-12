@@ -8997,7 +8997,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     # The SIPP/SCF blend audit rides on the SCF-wealth gate's summary; the
     # writer records the gate the stage returned (microcosm#1216).
-    assert captured["diagnostics"]["scf_wealth_gate"].details == {"checked": True}
+    scf_wealth_signal = captured["diagnostics"]["scf_wealth_signal"]
+    assert scf_wealth_signal["details"] == {"checked": True}
+    assert scf_wealth_signal["scope"] == "blend_stage_frame"
+    assert scf_wealth_signal["blend_household_ids"]["count"] > 0
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
@@ -12708,13 +12711,73 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     assert "calibration_runtime" not in builds[1]
 
 
+def _asset_blend_gate_record(builder):
+    audit = {
+        "schema_version": 1,
+        "seed": np.int64(0),
+        "time_period": 2024,
+        "scf_probability": 0.5,
+        "household_count": np.int64(3),
+        "scf_household_count": 2,
+        "sipp_household_count": 1,
+        "scf_household_share": np.float64(2 / 3),
+        "scf_selected_bank_median": float("nan"),
+        "sipp_selected_bank_median": np.float64(1_200.0),
+    }
+    gate = builder.GateResult(
+        name="scf_wealth_signal",
+        passed=True,
+        details={
+            "financial_asset_blend": audit,
+            "bank_account_assets_nonzero_share": np.float64(0.42),
+            "net_worth_nonzero_share_band": (0.7, 0.99),
+            "missing": None,
+            "is_blended": np.bool_(True),
+        },
+    )
+    return builder._scf_wealth_gate_record(gate, [3, 1, 2])
+
+
+def test_asset_blend_gate_record_is_strict_json_and_pins_the_id_set() -> None:
+    """microcosm#1216: the blend audit lives in DataFrame.attrs and the H5
+    writer drops it. The record keeps it, scoped to the blend-stage frame,
+    with the household id set the seeded draw depends on, and survives the
+    strict diagnostics schema."""
+    from pydantic import JsonValue, TypeAdapter
+
+    builder = _load_builder_module()
+    record = _asset_blend_gate_record(builder)
+
+    TypeAdapter(dict[str, JsonValue]).validate_python(record, strict=True)
+    json.dumps(record, allow_nan=False)
+    assert record["passed"] is True
+    assert record["failures"] == []
+    assert record["scope"] == "blend_stage_frame"
+    ids = np.array([1, 2, 3], dtype="<i8")
+    assert record["blend_household_ids"] == {
+        "count": 3,
+        "sha256": hashlib.sha256(ids.tobytes()).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    blend = record["details"]["financial_asset_blend"]
+    assert blend["seed"] == 0 and type(blend["seed"]) is int
+    assert blend["scf_household_count"] + blend["sipp_household_count"] == 3
+    assert blend["scf_selected_bank_median"] is None
+    assert blend["sipp_selected_bank_median"] == 1_200.0
+    assert type(blend["scf_household_share"]) is float
+    assert record["details"]["is_blended"] is True
+    assert record["details"]["net_worth_nonzero_share_band"] == [0.7, 0.99]
+    # Order and repeats do not change the pinned id set.
+    shuffled = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        np.array([2, 1, 3, 1]),
+    )
+    assert shuffled["blend_household_ids"] == record["blend_household_ids"]
+
+
 def test_release_calibration_diagnostics_record_the_asset_blend_audit(
     monkeypatch, tmp_path
 ) -> None:
-    """microcosm#1216: the SIPP/SCF blend audit lives in DataFrame.attrs and
-    the H5 writer drops it, so the diagnostics file is where a release keeps
-    it. Non-finite and NumPy values are made strict-JSON safe; direct callers
-    that pass no gate get a null block."""
     builder = _load_builder_module()
     builds: list[dict] = []
     monkeypatch.setattr(
@@ -12739,49 +12802,36 @@ def test_release_calibration_diagnostics_record_the_asset_blend_audit(
         audit_export_targets=False,
         gate_failures=[],
     )
-    audit = {
-        "schema_version": 1,
-        "seed": np.int64(0),
-        "time_period": 2024,
-        "scf_probability": 0.5,
-        "household_count": np.int64(57_240),
-        "scf_household_count": 28_627,
-        "sipp_household_count": 28_613,
-        "scf_household_share": np.float64(28_627 / 57_240),
-        "scf_selected_bank_median": float("nan"),
-        "sipp_selected_bank_median": np.float64(1_200.0),
-    }
-    scf_wealth_gate = builder.GateResult(
-        name="scf_wealth_signal",
-        passed=True,
-        details={
-            "financial_asset_blend": audit,
-            "bank_account_assets_nonzero_share": np.float64(0.42),
-            "net_worth_nonzero_share_band": [0.7, 0.99],
-            "missing": None,
-            "is_blended": np.bool_(True),
-        },
-    )
+    record = _asset_blend_gate_record(builder)
 
-    builder._write_release_calibration_diagnostics(
-        scf_wealth_gate=scf_wealth_gate, **kwargs
-    )
+    builder._write_release_calibration_diagnostics(scf_wealth_signal=record, **kwargs)
     builder._write_release_calibration_diagnostics(**kwargs)
 
-    record = builds[0]["scf_wealth_signal"]
-    assert record["passed"] is True
-    assert record["failures"] == []
-    blend = record["details"]["financial_asset_blend"]
-    assert blend["seed"] == 0 and type(blend["seed"]) is int
-    assert blend["household_count"] == 57_240
-    assert blend["scf_household_count"] + blend["sipp_household_count"] == 57_240
-    assert blend["scf_selected_bank_median"] is None
-    assert blend["sipp_selected_bank_median"] == 1_200.0
-    assert type(blend["scf_household_share"]) is float
-    assert record["details"]["is_blended"] is True
-    assert record["details"]["net_worth_nonzero_share_band"] == [0.7, 0.99]
-    json.dumps(builds[0]["scf_wealth_signal"], allow_nan=False)
+    assert builds[0]["scf_wealth_signal"] == record
     assert builds[1]["scf_wealth_signal"] is None
+
+
+def test_build_manifest_gates_carry_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    """The manifest is written for every release, so the audit cannot be lost
+    the way a failed diagnostics write would lose it."""
+    from microcosm.data.contract import _check_build_manifest
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    record = _asset_blend_gate_record(builder)
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+        scf_wealth_signal=record,
+    )
+    manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert manifest["gates"]["scf_wealth_signal"] == record
+    failures: list[str] = []
+    _check_build_manifest(manifest, release_id, failures)
+    assert failures == []
 
 
 def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
