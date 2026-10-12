@@ -203,7 +203,9 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
     # The identity is the 942a1fa feed re-pinned by microcosm#1123
-    # (PolicyEngine/chronicle#313 via #314, the 2025 calibration inputs).
+    # (PolicyEngine/chronicle#313 via #314, the 2025 calibration inputs). It
+    # holds the 1ee7dfe rows microcosm#1113 pinned (PolicyEngine/chronicle#322
+    # via #323: Consumer Trends by COICOP division, DESNZ road fuel).
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (

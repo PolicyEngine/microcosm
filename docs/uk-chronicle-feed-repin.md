@@ -125,7 +125,21 @@ resolve to the 2024-25 fact. For the same reason the 2023 production compile-par
 five ledger-only rows (the relief targets now compile at that comparison period from the 2023-24
 facts); the two 2025 incumbent receipts are unchanged.
 
-The `942a1fa` re-pin (microcosm#1123, PolicyEngine/chronicle#313 via #314, on top of `825406f`)
+The `1ee7dfe` re-pin (microcosm#1113, PolicyEngine/chronicle#322 via #323, on top of `825406f`)
+brought ONS Consumer Trends household final consumption expenditure, annual for 2020 to 2025 and
+quarterly to 2026 Q1: the national and domestic totals, the twelve domestic COICOP divisions and net
+tourism (sheet 0CN), their classes (sheets 01CN to 12CN) and the tourism detail (TOURCN). It also
+brought DESNZ road transport energy consumption by vehicle type and fuel for 2005 to 2024, for the
+UK, Great Britain, the four countries and the English regions (352,549 rows). #323 also restates the
+seven Consumer Trends series already in the feed as domestic household spending: the 217 rows keep
+their concepts and values under new keys, with the territory role and the price-basis,
+seasonal-adjustment, unit, sheet and concept dimensions. Every other `825406f` row is
+byte-identical. The national and local reference files are byte-identical; the electricity, gas and
+road-fuel targets resolve to the same values through the new keys. The vendored resources carry the
+same rows under the new feed identity, the Consumer Trends resource's 42 under their new keys, and
+the re-pin leaves the three compile-parity receipts unchanged.
+
+The `942a1fa` re-pin (microcosm#1123, PolicyEngine/chronicle#313 via #314, on top of `1ee7dfe`)
 brought the publisher inputs for the 2025 calibration: household estimates by nation and region
 (LFS 2025 for England's regions and the GB countries, NRS 2025, Welsh Government mid-2024, LPS
 dwelling stock 2021–2026), mid-2025 population estimates (the UK, country and region workbook,
@@ -133,7 +147,7 @@ every local authority and the devolved council and district tables) with ONS's r
 mid-2024, the census residence-type tables (RM120, UV101a, CT0105), monthly Universal Credit by
 area from January 2025, PIPR and Scottish rent statistics, SPREE and the Welsh and Scottish
 dwelling stock by tenure, and newer editions of SLC repayments, ISC, public sector employment,
-land values and the DfI receipts (927,239 rows, 2.7 times the previous feed). Three selectors had to
+land values and the DfI receipts (927,239 rows, 2.6 times the previous feed). Three selectors had to
 move with the data: the ONS mid-2025 workbook lays its rows out by geography, so the population
 selectors pin ages through `dimension_values` and no longer require the age layout; the
 preliminary end-2025 land rows carry `publication_status: preliminary` and are bound explicitly;

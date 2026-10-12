@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-942a1fa0-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1290,
-  "contract_target_count": 347,
-  "active_reference_count": 1267,
+  "candidate_count": 1291,
+  "contract_target_count": 348,
+  "active_reference_count": 1268,
   "status_counts": {
-    "active": 1267,
+    "active": 1268,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 15
   },
@@ -19163,6 +19163,21 @@
           "resolved_value": 15339000000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_03c5f13d5fbab023177a1aea"
+        }
+      ]
+    },
+    "ons.household_road_fuel_expenditure": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.household_road_fuel_expenditure",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 35099000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_98696a3d0a85269f7b2445ff"
         }
       ]
     },
