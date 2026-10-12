@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING"]
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.122.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.123.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -185,7 +185,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.122.2",
+    engine_version="2.123.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -294,9 +294,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             Identity(),
             AlignmentRelation.APPROXIMATE,
             (
-                "Engine label 'rental income', documentation 'Income from rental "
-                "of property'; whether expenses are netted is not stated, and "
-                "the concept is net."
+                "Engine label 'property income', documentation: profits of UK and "
+                "overseas property businesses, receipts less allowable expenses, "
+                "'before the property allowance and before any costs of "
+                "dwelling-related loans', which are relieved as a tax reduction "
+                "instead. The concept nets every expense, mortgage interest "
+                "included, and excludes sub-letting part of the own dwelling, so "
+                "the engine's profit sits above it for mortgaged landlords."
             ),
         ),
         bind(

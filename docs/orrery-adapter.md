@@ -207,7 +207,7 @@ build into the same output directory therefore keeps the record of the attempt
 that computed a result next to the replay that reused it; a published file
 that no longer verifies refuses publication instead of being dropped. `microcosm.graph.run-binding.v1` records the graph/manifest byte
 digests, manifest key, attempt, phase, platform and identities of used sources.
-These native files support later export; they do not create an Orrery snapshot.
+These native files support later export; they do not create an Orrery snapshot. Native evidence files are bounded by bytes (1 GiB) and nesting depth; the compiler schema's per-item budget applies to schemas and Orrery documents, not to copied manifests, which hold over a million JSON items on a licensed spine. The byte cap is set by the largest file a real build writes — the K=25/60k dense build's numerical and preflight graphs are 399 MiB (41.4M items, 2.2 GiB peak RSS to parse) — with about 2.5x headroom. Digest checks read bytes without parsing, so hashing a graph that size never pays the parse cost.
 A serialized historical manifest without this binding cannot supply missing
 run-end source identities by reading today's source files.
 

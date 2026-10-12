@@ -1,7 +1,9 @@
 """Declared uprating of UK imputation donors to the base year (microcosm#890 U).
 
-The LCFS 2023-24 and ETB FYE-2024 donors are one year behind the FRS 2024-25
-spine. Each stage declares an ``uprate_donor_columns`` operation naming, per
+The LCFS 2023-24 and ETB FYE-2024 donors sit before the FRS 2024-25 spine's
+calendar-2024 price basis: the LCFS diary year is placed on the calendar-year
+index at three quarters and one quarter (microcosm#1113), the ETB year by a
+full step. Each stage declares an ``uprate_donor_columns`` operation naming, per
 column, the basis that moves it from ``from_period`` to ``to_period``:
 
 * ``engine_parameter`` — the ratio of a PolicyEngine UK parameter at the two
