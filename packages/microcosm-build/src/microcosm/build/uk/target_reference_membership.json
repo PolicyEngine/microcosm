@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-942a1fa0-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1291,
+  "candidate_count": 1303,
   "contract_target_count": 348,
-  "active_reference_count": 1268,
+  "active_reference_count": 1281,
   "status_counts": {
-    "active": 1268,
+    "active": 1281,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 15
   },
