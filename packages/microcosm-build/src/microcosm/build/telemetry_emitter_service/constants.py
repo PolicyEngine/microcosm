@@ -59,6 +59,42 @@ MAX_RETRY_SECONDS: Final = 60.0
 
 DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
+PRUNE_BATCH_ROWS: Final = 500
+# SQLite's busy handler polls rather than queueing, so another process rarely
+# gets the lock between two back-to-back transactions. Prune pauses between
+# batches and works at most PRUNE_STEP_SECONDS per worker tick.
+PRUNE_BATCH_PAUSE_SECONDS: Final = 0.025
+PRUNE_STEP_SECONDS: Final = 1.0
+# Every concurrent build on a host shares one spool, so a write can find it
+# locked for longer than SQLite's own busy wait. Startup waits for the lock,
+# and retries lock errors with jittered, doubling pauses, until the margin
+# before the build stops waiting for readiness; every SQLite wait in that time
+# also ends by then. The margin covers binding the socket and the build's ping.
+SPOOL_RETRY_INITIAL_SECONDS: Final = 0.05
+SPOOL_RETRY_MAX_SECONDS: Final = 0.25
+READY_DEADLINE_MARGIN_SECONDS: Final = 0.5
+STARTUP_RETRY_LIMIT_SECONDS: Final = 60.0
+SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
+
+# The socket hands each accepted event to a writer thread through an ordered
+# in-memory queue, so a spool that another process keeps locked never delays
+# the build's sends. The queue holds at most QUEUE_MAX_EVENTS events and
+# QUEUE_MAX_BYTES of their encoded JSON. The last QUEUE_RESERVED_EVENTS and
+# QUEUE_RESERVED_BYTES of that room take only run events (started, completed,
+# failed, blocked), so a queue that progress updates have filled still records
+# how the build ended.
+QUEUE_MAX_EVENTS: Final = 10_000
+QUEUE_MAX_BYTES: Final = 16 * 1024 * 1024
+QUEUE_RESERVED_EVENTS: Final = 16
+QUEUE_RESERVED_BYTES: Final = 256 * 1024
+# The writer appends up to WRITER_BATCH_EVENTS queued events per transaction.
+# One append's statements together wait at most WRITER_BUSY_TIMEOUT_SECONDS
+# for other processes' locks, and the append waits no longer than that for
+# another thread of this process to release the spool. So the writer's retry
+# loop decides how long to keep trying, and during a shutdown drain no append
+# touches the database after the deadline less that wait.
+WRITER_BATCH_EVENTS: Final = 100
+WRITER_BUSY_TIMEOUT_SECONDS: Final = 0.25
 
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
 DEFAULT_DRAIN_SECONDS: Final = 15.0
@@ -70,6 +106,51 @@ WORKER_INTERVAL_SECONDS: Final = 1.0
 DRAIN_RETRY_SECONDS: Final = 0.5
 
 EVENT_OBJECT_ERROR: Final = "event must be an object"
+EVENT_FIELDS_ERROR: Final = "event must have an event_type and a status"
+QUEUE_FULL_ERROR: Final = "local telemetry queue is full"
+QUEUE_CLOSED_ERROR: Final = "local telemetry queue is closed"
+SPOOL_BUSY_ERROR: Final = "the spool is busy in this process"
 UNSUPPORTED_ACTION_ERROR: Final = "unsupported local telemetry action"
 LOCAL_MESSAGE_TOO_LARGE_ERROR: Final = "local telemetry message exceeds 1 MiB"
 FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"
+
+READY_DEADLINE_ERROR: Final = "ready deadline must be a number of seconds"
+UNKNOWN_SPOOL_REVISION_ERROR: Final = (
+    "telemetry spool schema revision {revision!r} is not in this microcosm's "
+    "migration history, whose head is {head!r}"
+)
+SPOOL_LOCKED_WARNING: Final = (
+    "warning: the local telemetry emitter service could not register this build "
+    "in its spool {spool}: another process kept the spool locked for "
+    "{waited_seconds:.1f} s ({error})."
+)
+SERVICE_ARGUMENTS_WARNING: Final = (
+    "warning: the local telemetry emitter service could not start: {error}"
+)
+SERVICE_FAILED_WARNING: Final = (
+    "warning: the local telemetry emitter service stopped: {error_type}: {error}"
+)
+WORKER_STEP_WARNING: Final = (
+    "warning: the local telemetry emitter service's delivery worker hit "
+    "{error_type} ({error}) and will keep running."
+)
+QUEUE_FULL_WARNING: Final = (
+    "warning: the local telemetry emitter service's queue is full ({events} "
+    "updates, {megabytes:.1f} MiB, waiting for its spool); it will refuse "
+    "updates until the spool takes them."
+)
+UNWRITTEN_EVENTS_WARNING: Final = (
+    "warning: the local telemetry emitter service could not write {count} "
+    "queued update(s) to its spool before its {seconds:g} s shutdown drain "
+    "ended ({reason})."
+)
+DRAIN_TIME_REASON: Final = "the drain ran out of time"
+EVENT_DROPPED_WARNING: Final = (
+    "warning: the local telemetry emitter service's spool refused an update, "
+    "which was dropped: {error_type} ({error})."
+)
+WRITER_STOPPED_WARNING: Final = (
+    "warning: the local telemetry emitter service's spool writer stopped: "
+    "{error_type}: {error}"
+)
+MAX_WARNING_ERROR_CHARS: Final = 300
