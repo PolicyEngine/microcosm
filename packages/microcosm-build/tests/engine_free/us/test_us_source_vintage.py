@@ -700,13 +700,14 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
     @st.composite
     def cases(draw, mode):
         # mode "free" draws shares at random, so most calls with a rebased
-        # restamp refuse. "well_formed" rebases a restamped row only as a valid
-        # share, so the call is admitted and the admitted-share invariants get
-        # exercised. "near_miss" names a total whose vintage differs from the
-        # row's in exactly one of package, stamp and data year.
+        # restamp refuse. "well_formed" gives each rebased restamp a total of
+        # its own vintage, so the call is admitted and the admitted-share
+        # invariants get exercised. "near_miss" gives it a total whose vintage
+        # differs in exactly one of package, stamp and data year.
         corrections = {}
-        # A small pool per case makes same-vintage totals and near misses
-        # common, and keeps mixed packages, stamps and data years among them.
+        # A small pool per case makes the free mode's totals often match the
+        # row's vintage or miss it narrowly, and keeps mixed packages, stamps
+        # and data years among the corrections.
         pool = draw(st.lists(vintages, min_size=1, max_size=3))
         for record_id in draw(st.sets(st.sampled_from(record_ids))):
             package_id, stamped, data = draw(st.sampled_from(pool))
@@ -727,27 +728,8 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 )
             )
 
-        def totals_differing_in(record_id, count):
-            # Other corrections whose vintage differs from the row's in
-            # exactly ``count`` of package, stamp and data year.
-            backing = corrections.get(record_id)
-            if backing is None:
-                return []
-            return [
-                other
-                for other, correction in corrections.items()
-                if other != record_id
-                and sum(
-                    mine != theirs
-                    for mine, theirs in zip(
-                        _vintage(backing), _vintage(correction), strict=True
-                    )
-                )
-                == count
-            ]
-
         def share(record_id):
-            # The share keys of a rebase, or None to leave the row unrebased.
+            # The share keys of a rebase.
             correction = corrections.get(record_id)
             if mode == "free" or correction is None:
                 keys = {}
@@ -756,19 +738,28 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 if draw(st.integers(0, 4)):
                     keys["soi_share_total_source_record_id"] = draw(
                         st.sampled_from(
-                            [
-                                *totals_differing_in(record_id, 0),
-                                *record_ids,
-                                "irs_soi.ty2023.truthful",
-                            ]
+                            sorted({*record_ids, *corrections})
+                            + ["irs_soi.ty2023.truthful"]
                         )
                     )
                 return keys
-            totals = totals_differing_in(record_id, 0 if mode == "well_formed" else 1)
-            if not totals:
-                return None
+            # A total of its own, restamped at the row's vintage (well-formed)
+            # or at a vintage that differs in exactly one component.
+            package_id, stamped, data = _vintage(correction)
+            if mode == "near_miss":
+                component = draw(st.sampled_from(["package", "stamp", "data"]))
+                if component == "package":
+                    package_id = "pkg_b" if package_id == "pkg_a" else "pkg_a"
+                elif component == "stamp":
+                    stamped += 1
+                else:
+                    data -= 1
+            total_id = f"irs_soi.ty2023.total{len(corrections)}"
+            corrections[total_id] = SourceVintageCorrection(
+                total_id, package_id, stamped, data
+            )
             return {
-                "soi_share_total_source_record_id": draw(st.sampled_from(totals)),
+                "soi_share_total_source_record_id": total_id,
                 "uprating_from_period": str(
                     draw(
                         st.sampled_from([correction.stamped_year, correction.data_year])
@@ -799,10 +790,8 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                     "uprating_index_source_period"
                 ]
                 if draw(st.booleans()):
-                    keys = share(record_id)
-                    if keys is not None:
-                        metadata["uprating_factor"] = "0.5"
-                        metadata.update(keys)
+                    metadata["uprating_factor"] = "0.5"
+                    metadata.update(share(record_id))
             specs.append(
                 _spec(
                     f"spec{index}",
