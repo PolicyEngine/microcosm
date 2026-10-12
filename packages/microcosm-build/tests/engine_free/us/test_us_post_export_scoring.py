@@ -464,6 +464,7 @@ def test_recording_dry_runs_construct_no_engine(
         "reform_validation",
         "demographics",
         "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     smoke_keys = {
         (probe.budget_measure, int(probe.period or builder.PERIOD), None)
@@ -476,6 +477,12 @@ def test_recording_dry_runs_construct_no_engine(
         ("age", builder.PERIOD, None),
         ("ssi", builder.PERIOD, None),
         ("social_security", builder.PERIOD, None),
+    )
+    assert plan.baseline_plan("medicare_irmaa_holdout") == (
+        ("medicare_enrolled", builder.PERIOD, None),
+        ("gross_medicare_part_b_premium_if_enrolled", builder.PERIOD, None),
+        ("base_part_b_premium", builder.PERIOD, None),
+        ("income_adjusted_part_d_premium_surcharge", builder.PERIOD, None),
     )
     validation = plan.baseline_plan("reform_validation")
     assert ("income_tax", builder.PERIOD, None) in validation
@@ -495,7 +502,82 @@ def test_recording_dry_runs_construct_no_engine(
         result=_empty_calibration_result(),
         release_id="fixture",
     )
-    assert list(skipped) == ["demographics", "ssi_social_security_holdout"]
+    assert list(skipped) == [
+        "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
+
+
+def test_medicare_irmaa_holdout_is_invariant_to_household_batch_size(
+    builder, tmp_path
+) -> None:
+    frame = _nested_frame()
+    consumer = builder._medicare_irmaa_holdout_consumer
+    reference = consumer(_unbatched_simulate(frame, _EngineLog()))
+    assert reference["status"] == "available"
+    part_b, part_d = reference["parts"]
+    # The fixture's payers sit in several households, and two eligible
+    # non-enrollees carry a base premium the Part B measure must not count.
+    assert part_b["weighted_payers"] > 0
+    assert part_d["weighted_payers"] > 0
+    for batch_size in (1, 2, None):
+        log = _EngineLog()
+        scorer = _scorer(builder, frame, log, batch_size, tmp_path / str(batch_size))
+        plan = builder._record_post_export_baseline_plan(consumer)
+        scoring = scorer.open_consumer("medicare_irmaa_holdout", plan)
+        payload = consumer(scoring.simulate)
+        assert payload == reference
+        record = scorer.finish_consumer(scoring)
+        assert record["baseline_passes"] == 1
+        assert record["reform_passes"] == record["reform_systems"] == 0
+        assert len(log.constructions) == scorer.n_batches
+        scorer.close()
+
+
+def test_medicare_irmaa_holdout_measurement_error_is_report_only(
+    builder, monkeypatch, tmp_path
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise ValueError("fixture unavailable")
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", unavailable)
+    builder._write_medicare_irmaa_holdout(
+        release_dir=tmp_path,
+        dataset_path=tmp_path / "fixture.h5",
+        release_id="fixture",
+    )
+    payload = json.loads((tmp_path / "us_medicare_irmaa_holdout.json").read_text())
+    assert payload["status"] == "unavailable"
+    assert payload["error"] == "ValueError: fixture unavailable"
+    assert payload["enforced"] is False
+    assert payload["used_for_calibration"] is False
+
+
+def test_medicare_irmaa_holdout_discovery_error_does_not_fail_the_plan(
+    builder, monkeypatch
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise KeyError("income_adjusted_part_d_premium_surcharge")
+
+    monkeypatch.setattr(builder, "medicare_irmaa_holdout_from_sim", unavailable)
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=True,
+        skip_reform_validation=True,
+        skip_out_of_sample_reforms=True,
+        skip_demographics=True,
+        maximum_microsim_batch_size=3,
+    )
+    plan = builder._record_post_export_scoring_plan(
+        args,
+        n_households=7,
+        result=_empty_calibration_result(),
+        release_id="fixture",
+    )
+    assert plan.error is None
+    assert plan.terminal_failures() == []
+    assert plan.baseline_plan("medicare_irmaa_holdout") == ()
+    assert builder._medicare_irmaa_holdout_consumer(None)["status"] == "unavailable"
 
 
 def test_ssi_social_security_holdout_is_invariant_to_household_batch_size(
@@ -656,6 +738,7 @@ def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
         "reform_validation",
         "demographics",
         "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     empty = builder._PostExportScoringPlan(
         n_households=7, maximum_batch_size=3, baseline_plans={}
@@ -733,6 +816,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         "_write_reform_validation",
         "_write_demographics",
         "_write_ssi_social_security_holdout",
+        "_write_medicare_irmaa_holdout",
     ):
         _, tree = _function_source(builder, name)
         called = _called_names(tree)

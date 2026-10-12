@@ -263,6 +263,11 @@ from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
 )
+from microcosm.build.us_runtime.medicare_irmaa_holdout import (
+    medicare_irmaa_holdout_from_sim,
+    medicare_irmaa_holdout_unavailable,
+    write_medicare_irmaa_holdout,
+)
 from microcosm.build.us_runtime.nonzero_shares import us_nonzero_shares
 from microcosm.build.us_runtime.parity_reference import (
     EcpsParityReference,
@@ -4927,6 +4932,15 @@ def _ssi_social_security_holdout_consumer(simulate) -> dict[str, Any]:
         return ssi_social_security_holdout_unavailable(error, period=PERIOD)
 
 
+def _medicare_irmaa_holdout_consumer(simulate) -> dict[str, Any]:
+    try:
+        return medicare_irmaa_holdout_from_sim(simulate(None), period=PERIOD)
+    except Exception as error:
+        # As for the SSI holdout: an optional diagnostic adds no failure to
+        # plan discovery when its inputs are unavailable (microcosm#1206).
+        return medicare_irmaa_holdout_unavailable(error, period=PERIOD)
+
+
 def _reform_validation_consumer(
     *, result, release_id: str
 ) -> Callable[[Callable[[Any], Any] | None], dict[str, Any]]:
@@ -4964,6 +4978,7 @@ def _post_export_consumers(
     if not args.skip_demographics:
         consumers["demographics"] = _demographics_consumer
     consumers["ssi_social_security_holdout"] = _ssi_social_security_holdout_consumer
+    consumers["medicare_irmaa_holdout"] = _medicare_irmaa_holdout_consumer
     return consumers
 
 
@@ -10285,6 +10300,37 @@ def _write_ssi_social_security_holdout(
     )
 
 
+def _write_medicare_irmaa_holdout(
+    *,
+    release_dir: Path,
+    dataset_path: Path,
+    release_id: str,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> None:
+    """Report held-out IRMAA payers and premiums; misses never refuse a release."""
+    try:
+        payload = _score_post_export_consumer(
+            "medicare_irmaa_holdout",
+            _medicare_irmaa_holdout_consumer,
+            dataset_path=dataset_path,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=baseline_plan,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        payload["release_id"] = release_id
+    except Exception as error:
+        # Reporting is observational, including an unavailable measurement.
+        # It must not introduce a new release refusal or calibration target.
+        payload = medicare_irmaa_holdout_unavailable(
+            error, period=PERIOD, release_id=release_id
+        )
+    write_medicare_irmaa_holdout(
+        payload, release_dir / "us_medicare_irmaa_holdout.json"
+    )
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -10877,6 +10923,18 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "us_ssi_social_security_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "us_medicare_irmaa_holdout": _artifact_entry(
+                        "us_medicare_irmaa_holdout.json",
+                        _sha256(release_dir / "us_medicare_irmaa_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_medicare_irmaa_holdout.json").exists()
                 else {}
             ),
             **(
@@ -15740,6 +15798,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         telemetry.attach_artifact(
             "us_ssi_social_security_holdout",
             release_dir / "us_ssi_social_security_holdout.json",
+        )
+        telemetry.stage(
+            "medicare_irmaa_holdout",
+            message="Writing held-out Medicare IRMAA payers and premiums.",
+        )
+    _write_medicare_irmaa_holdout(
+        release_dir=release_dir,
+        dataset_path=dataset_path,
+        release_id=release_id,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=post_export_scoring_plan.baseline_plan("medicare_irmaa_holdout"),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_medicare_irmaa_holdout",
+            release_dir / "us_medicare_irmaa_holdout.json",
         )
     # Every post-export engine stage has run; free the scorer's batch frames.
     # The manifest must pin the bytes those stages scored, and both manifests
