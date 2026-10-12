@@ -313,6 +313,96 @@ def test_blend_uses_one_complete_source_vector_and_reference_person_carry(
     )
 
 
+def test_blend_carries_on_a_declared_head_above_line_one(
+    sipp_scf_blend_case: dict[str, object],
+) -> None:
+    """microcosm#1215: where the declared head is the line-2 person, all three
+    leaves land on that person, every other member holds zero, and the gate's
+    audit check uses the same carrier."""
+    person = sipp_scf_blend_case["person"].copy()
+    assert isinstance(person, pd.DataFrame)
+    line_two_head = (person["person_household_id"] % 2 == 0).to_numpy()
+    person["is_household_head"] = np.where(
+        line_two_head, person["A_LINENO"] == 2, person["A_LINENO"] == 1
+    )
+    blended = impute_us_sipp_scf_financial_assets(
+        person,
+        _donor_table(),
+        _sipp_donor_table(),
+        seed=23,
+        time_period=TIME_PERIOD,
+        n_estimators=8,
+    )
+    head = person["is_household_head"].to_numpy()
+    np.testing.assert_array_equal(_household_head_mask(person), head)
+    leaves = list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)
+    assert blended.loc[~head, leaves].eq(0.0).all(axis=None)
+    assert blended.loc[head & line_two_head, "bank_account_assets"].sum() > 0
+    assert (
+        blended.loc[(person["A_LINENO"] == 1).to_numpy() & line_two_head, leaves]
+        .eq(0.0)
+        .all(axis=None)
+    )
+
+    base = _us_frame(person)
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    for column in leaves:
+        tables["person"][column] = blended[column].to_numpy(dtype=np.float64)
+    tables["person"]["is_household_head"] = head
+    tables["person"].attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY] = dict(
+        blended.attrs[FINANCIAL_ASSET_BLEND_AUDIT_KEY]
+    )
+    net_worth = np.linspace(10_000.0, 250_000.0, len(tables["household"]))
+    net_worth[:24] *= -1.0
+    tables["household"]["net_worth"] = net_worth
+    frame = Frame(
+        tables,
+        base.schema,
+        {entity: base.weights_for(entity) for entity in base.weighted_entities},
+    )
+    gate = us_scf_wealth_signal_gate(frame, require_sipp_blend=True)
+    # The gate recomputes each household's source and the bank medians from the
+    # carrier mask; none of its blend-audit checks may disagree. (This small
+    # synthetic donor can trip unrelated distribution-plausibility checks.)
+    audit_failures = [
+        failure
+        for failure in gate.failures
+        if any(
+            token in failure.lower()
+            for token in ("blend", "median", "low-tail", "source share")
+        )
+    ]
+    assert audit_failures == []
+    assert gate.details["financial_asset_blend"]["sipp_household_count"] > 0
+
+
+def test_household_head_mask_ignores_string_flags_and_isolates_missing_ids() -> None:
+    from microcosm.build.us_runtime import sipp_financial_assets
+
+    strings = pd.DataFrame(
+        {
+            "person_household_id": [1, 1],
+            "A_LINENO": [2, 1],
+            "is_household_head": ["False", ""],
+        }
+    )
+    # No real flag: the lowest line carries.
+    np.testing.assert_array_equal(
+        sipp_financial_assets.household_head_carrier_mask(strings), [False, True]
+    )
+    missing_ids = pd.DataFrame(
+        {
+            "person_household_id": [np.nan, np.nan],
+            "A_LINENO": [1, 2],
+            "is_household_head": [False, True],
+        }
+    )
+    # Each missing id is its own household, as in the lowest-line rule.
+    np.testing.assert_array_equal(
+        sipp_financial_assets.household_head_carrier_mask(missing_ids), [True, True]
+    )
+
+
 def test_impute_missing_donor_column_raises() -> None:
     person = _person_rows(10)
     donor = _donor_table().drop(columns=["bond_assets"])

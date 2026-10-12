@@ -590,13 +590,18 @@ def household_head_carrier_mask(person: pd.DataFrame) -> np.ndarray:
     lowest_line[order[first]] = True
     if "is_household_head" not in person.columns:
         return lowest_line
-    flag = person["is_household_head"].fillna(False).astype(bool).to_numpy()
-    flags_in_household = (
-        pd.Series(flag.astype(np.int64))
-        .groupby(household, dropna=False, sort=False)
-        .transform("sum")
-        .to_numpy()
-    )
+    raw_flag = person["is_household_head"]
+    if pd.api.types.is_bool_dtype(raw_flag.dtype):
+        flag = raw_flag.fillna(False).astype(bool).to_numpy()
+    else:
+        # Only true booleans and nonzero numbers flag a head; strings such as
+        # "False" or "" never do.
+        flag = pd.to_numeric(raw_flag, errors="coerce").fillna(0).ne(0).to_numpy()
+    # Count flags within the same groups the fallback sorts, so a missing
+    # household id is its own group in both rules.
+    group = np.empty(len(person), dtype=np.int64)
+    group[order] = np.cumsum(first) - 1
+    flags_in_household = np.bincount(group, weights=flag.astype(np.float64))[group]
     return np.where(flags_in_household == 1, flag, lowest_line)
 
 

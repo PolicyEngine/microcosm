@@ -363,8 +363,8 @@ EXPECTED_HASHES = {
     # #1215: scf_wealth/sipp_financial_assets source bytes attest the declared
     # is_household_head carrier. RNG rules and the ordered QRF targets are
     # unchanged.
-    "seed_map": "e04d6a85c24e536f9350abab3dc0bfed2215c1e4679dd30e449d4034511af9d4",
-    "seed_protocol": "7855f2a7d3ef74377791070359bd45da766f371b49d76c1065a183d64fb2cf51",
+    "seed_map": "be852c4fa3f1cb368528d99beb3b29d42020256d354fa89bb94d49a577d39bd4",
+    "seed_protocol": "d6861b4b1caba2f7ecc66e825b32523b746f5a026ef676b9c1f77e2eb3b2e507",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
