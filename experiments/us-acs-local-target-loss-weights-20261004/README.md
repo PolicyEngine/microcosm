@@ -164,7 +164,11 @@ no default multiplier.
 > the 24,340 district rows form 3,125 groups and carry 11.0% of the loss
 > (45.6% before). The numbers below are from the 10-04 feed and the code at
 > that date. `national_cd_groups.py` now reports the fixed mapping under
-> `national_as_is`.
+> `national_as_is`. On the `state_cd` surface, `distribution.py`'s
+> "national mapping as is" column would now be refused: the national guard
+> rejects the rebase's per-district `state_cd_cd_file_value`, which only the
+> ACS local key excludes. That section already refuses to run, because its
+> feed (`c5e5bf8`) is no longer the pin. The tables above are the record.
 
 `national_cd_groups.py` compiles the national registry from the pinned feed
 (`compile_us_fiscal_target_registry(age_targets=True)`) and keeps its 24,340

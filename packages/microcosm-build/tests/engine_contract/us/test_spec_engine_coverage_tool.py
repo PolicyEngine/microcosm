@@ -90,13 +90,13 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert fields["multiple_primary_use_field_count"] == 0
     assert fields["claim_count"] == 49
     assert fields["mode_counts"] == {
-        "legacy_behavior": 14_010,
+        "legacy_behavior": 14_013,
         "compiler_semantic": 27_717,
         "front_end_validation": 354,
         "identity_only": 103,
     }
     assert fields["generation0_effect_counts"] == {
-        "legacy_behavior": 38_498,
+        "legacy_behavior": 38_501,
         "no_generation0_effect": 3_686,
     }
 
