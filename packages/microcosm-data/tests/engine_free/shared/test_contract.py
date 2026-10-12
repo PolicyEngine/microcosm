@@ -99,6 +99,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-02",
         "expires_on": "2027-04-02",
     },
+    "property_wealth": {
+        "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
+        "approved_on": "2026-10-11",
+        "expires_on": "2027-04-11",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -127,19 +134,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "9c08a68f9d63fff9f54dd21abb0a212723ff2074f0381cd7b69165e97c4c5ef6"
+    "1d6e112daf3125733c57003d97d1f2d7b96929d248a00b8868d58e182572af6a"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "942bc58008b07fd3477e9dd7a407a780a5c0ff37fc1c6790cf1beb858c604f1d"
+    "d8db3502536ab016beede21b7cab29db67ad8ec0eca1d634aaabcca03a9b3810"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f8d079d8ce18afe076d99ddb237bc2fb45bc9f413c6fb771e3fe7348b2e27598"
+    "f8d7dfff9664fcf9b2919ab15ac918ee2222545c03f42ae4ba5e7ac53d0179f0"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
+    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -161,6 +168,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
         "stage_health",
@@ -1276,6 +1284,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",

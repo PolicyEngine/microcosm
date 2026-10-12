@@ -143,6 +143,8 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
     "was_lisa": ("was", "was_person"),
+    # The finance-cost model trains on the SPI tape (microcosm#1106).
+    "property_components": ("spi",),
     "nts_bus_travel": (
         "nts_household",
         "nts_individual",
@@ -248,6 +250,23 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
             ("household", "household_support_channel"),
+        }
+    ),
+    # Engine-free: the landlords' profit and finance costs, the inputs that
+    # split the two income concepts (the SPI recipient rule and the household
+    # reference person's sub-letting rent) and the rental property values the
+    # coherence receipt reads (microcosm#1106).
+    "property_components": frozenset(
+        {
+            ("person", "age"),
+            ("person", "is_household_head"),
+            ("person", "is_uc_claimant"),
+            ("person", "person_support_channel"),
+            ("person", "property_income"),
+            ("person", "property_finance_costs"),
+            ("household", "subrent"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
         }
     ),
     # The NTS band model materializes an engine predictor (household gross
@@ -723,6 +742,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "non_residential_property_value",
         ),
     ),
+    # FRS landlords' profit gains the imputed finance costs; receipts are new
+    # (microcosm#1106).
+    "property_components": _cells(
+        "person",
+        ("property_income", "property_finance_costs", "property_rental_income"),
+    ),
     "lcfs_consumption": (
         *_cells(
             "household",
@@ -944,6 +969,8 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "hmrc_spi_miscellaneous_employment_income",
     "hmrc_spi_other_income",
     "hmrc_spi_state_pension_income",
+    # Drawn last of the first-stage outputs, so it lands after them (#1106).
+    "property_finance_costs",
     "hmrc_spi_employed_income",
     "hmrc_spi_total_earned_income",
     "hmrc_spi_total_investment_income",

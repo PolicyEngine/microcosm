@@ -493,7 +493,11 @@ class UKLCFSConsumptionStageTransform:
             self.stage, household_draws, weights=weights, lcfs_household=lcfs_household
         )
         household_draws, recomposed_totals_receipt = lcfs_recompose_from_remainder(
-            self.stage, household_draws, drawn=drawn_parts, weights=weights
+            self.stage,
+            household_draws,
+            drawn=drawn_parts,
+            weights=weights,
+            uprating_factors=uprating_factors,
         )
         uprating = uprating_operation(self.stage)
         capture = (
@@ -567,11 +571,14 @@ class UKLCFSConsumptionImputationResult:
 
 
 class DiagnosticUnavailableError(ValueError):
-    """A report-only diagnostic's published row is missing or ambiguous.
+    """A report-only diagnostic's published row is missing for the year.
 
-    Raised only by the diagnostics' own row lookups, so the stage can record
-    why a report-only block has no figures and carry on. A vendored resource
-    that lags the feed pin still fails in ``vendored_rows`` as a plain error.
+    Raised only by the diagnostics' own row lookups when the vendored resource
+    carries no row for the period, so the stage can record why a report-only
+    block has no figures and carry on. An ambiguous or duplicate row is a
+    data-integrity fault and fails closed as a plain ``ValueError``; a
+    vendored resource that lags the feed pin still fails in ``vendored_rows``
+    (microcosm#1113, the #1167 re-review).
     """
 
 
@@ -613,8 +620,13 @@ def _ons_annual_value(
             "consumption_concept": consumption_concept,
         },
     )
-    if len(rows) != 1:
+    if not rows:
         raise DiagnosticUnavailableError(
+            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: no {coicop} "
+            f"({source_sheet}, {consumption_concept}) row for {period_value}."
+        )
+    if len(rows) != 1:
+        raise ValueError(
             f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
             f"({source_sheet}, {consumption_concept}) row for {period_value}, "
             f"found {len(rows)}."
@@ -749,7 +761,7 @@ def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
                 continue
             vehicle = str(dims.get("vehicle_type"))
             if vehicle in by_vehicle:
-                raise DiagnosticUnavailableError(
+                raise ValueError(
                     f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: duplicate {vehicle} {fuel} "
                     f"row for {period_value}."
                 )
@@ -1304,7 +1316,9 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
 
     ONS Consumer Trends classes read from the vendored rows the declaration
     names: the liquid and solid fuels of COICOP 04.5, which have no column of
-    their own and stay inside the housing remainder at the diary's level.
+    their own; part of them stays inside the housing remainder (the chain's
+    draw less the diary energy), and the receipt records their published
+    spend.
     """
 
     spec = parameters.get("uncarried")
@@ -1354,6 +1368,7 @@ def recompose_parent_totals(
     drawn: pd.DataFrame,
     parameters: Mapping[str, Any],
     weights: Sequence[float],
+    uprating_factors: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
 
@@ -1369,6 +1384,7 @@ def recompose_parent_totals(
 
     check_recomposed_parents(parameters)
     weight = np.asarray(weights, dtype=float)
+    factors = dict(uprating_factors or {})
     result = household_draws.copy()
     parents: dict[str, Any] = {}
     for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
@@ -1378,7 +1394,25 @@ def recompose_parent_totals(
         parts = sum(result[column].to_numpy(dtype=float) for column in components)
         total = rest + parts
         result[parent] = total
+        # The parent was uprated by its own factor and each netted part by its
+        # own (a drawn part the uprating never touched by 1.0), so the
+        # remainder keeps the gap between them. Recorded, not corrected
+        # (microcosm#1113, the #1167 re-review).
+        parent_factor = float(factors.get(parent, 1.0))
+        residue = 0.0
+        part_factors: dict[str, float] = {}
+        for column in subtracted:
+            part_factor = float(factors.get(column, 1.0))
+            part_factors[column] = part_factor
+            residue += float(np.dot(weight, drawn[column].to_numpy(dtype=float))) * (
+                parent_factor / part_factor - 1.0
+            )
         parents[parent] = {
+            "uprating_residue": {
+                "parent_factor": parent_factor,
+                "part_factors": part_factors,
+                "weighted_residue_gbp": residue,
+            },
             "drawn_subtracts": list(subtracted),
             "components": list(components),
             "weighted_drawn_total": float(np.dot(weight, drawn_total)),
@@ -1407,6 +1441,7 @@ def lcfs_recompose_from_remainder(
     *,
     drawn: pd.DataFrame,
     weights: Sequence[float],
+    uprating_factors: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
 
@@ -1414,7 +1449,11 @@ def lcfs_recompose_from_remainder(
     if parameters is None:
         return household_draws, None
     return recompose_parent_totals(
-        household_draws, drawn=drawn, parameters=parameters, weights=weights
+        household_draws,
+        drawn=drawn,
+        parameters=parameters,
+        weights=weights,
+        uprating_factors=uprating_factors,
     )
 
 
