@@ -24,8 +24,10 @@ from tools import build_nz_as_area_crosswalk as crosswalk_builder
 from tools.build_nz_as_area_crosswalk import (
     aggregate_rows,
     assign_points,
+    concordance_ta_codes,
     exact_area_mapping,
     generate_crosswalk,
+    interior_point,
     point_in_geometry,
     population_counts,
 )
@@ -78,6 +80,36 @@ def _sa1(code: str, count: object, older: object = 1) -> dict:
         },
         "centroid": {"x": 0.5, "y": 0.5},
     }
+
+
+def _meshblock(sa1_code: str, ta_code: str, ta_name: str, code: str = "mb") -> dict:
+    return {
+        "attributes": {
+            "MB2026_V1_00": code,
+            "SA12026_V1_00": sa1_code,
+            "TA2026_V1_00": ta_code,
+            "TA2026_V1_00_NAME": ta_name,
+        }
+    }
+
+
+def _polygon_feature(sa1_code: str, geometry: dict) -> dict:
+    return {
+        "type": "Feature",
+        "properties": {"SA12023_V1_00": sa1_code},
+        "geometry": geometry,
+    }
+
+
+def _synthetic_spec(names: list[str]) -> dict:
+    spec = _spec()
+    spec["area_definitions"] = _definitions(names)
+    spec["definition_name_aliases"] = []
+    spec["resolved_definition_entries"] = []
+    spec["heading_ta_expectations"] = {
+        "Fixture location": ["Queenstown-Lakes District"]
+    }
+    return spec
 
 
 def _definitions(names: list[str], area: int = 1) -> dict:
@@ -176,6 +208,107 @@ def test_concave_polygon_uses_even_odd_rule() -> None:
     assert point_in_geometry((0.5, 2.5), geometry)
     assert point_in_geometry((2.5, 0.5), geometry)
     assert not point_in_geometry((2.5, 2.5), geometry)
+
+
+@pytest.mark.parametrize(
+    "shape", ["concave", "holed", "multipart", "nested_hole", "narrow"]
+)
+def test_interior_point_is_inside_and_deterministic(shape: str) -> None:
+    if shape == "concave":
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3], [0, 0]]],
+        }
+    elif shape == "narrow":
+        geometry = _rectangle(0.0, 0.0, 0.000001)
+    elif shape == "holed":
+        geometry = _rectangle(0.0, 0.0, 4.0)
+        geometry["coordinates"].append(_rectangle(1.0, 1.0, 2.0)["coordinates"][0])
+    else:
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                _rectangle(0.0, 0.0, 4.0)["coordinates"],
+                _rectangle(1.0, 1.0, 2.0)["coordinates"]
+                if shape == "nested_hole"
+                else _rectangle(6.0, 0.0, 2.0)["coordinates"],
+            ],
+        }
+    original = copy.deepcopy(geometry)
+    point = interior_point(geometry, tolerance=0.001)
+    assert point_in_geometry(point, geometry)
+    # A boundary point is included by point_in_geometry, but does not meet the
+    # interior-point guarantee. Require positive clearance from every ring.
+    assert crosswalk_builder._boundary_distance(np.asarray(point), geometry) > 0
+    assert point == interior_point(copy.deepcopy(geometry), tolerance=0.001)
+    assert geometry == original
+
+
+@pytest.mark.parametrize("tolerance", [0, -1, math.inf, math.nan])
+def test_interior_point_invalid_tolerance_refuses(tolerance: float) -> None:
+    with pytest.raises(ValueError, match="tolerance"):
+        interior_point(_rectangle(0.0, 0.0), tolerance=tolerance)
+
+
+def test_interior_point_zero_area_diagonal_refuses() -> None:
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 1], [2, 2], [0, 0]]],
+    }
+    with pytest.raises(ValueError, match="interior"):
+        interior_point(geometry)
+
+
+def test_concordance_repeats_meshblocks_but_returns_one_ta_per_sa1() -> None:
+    features = [_sa1("a", 9), _sa1("b", 3)]
+    authorities = [_ta("001", "First"), _ta("002", "Second", 2.0)]
+    meshblocks = [
+        _meshblock("b", "002", "Second", "1"),
+        _meshblock("a", "001", "First", "2"),
+        _meshblock("a", "001", "First", "3"),
+    ]
+    assert concordance_ta_codes(features, authorities, meshblocks) == ["001", "002"]
+    assert concordance_ta_codes(features[::-1], authorities, meshblocks[::-1]) == [
+        "002",
+        "001",
+    ]
+
+
+def test_concordance_missing_sa1_refuses_with_code() -> None:
+    with pytest.raises(ValueError, match="missing|Missing|coverage") as error:
+        concordance_ta_codes(
+            [_sa1("a", 9), _sa1("missing-sa1", 3)],
+            [_ta("001", "Fixture")],
+            [_meshblock("a", "001", "Fixture")],
+        )
+    assert "missing-sa1" in str(error.value)
+
+
+def test_concordance_sa1_with_two_tas_refuses_with_code() -> None:
+    with pytest.raises(ValueError, match="multiple|two|unique|exactly one") as error:
+        concordance_ta_codes(
+            [_sa1("a", 9)],
+            [_ta("001", "First"), _ta("002", "Second", 2.0)],
+            [
+                _meshblock("a", "001", "First", "1"),
+                _meshblock("a", "002", "Second", "2"),
+            ],
+        )
+    assert "a" in str(error.value)
+
+
+@pytest.mark.parametrize("mismatch", ["code", "name", "missing_ta"])
+def test_concordance_ta_code_and_name_set_mismatch_refuses(mismatch: str) -> None:
+    authorities = [_ta("001", "Fixture")]
+    meshblocks = [_meshblock("a", "001", "Fixture")]
+    if mismatch == "code":
+        meshblocks[0]["attributes"]["TA2026_V1_00"] = "002"
+    elif mismatch == "name":
+        meshblocks[0]["attributes"]["TA2026_V1_00_NAME"] = "Wrong name"
+    else:
+        authorities.append(_ta("002", "Unrepresented", 2.0))
+    with pytest.raises(ValueError, match="TA|territorial|authority"):
+        concordance_ta_codes([_sa1("a", 9)], authorities, meshblocks)
 
 
 def test_large_ring_latitude_bands_preserve_rectangle_membership() -> None:
@@ -355,7 +488,7 @@ def test_ambiguous_definition_is_reported_with_candidate_population() -> None:
         assert expected in report
 
 
-def test_queenstown_urban_area_is_unmatched_without_guessing_extent() -> None:
+def test_queenstown_urban_area_is_unmatched_without_declared_resolution() -> None:
     polygons = [_au("001", "Queenstown Bay"), _au("002", "Frankton")]
     mapping, unmatched = exact_area_mapping(
         _definitions(["Queenstown urban area"]), polygons
@@ -363,6 +496,60 @@ def test_queenstown_urban_area_is_unmatched_without_guessing_extent() -> None:
     assert mapping == {"001": 4, "002": 4}
     assert len(unmatched) == 1
     assert "Queenstown urban area" in json.dumps(unmatched)
+
+
+def test_alias_maps_definition_by_declared_code() -> None:
+    # A second unit with the same layer name must stay residual: an alias is a
+    # reviewed code correspondence, rather than a new name-matching rule.
+    polygons = [_au("540700", "Whaka"), _au("other", "Whaka", 2.0)]
+    alias = {
+        "definition_name": "Whakarewarewa",
+        "au_code": "540700",
+        "au_name": "Whaka",
+        "evidence": "AU2013, AU2016 and AU2017 name Whaka; unique Rotorua entry",
+    }
+    mapping, unmatched = exact_area_mapping(
+        _definitions(["Whakarewarewa"], area=3),
+        polygons,
+        definition_name_aliases=[alias],
+    )
+    assert mapping == {"540700": 3, "other": 4}
+    assert unmatched == []
+
+
+@pytest.mark.parametrize("wrong", ["code", "name"])
+def test_alias_wrong_code_or_name_refuses(wrong: str) -> None:
+    alias = {
+        "definition_name": "Whakarewarewa",
+        "au_code": "540700" if wrong == "name" else "missing-code",
+        "au_name": "Whaka" if wrong == "code" else "Wrong name",
+        "evidence": "fixture",
+    }
+    with pytest.raises(ValueError, match="alias|Alias"):
+        exact_area_mapping(
+            _definitions(["Whakarewarewa"], area=3),
+            [_au("540700", "Whaka")],
+            definition_name_aliases=[alias],
+        )
+
+
+def test_queenstown_urban_area_resolves_to_no_additional_unit() -> None:
+    polygons = [_au("001", "Queenstown Bay"), _au("002", "Frankton East", 2.0)]
+    definitions = _definitions(["Queenstown Bay", "Queenstown urban area"])
+    definitions["areas"]["1"]["locations"][0]["heading"] = "Queenstown"
+    resolved = {
+        "name": "Queenstown urban area",
+        "heading": "Queenstown",
+        "as_area": 1,
+        "au_codes": [],
+        "resolution": "no additional area unit",
+        "evidence": {"layer": "Urban_area_2014", "ua_code": "117"},
+    }
+    mapping, unmatched = exact_area_mapping(
+        definitions, polygons, resolved_definition_entries=[resolved]
+    )
+    assert mapping == {"001": 1, "002": 4}
+    assert unmatched == []
 
 
 def test_sentinel_and_null_populations_are_never_summed_as_counts() -> None:
@@ -592,7 +779,23 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
         feature = _sa1(code, count, older)
         feature["centroid"]["x"] = 4.5
         sa1_features.append(feature)
-    groups = {"sa1": sa1_features, "au": au_features, "ta": ta_features}
+    groups = {
+        "sa1": sa1_features,
+        "au": au_features,
+        "ta": ta_features,
+        "mbhg": [
+            _meshblock(
+                feature["attributes"]["SA12023_V1_00"],
+                "001" if index < 4 or index > 5 else "002",
+                "Queenstown-Lakes District"
+                if index < 4 or index > 5
+                else "Other District",
+                str(index),
+            )
+            for index, feature in enumerate(sa1_features)
+        ],
+        "sa1poly": [],
+    }
     aliases = {"VAR_1_3": "fixture Census 2023", "VAR_1_2": "fixture Census 2018"}
     monkeypatch.setattr(
         crosswalk_builder,
@@ -600,6 +803,8 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
         lambda source_dir, provenance: (copy.deepcopy(groups), dict(aliases)),
     )
     spec = _spec()
+    spec["definition_name_aliases"] = []
+    spec["resolved_definition_entries"] = []
     definitions = _definitions(["Queenstown Bay", "Queenstown urban area"])
     definitions["areas"]["1"]["locations"][0]["heading"] = "Queenstown"
     definitions["areas"]["2"]["locations"] = [
@@ -614,7 +819,8 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
         "Wrong district heading": ["Queenstown-Lakes District"],
     }
     original = copy.deepcopy(spec)
-    generated = generate_crosswalk(tmp_path, spec)
+    report = {}
+    generated = generate_crosswalk(tmp_path, spec, report=report)
     assert spec == original
     assert generated["area_definitions"] == definitions
     district, other = generated["rows"]
@@ -634,7 +840,9 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
             "candidates": [],
         }
     ]
-    conflicts = generated["definition_heading_conflicts"]
+    assert "definition_heading_checks" not in generated
+    assert "definition_heading_conflicts" not in generated
+    conflicts = report["definition_heading_conflicts"]
     assert len(conflicts) == 1
     assert conflicts[0]["name"] == "Silverdale Central"
     assert conflicts[0]["unexpected_ta_population"] == {"Other District": 10}
@@ -646,7 +854,7 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
     assert sensitivity["moved_population"] == 10
     assert sensitivity["moved_population_share"] == 1 / 15
     assert _shares(sensitivity) == {1: 2 / 3, 2: 0.0, 3: 0.0, 4: 1 / 3}
-    diagnostics = generated["diagnostics"]
+    diagnostics = report["diagnostics"]
     assert diagnostics["national_layer_population"] == 210
     assert diagnostics["assigned_population"] == 210
     assert diagnostics["suppressed_values"]["count"] == 2
@@ -660,6 +868,195 @@ def test_generator_wires_population_names_audit_and_queenstown_sensitivity(
     assert previous["largest_absolute_share_change"] == pytest.approx(37 / 70)
     assert previous["ta_code"] == "001"
     assert generated == generate_crosswalk(tmp_path, copy.deepcopy(generated))
+
+
+def test_generator_uses_concordance_ta_and_reports_centroid_disagreement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    sa1_features = [_sa1("moved", 27, 27), _sa1("land", 9, 9), _sa1("outside", 0, 0)]
+    sa1_features[0]["centroid"]["x"] = 2.5
+    sa1_features[2]["centroid"]["x"] = 2.75
+    unit = _au("001", "Queenstown Bay")
+    unit["geometry"] = _rectangle(0.0, 0.0, 4.0)
+    groups = {
+        "sa1": sa1_features,
+        "au": [unit],
+        "ta": [
+            _ta("001", "Queenstown-Lakes District"),
+            _ta("999", "Area Outside Territorial Authority", 2.0),
+        ],
+        "mbhg": [
+            _meshblock("moved", "001", "Queenstown-Lakes District", "1"),
+            _meshblock("land", "001", "Queenstown-Lakes District", "2"),
+            _meshblock("outside", "999", "Area Outside Territorial Authority", "3"),
+        ],
+        "sa1poly": [],
+    }
+    monkeypatch.setattr(
+        crosswalk_builder,
+        "_load_sources",
+        lambda source_dir, provenance: (copy.deepcopy(groups), {}),
+    )
+    report = {}
+    generated = generate_crosswalk(
+        tmp_path, _synthetic_spec(["Queenstown Bay"]), report=report
+    )
+    district, outside = generated["rows"]
+    assert district["population_total"] == 36
+    assert outside["population_total"] == 0
+    disagreements = report["ta_concordance_disagreements"]
+    assert len(disagreements) == 1
+    assert disagreements[0]["sa1_code"] == "moved"
+    assert disagreements[0]["population"] == 27
+    assert disagreements[0]["centroid_ta_code"] == "999"
+    assert disagreements[0]["concordance_ta_code"] == "001"
+
+
+def test_generator_applies_declared_whakarewarewa_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    rotorua_sa1 = _sa1("rotorua", 12, 12)
+    rotorua_sa1["centroid"]["x"] = 2.5
+    groups = {
+        "sa1": [_sa1("queenstown", 90, 90), rotorua_sa1],
+        "au": [_au("001", "Queenstown Bay"), _au("540700", "Whaka", 2.0)],
+        "ta": [
+            _ta("001", "Queenstown-Lakes District"),
+            _ta("024", "Rotorua District", 2.0),
+        ],
+        "mbhg": [
+            _meshblock("queenstown", "001", "Queenstown-Lakes District", "1"),
+            _meshblock("rotorua", "024", "Rotorua District", "2"),
+        ],
+        "sa1poly": [],
+    }
+    monkeypatch.setattr(
+        crosswalk_builder,
+        "_load_sources",
+        lambda source_dir, provenance: (copy.deepcopy(groups), {}),
+    )
+    spec = _synthetic_spec(["Queenstown Bay"])
+    spec["area_definitions"]["areas"]["3"]["locations"] = [
+        {"heading": "Rotorua", "statistical_area_units_2017": ["Whakarewarewa"]}
+    ]
+    spec["heading_ta_expectations"]["Rotorua"] = ["Rotorua District"]
+    spec["definition_name_aliases"] = [
+        {
+            "definition_name": "Whakarewarewa",
+            "au_code": "540700",
+            "au_name": "Whaka",
+            "evidence": "fixture correspondence",
+        }
+    ]
+    report = {}
+    generated = generate_crosswalk(tmp_path, spec, report=report)
+    assert generated["unmatched_definition_entries"] == []
+    assert _shares(generated["rows"][1]) == {1: 0.0, 2: 0.0, 3: 1.0, 4: 0.0}
+    alias_check = next(
+        check
+        for check in report["definition_heading_checks"]
+        if check["name"] == "Whakarewarewa"
+    )
+    assert alias_check["au_code"] == "540700"
+    assert alias_check["observed_ta_population"] == {"Rotorua District": 12}
+
+
+def _water_fixture(polygon: dict | None) -> dict:
+    authority = _ta("001", "Queenstown-Lakes District")
+    authority["geometry"] = _rectangle(0.0, 0.0, 4.0)
+    features = [_sa1("land", 90, 90), _sa1("flagged", 10, 10)]
+    features[1]["centroid"]["x"] = 2.5
+    return {
+        "sa1": features,
+        "au": [_au("001", "Queenstown Bay"), _au("002", "Inlet fixture", 2.0)],
+        "ta": [authority],
+        "mbhg": [
+            _meshblock("land", "001", "Queenstown-Lakes District", "1"),
+            _meshblock("flagged", "001", "Queenstown-Lakes District", "2"),
+        ],
+        "sa1poly": [] if polygon is None else [_polygon_feature("flagged", polygon)],
+    }
+
+
+def test_generator_uses_flagged_interior_point_instead_of_water_centroid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    groups = _water_fixture(_rectangle(0.2, 0.2, 0.4))
+    monkeypatch.setattr(
+        crosswalk_builder,
+        "_load_sources",
+        lambda source_dir, provenance: (copy.deepcopy(groups), {}),
+    )
+    report = {}
+    generated = generate_crosswalk(
+        tmp_path, _synthetic_spec(["Queenstown Bay"]), report=report
+    )
+    assert _shares(generated["rows"][0]) == {1: 1.0, 2: 0.0, 3: 0.0, 4: 0.0}
+    changes = report["flagged_sa1_changes"]
+    assert len(changes) == 1
+    assert changes[0]["sa1_code"] == "flagged"
+    assert changes[0]["population"] == 10
+    assert changes[0]["old_au_code"] == "002"
+    assert changes[0]["new_au_code"] == "001"
+    assert changes[0]["as_area_before"] == 4
+    assert changes[0]["as_area_after"] == 1
+    assert report["remaining_water_au_sa1s"] == []
+
+
+@pytest.mark.parametrize("population", [0, 10])
+def test_generator_unstaged_water_centroid_refuses_and_lists_sa1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, population: int
+) -> None:
+    groups = _water_fixture(None)
+    groups["sa1"][1]["attributes"]["VAR_1_3"] = population
+    monkeypatch.setattr(
+        crosswalk_builder,
+        "_load_sources",
+        lambda source_dir, provenance: (copy.deepcopy(groups), {}),
+    )
+    with pytest.raises(ValueError, match="water|Water") as error:
+        generate_crosswalk(tmp_path, _synthetic_spec(["Queenstown Bay"]))
+    assert "flagged" in str(error.value)
+
+
+def test_generator_staged_interior_point_still_in_water_is_kept_and_reported(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    groups = _water_fixture(_rectangle(2.2, 0.2, 0.4))
+    monkeypatch.setattr(
+        crosswalk_builder,
+        "_load_sources",
+        lambda source_dir, provenance: (copy.deepcopy(groups), {}),
+    )
+    report = {}
+    generated = generate_crosswalk(
+        tmp_path, _synthetic_spec(["Queenstown Bay"]), report=report
+    )
+    assert _shares(generated["rows"][0]) == {1: 0.9, 2: 0.0, 3: 0.0, 4: 0.1}
+    water = report["remaining_water_au_sa1s"]
+    assert len(water) == 1
+    assert water[0]["sa1_code"] == "flagged"
+    assert water[0]["population"] == 10
+
+
+def test_committed_spec_declares_alias_and_resolved_queenstown_without_bulk_audit() -> (
+    None
+):
+    spec = _spec()
+    assert "definition_heading_checks" not in spec
+    assert "definition_heading_conflicts" not in spec
+    assert "stability_2018" not in spec["diagnostics"]
+    aliases = spec["definition_name_aliases"]
+    assert len(aliases) == 1
+    assert aliases[0]["definition_name"] == "Whakarewarewa"
+    assert aliases[0]["au_code"] == "540700"
+    assert aliases[0]["au_name"] == "Whaka"
+    resolved = spec["resolved_definition_entries"]
+    assert len(resolved) == 1
+    assert resolved[0]["name"] == "Queenstown urban area"
+    assert resolved[0]["au_codes"] == []
+    assert resolved[0]["evidence"]["layer"] == "Urban_area_2014"
+    assert resolved[0]["evidence"]["ua_code"] == "117"
 
 
 def test_committed_rows_cover_68_tas_with_normalized_unique_modal_shares() -> None:
@@ -693,22 +1090,9 @@ def test_every_ta_layer_code_appears_once(staged_sources: Path) -> None:
 def test_committed_rows_equal_fresh_pinned_generation(staged_sources: Path) -> None:
     spec = _spec()
     regenerated = generate_crosswalk(staged_sources, copy.deepcopy(spec))
-    # Counts and shares must agree exactly. Local libm/numpy implementations
-    # can differ below a micrometre in reported distances, far below the
-    # source geometry precision; normalize only those audit measurements.
+    # Geometry-distance audit measurements live in the separate generated
+    # report; the lean spec, including every count and share, replays exactly.
     assert regenerated["rows"] == spec["rows"]
-    for document in (regenerated, spec):
-        for kind in ("au_assignment", "ta_assignment"):
-            diagnostics = document["diagnostics"][kind]
-            for miss in diagnostics["no_polygon"]:
-                miss["distance_m"] = round(miss["distance_m"], 6)
-            for overlap in diagnostics["multiple_interior_hits"]:
-                overlap["candidate_boundary_distances_m"] = {
-                    code: round(distance, 6)
-                    for code, distance in overlap[
-                        "candidate_boundary_distances_m"
-                    ].items()
-                }
     assert regenerated == spec
 
 
@@ -748,17 +1132,27 @@ def test_queenstown_sensitivity_excludes_ambiguous_but_listed_names(
     ]
     for feature, x in zip(sa1_features, (0.5, 2.5, 4.5), strict=True):
         feature["centroid"]["x"] = x
-    groups = {"sa1": sa1_features, "au": au_features, "ta": [authority]}
+    groups = {
+        "sa1": sa1_features,
+        "au": au_features,
+        "ta": [authority],
+        "mbhg": [
+            _meshblock(
+                feature["attributes"]["SA12023_V1_00"],
+                "001",
+                "Queenstown-Lakes District",
+                str(index),
+            )
+            for index, feature in enumerate(sa1_features)
+        ],
+        "sa1poly": [],
+    }
     monkeypatch.setattr(
         crosswalk_builder,
         "_load_sources",
         lambda source_dir, provenance: (copy.deepcopy(groups), {}),
     )
-    spec = _spec()
-    spec["area_definitions"] = _definitions(["Queenstown Bay", "Frankton"])
-    spec["heading_ta_expectations"] = {
-        "Fixture location": ["Queenstown-Lakes District"]
-    }
+    spec = _synthetic_spec(["Queenstown Bay", "Frankton"])
     generated = generate_crosswalk(tmp_path, spec)
     assert generated["unmatched_definition_entries"] == [
         {

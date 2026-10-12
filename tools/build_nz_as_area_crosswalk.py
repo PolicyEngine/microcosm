@@ -8,9 +8,9 @@ pins; receipts in DIR are never trusted as replacement pins. Example::
         --out packages/microcosm-build/src/microcosm/build/nz/as_area_crosswalk.json \
         --report .hub-scratch/as-area-report.json
 
-SA1 centroids are an approximation to a population overlay, not an official
-concordance. Unmatched definitions remain residual Area 4. Queenstown's extra
-extent is recorded separately as a sensitivity, never used by central rows.
+AU membership uses staged SA1 interior points, otherwise centroids; this is an
+approximation to a population overlay. TA membership uses the official meshblock
+concordance. Queenstown's Frankton East extent remains a separate sensitivity.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import heapq
 import json
 import math
 import os
@@ -31,10 +32,15 @@ AU_CODE = "AU2017_V1_00"
 AU_NAME = "AU2017_V1_00_NAME"
 TA_CODE = "TA2025_V1_00"
 TA_NAME = "TA2025_V1_00_NAME"
+CONCORDANCE_SA1_CODE = "SA12026_V1_00"
+CONCORDANCE_TA_CODE = "TA2026_V1_00"
+CONCORDANCE_TA_NAME = "TA2026_V1_00_NAME"
+WATER_AU_PREFIXES = ("Inlet", "Inlets", "Inland Water", "Oceanic")
 POPULATION_VARIABLE = "VAR_1_3"
 POPULATION_LAYER = "2023_Census_totals_by_topic_for_individuals_by_SA1"
 CENSUS_DATES = {"VAR_1_3": "2023-03-07", "VAR_1_2": "2018-03-06"}
 EDGE_EPSILON = 1e-10
+INTERIOR_POINT_TOLERANCE = 0.00002
 EARTH_RADIUS_M = 6371008.8
 DEFAULT_SPEC = (
     Path(__file__).resolve().parents[1]
@@ -128,6 +134,101 @@ def _geometry_status(points, geometry):
 def point_in_geometry(point, geometry):
     """Boundary-inclusive even-odd membership, including holes and multipolygons."""
     return bool(_geometry_status(np.asarray([point], dtype=float), geometry)[0] >= 0)
+
+
+def interior_point(geometry, tolerance=INTERIOR_POINT_TOLERANCE):
+    """Return a deterministic strictly interior pole-of-inaccessibility point.
+
+    Best-first subdivision maximizes distance from every ring boundary in
+    coordinate degrees, within ``tolerance`` (default 0.00002 degrees). Each
+    polygon part's bounding box starts a search cell; even-odd membership is
+    evaluated across all rings, including holes encoded as multipart rings.
+    Cells use the signed boundary distance plus their half diagonal as an
+    upper bound. The tolerance only stops refinement after a strictly interior
+    candidate exists, so narrow polygons never fall back to a boundary point.
+    Coordinate ordering breaks ties without randomness.
+    """
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("Interior-point tolerance must be finite and positive")
+    rings, bounds = [], []
+    for part in _parts(geometry):
+        if not part:
+            raise ValueError("Polygon parts must contain a ring")
+        vertices_in_part = []
+        for ring in part:
+            vertices = np.asarray(ring, dtype=float)
+            if (
+                vertices.ndim != 2
+                or vertices.shape[1] != 2
+                or len(vertices) < 4
+                or not np.isfinite(vertices).all()
+                or not np.array_equal(vertices[0], vertices[-1])
+            ):
+                raise ValueError("Interior-point rings must be finite and closed")
+            rings.append(vertices)
+            vertices_in_part.append(vertices)
+        vertices = np.concatenate(vertices_in_part)
+        low, high = vertices.min(axis=0), vertices.max(axis=0)
+        if (high > low).all():
+            bounds.append((low, high))
+    has_area = any(
+        np.sum(
+            (ring[:-1, 0] - ring[0, 0]) * (ring[1:, 1] - ring[0, 1])
+            - (ring[1:, 0] - ring[0, 0]) * (ring[:-1, 1] - ring[0, 1])
+        )
+        != 0
+        for ring in rings
+    )
+    if not bounds or not has_area:
+        raise ValueError("Geometry has no two-dimensional polygon interior")
+    a = np.concatenate([ring[:-1] for ring in rings])
+    b = np.concatenate([ring[1:] for ring in rings])
+    delta = b - a
+    norm = (delta * delta).sum(axis=1)
+    queue = []
+    best_point, best_distance = None, 0.0
+
+    def add_cell(x, y, half_width, half_height):
+        nonlocal best_point, best_distance
+        point = np.asarray([x, y])
+        fraction = np.clip(
+            ((point - a) * delta).sum(axis=1) / np.where(norm == 0, 1, norm),
+            0,
+            1,
+        )
+        distance = float(
+            np.linalg.norm(a + fraction[:, None] * delta - point, axis=1).min()
+        )
+        status = int(_geometry_status(point[None, :], geometry)[0])
+        distance = distance if status == 1 else -distance if status == -1 else 0.0
+        candidate = (float(x), float(y))
+        if status == 1 and (
+            best_point is None
+            or distance > best_distance
+            or (distance == best_distance and candidate < best_point)
+        ):
+            best_point, best_distance = candidate, distance
+        upper = distance + math.hypot(half_width, half_height)
+        heapq.heappush(queue, (-upper, x, y, half_width, half_height))
+
+    for low, high in bounds:
+        center, half_size = (low + high) / 2, (high - low) / 2
+        add_cell(*center, *half_size)
+    while queue:
+        negative_upper, x, y, half_width, half_height = heapq.heappop(queue)
+        if best_point is not None and -negative_upper <= best_distance + tolerance:
+            break
+        half_width, half_height = half_width / 2, half_height / 2
+        if x - half_width == x or y - half_height == y:
+            continue
+        for dx in (-half_width, half_width):
+            for dy in (-half_height, half_height):
+                add_cell(x + dx, y + dy, half_width, half_height)
+    if best_point is None:
+        raise ValueError("Geometry has no strictly interior point")
+    if _geometry_status(np.asarray([best_point]), geometry)[0] != 1:
+        raise ValueError("Interior-point search did not produce a strict interior")
+    return best_point
 
 
 def _vertices(geometry):
@@ -307,20 +408,57 @@ def population_counts(features, variable=POPULATION_VARIABLE):
     }
 
 
-def exact_area_mapping(definitions, au_features, au_population=None):
-    """Match full names only; unmatched and duplicate names remain Area 4."""
+def exact_area_mapping(
+    definitions,
+    au_features,
+    au_population=None,
+    definition_name_aliases=None,
+    resolved_definition_entries=None,
+):
+    """Match full names or declared code aliases; validate every resolution."""
     au_population = au_population or {}
     by_name = defaultdict(list)
+    by_code = {}
     assigned = {}
     for feature in au_features:
         properties = feature["properties"]
         by_name[properties[AU_NAME]].append(properties[AU_CODE])
+        by_code[properties[AU_CODE]] = properties[AU_NAME]
         assigned[properties[AU_CODE]] = 4
+    aliases = {}
+    definition_names = Counter(
+        name
+        for area in ("1", "2", "3")
+        for location in definitions["areas"][area]["locations"]
+        for name in location["statistical_area_units_2017"]
+    )
+    for alias in definition_name_aliases or []:
+        name, code = alias["definition_name"], alias["au_code"]
+        if code not in by_code or by_code[code] != alias["au_name"]:
+            raise ValueError(f"Alias code/name does not match AU layer: {alias}")
+        if name in aliases or definition_names[name] != 1 or not alias["evidence"]:
+            raise ValueError(
+                f"Alias must identify one definition with evidence: {alias}"
+            )
+        aliases[name] = code
+    resolved = set()
+    for entry in resolved_definition_entries or []:
+        key = (entry["name"], entry["heading"], entry["as_area"])
+        if entry["au_codes"] or not entry["evidence"] or key in resolved:
+            raise ValueError(f"Unsupported or duplicate definition resolution: {entry}")
+        resolved.add(key)
+    seen_resolutions = set()
     unmatched = []
     for area in ("1", "2", "3"):
         for location in definitions["areas"][area]["locations"]:
             for name in location["statistical_area_units_2017"]:
-                candidates = sorted(by_name[name])
+                key = (name, location["heading"], int(area))
+                if key in resolved:
+                    seen_resolutions.add(key)
+                    continue
+                candidates = (
+                    [aliases[name]] if name in aliases else sorted(by_name[name])
+                )
                 if len(candidates) == 1:
                     assigned[candidates[0]] = int(area)
                 else:
@@ -338,7 +476,39 @@ def exact_area_mapping(definitions, au_features, au_population=None):
                             ],
                         }
                     )
+    if seen_resolutions != resolved:
+        raise ValueError(
+            f"Resolution does not match definition: {resolved - seen_resolutions}"
+        )
     return assigned, unmatched
+
+
+def concordance_ta_codes(sa1_features, ta_features, meshblock_features):
+    """Use the official SA1-to-TA mapping, refusing incomplete/inconsistent data."""
+    by_sa1 = defaultdict(set)
+    ta_set = set()
+    for feature in meshblock_features:
+        attributes = feature["attributes"]
+        pair = (attributes[CONCORDANCE_TA_CODE], attributes[CONCORDANCE_TA_NAME])
+        by_sa1[attributes[CONCORDANCE_SA1_CODE]].add(pair)
+        ta_set.add(pair)
+    expected = {
+        (f["properties"][TA_CODE], f["properties"][TA_NAME]) for f in ta_features
+    }
+    if ta_set != expected:
+        raise ValueError(
+            f"TA-set mismatch: missing {sorted(expected - ta_set)}; extra {sorted(ta_set - expected)}"
+        )
+    multiple = {
+        code: sorted(pairs) for code, pairs in by_sa1.items() if len(pairs) != 1
+    }
+    if multiple:
+        raise ValueError(f"SA1 with multiple TAs in concordance: {multiple}")
+    codes = [f["attributes"][SA1_CODE] for f in sa1_features]
+    missing = sorted(set(codes) - by_sa1.keys())
+    if missing:
+        raise ValueError(f"Missing SA1 codes in concordance: {missing}")
+    return [next(iter(by_sa1[code]))[0] for code in codes]
 
 
 def _shares(counts):
@@ -384,7 +554,7 @@ def aggregate_rows(
                 "ta_code": properties[TA_CODE],
                 "ta_name": properties[TA_NAME],
                 "shares": shares,
-                "population_source": f"Stats NZ {POPULATION_LAYER}; {variable}; Census {CENSUS_DATES[variable]}; SA1 2023 centroid bridge",
+                "population_source": f"Stats NZ {POPULATION_LAYER}; {variable}; Census {CENSUS_DATES[variable]}; SA1 2023 interior/centroid AU bridge; Meshblock Higher Geographies 2026 TA concordance",
                 "population_total": sum(counts),
                 "modal_area": modal,
             }
@@ -393,7 +563,7 @@ def aggregate_rows(
 
 
 def _load_sources(source_dir, provenance):
-    groups = {"sa1": [], "au": [], "ta": []}
+    groups = {"sa1": [], "au": [], "ta": [], "mbhg": [], "sa1poly": []}
     # Verify every file before interpreting any geographic or population data.
     pins = list(provenance["pages"]) + [
         {"file": layer["metadata_file"], "sha256": layer["metadata_sha256"]}
@@ -432,6 +602,10 @@ def _load_sources(source_dir, provenance):
         codes = [feature[attributes][code_field] for feature in groups[group]]
         if len(set(codes)) != len(codes):
             raise ValueError(f"Duplicate {group} codes")
+    groups["sa1poly"].sort(key=lambda f: f["properties"][SA1_CODE])
+    polygon_codes = [f["properties"][SA1_CODE] for f in groups["sa1poly"]]
+    if len(set(polygon_codes)) != len(polygon_codes):
+        raise ValueError("Duplicate SA1 polygon codes")
     return groups, {variable: aliases[variable] for variable in CENSUS_DATES}
 
 
@@ -450,18 +624,23 @@ def _assignment_report(diagnostics, features, populations):
     return diagnostics
 
 
-def _heading_conflicts(definitions, au_features, assigned_tas, expectations):
+def _heading_conflicts(
+    definitions, au_features, assigned_tas, expectations, definition_name_aliases=None
+):
     by_name = defaultdict(list)
     for feature in au_features:
         properties = feature["properties"]
         by_name[properties[AU_NAME]].append(properties[AU_CODE])
+    aliases = {
+        row["definition_name"]: row["au_code"] for row in definition_name_aliases or []
+    }
     conflicts, checks = [], []
     for area in ("1", "2", "3"):
         for location in definitions["areas"][area]["locations"]:
             heading = location["heading"]
             allowed = expectations[heading]
             for name in location["statistical_area_units_2017"]:
-                for code in by_name[name]:
+                for code in [aliases[name]] if name in aliases else by_name[name]:
                     observed = assigned_tas.get(code, {})
                     checks.append(
                         {
@@ -498,8 +677,8 @@ def _heading_conflicts(definitions, au_features, assigned_tas, expectations):
     return conflicts, checks
 
 
-def generate_crosswalk(source_dir, spec):
-    """Return a deterministic complete spec with pinned rows and audit evidence."""
+def generate_crosswalk(source_dir, spec, report=None):
+    """Return a lean spec; fill a separate report with detailed audit evidence."""
     groups, aliases = _load_sources(Path(source_dir), spec["provenance"])
     sa1, au, ta = groups["sa1"], groups["au"], groups["ta"]
     populations, suppression = population_counts(sa1)
@@ -508,7 +687,7 @@ def generate_crosswalk(source_dir, spec):
     )
     tolerance = spec["provenance"]["assignment_rule"]["max_distance_m"]
     overlap_tolerance = spec["provenance"]["assignment_rule"].get("max_overlap_m", 0)
-    au_codes, au_diagnostics = assign_points(
+    old_au_codes, au_diagnostics = assign_points(
         points,
         au,
         AU_CODE,
@@ -516,7 +695,8 @@ def generate_crosswalk(source_dir, spec):
         populations=populations,
         max_overlap_m=overlap_tolerance,
     )
-    ta_codes, ta_diagnostics = assign_points(
+    ta_codes = concordance_ta_codes(sa1, ta, groups["mbhg"])
+    centroid_ta_codes, ta_diagnostics = assign_points(
         points,
         ta,
         TA_CODE,
@@ -524,6 +704,57 @@ def generate_crosswalk(source_dir, spec):
         populations=populations,
         max_overlap_m=overlap_tolerance,
     )
+    au_names = {f["properties"][AU_CODE]: f["properties"][AU_NAME] for f in au}
+    indices_by_sa1 = {f["attributes"][SA1_CODE]: i for i, f in enumerate(sa1)}
+    polygons_by_sa1 = {f["properties"][SA1_CODE]: f for f in groups["sa1poly"]}
+    unknown = sorted(polygons_by_sa1.keys() - indices_by_sa1.keys())
+    if unknown:
+        raise ValueError(f"Staged polygons have unknown SA1 codes: {unknown}")
+    missing_water = [
+        {
+            "sa1_code": f["attributes"][SA1_CODE],
+            "au_code": code,
+            "au_name": au_names[code],
+            "population": int(population),
+        }
+        for f, code, population in zip(sa1, old_au_codes, populations, strict=True)
+        if au_names[code].startswith(WATER_AU_PREFIXES)
+        and f["attributes"][SA1_CODE] not in polygons_by_sa1
+    ]
+    if missing_water:
+        raise ValueError(
+            f"Water AU centroids require staged SA1 polygons: {json.dumps(missing_water, sort_keys=True)}"
+        )
+    flagged_indices = [indices_by_sa1[code] for code in sorted(polygons_by_sa1)]
+    au_codes = list(old_au_codes)
+    interior_points = []
+    if flagged_indices:
+        interior_points = [
+            interior_point(
+                polygons_by_sa1[sa1[i]["attributes"][SA1_CODE]]["geometry"],
+                tolerance=spec["provenance"]["assignment_rule"]["interior_point"][
+                    "tolerance_degrees"
+                ],
+            )
+            for i in flagged_indices
+        ]
+        flagged_codes, flagged_diagnostics = assign_points(
+            np.asarray(interior_points),
+            au,
+            AU_CODE,
+            max_distance_m=tolerance,
+            populations=populations[flagged_indices],
+            max_overlap_m=overlap_tolerance,
+        )
+        for index, code in zip(flagged_indices, flagged_codes, strict=True):
+            au_codes[index] = code
+        for kind in ("no_polygon", "multiple_boundary_hits", "multiple_interior_hits"):
+            au_diagnostics[kind] = [
+                r for r in au_diagnostics[kind] if r["index"] not in flagged_indices
+            ]
+            for row in flagged_diagnostics[kind]:
+                row["index"] = flagged_indices[row["index"]]
+                au_diagnostics[kind].append(row)
     au_population = Counter()
     au_ta_population = defaultdict(Counter)
     ta_names = {
@@ -535,7 +766,19 @@ def generate_crosswalk(source_dir, spec):
         au_population[au_code] += int(population)
         ta_name = ta_names[ta_code]
         au_ta_population[au_code][ta_name] += int(population)
-    areas, unmatched = exact_area_mapping(spec["area_definitions"], au, au_population)
+    areas, unmatched = exact_area_mapping(
+        spec["area_definitions"],
+        au,
+        au_population,
+        spec.get("definition_name_aliases"),
+        spec.get("resolved_definition_entries"),
+    )
+    before_alias_areas, _ = exact_area_mapping(
+        spec["area_definitions"],
+        au,
+        au_population,
+        resolved_definition_entries=spec.get("resolved_definition_entries"),
+    )
     listed_names = {
         name
         for area in ("1", "2", "3")
@@ -590,9 +833,9 @@ def generate_crosswalk(source_dir, spec):
     sensitivity_counts[3] -= moved
     sensitivity_shares, sensitivity_modal = _shares(sensitivity_counts)
     document = copy.deepcopy(spec)
-    document["status"] = "harvested_spatial_bridge"
+    document["status"] = "harvested_concordance_bridge"
     document["status_reason"] = (
-        "Rows computed from hash-pinned public Stats NZ SA1 2023 Census centroids/URP, AU2017 polygons and TA2025 polygons. Whole-SA1 centroid allocation and reported nearest-boundary repairs are declared approximations, not an official concordance. Queenstown urban area remains unmatched; its proposed extra extent is a separate sensitivity awaiting hub review. Location-heading conflicts are reported without changing exact name matches."
+        "Rows use hash-pinned Stats NZ SA1 2023 Census URP, interior points for staged SA1 polygons and centroids otherwise for AU2017 membership, and the Meshblock Higher Geographies 2026 SA1-to-TA concordance. TA2026 code/name support is verified equal to TA2025. Whole-SA1 AU allocation remains an approximation. Whakarewarewa maps to Whaka by declared code alias; Queenstown urban area resolves to no additional unit from the hub's Urban Area 2014 sampled overlay. Frankton East remains sensitivity only. Detailed diagnostics are generated separately with --report."
     )
     document["rows"] = rows
     document["row_shape"].update(
@@ -601,10 +844,14 @@ def generate_crosswalk(source_dir, spec):
     )
     document["unmatched_definition_entries"] = unmatched
     conflicts, checks = _heading_conflicts(
-        spec["area_definitions"], au, au_ta_population, spec["heading_ta_expectations"]
+        spec["area_definitions"],
+        au,
+        au_ta_population,
+        spec["heading_ta_expectations"],
+        spec.get("definition_name_aliases"),
     )
-    document["definition_heading_conflicts"] = conflicts
-    document["definition_heading_checks"] = checks
+    document.pop("definition_heading_conflicts", None)
+    document.pop("definition_heading_checks", None)
     document["queenstown_sensitivity"] = {
         "label": "sensitivity only; not the central assignment rule",
         "definition": "Within Queenstown-Lakes District, otherwise unlisted AU2017 names containing Frankton or Queenstown are assigned Area 1",
@@ -615,7 +862,7 @@ def generate_crosswalk(source_dir, spec):
         "shares": sensitivity_shares,
         "modal_area": sensitivity_modal,
     }
-    document["diagnostics"] = {
+    diagnostics = {
         "field_aliases": aliases,
         "sa1_count": len(sa1),
         "au_count": len(au),
@@ -645,6 +892,109 @@ def generate_crosswalk(source_dir, spec):
             "as_area": largest[2],
         },
     }
+    disagreements = [
+        {
+            "sa1_code": f["attributes"][SA1_CODE],
+            "population": int(population),
+            "centroid_ta_code": old,
+            "centroid_ta_name": ta_names[old],
+            "concordance_ta_code": new,
+            "concordance_ta_name": ta_names[new],
+        }
+        for f, population, old, new in zip(
+            sa1, populations, centroid_ta_codes, ta_codes, strict=True
+        )
+        if old != new
+    ]
+    flagged_changes = [
+        {
+            "sa1_code": sa1[i]["attributes"][SA1_CODE],
+            "population": int(populations[i]),
+            "ta_code": ta_codes[i],
+            "ta_name": ta_names[ta_codes[i]],
+            "old_au_code": old_au_codes[i],
+            "old_au_name": au_names[old_au_codes[i]],
+            "new_au_code": au_codes[i],
+            "new_au_name": au_names[au_codes[i]],
+            "as_area_before": before_alias_areas[old_au_codes[i]],
+            "as_area_after": areas[au_codes[i]],
+            "interior_point": list(point),
+        }
+        for i, point in zip(flagged_indices, interior_points, strict=True)
+    ]
+    remaining_water = [
+        row
+        for row in flagged_changes
+        if row["new_au_name"].startswith(WATER_AU_PREFIXES)
+    ]
+    area_changes = defaultdict(Counter)
+    for population, old, new, tc in zip(
+        populations, old_au_codes, au_codes, ta_codes, strict=True
+    ):
+        before, after = before_alias_areas[old], areas[new]
+        if before != after:
+            area_changes[tc][(before, after)] += int(population)
+    change_rows = [
+        {
+            "ta_code": code,
+            "ta_name": ta_names[code],
+            "changed_population": sum(counts.values()),
+            "transitions": [
+                {
+                    "as_area_before": before,
+                    "as_area_after": after,
+                    "population": population,
+                }
+                for (before, after), population in sorted(counts.items())
+            ],
+        }
+        for code, counts in sorted(area_changes.items())
+    ]
+    before_alias_rows = aggregate_rows(ta, sa1, au_codes, ta_codes, before_alias_areas)
+    alias_comparison = {
+        "before": next(
+            (r for r in before_alias_rows if r["ta_name"] == "Rotorua District"), None
+        ),
+        "after": next((r for r in rows if r["ta_name"] == "Rotorua District"), None),
+    }
+    details = {
+        "definition_heading_conflicts": conflicts,
+        "definition_heading_checks": checks,
+        "diagnostics": diagnostics,
+        "ta_concordance_disagreements": disagreements,
+        "flagged_sa1_changes": flagged_changes,
+        "remaining_water_au_sa1s": remaining_water,
+        "as_area_changes_by_ta": change_rows,
+        "rotorua_alias_comparison": alias_comparison,
+        "rows": rows,
+    }
+    document["diagnostics"] = {
+        "sa1_count": len(sa1),
+        "meshblock_count": len(groups["mbhg"]),
+        "au_count": len(au),
+        "ta_count": len(ta),
+        "national_layer_population": diagnostics["national_layer_population"],
+        "assigned_population": diagnostics["assigned_population"],
+        "ta_concordance_disagreement_count": len(disagreements),
+        "ta_concordance_disagreement_population": sum(
+            r["population"] for r in disagreements
+        ),
+        "flagged_sa1_count": len(flagged_changes),
+        "flagged_sa1_population": sum(r["population"] for r in flagged_changes),
+        "remaining_water_au_sa1_count": len(remaining_water),
+        "remaining_water_au_population": sum(r["population"] for r in remaining_water),
+        "as_area_changed_population": sum(r["changed_population"] for r in change_rows),
+        "definition_heading_check_count": len(checks),
+        "definition_heading_conflict_count": len(conflicts),
+        "au_no_polygon_count": diagnostics["au_assignment"]["no_polygon_count"],
+        "au_no_polygon_population": diagnostics["au_assignment"][
+            "no_polygon_population"
+        ],
+        "suppressed_population_count": suppression["count"],
+    }
+    if report is not None:
+        report.clear()
+        report.update(details)
     return document
 
 
@@ -655,7 +1005,11 @@ def main(argv=None):
     )
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--report", type=Path, help="Write the complete audit as JSON")
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="Audit JSON path (default: beside --out, with .report.json suffix)",
+    )
     args = parser.parse_args(argv)
     if args.sources is None or not args.sources.is_dir():
         print(
@@ -669,23 +1023,23 @@ def main(argv=None):
     if missing:
         print(f"SKIPPED: pinned staged source set is incomplete; missing {missing[0]}")
         return
-    print("Verifying pinned pages and computing the centroid bridge", flush=True)
-    document = generate_crosswalk(args.sources, spec)
+    print(
+        "Verifying pinned pages and computing the concordance/interior bridge",
+        flush=True,
+    )
+    report = {}
+    document = generate_crosswalk(args.sources, spec, report)
     args.out.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-    if args.report:
-        args.report.write_text(
-            json.dumps(document, indent=2, ensure_ascii=False) + "\n"
-        )
+    report_path = args.report or args.out.with_suffix(".report.json")
+    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     print(
         json.dumps(
             {
                 "rows": len(document["rows"]),
                 "assigned_population": document["diagnostics"]["assigned_population"],
-                "au_misses": document["diagnostics"]["au_assignment"][
-                    "no_polygon_count"
-                ],
-                "ta_misses": document["diagnostics"]["ta_assignment"][
-                    "no_polygon_count"
+                "au_misses": document["diagnostics"]["au_no_polygon_count"],
+                "ta_disagreements": document["diagnostics"][
+                    "ta_concordance_disagreement_count"
                 ],
             },
             sort_keys=True,
