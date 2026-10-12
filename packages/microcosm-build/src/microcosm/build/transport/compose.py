@@ -16,7 +16,9 @@ explicit selection:
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 
-So a node binds exactly the resources it selects. The graph resource's own
+Target compilers also bind the complete ``chronicle_feed.json`` declaration
+when the spec carries it, including CREATE's inventory probe and extension
+nodes. Other nodes bind exactly the resources they select. The graph resource's own
 digest and the country spec's fingerprint enter no node: editing one
 resource re-keys only the nodes that select the changed data and their
 descendants. Selector-shaped objects inside selected resource data remain
@@ -66,6 +68,7 @@ from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
     ATOMIC_SUPPORT_TYPE,
 )
+from microcosm.build.ledger_artifact import CHRONICLE_FEED_RESOURCE
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
     ArtifactInput,
@@ -85,6 +88,7 @@ from microcosm.graph.canonical import canonical_json
 
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
+from .target_kernels import TARGET_COMPILATION_KERNELS
 
 __all__ = [
     "GRAPH_RESOURCE",
@@ -324,6 +328,26 @@ def _has_resource(spec: Mapping[str, object], name: str) -> bool:
     documents = _resources(spec)
     stem = _stem(name)
     return stem in documents or f"{stem}.json" in documents
+
+
+def _target_feed_params(
+    spec: Mapping[str, object], kernel: str, params: Mapping[str, object]
+) -> dict[str, object]:
+    """Bind the declared feed to every target compiler, including preparation."""
+
+    result = dict(params)
+    if kernel in TARGET_COMPILATION_KERNELS and _has_resource(
+        spec, CHRONICLE_FEED_RESOURCE
+    ):
+        pin = canonical_json(transport_resource(spec, CHRONICLE_FEED_RESOURCE)).decode(
+            "utf-8"
+        )
+        if "chronicle_feed_pin" in result and result["chronicle_feed_pin"] != pin:
+            raise ValueError(
+                f"{kernel} Chronicle feed pin differs from {CHRONICLE_FEED_RESOURCE}."
+            )
+        result["chronicle_feed_pin"] = pin
+    return result
 
 
 def transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
@@ -1077,6 +1101,7 @@ def _node(
             for name, value in _mapping(row.get("params", {}), "node params").items()
         }
     )
+    params = _target_feed_params(spec, kernel, params)
     if "rules_binding" in row:
         params = _rules_params(spec, row, params, config)
     elif kernel == RULES_ROUTER:
@@ -1171,10 +1196,14 @@ def skeleton_create_declaration(spec: Mapping[str, object]) -> CreateDeclaration
         id=_safe_node_id(row.get("id")),
         kernel=row["kernel"],
         params=MappingProxyType(
-            {
-                name: _param(spec, value, None)
-                for name, value in _mapping(row.get("params", {}), "params").items()
-            }
+            _target_feed_params(
+                spec,
+                row["kernel"],
+                {
+                    name: _param(spec, value, None)
+                    for name, value in _mapping(row.get("params", {}), "params").items()
+                },
+            )
         ),
         sources=tuple(_sequence(row.get("sources", ()), "node sources")),
     )
@@ -1272,7 +1301,10 @@ def compose_transport_graph(
             raise TypeError("A transport extension must return a tuple of Nodes.")
         for node in nodes:
             _safe_node_id(node.id)
-        additional.extend(nodes)
+        additional.extend(
+            replace(node, params=_target_feed_params(spec, node.kernel, node.params))
+            for node in nodes
+        )
     if (
         not additional
         and not additional_sources

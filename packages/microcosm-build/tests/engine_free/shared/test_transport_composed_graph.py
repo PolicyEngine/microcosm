@@ -65,6 +65,7 @@ from microcosm.build.transport.compose import (
     TransportGraphConfig,
     compose_transport_graph,
     load_transport_spec,
+    skeleton_create_declaration,
     validate_transport_activation,
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
@@ -89,6 +90,7 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.keys import node_key, source_content_key
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
@@ -258,6 +260,53 @@ def cold(composed, tmp_path_factory):
 # ---------------------------------------------------------------------------
 # Composition invariants
 # ---------------------------------------------------------------------------
+
+
+def test_composition_binds_feed_pin_to_skeleton_preparation_and_extensions(composed):
+    rows = [
+        json.loads(line)
+        for line in composed.sources["nz_calibration_facts"].read_text().splitlines()
+    ]
+    _artifact, pin = write_pinned_artifact(composed.root / "pinned-facts", rows)
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = pin
+    graph = compose_transport_graph(spec, composed.extended_config())
+    compilers = [
+        node
+        for node in graph.nodes
+        if node.kernel
+        in {"transport.create@1", "targets.compile@1", "takeup.compare@1"}
+    ]
+    assert {node.kernel for node in compilers} == {
+        "transport.create@1",
+        "targets.compile@1",
+        "takeup.compare@1",
+    }
+    for node in compilers:
+        assert json.loads(node.params["chronicle_feed_pin"]) == pin
+    declaration = skeleton_create_declaration(spec)
+    assert dict(declaration.params) == dict(graph.node(declaration.id).params)
+    changed = copy.deepcopy(spec)
+    changed["resources"]["chronicle_feed"]["manifest_sha256"] = "0" * 64
+    altered = compose_transport_graph(changed, composed.extended_config())
+    for node in compilers:
+        assert node.params != altered.node(node.id).params
+    for node in graph.nodes:
+        if node not in compilers:
+            assert node.params == altered.node(node.id).params
+
+
+def test_composition_refuses_a_compiler_pin_that_overrides_the_country_pin(composed):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["chronicle_feed"] = {"manifest_sha256": "1" * 64}
+    declaration = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == "targets.compile@1"
+    )
+    declaration["params"]["chronicle_feed_pin"] = "{}"
+    with pytest.raises(ValueError, match="feed pin differs"):
+        compose_transport_graph(spec, composed.config)
 
 
 @PROPERTY

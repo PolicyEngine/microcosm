@@ -159,7 +159,7 @@ class TransportCreateKernel(KernelBase):
             context,
             self.ref,
             required=self._required,
-            optional=frozenset({"facts_sha256"}),
+            optional=frozenset({"facts_sha256", "chronicle_feed_pin"}),
         )
         donor_source = string_param(context, self.ref, "donor_source")
         facts_source = string_param(context, self.ref, "facts_source")
@@ -182,6 +182,11 @@ class TransportCreateKernel(KernelBase):
             expected_facts_sha256=(
                 sha256_param(context, self.ref, "facts_sha256")
                 if "facts_sha256" in context.params
+                else None
+            ),
+            feed_pin=(
+                canonical_document_param(context, self.ref, "chronicle_feed_pin")
+                if "chronicle_feed_pin" in context.params
                 else None
             ),
         )

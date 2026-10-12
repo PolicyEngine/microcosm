@@ -21,6 +21,7 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.population_kernels import (
     TRANSPORT_BOUNDARY,
     TRANSPORT_CREATE,
@@ -46,6 +47,7 @@ from microcosm.graph import (
     compile_graph,
 )
 from microcosm.graph.population import dtype_for_token
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_graph import (
     canonical_text,
     descendants,
@@ -693,6 +695,31 @@ def test_create_accepts_a_person_count_fact_with_a_country_prepared_measure_name
     result = TRANSPORT_CREATE.run(context)
     assert result.frame.resolve_weights("person").values.sum() == pytest.approx(120.0)
     assert result.receipt["mass_reference"] == "toy_population"
+
+
+def test_create_enforces_full_feed_pin_before_reading_donor(tmp_path):
+    sources = write_population_sources(tmp_path / "sources")
+    artifact, pin = write_pinned_artifact(
+        tmp_path / "artifact", [json.loads(sources.facts.read_text())]
+    )
+    original = create_node(sources)
+    node = replace(
+        original,
+        params={**original.params, "chronicle_feed_pin": canonical_text(pin)},
+    )
+    context = KernelContext(
+        node=node,
+        tables={},
+        weights={},
+        strata=pd.Series([], dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={"donor": tmp_path / "absent-donor", "facts": artifact},
+    )
+    manifest_path = artifact / "manifest.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+    with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
+        TRANSPORT_CREATE.run(context)
 
 
 def _with_band_references(graph, references):

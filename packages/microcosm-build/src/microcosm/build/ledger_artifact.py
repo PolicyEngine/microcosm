@@ -41,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 from argparse import ArgumentParser, Namespace
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,10 +61,13 @@ __all__ = [
     "ALLOWED_LEDGER_ASSERTIONS",
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DEFAULT_LEDGER_ASSERTION",
+    "CHRONICLE_FEED_RESOURCE",
+    "ChronicleFeedPinMismatchError",
     "LedgerConsumerArtifact",
     "add_ledger_artifact_args",
     "load_ledger_consumer_artifact",
     "resolve_ledger_artifact",
+    "validate_chronicle_feed_pin",
 ]
 
 #: The id Microcosm's own minted artifacts still declare. Frozen at v1 by
@@ -73,6 +77,20 @@ __all__ = [
 CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
+CHRONICLE_FEED_RESOURCE = "chronicle_feed.json"
+
+
+class ChronicleFeedPinMismatchError(ValueError):
+    """A loaded artifact differs from a reviewed feed pin on one field."""
+
+    def __init__(self, field: str, *, expected: Any, actual: Any) -> None:
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Chronicle feed pin mismatch for {field}: "
+            f"expected {expected!r}, loaded {actual!r}."
+        )
 
 
 @dataclass(frozen=True)
@@ -189,18 +207,58 @@ class LedgerConsumerArtifact:
         return payload
 
 
+def validate_chronicle_feed_pin(
+    artifact: LedgerConsumerArtifact, feed_pin: Mapping[str, Any]
+) -> None:
+    """Check all reviewed artifact identities, including observed row metadata.
+
+    The schema digest is the publisher's manifest declaration; the manifest's
+    byte digest authenticates that declaration. Row counts and schema versions
+    must agree with both the loaded rows and the manifest, rather than trusting
+    manifest metadata alone. A full artifact pin cannot authenticate a bare
+    facts file's missing manifest metadata.
+    """
+
+    if not isinstance(feed_pin, Mapping):
+        raise ValueError("Chronicle feed pin must be an object.")
+    manifest = artifact.manifest or {}
+    observed = {
+        "facts_sha256": artifact.facts_sha256,
+        "manifest_sha256": artifact.manifest_sha256,
+        "artifact_schema_version": artifact.schema_version,
+        "consumer_fact_schema_versions": list(artifact.fact_schema_versions),
+        "consumer_fact_schema_sha256": manifest.get("consumer_fact_schema_sha256"),
+        "fact_row_count": artifact.fact_row_count,
+    }
+    missing = sorted(observed.keys() - feed_pin.keys())
+    if missing:
+        raise ValueError(f"Chronicle feed pin is missing required field(s): {missing}.")
+    for field, actual in observed.items():
+        expected = feed_pin[field]
+        if actual is None or type(actual) is not type(expected) or actual != expected:
+            raise ChronicleFeedPinMismatchError(field, expected=expected, actual=actual)
+    for field in ("consumer_fact_schema_versions", "fact_row_count"):
+        actual = manifest.get(field)
+        expected = feed_pin[field]
+        if type(actual) is not type(expected) or actual != expected:
+            raise ChronicleFeedPinMismatchError(field, expected=expected, actual=actual)
+
+
 def load_ledger_consumer_artifact(
     path: str | Path,
     *,
     expected_facts_sha256: str | None = None,
     expected_manifest_sha256: str | None = None,
+    feed_pin: Mapping[str, Any] | None = None,
 ) -> LedgerConsumerArtifact:
     """Load a Ledger consumer artifact directory or bare consumer-facts file.
 
     Artifact directories are verified against their own manifest: the fact
     file's SHA-256 must match ``manifest.facts_sha256``. The optional
     ``expected_*`` pins let a build config assert the exact artifact it was
-    reviewed against; any mismatch raises before facts are used.
+    reviewed against; any mismatch raises before facts are used. ``feed_pin``
+    additionally checks all six reviewed artifact fields, without replacing
+    the manifest integrity checks or either optional hash check.
     """
     artifact_path = Path(path)
     if not artifact_path.exists():
@@ -250,6 +308,15 @@ def load_ledger_consumer_artifact(
                 "Ledger consumer artifact fact rows do not match the "
                 f"manifest hash: {facts_sha256} != {declared}."
             )
+    artifact = LedgerConsumerArtifact(
+        path=artifact_path,
+        facts=_load_fact_rows(facts_path),
+        facts_sha256=facts_sha256,
+        manifest=manifest,
+        manifest_sha256=manifest_sha256,
+    )
+    if feed_pin is not None:
+        validate_chronicle_feed_pin(artifact, feed_pin)
     if expected_facts_sha256 is not None and expected_facts_sha256 != facts_sha256:
         raise ValueError(
             "Ledger consumer facts do not match the pinned hash: "
@@ -267,13 +334,7 @@ def load_ledger_consumer_artifact(
                 f"hash: {manifest_sha256} != {expected_manifest_sha256}."
             )
 
-    return LedgerConsumerArtifact(
-        path=artifact_path,
-        facts=_load_fact_rows(facts_path),
-        facts_sha256=facts_sha256,
-        manifest=manifest,
-        manifest_sha256=manifest_sha256,
-    )
+    return artifact
 
 
 def add_ledger_artifact_args(parser: ArgumentParser) -> None:
