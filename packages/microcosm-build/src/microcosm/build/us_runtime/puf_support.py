@@ -607,6 +607,23 @@ _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 }
 # The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
 # Do not redistribute it: the engine computes its distinct singular Part B output.
+# Raw-PUF inputs of the archived partnership self-employment derivation
+# (:func:`_puf_partnership_se_net_earnings_from_raw_columns`). All eight are
+# required: a raw PUF carrying only some of them derives nothing, so the donor
+# build fails closed instead of substituting a different quantity.
+_PUF_PARTNERSHIP_SE_RAW_COLUMNS = (
+    "E30400",
+    "E30500",
+    "E00900",
+    "E02100",
+    "E25920",
+    "E25940",
+    "E25960",
+    "E25980",
+)
+# The archived pipeline's ``SE_DEDUCTION_FACTOR``: it treats E30400 and E30500
+# as already multiplied by this factor and divides it back out.
+_PUF_SE_NET_EARNINGS_FACTOR = 0.9235
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
@@ -4265,11 +4282,10 @@ def _person_source_values(
         return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
         return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
-    if output == "partnership_self_employment_net_earnings" and {
-        "E25960",
-        "E26180",
-    }.issubset(arrays):
-        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+    if output == "partnership_self_employment_net_earnings" and set(
+        _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    ).issubset(arrays):
+        return _puf_partnership_se_net_earnings_from_raw_columns(arrays)
     if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
         return (
             _numeric_array(arrays["E17500"])
@@ -4294,6 +4310,54 @@ def _person_source_values(
             if source in arrays:
                 return _numeric_array(arrays[source])
     return None
+
+
+def _puf_partnership_se_net_earnings_from_raw_columns(
+    arrays: Mapping[str, Sequence[Any]],
+) -> np.ndarray:
+    """Derive partnership self-employment net earnings from raw PUF columns.
+
+    This ports, operation for operation, the derivation the archived
+    processed-PUF pipeline used for this leaf (PolicyEngine/policyengine-us-data
+    at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
+    ``policyengine_us_data/datasets/puf/puf.py`` lines 723-746), which matches
+    ``part_se`` in Yale Budget Lab Tax-Data's ``src/process_puf.R``. It is a
+    residual, not a read of a Schedule K-1 box 14 field: gross self-employment
+    earnings less the Schedule C and Schedule F amounts.
+
+    The column meanings below are the archived pipeline's own; this module does
+    not check them against the PUF documentation:
+
+    * ``E30400`` and ``E30500``: the taxpayer's and the spouse's taxable
+      self-employment income, already multiplied by 0.9235. Their sum is
+      divided by that factor to recover gross self-employment earnings.
+    * ``E00900`` and ``E02100``: Schedule C net profit or loss and Schedule F
+      farm income, subtracted from the gross amount.
+    * ``E25940 + E25980 - E25920 - E25960``: net partnership income. A record
+      where it is exactly zero has no partnership activity and gets zero.
+
+    No S corporation column (``E26180``, ``E26190``) enters the derivation. A
+    missing or nonnumeric value counts as zero, as the archived ``fillna(0)``
+    did.
+
+    Args:
+        arrays: Mapping carrying every column of
+            ``_PUF_PARTNERSHIP_SE_RAW_COLUMNS`` at one common grain.
+
+    Returns:
+        Partnership self-employment net earnings, one value per input row.
+    """
+
+    raw = {
+        column: _numeric_array(arrays[column])
+        for column in _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    }
+    gross_se = (raw["E30400"] + raw["E30500"]) / _PUF_SE_NET_EARNINGS_FACTOR
+    schedule_c_f_income = raw["E00900"] + raw["E02100"]
+    has_partnership = (
+        raw["E25940"] + raw["E25980"] - raw["E25920"] - raw["E25960"]
+    ) != 0
+    return np.where(has_partnership, gross_se - schedule_c_f_income, 0.0)
 
 
 _TAX_UNIT_ROLE_COLUMN = "tax_unit_role_input"
