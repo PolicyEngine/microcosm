@@ -240,6 +240,74 @@ What the runs show:
 *Pending: queued under the shared heavy lock.*
 
 
+## Limits of these measurements
+
+- **Own enrollment only.** The options count a self-employed person's own
+  Medicare premiums. 162(l)(1) and the CCA also cover a spouse's or dependent's
+  premiums; a self-employed person paying a retired spouse's Part B is not
+  counted here.
+- **Employer-plan bar.** Every option keeps the stage's measured-ESI exclusion,
+  the conservative, incomplete proxy for 162(l)(2)(B): eligibility through a
+  spouse's employer, or an offer not taken, is not measured (policyengine-us#10122
+  adds an engine-side bar).
+- **Schedule A.** At 2.2.1 and on the #10120 head, `itemized_medical_expenses`
+  keeps the full premium even when 162(l) deducts it, which 162(l)(3) forbids
+  (policyengine-us#10055, open). Every option that adds deduction therefore
+  also keeps those premiums on Schedule A for itemizers above the floor. The
+  revenue-loss row is computed the way the calibration computes JCT's row today.
+- **Returns are modeled tax units with a positive deduction**, not observed
+  claims. Anyone with $400 or more of self-employment earnings must file, but
+  whether they claim this deduction is not modeled; SOI counts claims.
+- **Partners and S corporation shareholders.** A partner's premiums count only
+  if the partnership pays or reimburses them; no input records that. S
+  corporation shareholders have no input at all.
+- **IRMAA.** Zero in 2024 on this single-year file at both engine versions, so
+  the standard-premium engine form equals the full resolver here. On main
+  (with policyengine-us#10106's lookback fallback) 2024 IRMAA is nonzero, and the
+  standard-premium form leaves it out.
+- **MSP** coverage is applied on eligibility with no take-up, so modeled Part B
+  net of MSP may understate what enrollees pay.
+- **Imputed premiums.** Most of the added deduction is on PUF tax-detail support
+  rows, whose reported premium is the QRF's prediction from CPS donors.
+- **pe-us 2.2.1 income tax.** Computing income tax on the full file at the pinned
+  engine (policyengine-core 3.32.5) passed 28 GB in one process and 47 GB with
+  state tax and SNAP, beyond the shared machine's 20 GB per-run ceiling, so tax
+  and revenue-loss figures here come from the #10120 head (core 3.33.2, 13 GB).
+  At 2.2.1 the runs report deduction-level measures. The release's own
+  calibration diagnostics give the 2.2.1 status-quo JCT estimate: $2.38B final
+  against the $8.4B target (JCX-48-24), a relative error of −71.7%
+  (`calibration_diagnostics.json` of release `populace-us-2024-spm-20260915`,
+  sha256 `870449b4…`, row
+  `jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss@2024`).
+
+## What the decision turns on
+
+The law is the clearer part: Medicare premiums count (Form 7206 instructions,
+CCA 201228037), and so do enrollees' private premiums. The choice is where the
+model computes them and how much of the measured result to trust.
+
+- **Where.** Data-side options freeze a modeled amount into the file (C) or
+  leave enrollees out (B, status quo); A changes the medical-expense concept
+  and is dominated. The engine-side form (E) gives C's 2024 values, follows
+  reforms and later years, needs no Microcosm change, and also covers B's
+  people. It needs a policyengine-us change built on the employer-plan bar
+  (policyengine-us#10122), a cycle-safe Part B term, and IRMAA as a follow-up.
+- **How much to count.** Enrollees whose only premium is Part B are covered by
+  the law as much as anyone, but they are where the model's return count runs
+  furthest past SOI's. Partner-only enrollees need partnership reimbursement
+  the data cannot see.
+- **The SOI gap.** With Medicare premiums the model counts 2.5 times SOI's
+  returns while reaching 94% of its dollars. These runs do not identify why
+  (claiming behaviour, the profit and premium distribution of older
+  self-employed people, and the imputed premiums on PUF-support rows are all
+  candidates). The JCT revenue-loss row, the calibration's only target for this
+  deduction, moves toward its $8.4B target under C and E.
+
+My recommendation, for Max to accept or overrule: E in policyengine-us (issue
+linked from the PR), no Microcosm change for it, and B in Microcosm only if
+coverage is wanted before a policyengine-us release carrying E reaches the
+pin. Not A. C only if a frozen modeled amount in the data is acceptable.
+
 ## Files
 
 - `scripts/measure.py`, `scripts/run_all.py`: the staged microsimulation runs

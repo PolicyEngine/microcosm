@@ -692,6 +692,41 @@ def candidate_out_year(name):
         stored = arr(sim, "health_insurance_premiums")
         assert np.allclose(stored, premium_input, rtol=1e-6, atol=0.01)
         enrolled = data["enrolled"]
+        if args.light:
+            # Inputs only: how the stored direct input and the reported premium
+            # uprate. pe-us 2.2.1 cannot compute the 2026 Part B premium (its
+            # IRMAA reads 2024 AGI, the full tax cascade) within the shared
+            # memory cap, so the resolver is not computed here.
+            p_w = data["person_weight"]
+            carriers = premium_input > 0
+            inputs = {}
+            for year in (PERIOD, OUT_YEAR):
+                direct = arr(sim, "health_insurance_premiums", year)
+                non_medicare = arr(
+                    sim, "health_insurance_premiums_without_medicare_part_b", year
+                )
+                inputs[str(year)] = {
+                    mask_name: {
+                        "direct": total(direct, p_w, mask),
+                        "reported": total(non_medicare, p_w, mask),
+                    }
+                    for mask_name, mask in (
+                        ("carriers", carriers),
+                        ("non_enrollee_carriers", carriers & ~enrolled),
+                        ("enrollee_carriers", carriers & enrolled),
+                    )
+                }
+            result = {
+                "name": name,
+                "light": True,
+                "candidate": "certified file with this scenario's health_insurance_premiums",
+                "input_uprating": inputs,
+                "seconds": round(time.time() - t0, 1),
+                "peak_rss_mb": peak_rss_mb(),
+            }
+            save_json(args.out_prefix + f".{name}.outyear.json", result)
+            print(args.label, name, "outyear", json.dumps(result, indent=1), flush=True)
+            return
         result = {
             "name": name,
             "candidate": "certified file with this scenario's health_insurance_premiums"

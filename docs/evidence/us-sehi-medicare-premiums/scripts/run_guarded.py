@@ -69,6 +69,27 @@ PLANS = {
         + [sc(n, "--outputs", "state", "--tag", "state") for n in HEAVY[:3]]
         + [["--stage", "combine"]]
     ),
+    # pe-us 2.2.1 needs more than 28 GB for income tax on the full file, so
+    # only deduction-level measures and input uprating run at the pinned engine.
+    "peus221_light": [
+        sc(n, "--light")
+        for n in (
+            "shipped",
+            "reported_where_not_enrolled",
+            "reported_only",
+            "reported_plus_modeled_part_b",
+            "engine_side_standard_part_b",
+            "reported_plus_reported_part_b",
+            "reported_plus_modeled_part_b_where_reported",
+            "reported_plus_all_modeled_medicare",
+            "engine_side",
+        )
+    ]
+    + [
+        ["--stage", "outyear", "--name", n, "--light"]
+        for n in ("shipped", "reported_plus_modeled_part_b")
+    ]
+    + [["--stage", "combine"]],
     # The #10120 run's stages that failed run_all.py's float64-tolerance input
     # check (non-integer premiums), then the candidate out-year files.
     "peus10120_retry": [
