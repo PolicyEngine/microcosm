@@ -904,16 +904,17 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     soi = [spec for spec in specs if spec.family == "irs_soi"]
     assert receipt["counts"] == {
         "historic_table_2_state": 4227,
-        "cd_file_state": 302,
+        "cd_file_state": 304,
         "congressional_district": 21743,
         "congressional_district_by_parent_basis": {
             "historic_table_2": 19181,
-            "cd_file_state_total_bridged": 2562,
+            "cd_file_state_total_bridged": 1708,
+            "cd_file_state_total_national_share": 854,
         },
-        "total": 26272,
+        "total": 26274,
     }
-    assert len(soi) == 26272
-    assert len(specs) == 26272 + 102 + 51
+    assert len(soi) == 26274
+    assert len(specs) == 26274 + 102 + 51
     reconciliation = module.cd_surface.state_parent_reconciliation(soi)
     assert len(reconciliation) == 2189
     assert all(block["ok"] for block in reconciliation)
@@ -947,6 +948,7 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     # The factor band drops these (state, measure) pairs, and only these:
     # four district blocks whose two publications disagree about the state,
     # and the itemized bridge of two at-large states (no district rows).
+    # Interest paid no longer crosses that bridge (microcosm#1038).
     # The district file agrees with itself in every block, to float precision.
     internal = receipt["internal_consistency"]
     assert internal["blocks_checked"] == 2193
@@ -962,9 +964,7 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
         ("36", "rental_royalty_income_amount", "rebase"),
         ("49", "tax_exempt_interest_amount", "rebase"),
         ("46", "charitable_amount", "level_bridge"),
-        ("46", "interest_paid_deduction_amount", "level_bridge"),
         ("56", "charitable_amount", "level_bridge"),
-        ("56", "interest_paid_deduction_amount", "level_bridge"),
     }
     # 43 states carry district rows (51 minus the 8 at-large on the 117th
     # plan), less the band's four blocks.
@@ -980,18 +980,37 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     }
     assert {measure for measure, n in rebase_n.items() if n == 42} == banded
     assert set(rebase_n.values()) == {42, 43}
-    # Every district-file-only state level is bridged, in all 51 states but
-    # the band's two itemized outliers.
+    # Every other district-file-only state level is bridged, in all 51
+    # states but the band's two itemized outliers.
     bridges = receipt["level_bridge_factor_by_measure"]
     assert set(bridges) == set(module.cd_surface.STATE_CD_LEVEL_BRIDGES)
     assert {measure: entry["n"] for measure, entry in bridges.items()} == {
         "charitable_amount": 49,
         "charitable_returns": 51,
-        "interest_paid_deduction_amount": 49,
-        "interest_paid_deduction_returns": 51,
         "qualified_business_income_deduction_amount": 51,
         "qualified_business_income_deduction_returns": 51,
     }
+    # The line 8a mortgage interest rows bind as compiled, shares of Table
+    # 2.1's home mortgage interest control, in all 51 states; the states sum
+    # to that control, which the national surface binds too.
+    assert receipt["national_share_levels_by_measure"] == {
+        "interest_paid_deduction_amount": 51,
+        "interest_paid_deduction_returns": 51,
+    }
+    for measure in (
+        "interest_paid_deduction_amount",
+        "interest_paid_deduction_returns",
+    ):
+        states = [
+            spec for spec in state_rows if spec.metadata["source_measure_id"] == measure
+        ]
+        assert len(states) == 51
+        assert {spec.metadata["variable"] for spec in states} == {
+            "deductible_mortgage_interest"
+        }
+        assert {
+            spec.metadata["soi_share_total_source_record_id"] for spec in states
+        } == {f"irs_soi.ty2023.congressional_district_2022.all_returns.us.{measure}"}
     assert json.dumps(receipt)  # the receipt is manifest-serializable
 
 

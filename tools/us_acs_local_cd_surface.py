@@ -87,11 +87,14 @@ STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
 #: closest amount Historic Table 2 carries. The factor band below applies to
 #: the sibling. The bridge is stamp-invariant: if the stamp is corrected
 #: (#1030) both levels move together.
+#:
+#: A district-file state row the compiler already bound as a share of a
+#: national control (:func:`is_national_share_spec`; the line 8a mortgage
+#: interest rows, microcosm#1038) has neither gap and needs no bridge: its
+#: states sum to the control. Bridging it as well would lift it twice.
 STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
     "charitable_amount": "itemized_deductions_amount",
     "charitable_returns": "return_count",
-    "interest_paid_deduction_amount": "itemized_deductions_amount",
-    "interest_paid_deduction_returns": "return_count",
     "qualified_business_income_deduction_amount": "adjusted_gross_income",
     "qualified_business_income_deduction_returns": "return_count",
 }
@@ -194,6 +197,17 @@ def record_set_spec_id(spec) -> str:
 
 def is_cd_file_spec(spec) -> bool:
     return record_set_spec_id(spec).startswith(CD_FILE_RECORD_SET_SPEC_PREFIX)
+
+
+def is_national_share_spec(spec) -> bool:
+    """Whether the compiler bound this spec as a share of a national control.
+
+    Such a spec names its share's denominator
+    (``soi_share_total_source_record_id``): its value is the control times its
+    share of its file's US row, already on the control's basis.
+    """
+
+    return bool(_metadata(spec).get("soi_share_total_source_record_id"))
 
 
 def soi_materializer_semantics(spec) -> tuple:
@@ -462,13 +476,27 @@ def state_cd_soi_surface(
     }
 
     # One basis for every state level: a concept Historic Table 2 lacks keeps
-    # the district file's state row, scaled by a sibling's two levels.
+    # the district file's state row, scaled by a sibling's two levels, unless
+    # the compiler already bound it as a share of a national control.
     bridged: dict[str, object] = {}
     bridge_factors: dict[str, list[float]] = defaultdict(list)
+    national_share_levels: Counter = Counter()
     for key, spec in sorted(cd_file_state_by_key.items()):
         state, identity = key
         measure = identity[0]
         if key in ht2_by_key or measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
+            continue
+        if is_national_share_spec(spec):
+            metadata = dict(spec.metadata)
+            metadata.update(
+                {
+                    "state_cd_vintage_rule": STATE_CD_VINTAGE_RULE,
+                    "state_cd_cd_file_value": repr(float(spec.value)),
+                    "state_cd_level_basis": "national_control_share",
+                }
+            )
+            bridged[spec.name] = replace(spec, metadata=metadata)
+            national_share_levels[measure] += 1
             continue
         sibling = level_bridges.get(measure)
         if sibling is None:
@@ -574,6 +602,8 @@ def state_cd_soi_surface(
                 for child in children:
                     drop(child, f"level_bridge_out_of_band:{identity[0]}")
                 continue
+            if is_national_share_spec(parent):
+                basis = "cd_file_state_total_national_share"
             parent = bridged[parent.name]
             kept_cd_file_parents.add(parent.name)
         if soi_materializer_semantics(parent) != child_semantics:
@@ -690,7 +720,9 @@ def state_cd_soi_surface(
             "that parent. Concepts only the district file carries keep its "
             "own state row as their parent, lifted onto the Historic Table 2 "
             "basis by a sibling concept's ratio of the two files' state "
-            "totals in the same state (STATE_CD_LEVEL_BRIDGES)."
+            "totals in the same state (STATE_CD_LEVEL_BRIDGES), unless the "
+            "compiler bound that row as a share of a national control, "
+            "which is its basis already."
         ),
         "counts": {
             "historic_table_2_state": len(ht2_state),
@@ -723,6 +755,7 @@ def state_cd_soi_surface(
             measure: _factor_summary(values)
             for measure, values in sorted(bridge_factors.items())
         },
+        "national_share_levels_by_measure": dict(sorted(national_share_levels.items())),
         "rebase_factor_by_measure": {
             measure: _factor_summary(values)
             for measure, values in sorted(factors_by_measure.items())

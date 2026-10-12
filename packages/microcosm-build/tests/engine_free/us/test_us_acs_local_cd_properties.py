@@ -152,7 +152,13 @@ _MEASURES = {
     "return_count": ("count", "sum"),
     "wages_salaries_amount": ("employment_income", "sum"),
     "charitable_amount": ("charitable_deduction", "sum"),
+    "interest_paid_deduction_amount": ("deductible_mortgage_interest", "sum"),
 }
+#: District-file-only measures the compiler binds as shares of a national
+#: control (the line 8a mortgage interest rows, microcosm#1038): their
+#: district-file specs name the share's denominator, and Historic Table 2
+#: never carries them.
+_NATIONAL_SHARE_MEASURES = frozenset({"interest_paid_deduction_amount"})
 
 
 def _soi_spec(name, measure, value, *, level, record_set, state, district=None):
@@ -171,6 +177,8 @@ def _soi_spec(name, measure, value, *, level, record_set, state, district=None):
     }
     if district is not None:
         metadata["congressional_district_geoid"] = district
+    if measure in _NATIONAL_SHARE_MEASURES and record_set == _CD_FILE:
+        metadata["soi_share_total_source_record_id"] = f"cdfile.us.{measure}"
     return TargetSpec(
         name=name,
         entity="household",
@@ -215,7 +223,9 @@ def _state_cd_inputs(draw):
         # file has no sub-state rows for it, whatever the current plan says.
         layout[state] = (districts, len(source) == 1)
         for measure in measures:
-            if measure == "return_count" or draw(st.booleans()):
+            if measure == "return_count" or (
+                measure not in _NATIONAL_SHARE_MEASURES and draw(st.booleans())
+            ):
                 specs.append(
                     _soi_spec(
                         f"ht2.{state}.{measure}",
@@ -256,7 +266,12 @@ def _state_cd_inputs(draw):
     return [specs[i] for i in order], pd.DataFrame(crosswalk), layout
 
 
-_BRIDGES = {measure: "return_count" for measure in _MEASURES}
+#: A national-share measure has no bridge: the surface must not need one.
+_BRIDGES = {
+    measure: "return_count"
+    for measure in _MEASURES
+    if measure not in _NATIONAL_SHARE_MEASURES
+}
 
 
 @_SETTINGS
@@ -302,7 +317,19 @@ def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
         expected_parent = ht2 if ht2 in original else f"cdfile.{state}_total.{measure}"
         assert spec.metadata["state_cd_parent_target_name"] == expected_parent
         assert expected_parent in kept
-        if expected_parent != ht2:
+        if measure in _NATIONAL_SHARE_MEASURES:
+            # Already on its national control's basis: bound as compiled, its
+            # own parent, never bridged a second time.
+            assert kept[expected_parent].value == original[expected_parent].value
+            assert (
+                kept[expected_parent].metadata["state_cd_level_basis"]
+                == "national_control_share"
+            )
+            assert (
+                spec.metadata["state_cd_parent_basis"]
+                == "cd_file_state_total_national_share"
+            )
+        elif expected_parent != ht2:
             # A district-file-only state level is lifted onto the Historic
             # Table 2 basis by its bridge sibling's two levels in that state.
             bridge = (
@@ -810,6 +837,102 @@ def test_a_bridge_through_an_out_of_band_sibling_drops_its_state_and_districts()
     assert not _bound(surface, "14", "charitable_amount", "congressional_district")
     # At-large states keep their bridged state rows; they have no districts.
     assert _bound(surface, "20", "charitable_amount", "state")
+
+
+def test_a_national_share_level_needs_no_bridge_and_survives_its_band() -> None:
+    """A district-file-only row bound as a national share is its own parent.
+
+    On the pinned feed the itemized bridge dropped Wyoming's and South
+    Dakota's interest-paid rows because their charitable deductions differ
+    between the two files. Once the compiler binds the line 8a rows as shares
+    of Table 2.1's control, they need no bridge, so a sibling's band verdict
+    cannot drop them, and they bind at their compiled value.
+    """
+
+    measure = "interest_paid_deduction_amount"
+    specs, crosswalk = _bridge_world(
+        {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0}, {"20": 2.0}
+    )
+    for state, districts in (
+        ("10", [f"{10}01", f"{10}02"]),
+        ("14", [f"{14}01", f"{14}02"]),
+        ("20", []),  # at-large: a state row only
+    ):
+        specs.append(
+            _soi_spec(
+                f"cdfile.{state}_total.{measure}",
+                measure,
+                50.0,
+                level="state",
+                record_set=_CD_FILE,
+                state=state,
+            )
+        )
+        for district, share in zip(
+            districts, (0.3, 0.7)[: len(districts)], strict=True
+        ):
+            specs.append(
+                _soi_spec(
+                    f"cdfile.{district}.{measure}",
+                    measure,
+                    50.0 * share,
+                    level="congressional_district",
+                    record_set=_CD_FILE,
+                    state=state,
+                    district=district,
+                )
+            )
+    surface = _CD.state_cd_soi_surface(
+        specs,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+        level_bridges={"charitable_amount": "return_count"},
+    )
+    by_name = {spec.name: spec for spec in surface.specs}
+    # The bridged sibling concept is distrusted in 14 and in at-large 20 ...
+    assert not _bound(surface, "14", "charitable_amount", "state")
+    assert not _bound(surface, "20", "charitable_amount", "state")
+    # ... while the national-share concept binds everywhere, as compiled.
+    for state in ("10", "14", "20"):
+        (name,) = _bound(surface, state, measure, "state")
+        assert by_name[name].value == 50.0
+        assert by_name[name].metadata["state_cd_level_basis"] == (
+            "national_control_share"
+        )
+    for state in ("10", "14"):
+        children = _bound(surface, state, measure, "congressional_district")
+        assert len(children) == 2
+        assert math.fsum(by_name[name].value for name in children) == pytest.approx(
+            50.0, rel=1e-12
+        )
+        assert {
+            by_name[name].metadata["state_cd_parent_basis"] for name in children
+        } == {"cd_file_state_total_national_share"}
+    assert not [
+        row
+        for row in surface.receipt["factor_band"]["out_of_band"]
+        if row["measure"] == measure
+    ]
+    assert surface.receipt["national_share_levels_by_measure"] == {measure: 3}
+    assert measure not in surface.receipt["level_bridge_factor_by_measure"]
+
+
+def test_a_district_file_only_level_with_neither_bridge_nor_share_is_refused() -> None:
+    """Without a national share declaration the level still needs a bridge.
+
+    So an interest-paid row the compiler failed to rebase could not slip onto
+    the surface unbridged: ``STATE_CD_LEVEL_BRIDGES`` no longer lists it.
+    """
+
+    assert "interest_paid_deduction_amount" not in _CD.STATE_CD_LEVEL_BRIDGES
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0}, {})
+    with pytest.raises(ValueError, match="has no level bridge"):
+        _CD.state_cd_soi_surface(
+            specs,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={},
+        )
 
 
 def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> None:
