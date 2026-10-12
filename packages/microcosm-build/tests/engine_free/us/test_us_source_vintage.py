@@ -694,13 +694,15 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
     )
 
     @st.composite
-    def cases(draw, well_formed):
-        # well_formed: every restamped spec that is rebased is a valid share,
-        # so the call is admitted and the admitted-share invariants get
-        # exercised; otherwise shares are free and most calls refuse.
+    def cases(draw, mode):
+        # mode "free" draws shares at random, so most calls with a rebased
+        # restamp refuse. "well_formed" rebases a restamped row only as a valid
+        # share, so the call is admitted and the admitted-share invariants get
+        # exercised. "near_miss" names a total whose vintage differs from the
+        # row's in exactly one of package, stamp and data year.
         corrections = {}
-        # A small pool per case makes same-vintage totals common and keeps
-        # mixed packages, stamps and data years among them.
+        # A small pool per case makes same-vintage totals and near misses
+        # common, and keeps mixed packages, stamps and data years among them.
         pool = draw(st.lists(vintages, min_size=1, max_size=3))
         for record_id in draw(st.sets(st.sampled_from(record_ids))):
             package_id, stamped, data = draw(st.sampled_from(pool))
@@ -721,16 +723,54 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 )
             )
 
-        def same_vintage_totals(record_id):
-            # Other corrections of the row's own package, stamp and data year.
+        def totals_differing_in(record_id, count):
+            # Other corrections whose vintage differs from the row's in
+            # exactly ``count`` of package, stamp and data year.
             backing = corrections.get(record_id)
             if backing is None:
                 return []
             return [
                 other
                 for other, correction in corrections.items()
-                if other != record_id and _vintage(correction) == _vintage(backing)
+                if other != record_id
+                and sum(
+                    mine != theirs
+                    for mine, theirs in zip(
+                        _vintage(backing), _vintage(correction), strict=True
+                    )
+                )
+                == count
             ]
+
+        def share(record_id):
+            # The share keys of a rebase, or None to leave the row unrebased.
+            correction = corrections.get(record_id)
+            if mode == "free" or correction is None:
+                keys = {}
+                if draw(st.integers(0, 4)):
+                    keys["uprating_from_period"] = str(period_near(record_id))
+                if draw(st.integers(0, 4)):
+                    keys["soi_share_total_source_record_id"] = draw(
+                        st.sampled_from(
+                            [
+                                *totals_differing_in(record_id, 0),
+                                *record_ids,
+                                "irs_soi.ty2023.truthful",
+                            ]
+                        )
+                    )
+                return keys
+            totals = totals_differing_in(record_id, 0 if mode == "well_formed" else 1)
+            if not totals:
+                return None
+            return {
+                "soi_share_total_source_record_id": draw(st.sampled_from(totals)),
+                "uprating_from_period": str(
+                    draw(
+                        st.sampled_from([correction.stamped_year, correction.data_year])
+                    )
+                ),
+            }
 
         specs = []
         for index in range(draw(st.integers(0, 8))):
@@ -754,35 +794,11 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
                 metadata["uprating_to_period"] = metadata[
                     "uprating_index_source_period"
                 ]
-                same = same_vintage_totals(record_id)
-                restamped = record_id in corrections
-                if draw(st.booleans()) and not (well_formed and restamped and not same):
-                    metadata["uprating_factor"] = "0.5"
-                    if same and well_formed:
-                        # A well-formed share: a same-vintage total, read at
-                        # the stamp or the data year.
-                        correction = corrections[record_id]
-                        metadata["soi_share_total_source_record_id"] = draw(
-                            st.sampled_from(same)
-                        )
-                        metadata["uprating_from_period"] = str(
-                            draw(
-                                st.sampled_from(
-                                    [correction.stamped_year, correction.data_year]
-                                )
-                            )
-                        )
-                    else:
-                        if draw(st.integers(0, 4)):
-                            metadata["uprating_from_period"] = str(
-                                period_near(record_id)
-                            )
-                        if draw(st.integers(0, 4)):
-                            metadata["soi_share_total_source_record_id"] = draw(
-                                st.sampled_from(
-                                    [*same, *record_ids, "irs_soi.ty2023.truthful"]
-                                )
-                            )
+                if draw(st.booleans()):
+                    keys = share(record_id)
+                    if keys is not None:
+                        metadata["uprating_factor"] = "0.5"
+                        metadata.update(keys)
             specs.append(
                 _spec(
                     f"spec{index}",
@@ -823,7 +839,7 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
         )
 
     @settings(max_examples=500, deadline=None)
-    @given(st.one_of(cases(well_formed=False), cases(well_formed=True)))
+    @given(st.sampled_from(["free", "well_formed", "near_miss"]).flatmap(cases))
     def check(case):
         specs, corrections = case
         registry = TargetRegistry(specs, country="us")
