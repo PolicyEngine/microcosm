@@ -273,8 +273,9 @@ congressional-district capital-gains shares that microcosm#1040 proposes,
 x0.761. Any other rebased restamp refuses the compile: one with no named
 total, a truthful total, or a total from another package, stamp or data year.
 
-The stamp is kept in `source_vintage_stamped_period`. Values and target names
-do not change. Two readings still see the stamp, because moving them would
+The stamp is kept in `source_vintage_stamped_period` (and, for a share's
+reading period, `uprating_from_period_vintage_stamped_period`). Values and
+target names do not change. Two readings still see the stamp, because moving them would
 change which fact wins:
 - **Latest-vintage selection.** The compile refuses where a restamp would
   outrank a truthful fact dated after its data year.
