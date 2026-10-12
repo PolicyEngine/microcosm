@@ -895,9 +895,13 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
-    version from f96be9f41781 by binding the Part B premium target to
+    38c1db8880da, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1228 moved the
+    version from e1f9906bf0e0 (full f5bd921d6b21 -> 9f6c65fe8734) by binding
+    the 312 Historic Table 2 business, partnership and rental rows (3,294 on
+    full with the district file's) to signed net-income-(less-loss)
+    concepts; no value changed. microcosm#1206 moved it from f96be9f41781 by
+    binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
@@ -908,7 +912,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "e1f9906bf0e0"
+    assert surface.version == "38c1db8880da"
     chip = [
         spec
         for spec in surface.specs
@@ -933,6 +937,294 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+# microcosm#1228: the measure ids Historic Table 2 and the district file use
+# for their signed "net income (less loss)" columns, the concept each binds and
+# the return line it reports.
+_NET_INCOME_LESS_LOSS_CONCEPTS = {
+    "schedule_c_income": (
+        "business_net_income_less_loss",
+        "form_1040_schedule_1_line_3_net_income_less_loss",
+    ),
+    "partnership_scorp_income": (
+        "partnership_and_s_corp_net_income_less_loss",
+        "schedule_e_line_32_net_income_less_loss",
+    ),
+    "rental_royalty_income": (
+        "rent_and_royalty_net_income_less_loss",
+        "schedule_e_line_26_net_income_less_loss",
+    ),
+}
+_NET_INCOME_LESS_LOSS_MEASURES = {
+    f"{stem}_{kind}": (concept, source_concept, kind)
+    for stem, (concept, source_concept) in _NET_INCOME_LESS_LOSS_CONCEPTS.items()
+    for kind in ("amount", "returns")
+}
+_ONE_SIDED_INCOME_LEGS = frozenset(
+    {
+        "business_net_profits",
+        "business_net_losses",
+        "partnership_and_s_corp_income",
+        "partnership_and_s_corp_losses",
+        "rent_and_royalty_net_income",
+        "rent_and_royalty_net_losses",
+    }
+)
+
+
+def _net_income_less_loss_fact(
+    measure_id: str,
+    value: float,
+    *,
+    record_set_id: str = "irs_soi.ty2022.historic_table_2.us",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    period: int = 2022,
+) -> dict[str, object]:
+    return _soi_capital_gains_fact(
+        period,
+        source_record_id=f"{record_set_id}.all.{measure_id}",
+        measure_id=measure_id,
+        layout_record_set_id=record_set_id,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        value=value,
+    )
+
+
+def _assert_binds_net_income_less_loss(spec, measure_id: str) -> None:
+    concept, source_concept, kind = _NET_INCOME_LESS_LOSS_MEASURES[measure_id]
+    metadata = spec.metadata
+    assert metadata["source_variable"] == concept
+    assert metadata["variable"] == concept
+    assert metadata["soi_source_concept"] == source_concept
+    assert metadata["base_variable"] == fiscal_targets.SOI_VARIABLE_MAP[concept]
+    assert metadata["measure_mode"] == ("indicator_sum" if kind == "returns" else "sum")
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.category.id == f"irs_soi.{concept}"
+
+
+def test_net_income_less_loss_rows_bind_signed_concepts() -> None:
+    """Historic Table 2 US and state rows and district-file rows of all six
+    ids bind the signed concept of their line, at their published value
+    (microcosm#1228). A district row of a net loss stays negative."""
+    facts = [*packaged_reference_facts()]
+    expected: dict[str, tuple[str, float]] = {}
+    for index, measure_id in enumerate(sorted(_NET_INCOME_LESS_LOSS_MEASURES)):
+        rows = (
+            ("irs_soi.ty2022.historic_table_2.us", "country", "0100000US"),
+            ("irs_soi.ty2022.historic_table_2.state_broad.ca", "state", "0400000US06"),
+        )
+        for record_set_id, level, geography_id in rows:
+            value = 1_000.0 + index
+            fact = _net_income_less_loss_fact(
+                measure_id,
+                value,
+                record_set_id=record_set_id,
+                geography_level=level,
+                geography_id=geography_id,
+            )
+            facts.append(fact)
+            expected[fact["lineage"]["source_record_id"]] = (measure_id, value)
+        district_value = -250.0 if measure_id.endswith("_amount") else 75.0
+        district = _soi_congressional_district_fact(measure_id, district_value)
+        facts.append(district)
+        expected[district["lineage"]["source_record_id"]] = (
+            measure_id,
+            district_value,
+        )
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    by_record = {
+        spec.metadata["ledger_source_record_id"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") in _NET_INCOME_LESS_LOSS_MEASURES
+    }
+    assert set(by_record) == set(expected)
+    for source_record_id, (measure_id, value) in expected.items():
+        spec = by_record[source_record_id]
+        _assert_binds_net_income_less_loss(spec, measure_id)
+        assert spec.value == value
+        assert spec.signed is (value < 0)
+    assert not [
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("source_variable") in _ONE_SIDED_INCOME_LEGS
+    ]
+
+
+@pytest.mark.parametrize(
+    "record_set_id",
+    [
+        "irs_soi.ty2023.table_1_4",
+        "irs_soi.ty2023.table_1_1",
+        "irs_soi.ty2023.itemized_all_returns",
+        "irs_soi.ty2022.zip_code.all_returns",
+        "irs_soi.historic_table_3",
+    ],
+)
+def test_net_income_less_loss_ids_refuse_unreviewed_families(
+    record_set_id: str,
+) -> None:
+    """Table 1.4 splits these lines into one-sided columns, so a
+    net-income-(less-loss) id from it, or from any family nobody reviewed,
+    refuses the compile instead of binding a signed concept."""
+    facts = [
+        *packaged_reference_facts(),
+        _net_income_less_loss_fact(
+            "schedule_c_income_returns", 21_969_832.0, record_set_id=record_set_id
+        ),
+    ]
+
+    with pytest.raises(
+        fiscal_targets.UnregisteredSoiNetIncomeLessLossFamilyError,
+        match=re.escape("schedule_c_income_returns"),
+    ):
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+
+
+def test_soi_source_family_strips_period_and_district_vintage() -> None:
+    family = fiscal_targets._soi_source_family
+    assert family("irs_soi.ty2023.table_1_4") == "table_1_4"
+    assert family("irs_soi.ty2022.historic_table_2.state_broad.ca") == (
+        "historic_table_2"
+    )
+    assert family("irs_soi.ty2022.historic_table_2.us") == "historic_table_2"
+    assert family("irs_soi.historic_table_2.us") == "historic_table_2"
+    assert family("irs_soi.ty2023.congressional_district_2022.all_returns") == (
+        "congressional_district"
+    )
+    assert family("irs_soi.ty2026.congressional_district_2024.all_returns") == (
+        "congressional_district"
+    )
+    assert family("irs_soi") == ""
+    assert family("census_acs.acs1_2024.s0101") == ""
+
+
+def test_net_income_less_loss_binding_depends_only_on_the_family() -> None:
+    """Property (microcosm#1228): for any id, tax year and record-set shape,
+    a fact binds the signed concept of its line exactly when its record set
+    is Historic Table 2 or the district file, and refuses otherwise; the
+    count/amount split follows the id."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    families = st.sampled_from(
+        [
+            "historic_table_2",
+            "congressional_district_2022",
+            "congressional_district_2024",
+            "table_1_4",
+            "table_1_1",
+            "table_2_1",
+            "itemized_all_returns",
+            "zip_code",
+            "county",
+        ]
+    )
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        measure_id=st.sampled_from(sorted(_NET_INCOME_LESS_LOSS_MEASURES)),
+        period=st.integers(min_value=2010, max_value=2035),
+        family=families,
+        tail=st.sampled_from(["", ".us", ".state_broad.ny", ".all_returns"]),
+        dated=st.booleans(),
+        value=st.floats(min_value=-1e12, max_value=1e12, allow_nan=False),
+    )
+    def check(measure_id, period, family, tail, dated, value) -> None:
+        record_set_id = (
+            f"irs_soi.ty{period}.{family}{tail}" if dated else f"irs_soi.{family}{tail}"
+        )
+        fact = _net_income_less_loss_fact(
+            measure_id, value, record_set_id=record_set_id, period=period
+        )
+        registered = family == "historic_table_2" or family.startswith(
+            "congressional_district"
+        )
+        if not registered:
+            with pytest.raises(
+                fiscal_targets.UnregisteredSoiNetIncomeLessLossFamilyError
+            ):
+                fiscal_targets._soi_reference_from_fact(fact, target_period=period)
+            return
+        reference = fiscal_targets._soi_reference_from_fact(fact, target_period=period)
+        assert reference is not None
+        concept, source_concept, kind = _NET_INCOME_LESS_LOSS_MEASURES[measure_id]
+        assert reference.metadata["source_variable"] == concept
+        assert reference.metadata["soi_source_concept"] == source_concept
+        assert reference.metadata["measure_mode"] == (
+            "indicator_sum" if kind == "returns" else "sum"
+        )
+        assert concept in fiscal_targets.SOI_NET_INCOME_LESS_LOSS_VARIABLES
+
+    check()
+
+
+def test_pinned_feed_net_income_less_loss_rows_bind_signed_concepts(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Pinned-feed invariant (microcosm#1228): every business, partnership
+    and rental row binds the signed concept of its line, only those rows bind
+    a signed concept, every one comes from Historic Table 2 or the district
+    file, and no row binds a one-sided Table 1.4 leg. national_state carries
+    the 6 ids x (51 states + the US) = 312 Historic Table 2 rows; full adds
+    the district file's. On every one of these families the 51 state rows sum
+    to at most the national row."""
+    registry, surface, _ = pinned_feed_national_state_surface
+
+    rows = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") in _NET_INCOME_LESS_LOSS_MEASURES
+    ]
+    for spec in rows:
+        _assert_binds_net_income_less_loss(spec, spec.metadata["source_measure_id"])
+        assert fiscal_targets._soi_source_family(
+            spec.metadata["ledger_layout_record_set_id"]
+        ) in {"historic_table_2", "congressional_district"}
+    assert {
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("source_variable")
+        in fiscal_targets.SOI_NET_INCOME_LESS_LOSS_VARIABLES
+    } == {spec.name for spec in rows}
+    assert not [
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("source_variable") in _ONE_SIDED_INCOME_LEGS
+    ]
+
+    surface_rows = [
+        spec
+        for spec in surface.specs
+        if spec.metadata.get("source_measure_id") in _NET_INCOME_LESS_LOSS_MEASURES
+    ]
+    assert len(surface_rows) == 312
+    assert {
+        fiscal_targets._soi_source_family(spec.metadata["ledger_layout_record_set_id"])
+        for spec in surface_rows
+    } == {"historic_table_2"}
+    for measure_id in _NET_INCOME_LESS_LOSS_MEASURES:
+        states = [
+            spec.value
+            for spec in surface_rows
+            if spec.metadata["source_measure_id"] == measure_id
+            and spec.metadata.get("ledger_geography_level") == "state"
+        ]
+        (national,) = [
+            spec.value
+            for spec in surface_rows
+            if spec.metadata["source_measure_id"] == measure_id
+            and spec.metadata.get("ledger_geography_level") == "country"
+        ]
+        assert len(states) == 51
+        assert math.fsum(states) <= national
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
