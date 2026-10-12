@@ -2712,6 +2712,33 @@ def _consumption_basis_gate(
             "calendar_year" if bridged else "fiscal_year",
             uprating.get("to_period"),
         )
+        # The recorded factor must be the bridge's: after / base, where base is
+        # the declared mix of the starting and following years (the #1167
+        # re-review's nit).
+        off_bridge = []
+        for column in UK_LCFS_DIARY_PRICE_COLUMNS:
+            entry = columns.get(column)
+            if not isinstance(entry, Mapping):
+                continue
+            after, base, factor = (
+                entry.get("after"),
+                entry.get("base"),
+                entry.get("factor"),
+            )
+            if not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool)
+                for v in (after, base, factor)
+            ):
+                continue
+            if base <= 0 or abs(
+                float(factor) - float(after) / float(base)
+            ) > 1e-9 * max(1.0, abs(float(factor))):
+                off_bridge.append(column)
+        if off_bridge:
+            failures.append(
+                f"{stage}: the donor uprating's recorded factor is not after / base "
+                f"for {off_bridge}."
+            )
         if full_step:
             failures.append(
                 f"{stage}: the donor uprating does not carry {full_step} from "

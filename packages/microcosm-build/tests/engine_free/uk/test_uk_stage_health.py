@@ -2499,3 +2499,55 @@ def test_property_components_gate_caps_a_reported_allowance_at_two_weights() -> 
     assert not _passed(failed)
     assert "rounding allowance 19000.0" in failed.failures[0]
     assert failed.details["band_errors"][2]["allowance_weight"] == 19_000.0
+
+
+def test_consumption_basis_gate_checks_the_recorded_bridge_factor() -> None:
+    # The receipt records before, after, base and factor for each bridged
+    # column; the gate holds factor to after / base (the #1167 re-review's nit).
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_DIARY_PRICE_COLUMNS,
+    )
+
+    parameters = _gate_parameters("uk_stage_lcfs_consumption_basis")
+    columns = {
+        column: {
+            "basis": "engine_parameter",
+            "from_window": "fiscal_year",
+            "before": 1.5,
+            "after": 1.6,
+            "base": 1.525,
+            "factor": 1.6 / 1.525,
+        }
+        for column in UK_LCFS_DIARY_PRICE_COLUMNS
+    }
+    evidence = {
+        "stage": "lcfs_consumption",
+        "donor_uprating": {
+            "from_period": 2023,
+            "to_period": 2024,
+            "fiscal_year_bridge": {"start_year_weight": 0.75, "next_year_weight": 0.25},
+            "columns": columns,
+        },
+        "energy_pricing": {
+            "period_type": "calendar_year",
+            "period_value": 2024,
+            "level": {"period_type": "calendar_year", "period_value": 2024},
+        },
+        "bus_pricing": {"price_year": 2024},
+        "road_fuel_level": {"period_type": "calendar_year", "period_value": 2024},
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence=ev,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters=parameters,
+        )
+
+    assert run(evidence).passed
+    first = UK_LCFS_DIARY_PRICE_COLUMNS[0]
+    evidence["donor_uprating"]["columns"][first]["factor"] = 1.6 / 1.5
+    result = run(evidence)
+    assert not result.passed
+    assert any("not after / base" in f and first in f for f in result.failures)

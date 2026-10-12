@@ -14933,7 +14933,7 @@
         "policyengine": {
           "metric_name": "obr/fuel_duties_cars",
           "value_variable": "fuel_duty",
-          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10). Bound at FY2024-25 (OBR label 2024), the base data's fiscal year, held to the calibration period like the HMRC CGT rows: the vehicle-type release is a single April 2024 vintage and its FY2025-26 figure is a projection the pipeline does not adopt (ruling 2026-09-11: fiscal-year sources bind FY2024-25 or CY2025, never a later fiscal year)."
+          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10). Measured at FY2024-25 (OBR label 2024), the base data's fiscal year, held to the calibration period like the HMRC CGT rows, and since microcosm#1113 held out of the objective as a reviewed measure exclusion (the OBR cars receipts include business-paid car fuel), still measured on every evaluation: the vehicle-type release is a single April 2024 vintage and its FY2025-26 figure is a projection the pipeline does not adopt (ruling 2026-09-11: fiscal-year sources bind FY2024-25 or CY2025, never a later fiscal year)."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties_cars",
@@ -15016,7 +15016,7 @@
         "policyengine": {
           "metric_name": "ons/household_energy_expenditure",
           "value_variable": "domestic_energy_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); retained for registry parity."
+          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
         },
         "axiom": {
           "metric_name": "ons/household_energy_expenditure",
