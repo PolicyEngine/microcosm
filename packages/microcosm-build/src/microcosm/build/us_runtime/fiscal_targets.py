@@ -2810,23 +2810,25 @@ def _refuse_restamps_that_shadow_newer_vintages(
     A truthful fact dated from the year after the restamp's data year up to
     its stamp is shadowed; only candidates eligible at the target period
     count. None exists on the pinned feed: the ty2020 W-2 twins sit at the
-    data year, not after it.
+    data year, not after it. State AGI bands carry their period in the
+    selection key and compete as whole vintages per state and measure
+    (microcosm#940), so they are compared at that grain.
     """
 
     eligible = [
-        candidate
-        for candidate in candidates
-        if _not_after_target_period(candidate[1], target_period_key)
+        (_restamp_shadow_key(key, reference), period_key, source_record_id)
+        for key, period_key, _, source_record_id, reference in candidates
+        if _not_after_target_period(period_key, target_period_key)
     ]
     restamped_keys: dict[tuple[str, ...], list[SourceVintageCorrection]] = {}
-    for key, _, _, source_record_id, _ in eligible:
+    for key, _, source_record_id in eligible:
         restamp = restamps.get(source_record_id)
         if restamp is not None:
             restamped_keys.setdefault(key, []).append(restamp)
     if not restamped_keys:
         return
     conflicts: list[str] = []
-    for key, period_key, _, source_record_id, _ in eligible:
+    for key, period_key, source_record_id in eligible:
         if source_record_id in restamps or not period_key[0]:
             continue
         year = period_key[1] // 100
@@ -2838,6 +2840,21 @@ def _refuse_restamps_that_shadow_newer_vintages(
                 )
     if conflicts:
         raise RestampShadowsNewerVintageError(tuple(sorted(conflicts)))
+
+
+def _restamp_shadow_key(key: tuple[str, ...], reference: object) -> tuple[str, ...]:
+    """The key two candidates must share for one to shadow the other.
+
+    Latest-vintage selection compares candidates per key. A state AGI band's
+    key ends in its period, and :func:`_with_one_state_agi_band_vintage` then
+    keeps one whole vintage per state and measure, so a restamped band can
+    displace a truthful band of another period and other bounds.
+    """
+
+    metadata = getattr(reference, "metadata", None) or {}
+    if metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true":
+        return ("state_agi_band", *_state_agi_band_key(metadata))
+    return key
 
 
 def _exclusion_vintage_bypasses(

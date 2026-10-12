@@ -4863,6 +4863,46 @@ def test_age_targets_reads_a_restamped_w2_tips_amount_at_its_data_year() -> None
     )
 
 
+def test_restamp_shadow_guard_compares_state_agi_bands_per_state_and_measure() -> None:
+    """State AGI bands keep their period in the selection key and compete as
+    whole vintages per state and measure (microcosm#940), so the guard compares
+    them at that grain: a band vintage restamped 2024 from 2022 data shadows a
+    truthful 2023 vintage of the same state and measure, whatever the bounds.
+    Another state, or an unflagged row with a period-free key, is untouched."""
+    from types import SimpleNamespace
+
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampShadowsNewerVintageError,
+        SourceVintageCorrection,
+    )
+
+    def band(state_fips: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            metadata={
+                fiscal_targets._SOI_STATE_AGI_BAND_REBASE_FLAG: "true",
+                "state_fips": state_fips,
+                "source_measure_id": "return_count",
+            }
+        )
+
+    restamps = {"restamped": SourceVintageCorrection("restamped", "pkg", 2024, 2022)}
+    restamped = (("ca", "500k_plus", "2024"), (1, 202499, "2024"), 1.0, "restamped")
+    truthful = (("ca", "1m_plus", "2023"), (1, 202399, "2023"), 1.0, "truthful")
+    target = (1, 202499, "2024")
+    with pytest.raises(RestampShadowsNewerVintageError, match="truthful"):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            [(*restamped, band("06")), (*truthful, band("06"))],
+            restamps,
+            target_period_key=target,
+        )
+    for other in (band("36"), None):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            [(*restamped, band("06")), (*truthful, other)],
+            restamps,
+            target_period_key=target,
+        )
+
+
 def test_compile_refuses_a_restamp_that_would_outrank_newer_data() -> None:
     # A truthful TY2021 tips fact would lose latest-vintage selection to the
     # TY2020 cell stamped 2023; the compile refuses rather than drop it.
