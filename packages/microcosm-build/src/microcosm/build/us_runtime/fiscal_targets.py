@@ -60,7 +60,9 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
+    "SOI_NET_INCOME_LESS_LOSS_VARIABLES",
     "SOI_VARIABLE_MAP",
+    "UnregisteredSoiNetIncomeLessLossFamilyError",
     "US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
@@ -128,15 +130,18 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "medical_dental_expense_amount": "medical_expense_deduction",
     "net_capital_gains_amount": "capital_gains_gross",
     "ordinary_dividends_amount": "ordinary_dividends",
-    "partnership_scorp_income_amount": "partnership_and_s_corp_income",
+    # Historic Table 2 and the congressional-district file publish these three
+    # as signed "net income (less loss)" columns (microcosm#1228); see
+    # SOI_NET_INCOME_LESS_LOSS_VARIABLES.
+    "partnership_scorp_income_amount": "partnership_and_s_corp_net_income_less_loss",
     "premium_tax_credit_amount": "assigned_aca_ptc",
     "qualified_business_income_deduction_amount": (
         "qualified_business_income_deduction"
     ),
     "qualified_dividends_amount": "qualified_dividends",
     "real_estate_taxes_amount": "real_estate_taxes",
-    "rental_royalty_income_amount": "rent_and_royalty_net_income",
-    "schedule_c_income_amount": "business_net_profits",
+    "rental_royalty_income_amount": "rent_and_royalty_net_income_less_loss",
+    "schedule_c_income_amount": "business_net_income_less_loss",
     "tax_exempt_interest_amount": "tax_exempt_interest_income",
     "tax_filer_individual_count": "tax_filer_individual_count",
     "taxable_income_amount": "taxable_income",
@@ -212,16 +217,17 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "medical_dental_expense_returns": "medical_expense_deduction",
     "net_capital_gains_returns": "capital_gains_gross",
     "ordinary_dividends_returns": "ordinary_dividends",
-    "partnership_scorp_income_returns": "partnership_and_s_corp_income",
+    # Every return with a net income or a net loss on the line (microcosm#1228).
+    "partnership_scorp_income_returns": "partnership_and_s_corp_net_income_less_loss",
     "premium_tax_credit_returns": "assigned_aca_ptc",
     "qualified_business_income_deduction_returns": (
         "qualified_business_income_deduction"
     ),
     "qualified_dividends_returns": "qualified_dividends",
     "real_estate_taxes_claims": "real_estate_taxes",
-    "rental_royalty_income_returns": "rent_and_royalty_net_income",
+    "rental_royalty_income_returns": "rent_and_royalty_net_income_less_loss",
     "return_count": "count",
-    "schedule_c_income_returns": "business_net_profits",
+    "schedule_c_income_returns": "business_net_income_less_loss",
     "tax_exempt_interest_returns": "tax_exempt_interest_income",
     "taxable_income_returns": "taxable_income",
     "taxable_interest_returns": "taxable_interest_income",
@@ -253,8 +259,15 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
 
 SOI_VARIABLE_MAP: dict[str, str] = {
     "adjusted_gross_income": "adjusted_gross_income",
-    "business_net_profits": "self_employment_income",
-    "business_net_losses": "self_employment_income",
+    # Schedule C income is all of a person's businesses, SSTB or not
+    # (Schedule 1 line 3). The frame moves an SSTB business's whole amount to
+    # sstb_self_employment_income (us_runtime/qbi_inputs.py), so only
+    # total_self_employment_income carries it all (microcosm#1228). The
+    # profit/loss legs are reserved for Table 1.4's "Business or profession"
+    # net income and net loss columns, which no pinned fact carries yet.
+    "business_net_income_less_loss": "total_self_employment_income",
+    "business_net_profits": "total_self_employment_income",
+    "business_net_losses": "total_self_employment_income",
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
@@ -290,12 +303,20 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    "partnership_and_s_corp_net_income_less_loss": (
+        "tax_unit_partnership_s_corp_income"
+    ),
     "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
     "real_estate_taxes": "real_estate_taxes",
+    # Table 1.4's "Total rental and royalty" legs include Form 4835 farm
+    # rental (rental_income + farm_rent_income, summed in the materializer).
+    # Historic Table 2's A25870 is Schedule E line 26, rents and royalties
+    # only: farm rental goes on line 40 (microcosm#1228).
     "rent_and_royalty_net_income": "rent_and_royalty_net_income",
     "rent_and_royalty_net_losses": "rent_and_royalty_net_income",
+    "rent_and_royalty_net_income_less_loss": "rental_income",
     "refundable_ctc": "refundable_ctc",
     "salt_deduction": "salt_deduction",
     "tax_exempt_interest_income": "tax_exempt_interest_income",
@@ -309,6 +330,49 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "total_social_security": "tax_unit_social_security",
     "unemployment_compensation": "unemployment_compensation",
 }
+
+#: SOI "net income (less loss)" concepts (microcosm#1228). Historic Table 2
+#: and the congressional-district file publish business income (Schedule 1
+#: line 3), partnership and S corporation income (Schedule E line 32) and
+#: rental and royalty income (Schedule E line 26) as one signed column each:
+#: the amount nets losses against income, and the count is every return with
+#: an entry, net income or net loss. Table 1.4 splits each line in two, and
+#: the identities hold: TY2022 HT2 N00900 30,354,680 is col 31 + col 33,
+#: 30,356,401 (the profit returns alone are 72%). These concepts bind the
+#: signed tax-unit total, and their indicator counts a nonzero total
+#: (tools/build_us_fiscal_refresh_release.py ``_soi_component_row``). The
+#: positive-part legs (``business_net_profits``,
+#: ``partnership_and_s_corp_income``, ``rent_and_royalty_net_income``) and
+#: their ``*_losses`` magnitudes stay reserved for Table 1.4's split columns.
+SOI_NET_INCOME_LESS_LOSS_VARIABLES: frozenset[str] = frozenset(
+    {
+        "business_net_income_less_loss",
+        "partnership_and_s_corp_net_income_less_loss",
+        "rent_and_royalty_net_income_less_loss",
+    }
+)
+#: The return line each net-income-(less-loss) concept reports, stamped on its
+#: specs as ``soi_source_concept``.
+_SOI_NET_INCOME_LESS_LOSS_SOURCE_CONCEPTS: dict[str, str] = {
+    "business_net_income_less_loss": (
+        "form_1040_schedule_1_line_3_net_income_less_loss"
+    ),
+    "partnership_and_s_corp_net_income_less_loss": (
+        "schedule_e_line_32_net_income_less_loss"
+    ),
+    "rent_and_royalty_net_income_less_loss": (
+        "schedule_e_line_26_net_income_less_loss"
+    ),
+}
+#: The SOI record-set families reviewed to publish the net-income-(less-loss)
+#: columns under the ``schedule_c_income_*``, ``partnership_scorp_income_*``
+#: and ``rental_royalty_income_*`` ids. A fact with one of those ids from any
+#: other family refuses the compile, because the same id could name a one-sided
+#: column there (microcosm#1035 is the capital-gains case of one id naming two
+#: IRS measures).
+_SOI_NET_INCOME_LESS_LOSS_FAMILIES = frozenset(
+    {"historic_table_2", "congressional_district"}
+)
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "ctc": ("ctc", "ctc_limiting_tax_liability"),
@@ -3100,6 +3164,8 @@ def _soi_reference_from_fact(
         variable, is_count = override
     if variable is None:
         return None
+    if variable in SOI_NET_INCOME_LESS_LOSS_VARIABLES:
+        _require_soi_net_income_less_loss_family(fact, measure_id=measure_id)
 
     lower, upper = _agi_bounds(fact)
     cross_period_agi_slice = _is_untransformed_cross_period_agi_slice(
@@ -3158,6 +3224,9 @@ def _soi_reference_from_fact(
         "soi_return_universe": soi_return_universe,
         **_soi_layout_filter_metadata(fact),
     }
+    source_concept = _SOI_NET_INCOME_LESS_LOSS_SOURCE_CONCEPTS.get(variable)
+    if source_concept is not None:
+        metadata["soi_source_concept"] = source_concept
     base_variables = _soi_base_variables(variable)
     if len(base_variables) == 1:
         metadata["base_variable"] = base_variables[0]
@@ -3198,6 +3267,52 @@ def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
     if is_count:
         return "indicator_sum"
     return "sum"
+
+
+class UnregisteredSoiNetIncomeLessLossFamilyError(ValueError):
+    """A net-income-(less-loss) measure id arrived from an unreviewed family."""
+
+
+def _soi_source_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
+def _require_soi_net_income_less_loss_family(fact: object, *, measure_id: str) -> None:
+    """Refuse a net-income-(less-loss) id from a family nobody reviewed.
+
+    Historic Table 2 and the congressional-district file publish these ids as
+    one signed column per return line (microcosm#1228). Table 1.4 splits the
+    same lines into one-sided "net income" and "net loss" columns, so the same
+    id from it, or from any new family, could name a different measure.
+    """
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    family = _soi_source_family(record_set_id)
+    if family in _SOI_NET_INCOME_LESS_LOSS_FAMILIES:
+        return
+    raise UnregisteredSoiNetIncomeLessLossFamilyError(
+        f"SOI measure {measure_id!r} from record set {record_set_id!r} (family "
+        f"{family or '<none>'!r}) binds a signed net-income-(less-loss) "
+        "concept, which only these families are reviewed to publish: "
+        f"{sorted(_SOI_NET_INCOME_LESS_LOSS_FAMILIES)}. Review what the "
+        "column counts and register the family, or map the id to a "
+        "one-sided concept (microcosm#1228)."
+    )
 
 
 def _soi_display_variable(variable: str) -> str:
