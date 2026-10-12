@@ -203,7 +203,10 @@ def _benchmark_people(component: str) -> int:
 
 
 def _share(numerator: float, denominator: float) -> float | None:
-    return numerator / denominator if denominator > 0 else None
+    """A weighted share, clipped to [0, 1] against float summation residue."""
+    if denominator <= 0:
+        return None
+    return min(1.0, max(0.0, numerator / denominator))
 
 
 def _difference_pp(model: float | None, benchmark: float) -> float | None:
@@ -460,7 +463,13 @@ def population_structure_holdout_payload(
                 "source": "ACS 2024 1-year, table B12002, national",
                 "source_url": ACS_2024_B12002_SOURCE_URL,
                 "universe": "population 15 years and over, 65+ cells",
-                "married": "now married, spouse present or absent (not separated)",
+                "married": (
+                    "now married, spouse present or absent (not separated)"
+                    if marital_code is not None
+                    else "now married, spouse present (the only marriage the "
+                    "marital unit shows); spouse-absent married people are in "
+                    "other_unmarried_or_spouse_absent"
+                ),
             },
             "by_sex": marital_rows,
         },
