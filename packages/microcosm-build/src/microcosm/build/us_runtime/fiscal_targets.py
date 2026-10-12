@@ -1753,10 +1753,21 @@ def _rebase_stale_soi_taxable_interest_distributions(
     target beside Table 4.3: on the full surface its US row, its states and
     its districts each summed to $134.6B against $340.4B (0.395x) and to
     48.5M returns against 54.2M (0.896x). As shares of the file's own US row,
-    its states and its districts each sum to the control; the stamp cancels
-    in the share; and because one factor scales a family's state and
-    district rows alike, the district-to-state reconciliation that runs next
-    keeps factor 1.
+    its states and its districts each sum to the control, and because one
+    factor scales a family's state and district rows alike, the
+    district-to-state reconciliation that runs next keeps proportions (factor
+    1 where the file's districts sum to its states, as in 22incd.csv). The
+    period stamp cancels in the share while it is no later than the control's
+    period: a family stamped after every control keeps its rows and its US
+    row as levels, as before (the next district file under the same +1 stamp
+    error would; correcting the stamp, microcosm#1030, keeps the share).
+
+    Known corner, as on main: control choice is per row (an exact-universe
+    control older than the row is skipped for an eligible bridge) while
+    bridge retirement is per (measure, status) (any exact all-returns control
+    retires the bridged national row). With Table 1.4 interest only at an
+    older vintage than Table 4.3, a row can rebase onto the retired Table 4.3
+    level; no current feed carries Table 1.4 interest.
 
     A share row whose own family carries no nonzero national total cannot
     be a share. It is dropped if it is an AGI slice (unverifiable) or if a
@@ -1946,9 +1957,10 @@ def _soi_taxable_interest_share_national_totals(
     family's. Two different values under one key refuse the compile instead of
     letting feed order pick the denominator; equal values under two record ids
     keep the smaller id, so the named denominator does not depend on feed order
-    either. Congressional-district packages of different boundary vintages for
-    one tax year share the ``congressional_district`` family, so their US rows
-    must agree or the compile refuses.
+    either. Two district files compiled at one period (for example 22incd.csv
+    stamped ty2023 beside a truthfully stamped 23incd.csv) share the
+    ``congressional_district`` family: unequal US rows refuse the compile, and
+    equal ones let both files bind, which upstream must deduplicate.
     """
     totals: dict[tuple[str, str, str, str, str], _SoiTaxableInterestShareTotal] = {}
     for fact in facts:
@@ -2013,8 +2025,9 @@ def _soi_taxable_interest_kind_from_measure(measure_id: str) -> str | None:
 #: older tax year and therefore ship only as shares of their own national
 #: all-AGI row, scaled to a Pub 1304-class control (microcosm#489, #1038):
 #: Historic Table 2 (TY2022) and the congressional-district file (22incd.csv,
-#: TY2022 data stamped ty2023, of any boundary vintage). Neither ever anchors
-#: the family as a control.
+#: TY2022 data stamped ty2023; its record sets read congressional_district_2022,
+#: the data year, and later files match too). Neither ever anchors the family
+#: as a control.
 _SOI_TAXABLE_INTEREST_SHARE_FAMILIES: dict[str, str] = {
     ".historic_table_2.": "historic_table_2",
     ".congressional_district_": "congressional_district",

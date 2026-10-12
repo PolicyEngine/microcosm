@@ -180,10 +180,11 @@ Why Historic Table 2:
   feed labels the file "Congressional District Data 2022" but stamps it tax
   year 2023 (PR #1040, #1030), so it is aged one year less than Historic Table
   2. Its taxable-interest rows are now shares of its own US row times Table
-  4.3, like Historic Table 2's, but that level still differs from Historic
-  Table 2's state levels by Historic Table 2's other-areas sliver (its states
-  sum to 98.4% of the control). A within-state share is unaffected by a level
-  factor common to the state.
+  4.3, like Historic Table 2's, with no aging gap between the two, but the
+  levels still differ by Historic Table 2's other-areas sliver: its states sum
+  to 98.4% (amounts) and 99.2% (returns) of the control, the district file's
+  to all of it. A within-state share is unaffected by a level factor common
+  to the state.
 - **Two vintages of one concept are contradictory constraints**; the solve can
   only split the difference.
 
@@ -203,10 +204,14 @@ district rows, are mostly 1.00 to 1.10.
   (#1030) would remove the aging part only.
 - **One factor reflects a known level difference:** capital-gains amounts
   (0.77 to 1.00). Taxable interest's factors (2.35 to 2.70) carried the Table
-  4.3 rebase that Historic Table 2's rows had and the district file's lacked;
-  since the district file's interest rows take the same control as shares of
+  4.3 rebase that Historic Table 2's rows had and the district file's lacked.
+  Since the district file's interest rows take the same control as shares of
   its US row, they divide by 2.529 (amounts) and 1.116 (returns), which moves
-  every state alike, so the factor band's verdicts are unchanged.
+  every state alike, so the factor band's verdicts are unchanged. They now run
+  0.93 to 1.07 for amounts (median 0.977) and 0.981 to 1.001 for returns
+  (median 0.995): there is no aging gap, and they sit below 1 because the
+  district file's states take the whole control while Historic Table 2's take
+  98.4% and 99.2% of it.
 - **The largest single-state factors** were on qualified and ordinary
   dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
   rental income (New York, 0.72), where the two tables disagree about one
