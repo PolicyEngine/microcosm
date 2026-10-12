@@ -82,4 +82,4 @@ microcosm-calibrate = { workspace = true }
 microcosm-diagnostics = { workspace = true }
 microcosm-data = { workspace = true }
 # Draft-only root source pin. Replace with a published distribution before merge.
-microcosm-emitter = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "7fef7c91641c9fc487e55d0e6b4717eb62a92376" }
+microcosm-emitter = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "12624a118db255405a0ce7397d53b3181deaf49a" }
