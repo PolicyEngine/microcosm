@@ -7,10 +7,11 @@
    "factor": 1.0363754910057321
   }
  },
- "code_head": "5ad4816b59358fc0f14369934cf01ba31a2b83ec",
- "code_modified_paths": [
-  "packages/microcosm-build/src/microcosm/build/uk/uprating_holds.json"
- ],
+ "code_head": "bc32a49c12d7bb18045d2394b730fb2d8fe10382",
+ "code_modifications": {
+  "diff_sha256": null,
+  "files": []
+ },
  "communal_validation": {
   "basis": "Census 2021 (England and Wales, RM120) and 2022 (Scotland, UV101a) usual residents by residence type; Northern Ireland's district table (CT0105) is not split by area grain here. Validation only: the age-band targets still count communal residents (#1123).",
   "constituency": {
@@ -1071,10 +1072,10 @@
    "inconsistency_id": "spi_self_employment_amount_bands_vs_area:country_over_constituency",
    "legs": [
     {
-     "declared_factor": 1.0082241128867393,
+     "declared_factor": 1.0078979935379764,
      "leg": "E12000001+E12000002+E12000003+E12000004+E12000005+E12000006+E12000007+E12000008+E12000009+W92000004+S92000003+N92000002",
      "parent_geography_id": "K02000001",
-     "relative_shift": 0.008224112886739474
+     "relative_shift": 0.00789799353797632
     }
    ],
    "winning_grain": "country"
@@ -1133,10 +1134,10 @@
      "relative_shift": -0.07904208384214582
     },
     {
-     "declared_factor": 0.9213518347037806,
+     "declared_factor": 0.9209681653353197,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": -0.07864816529621961
+     "relative_shift": -0.07903183466468028
     },
     {
      "declared_factor": 0.9209617350782711,
@@ -1145,10 +1146,10 @@
      "relative_shift": -0.07903826492172905
     },
     {
-     "declared_factor": 0.9210858548818608,
+     "declared_factor": 0.9209470575537365,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": -0.07891414511813913
+     "relative_shift": -0.07905294244626339
     },
     {
      "declared_factor": 0.9209635054298678,
@@ -1285,10 +1286,10 @@
      "relative_shift": 0.011198399755964459
     },
     {
-     "declared_factor": 1.014190261392846,
+     "declared_factor": 1.0086403332004008,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.014190261392846008
+     "relative_shift": 0.008640333200401022
     },
     {
      "declared_factor": 1.0084832698430926,
@@ -1297,10 +1298,10 @@
      "relative_shift": 0.008483269843092313
     },
     {
-     "declared_factor": 1.0294457892791733,
+     "declared_factor": 1.0091825640237893,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.02944578927917337
+     "relative_shift": 0.009182564023789325
     },
     {
      "declared_factor": 1.00983554080248,
@@ -1328,76 +1329,76 @@
    "inconsistency_id": "exact:uk.income.self_employment.amount:a29c35259686:constituency_over_la",
    "legs": [
     {
-     "declared_factor": 1.029400178219448,
+     "declared_factor": 1.0290672092778739,
      "leg": "E12000001",
      "parent_geography_id": "area-derived:E12000001",
-     "relative_shift": 0.02940017821944764
+     "relative_shift": 0.029067209277873894
     },
     {
-     "declared_factor": 1.0045027404183422,
+     "declared_factor": 1.0090460833534365,
      "leg": "E12000002",
      "parent_geography_id": "area-derived:E12000002",
-     "relative_shift": 0.004502740418342076
+     "relative_shift": 0.009046083353436431
     },
     {
-     "declared_factor": 1.009483536434626,
+     "declared_factor": 1.0091570097137499,
      "leg": "E12000003",
      "parent_geography_id": "area-derived:E12000003",
-     "relative_shift": 0.009483536434626091
+     "relative_shift": 0.009157009713749996
     },
     {
-     "declared_factor": 1.0186749955519547,
+     "declared_factor": 1.0183454957692137,
      "leg": "E12000004",
      "parent_geography_id": "area-derived:E12000004",
-     "relative_shift": 0.01867499555195493
+     "relative_shift": 0.018345495769213703
     },
     {
-     "declared_factor": 1.0041361971097347,
+     "declared_factor": 1.0038114000348728,
      "leg": "E12000005",
      "parent_geography_id": "area-derived:E12000005",
-     "relative_shift": 0.004136197109734632
+     "relative_shift": 0.0038114000348726555
     },
     {
-     "declared_factor": 1.016634266741481,
+     "declared_factor": 1.0163054270512153,
      "leg": "E12000006",
      "parent_geography_id": "area-derived:E12000006",
-     "relative_shift": 0.016634266741480677
+     "relative_shift": 0.016305427051214873
     },
     {
-     "declared_factor": 1.0266738098287,
+     "declared_factor": 1.0076006452568889,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.026673809828699994
+     "relative_shift": 0.0076006452568888345
     },
     {
-     "declared_factor": 1.0055523115975007,
+     "declared_factor": 1.0052270564674024,
      "leg": "E12000008",
      "parent_geography_id": "area-derived:E12000008",
-     "relative_shift": 0.005552311597500496
+     "relative_shift": 0.005227056467402158
     },
     {
-     "declared_factor": 1.026929180630223,
+     "declared_factor": 1.0090460833534365,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.02692918063022293
+     "relative_shift": 0.009046083353436393
     },
     {
-     "declared_factor": 1.0139246053779074,
+     "declared_factor": 1.0135966421524953,
      "leg": "N92000002",
      "parent_geography_id": "area-derived:N92000002",
-     "relative_shift": 0.013924605377907398
+     "relative_shift": 0.013596642152495482
     },
     {
-     "declared_factor": 1.001401271837781,
+     "declared_factor": 1.0010773593996158,
      "leg": "S92000003",
      "parent_geography_id": "area-derived:S92000003",
-     "relative_shift": 0.001401271837781003
+     "relative_shift": 0.0010773593996158727
     },
     {
-     "declared_factor": 1.0150311221645838,
+     "declared_factor": 1.014702801026155,
      "leg": "W92000004",
      "parent_geography_id": "area-derived:W92000004",
-     "relative_shift": 0.015031122164583905
+     "relative_shift": 0.014702801026155003
     }
    ],
    "winning_grain": "constituency"
@@ -1443,10 +1444,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0003462433094152,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0003462433094152533
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1455,10 +1456,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0003339333419048,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00033393334190488436
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1522,10 +1523,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0012813302359702,
+     "declared_factor": 1.0000000000000002,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0012813302359701675
+     "relative_shift": 2.8430455127049537e-16
     },
     {
      "declared_factor": 1.0,
@@ -1534,10 +1535,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0003700728292793,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00037007282927936733
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 0.9999999999999999,
@@ -1601,10 +1602,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0032977699174315,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0032977699174314805
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1613,10 +1614,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.000436171592262,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.0004361715922620802
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1680,10 +1681,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.001526849235876,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0015268492358760618
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1692,10 +1693,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0004084022333604,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00040840223336029873
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1759,10 +1760,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0012870528310611,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0012870528310611176
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1771,10 +1772,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0004181522074036,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00041815220740349485
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1838,10 +1839,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0012825512718968,
+     "declared_factor": 0.9999999999999999,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.001282551271896849
+     "relative_shift": -2.3372628276944213e-16
     },
     {
      "declared_factor": 1.0,
@@ -1850,10 +1851,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0004486230167726,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00044862301677271217
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1917,10 +1918,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0005642960040606,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0005642960040605841
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -1929,10 +1930,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.000289414121925,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.00028941412192480217
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0000000000000002,
@@ -1996,10 +1997,10 @@
      "relative_shift": 0.003361382794624934
     },
     {
-     "declared_factor": 1.0065030840048477,
+     "declared_factor": 1.0034156512318266,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.00650308400484774
+     "relative_shift": 0.0034156512318266733
     },
     {
      "declared_factor": 0.9940800247605035,
@@ -2008,10 +2009,10 @@
      "relative_shift": -0.005919975239496343
     },
     {
-     "declared_factor": 1.0177854793812735,
+     "declared_factor": 1.0000179539492642,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.01778547938127331
+     "relative_shift": 1.7953949264158414e-05
     },
     {
      "declared_factor": 1.0053541078815542,
@@ -2075,10 +2076,10 @@
      "relative_shift": 2.580246904819037e-16
     },
     {
-     "declared_factor": 1.0027677250454157,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.0027677250454155866
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2087,10 +2088,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.000321199721447,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.0003211997214469643
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2154,10 +2155,10 @@
      "relative_shift": 0.02071939068853353
     },
     {
-     "declared_factor": 1.020472523670879,
+     "declared_factor": 1.018112140038641,
      "leg": "E12000007",
      "parent_geography_id": "area-derived:E12000007",
-     "relative_shift": 0.020472523670879005
+     "relative_shift": 0.018112140038641093
     },
     {
      "declared_factor": 1.0183790840117346,
@@ -2166,10 +2167,10 @@
      "relative_shift": 0.018379084011734645
     },
     {
-     "declared_factor": 1.0430428207819515,
+     "declared_factor": 1.0187911087323986,
      "leg": "E12000009",
      "parent_geography_id": "area-derived:E12000009",
-     "relative_shift": 0.04304282078195166
+     "relative_shift": 0.01879110873239874
     },
     {
      "declared_factor": 1.0191598499846541,
@@ -2233,10 +2234,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.003478348359463,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0034783483594630774
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2245,10 +2246,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0016813002054923,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.0016813002054924565
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2300,10 +2301,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0005917853734327,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0005917853734327103
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2312,10 +2313,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0005737802223893,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.0005737802223893
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2361,10 +2362,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0005521582624881,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0005521582624881644
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2373,10 +2374,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0001584000572283,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.00015840005722840778
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2422,10 +2423,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0000168449423061,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 1.6844942306195163e-05
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2434,10 +2435,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0000260073104186,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 2.6007310418666175e-05
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2483,10 +2484,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0005138069424384,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0005138069424383848
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2495,10 +2496,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0000393919200607,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 3.939192006066356e-05
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2544,10 +2545,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0034505703076426,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.003450570307642522
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2556,10 +2557,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0010261504022437,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.0010261504022436542
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2605,10 +2606,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.005096938924109,
+     "declared_factor": 1.0,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0050969389241088655
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2617,10 +2618,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0013522291895904,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.0013522291895904867
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "region"
@@ -2666,10 +2667,10 @@
      "relative_shift": 0.24755700325732918
     },
     {
-     "declared_factor": 1.1939615736505031,
+     "declared_factor": 1.1896080218778486,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.1939615736505032
+     "relative_shift": 0.18960802187784867
     },
     {
      "declared_factor": 1.2303921568627452,
@@ -2678,10 +2679,10 @@
      "relative_shift": 0.23039215686274508
     },
     {
-     "declared_factor": 1.3170871559633028,
+     "declared_factor": 1.30594527207075,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 0.317087155963303
+     "relative_shift": 0.30594527207075
     },
     {
      "declared_factor": 1.396551724137931,
@@ -2751,10 +2752,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 0.9999999999999998,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": -4.054517085831425e-16
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -2964,10 +2965,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0000000000000002,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 3.454614354553907e-16
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 0.9999999999999998,
@@ -3201,10 +3202,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0000000000000002,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": 1.6617086772446506e-16
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -3347,10 +3348,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0,
+     "declared_factor": 0.9999999999999997,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0
+     "relative_shift": -2.8430455127049527e-16
     },
     {
      "declared_factor": 1.0,
@@ -3359,10 +3360,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 0.9999999999999999,
+     "declared_factor": 1.0,
      "leg": "E12000009",
      "parent_geography_id": "E12000009",
-     "relative_shift": -3.0652106680288416e-16
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0000000000000002,
@@ -3426,10 +3427,10 @@
      "relative_shift": 0.0
     },
     {
-     "declared_factor": 1.0,
+     "declared_factor": 1.0000000000000002,
      "leg": "E12000007",
      "parent_geography_id": "E12000007",
-     "relative_shift": 0.0
+     "relative_shift": 2.337262827694422e-16
     },
     {
      "declared_factor": 1.0,
@@ -3501,10 +3502,10 @@
    "inconsistency_id": "exact:uk.household.count:37c03fd9ace3:nation_over_la",
    "legs": [
     {
-     "declared_factor": 1.0000690607734806,
+     "declared_factor": 1.0,
      "leg": "S92000003",
      "parent_geography_id": "S92000003",
-     "relative_shift": 6.906077348041174e-05
+     "relative_shift": 0.0
     },
     {
      "declared_factor": 1.0,
@@ -3659,10 +3660,10 @@
    "inconsistency_id": "national_uc_caseload_vs_uc_households_by_area:country_over_la",
    "legs": [
     {
-     "declared_factor": 1.0,
+     "declared_factor": 0.9999999999999999,
      "leg": "E12000001+E12000002+E12000003+E12000004+E12000005+E12000006+E12000007+E12000008+E12000009+W92000004+S92000003",
      "parent_geography_id": "K03000001",
-     "relative_shift": 0.0
+     "relative_shift": -3.0055699144854223e-16
     }
    ],
    "winning_grain": "country"
@@ -3685,10 +3686,10 @@
    "inconsistency_id": "spi_employment_count_bands_vs_area:country_over_la",
    "legs": [
     {
-     "declared_factor": 0.9999999999999999,
+     "declared_factor": 1.0,
      "leg": "E12000001+E12000002+E12000003+E12000004+E12000005+E12000006+E12000007+E12000008+E12000009+W92000004+S92000003+N92000002",
      "parent_geography_id": "K02000001",
-     "relative_shift": -1.2514829844431798e-16
+     "relative_shift": 0.0
     }
    ],
    "winning_grain": "country"
@@ -3698,10 +3699,10 @@
    "inconsistency_id": "spi_self_employment_amount_bands_vs_area:country_over_la",
    "legs": [
     {
-     "declared_factor": 0.9999999999999999,
+     "declared_factor": 1.0000000000000002,
      "leg": "E12000001+E12000002+E12000003+E12000004+E12000005+E12000006+E12000007+E12000008+E12000009+W92000004+S92000003+N92000002",
      "parent_geography_id": "K02000001",
-     "relative_shift": -2.499942383511881e-16
+     "relative_shift": 2.499942383511882e-16
     }
    ],
    "winning_grain": "country"
@@ -3711,10 +3712,10 @@
    "inconsistency_id": "spi_self_employment_count_bands_vs_area:country_over_la",
    "legs": [
     {
-     "declared_factor": 1.0,
+     "declared_factor": 1.0000000000000002,
      "leg": "E12000001+E12000002+E12000003+E12000004+E12000005+E12000006+E12000007+E12000008+E12000009+W92000004+S92000003+N92000002",
      "parent_geography_id": "K02000001",
-     "relative_shift": 0.0
+     "relative_shift": 3.548757573660816e-16
     }
    ],
    "winning_grain": "country"
@@ -3732,20 +3733,24 @@
    "geography_level": "constituency",
    "index_factor": 1.0049904629591655,
    "max_factor_shift": 0.02,
+   "max_index_shift": 0.01,
+   "off_surface_cells": 0,
    "source_factor": 1.0046118373333106
   },
   {
-   "applied_factor": 1.0117755744206092,
+   "applied_factor": 1.0091825640237895,
    "bridge_id": "spi_employment_amount_bands_vs_area",
-   "cell_total": 1221223635294.1177,
-   "cell_total_before_alignment": 1076929200000.0,
+   "cell_total": 1224361467531.8584,
+   "cell_total_before_alignment": 1079696279725.5006,
    "cells": 358,
    "control": 1235604245095.7305,
    "control_before_alignment": 1084200000000.0,
    "geography_level": "local_authority",
    "index_factor": 1.0049904629591655,
    "max_factor_shift": 0.02,
-   "source_factor": 1.006751418756219
+   "max_index_shift": 0.01,
+   "off_surface_cells": 2,
+   "source_factor": 1.0041712844242128
   },
   {
    "applied_factor": 1.0191598499846544,
@@ -3758,46 +3763,54 @@
    "geography_level": "constituency",
    "index_factor": 1.0144496515069348,
    "max_factor_shift": 0.02,
+   "max_index_shift": 0.02,
+   "off_surface_cells": 0,
    "source_factor": 1.0046431071968163
   },
   {
-   "applied_factor": 1.0211165164863785,
+   "applied_factor": 1.0187911087323986,
    "bridge_id": "spi_employment_count_bands_vs_area",
-   "cell_total": 29151430.517711174,
-   "cell_total_before_alignment": 27085000.0,
+   "cell_total": 29217969.145683534,
+   "cell_total_before_alignment": 27146821.96573635,
    "cells": 358,
    "control": 29767007.18083994,
    "control_before_alignment": 27263000.0,
    "geography_level": "local_authority",
-   "index_factor": 1.0144496515069348,
+   "index_factor": 1.014449651506935,
    "max_factor_shift": 0.02,
-   "source_factor": 1.0065719032674911
+   "max_index_shift": 0.02,
+   "off_surface_cells": 2,
+   "source_factor": 1.0042796182334082
   },
   {
-   "applied_factor": 1.0082241128867393,
+   "applied_factor": 1.0078979935379766,
    "bridge_id": "spi_self_employment_amount_bands_vs_area",
-   "cell_total": 121077371895.42484,
-   "cell_total_before_alignment": 106771400000.0,
+   "cell_total": 121116548155.25032,
+   "cell_total_before_alignment": 106805947364.57234,
    "cells": 649,
    "control": 122073125869.92252,
    "control_before_alignment": 107480000000.0,
    "geography_level": "constituency",
-   "index_factor": 1.0015770380226572,
+   "index_factor": 1.0015770380226574,
    "max_factor_shift": 0.02,
-   "source_factor": 1.0066366086798524
+   "max_index_shift": 0.007,
+   "off_surface_cells": 1,
+   "source_factor": 1.0063110028239048
   },
   {
-   "applied_factor": 1.0160003100082413,
+   "applied_factor": 1.009046083353437,
    "bridge_id": "spi_self_employment_amount_bands_vs_area",
-   "cell_total": 120150677777.77777,
-   "cell_total_before_alignment": 105954200000.0,
+   "cell_total": 120978742085.02742,
+   "cell_total_before_alignment": 106684423855.96078,
    "cells": 358,
    "control": 122073125869.92252,
    "control_before_alignment": 107480000000.0,
    "geography_level": "local_authority",
-   "index_factor": 1.0015770380226574,
+   "index_factor": 1.0015770380226572,
    "max_factor_shift": 0.02,
-   "source_factor": 1.0144005617521532
+   "max_index_shift": 0.007,
+   "off_surface_cells": 2,
+   "source_factor": 1.0074572849089325
   },
   {
    "applied_factor": 0.9957793068541111,
@@ -3810,20 +3823,24 @@
    "geography_level": "constituency",
    "index_factor": 0.9965932953883243,
    "max_factor_shift": 0.02,
+   "max_index_shift": 0.009,
+   "off_surface_cells": 0,
    "source_factor": 0.9991832289681459
   },
   {
-   "applied_factor": 1.0023286911688545,
+   "applied_factor": 1.000017953949264,
    "bridge_id": "spi_self_employment_count_bands_vs_area",
-   "cell_total": 3927397.820163488,
-   "cell_total_before_alignment": 3649000.0,
+   "cell_total": 3936472.841550205,
+   "cell_total_before_alignment": 3657431.728731456,
    "cells": 358,
    "control": 3936543.516783881,
    "control_before_alignment": 3670000.0,
    "geography_level": "local_authority",
-   "index_factor": 0.9965932953883243,
+   "index_factor": 0.9965932953883244,
    "max_factor_shift": 0.02,
-   "source_factor": 1.0057550013702383
+   "max_index_shift": 0.009,
+   "off_surface_cells": 2,
+   "source_factor": 1.0034363652422578
   }
  ],
  "national_reconciliation": {
@@ -3833,6 +3850,8 @@
     "cells": 12,
     "control": 2972500.0,
     "declared_factor": 1.0273972602739725,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0273972602739727,
     "max_factor_shift": 0.033,
     "new_total": 2972499.9999999995,
     "old_total": 2893233.3333333335
@@ -3842,6 +3861,8 @@
     "cells": 12,
     "control": 5412500.0,
     "declared_factor": 1.0122643236317042,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0122643236317042,
     "max_factor_shift": 0.018,
     "new_total": 5412500.0,
     "old_total": 5346923.598553346
@@ -3851,6 +3872,8 @@
     "cells": 12,
     "control": 10225000.0,
     "declared_factor": 1.0075069142631372,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0075069142631372,
     "max_factor_shift": 0.013,
     "new_total": 10225000.0,
     "old_total": 10148813.725490196
@@ -3860,6 +3883,8 @@
     "cells": 24,
     "control": 12125000.0,
     "declared_factor": 1.0023201856148494,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0041763341067285,
     "max_factor_shift": 0.008,
     "new_total": 12125000.000000002,
     "old_total": 12096932.87037037
@@ -3869,6 +3894,8 @@
     "cells": 24,
     "control": 6950000.0,
     "declared_factor": 1.004044311587832,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.004044311587832,
     "max_factor_shift": 0.01,
     "new_total": 6950000.000000001,
     "old_total": 6922005.253940456
@@ -3878,6 +3905,8 @@
     "cells": 12,
     "control": 1092500.0,
     "declared_factor": 1.0045766590389016,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0045766590389016,
     "max_factor_shift": 0.01,
     "new_total": 1092500.0,
     "old_total": 1087522.7790432803
@@ -3887,6 +3916,8 @@
     "cells": 12,
     "control": 342750.0,
     "declared_factor": 1.0034129692832765,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0034129692832765,
     "max_factor_shift": 0.009,
     "new_total": 342750.0,
     "old_total": 341584.1836734694
@@ -3896,6 +3927,8 @@
     "cells": 12,
     "control": 469500.0,
     "declared_factor": 1.005128205128205,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.005128205128205,
     "max_factor_shift": 0.011,
     "new_total": 469499.99999999994,
     "old_total": 467104.5918367347
@@ -3905,6 +3938,8 @@
     "cells": 12,
     "control": 40950000000.0,
     "declared_factor": 1.022816679779701,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.022816679779701,
     "max_factor_shift": 0.028,
     "new_total": 40950000000.0,
     "old_total": 40036500000.0
@@ -3914,6 +3949,8 @@
     "cells": 12,
     "control": 94200000000.0,
     "declared_factor": 1.0116486514849408,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0116486514849408,
     "max_factor_shift": 0.017,
     "new_total": 94200000000.0,
     "old_total": 93115331950.20746
@@ -3923,6 +3960,8 @@
     "cells": 12,
     "control": 253750000000.0,
     "declared_factor": 1.0072859019787392,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0072859019787395,
     "max_factor_shift": 0.013,
     "new_total": 253749999999.99997,
     "old_total": 251914575098.81427
@@ -3932,6 +3971,8 @@
     "cells": 24,
     "control": 465500000000.0,
     "declared_factor": 1.0043214794427948,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0043214794427948,
     "max_factor_shift": 0.01,
     "new_total": 465500000000.00006,
     "old_total": 463497007211.53845
@@ -3941,6 +3982,8 @@
     "cells": 24,
     "control": 455500000000.0,
     "declared_factor": 1.0045539780337531,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.004553978033753,
     "max_factor_shift": 0.01,
     "new_total": 455500000000.0,
     "old_total": 453435066666.6666
@@ -3950,6 +3993,8 @@
     "cells": 12,
     "control": 129750000000.0,
     "declared_factor": 1.0081613058089294,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0081613058089294,
     "max_factor_shift": 0.014,
     "new_total": 129750000000.0,
     "old_total": 128699642857.14287
@@ -3959,6 +4004,8 @@
     "cells": 12,
     "control": 58525000000.0,
     "declared_factor": 1.0041757804732552,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0041757804732552,
     "max_factor_shift": 0.01,
     "new_total": 58525000000.0,
     "old_total": 58281628712.871284
@@ -3968,6 +4015,8 @@
     "cells": 12,
     "control": 236200000000.0,
     "declared_factor": 1.0075800546588976,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0080957046356933,
     "max_factor_shift": 0.013,
     "new_total": 236199999999.99997,
     "old_total": 234423060388.94574
@@ -3977,6 +4026,8 @@
     "cells": 12,
     "control": 650750000.0,
     "declared_factor": 1.0573476702508962,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0573476702508962,
     "max_factor_shift": 0.063,
     "new_total": 650750000.0,
     "old_total": 615455084.7457627
@@ -3986,6 +4037,8 @@
     "cells": 12,
     "control": 4532500000.0,
     "declared_factor": 1.0142076502732242,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.014207650273224,
     "max_factor_shift": 0.02,
     "new_total": 4532500000.000001,
     "old_total": 4469005926.724137
@@ -3995,6 +4048,8 @@
     "cells": 12,
     "control": 23025000000.0,
     "declared_factor": 1.0054480223236038,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0054480223236038,
     "max_factor_shift": 0.011,
     "new_total": 23025000000.000004,
     "old_total": 22900238986.78414
@@ -4004,6 +4059,8 @@
     "cells": 24,
     "control": 57925000000.0,
     "declared_factor": 1.0040396909440326,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0040396909440326,
     "max_factor_shift": 0.01,
     "new_total": 57925000000.0,
     "old_total": 57691942382.8125
@@ -4013,6 +4070,8 @@
     "cells": 24,
     "control": 86025000000.0,
     "declared_factor": 1.005067927260338,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0050679272603382,
     "max_factor_shift": 0.011,
     "new_total": 86024999999.99998,
     "old_total": 85591229872.88136
@@ -4022,6 +4081,8 @@
     "cells": 12,
     "control": 38000000000.0,
     "declared_factor": 1.0057187931374483,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0057187931374483,
     "max_factor_shift": 0.011,
     "new_total": 38000000000.0,
     "old_total": 37783921568.62745
@@ -4031,6 +4092,8 @@
     "cells": 12,
     "control": 20000000000.0,
     "declared_factor": 1.006201006201006,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0062010062010063,
     "max_factor_shift": 0.012,
     "new_total": 19999999999.999996,
     "old_total": 19876744186.046513
@@ -4040,6 +4103,8 @@
     "cells": 12,
     "control": 92525000000.0,
     "declared_factor": 1.0082222927241964,
+    "explained_by": "hmrc_spi_table_3_11_uk_row",
+    "explained_factor": 1.0086188663282571,
     "max_factor_shift": 0.014,
     "new_total": 92525000000.0,
     "old_total": 91770436606.79166
@@ -4167,7 +4232,522 @@
    }
   ]
  },
- "parents_without_members": 1000,
+ "off_surface_cells": {
+  "areas_outside_the_ladder": [],
+  "deferred_with_value": [
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 445.3333333333333,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 445.3333333333333,
+    "share_of_leg": 0.0004164200406508247,
+    "target_id": "dwp.uc.households_by_area"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 71.25,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 71.25,
+    "share_of_leg": 0.0001506888064653429,
+    "target_id": "dwp.uc.households_by_area"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1357382352.9411764,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1197000000.0,
+    "share_of_leg": 0.005472275177266057,
+    "target_id": "hmrc.employment_income.amount"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 9686.648501362399,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 9000.0,
+    "share_of_leg": 0.0023130300693909025,
+    "target_id": "hmrc.employment_income.count"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 4000.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 4000.0,
+    "share_of_leg": 0.0036463081130355514,
+    "target_id": "hmrc.higher_rate_taxpayers.count"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 666784313.7254902,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 588000000.0,
+    "share_of_leg": 0.018260075648884832,
+    "target_id": "hmrc.self_employment_income.amount"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 2152.5885558583104,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 2000.0,
+    "share_of_leg": 0.003067484662576687,
+    "target_id": "hmrc.self_employment_income.count"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 2.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 2.0,
+    "share_of_leg": 1.6844658558771013e-05,
+    "target_id": "mhclg.council_tax_stock.by_area.band_a"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 11.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 11.0,
+    "share_of_leg": 2.600663405592372e-05,
+    "target_id": "mhclg.council_tax_stock.by_area.band_a"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 238.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 238.0,
+    "share_of_leg": 0.0005135430804385399,
+    "target_id": "mhclg.council_tax_stock.by_area.band_b"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 24.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 24.0,
+    "share_of_leg": 3.9390368398420447e-05,
+    "target_id": "mhclg.council_tax_stock.by_area.band_b"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 547.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 547.0,
+    "share_of_leg": 0.0005518535519897499,
+    "target_id": "mhclg.council_tax_stock.by_area.band_c"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 93.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 93.0,
+    "share_of_leg": 0.00015837497062399738,
+    "target_id": "mhclg.council_tax_stock.by_area.band_c"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 550.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 550.0,
+    "share_of_leg": 0.00059143537063104,
+    "target_id": "mhclg.council_tax_stock.by_area.band_d"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 232.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 232.0,
+    "share_of_leg": 0.0005734511874394416,
+    "target_id": "mhclg.council_tax_stock.by_area.band_d"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1898.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1898.0,
+    "share_of_leg": 0.0034387048149114416,
+    "target_id": "mhclg.council_tax_stock.by_area.band_e"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 281.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 281.0,
+    "share_of_leg": 0.0010250984970086093,
+    "target_id": "mhclg.council_tax_stock.by_area.band_e"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 968.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 968.0,
+    "share_of_leg": 0.0034662913904913327,
+    "target_id": "mhclg.council_tax_stock.by_area.band_f"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 234.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 234.0,
+    "share_of_leg": 0.0016784781797836627,
+    "target_id": "mhclg.council_tax_stock.by_area.band_f"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1050.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1050.0,
+    "share_of_leg": 0.005071091878525617,
+    "target_id": "mhclg.council_tax_stock.by_area.band_g"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 102.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 102.0,
+    "share_of_leg": 0.0013504031350535528,
+    "target_id": "mhclg.council_tax_stock.by_area.band_g"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 351.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 351.0,
+    "share_of_leg": 0.00034612346648075267,
+    "target_id": "ons.age.0_10"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 187.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 187.0,
+    "share_of_leg": 0.00033382186765301805,
+    "target_id": "ons.age.0_10"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 577.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 577.0,
+    "share_of_leg": 0.0005639777536678102,
+    "target_id": "ons.age.10_20"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 195.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 195.0,
+    "share_of_leg": 0.00028933038562547293,
+    "target_id": "ons.age.10_20"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 5042.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 5042.0,
+    "share_of_leg": 0.0032869303773124877,
+    "target_id": "ons.age.20_30"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 296.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 296.0,
+    "share_of_leg": 0.00043598142954775766,
+    "target_id": "ons.age.20_30"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 4269.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 4269.0,
+    "share_of_leg": 0.0027600858865798016,
+    "target_id": "ons.age.30_40"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 238.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 238.0,
+    "share_of_leg": 0.0003210965853132041,
+    "target_id": "ons.age.30_40"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1965.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1965.0,
+    "share_of_leg": 0.0015245215213561026,
+    "target_id": "ons.age.40_50"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 286.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 286.0,
+    "share_of_leg": 0.000408235509066825,
+    "target_id": "ons.age.40_50"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1414.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1414.0,
+    "share_of_leg": 0.0012853984553401307,
+    "target_id": "ons.age.50_60"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 323.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 323.0,
+    "share_of_leg": 0.0004179774292188222,
+    "target_id": "ons.age.50_60"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 1048.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 1048.0,
+    "share_of_leg": 0.001279690529801648,
+    "target_id": "ons.age.60_70"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 281.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 281.0,
+    "share_of_leg": 0.00036993592604441075,
+    "target_id": "ons.age.60_70"
+   },
+   {
+    "areas": [
+     "E09000001"
+    ],
+    "frame_total": 638.0,
+    "grain": "la",
+    "leg": "E12000007",
+    "published_total": 638.0,
+    "share_of_leg": 0.0012809084411464734,
+    "target_id": "ons.age.70_80"
+   },
+   {
+    "areas": [
+     "E06000053"
+    ],
+    "frame_total": 279.0,
+    "grain": "la",
+    "leg": "E12000009",
+    "published_total": 279.0,
+    "share_of_leg": 0.0004484218444120852,
+    "target_id": "ons.age.70_80"
+   },
+   {
+    "areas": [
+     "S12000027"
+    ],
+    "frame_total": 1.0,
+    "grain": "la",
+    "leg": "S92000003",
+    "published_total": 1.0,
+    "share_of_leg": 6.905600441958428e-05,
+    "target_id": "scotgov.council_tax_stock.by_area.band_h"
+   }
+  ],
+  "implied_absent": [
+   {
+    "areas": [
+     "E06000027",
+     "E06000053"
+    ],
+    "grain": "la",
+    "implied_from_grain": "constituency",
+    "implied_value": 1780449884.7996674,
+    "leg": "E12000009",
+    "share_of_leg": 0.019683625370474852,
+    "status": "added",
+    "target_id": "hmrc.employment_income.amount",
+    "tier_ratio": 1.0004387228712186,
+    "whole_legs": 11
+   },
+   {
+    "areas": [
+     "E06000027",
+     "E06000053"
+    ],
+    "grain": "la",
+    "implied_from_grain": "constituency",
+    "implied_value": 56851.97947099991,
+    "leg": "E12000009",
+    "share_of_leg": 0.023250926583600492,
+    "status": "added",
+    "target_id": "hmrc.employment_income.count",
+    "tier_ratio": 1.0003619399983914,
+    "whole_legs": 11
+   },
+   {
+    "areas": [
+     "E06000027",
+     "E06000053"
+    ],
+    "grain": "la",
+    "implied_from_grain": "constituency",
+    "implied_value": 3719.8047123752767,
+    "leg": "E12000009",
+    "share_of_leg": 0.008459488684637334,
+    "status": "added",
+    "target_id": "hmrc.higher_rate_taxpayers.count",
+    "tier_ratio": 0.9993631925281257,
+    "whole_legs": 10
+   },
+   {
+    "areas": [
+     "E14001416"
+    ],
+    "grain": "constituency",
+    "implied_from_grain": "la",
+    "implied_value": 39176259.82549095,
+    "leg": "E12000002",
+    "share_of_leg": 0.004824614704986003,
+    "status": "added",
+    "target_id": "hmrc.self_employment_income.amount",
+    "tier_ratio": 1.0011390932642201,
+    "whole_legs": 10
+   },
+   {
+    "areas": [
+     "E06000027",
+     "E06000053"
+    ],
+    "grain": "la",
+    "implied_from_grain": "constituency",
+    "implied_value": 161279993.5241623,
+    "leg": "E12000009",
+    "share_of_leg": 0.017096219270832082,
+    "status": "added",
+    "target_id": "hmrc.self_employment_income.amount",
+    "tier_ratio": 0.9988622027929145,
+    "whole_legs": 10
+   },
+   {
+    "areas": [
+     "E06000027",
+     "E06000053"
+    ],
+    "grain": "la",
+    "implied_from_grain": "constituency",
+    "implied_value": 6922.432830858743,
+    "leg": "E12000009",
+    "share_of_leg": 0.017457043543999653,
+    "status": "added",
+    "target_id": "hmrc.self_employment_income.count",
+    "tier_ratio": 0.9957614290039356,
+    "whole_legs": 11
+   }
+  ],
+  "rows_added": 44
+ },
+ "parents_without_members": 1002,
  "partitions": [
   {
    "cells": 359,
@@ -4204,9 +4784,10 @@
    "partition_id": "uc_households_by_area_children"
   }
  ],
- "review_date": "2026-10-10",
+ "review_date": "2026-10-12",
  "subset_relations": [
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "hmrc.cgt.residential_property_taxpayers",
@@ -4216,6 +4797,7 @@
    "whole_total": 551000.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "dft.bus_fare_receipts.london",
@@ -4225,6 +4807,7 @@
    "whole_total": 3612036036.2194014
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "dft.bus_net_support.london",
@@ -4234,15 +4817,29 @@
    "whole_total": 3024904320.8399997
   },
   {
+   "geographies_tested": 1,
    "grain": "national",
    "max_excess": 0.0,
+   "other_parts": [
+    "ons.population.age_10_19_by_region",
+    "ons.population.age_20_29_by_region",
+    "ons.population.age_30_39_by_region",
+    "ons.population.age_40_49_by_region",
+    "ons.population.age_50_59_by_region",
+    "ons.population.age_60_69_by_region",
+    "ons.population.age_70_79_by_region",
+    "ons.population.age_80_89_by_region",
+    "ons.population.female_90_plus",
+    "ons.population.male_90_plus"
+   ],
    "part": "ons.population.age_0_9_by_region",
-   "part_total": 7364365.0,
+   "part_total": 69483939.0,
    "status": "holds",
    "whole": "ons.population.uk_total",
    "whole_total": 69483939.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "hmrc.cgt.badr_ir_taxpayers_by_band",
@@ -4252,6 +4849,7 @@
    "whole_total": 551000.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "hmrc.cgt.residential_property_gains",
@@ -4261,6 +4859,7 @@
    "whole_total": 119257999999.99997
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.gains_by_age_band",
@@ -4270,6 +4869,7 @@
    "whole_total": 119257999999.99997
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.gains_by_gain_band",
@@ -4279,6 +4879,7 @@
    "whole_total": 119257999999.99997
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.gains_by_taxable_income_band",
@@ -4288,6 +4889,7 @@
    "whole_total": 119257999999.99997
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.taxpayers_by_age_band",
@@ -4297,6 +4899,7 @@
    "whole_total": 551000.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.taxpayers_by_gain_band",
@@ -4306,6 +4909,7 @@
    "whole_total": 551000.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.01,
    "part": "hmrc.cgt.taxpayers_by_taxable_income_band",
@@ -4315,6 +4919,7 @@
    "whole_total": 551000.0
   },
   {
+   "geographies_tested": 0,
    "grain": "constituency",
    "max_excess": 0.0,
    "part": "hmrc.employment_income.count",
@@ -4324,15 +4929,17 @@
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "la",
    "max_excess": 0.0,
    "part": "hmrc.employment_income.count",
-   "part_total": 29767007.180839937,
+   "part_total": 29699224.795205526,
    "status": "holds",
    "whole": "hmrc.itl.taxpayers_by_total_income_band",
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "constituency",
    "max_excess": 0.0,
    "part": "hmrc.self_employment_income.count",
@@ -4342,15 +4949,17 @@
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "la",
    "max_excess": 0.0,
    "part": "hmrc.self_employment_income.count",
-   "part_total": 3936543.516783881,
+   "part_total": 3927461.0186204044,
    "status": "holds",
    "whole": "hmrc.itl.taxpayers_by_total_income_band",
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "constituency",
    "max_excess": 0.0,
    "part": "hmrc.higher_rate_taxpayers.count",
@@ -4360,15 +4969,17 @@
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "la",
    "max_excess": 0.0,
    "part": "hmrc.higher_rate_taxpayers.count",
-   "part_total": 6492750.0,
+   "part_total": 6483133.706535336,
    "status": "holds",
    "whole": "hmrc.itl.taxpayers_by_total_income_band",
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "hmrc.itl.additional_rate_taxpayers",
@@ -4378,6 +4989,7 @@
    "whole_total": 39589750.0
   },
   {
+   "geographies_tested": 0,
    "grain": "national",
    "max_excess": 0.0,
    "part": "hmrc.itl.higher_rate_taxpayers",

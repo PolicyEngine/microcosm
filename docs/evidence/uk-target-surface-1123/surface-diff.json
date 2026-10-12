@@ -1,10 +1,11 @@
 {
  "after": {
-  "code_head": "5ad4816b59358fc0f14369934cf01ba31a2b83ec",
-  "code_modified_paths": [
-   "packages/microcosm-build/src/microcosm/build/uk/uprating_holds.json"
-  ],
-  "review_date": "2026-10-10",
+  "code_head": "bc32a49c12d7bb18045d2394b730fb2d8fe10382",
+  "code_modifications": {
+   "diff_sha256": null,
+   "files": []
+  },
+  "review_date": "2026-10-12",
   "source_validation": {
    "ledger_provenance": {
     "fact_key_epochs": [
@@ -57,7 +58,7 @@
     "compiled_local_reference_count": 21804,
     "compiled_reference_count": 1267,
     "compiled_registry_version": "283ca2639630",
-    "exclusions_evaluated_on": "2026-10-10",
+    "exclusions_evaluated_on": "2026-10-12",
     "frozen_registry_version": null,
     "local_registry_version": "27f3582a85a5",
     "measure_exclusion_count": 64,
@@ -94,6 +95,41 @@
  },
  "before": {
   "code_head": "aca40a692a16ff7d0b2d2b9a7a1571341762f082",
+  "code_modifications": {
+   "diff_sha256": "23754681fea0470955de46c3cfa240e42c2b8b5ea1975f048182a0b3a50b79c4",
+   "files": [
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/full_targets.py",
+     "sha256": "c2e972274e53a58e5604cfe25ef1f1ad23f4db619c6c1007bf336b98603e441a",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_national.py",
+     "sha256": "d92ae0fd9323a1a53944c2142e476ec6860135a4c2edf2c9cb799f3c2ddbb835",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_targets.py",
+     "sha256": "63d3df5275e2fbdd483edbb3cfd8ecf47557a19e1b7c16a74ac3591dd56fc592",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/target_compile_modules.py",
+     "sha256": "73d560f8035aa87c02b58fed1ad06751add2c2fe86cc64e920b47c254526ed2e",
+     "status": "A"
+    },
+    {
+     "path": "packages/microcosm-build/tests/engine_free/uk/test_uk_target_compile_modules.py",
+     "sha256": "35673369899ed2a41166d2e90adc222ea16a14c8e918785c56ac34b08c917ace",
+     "status": "A"
+    },
+    {
+     "path": "tools/uk_target_surface_receipt.py",
+     "sha256": "c5642693f1a98ce8f08243d0837bee811749ca756c93f25aab88d27e404299c3",
+     "status": "AM"
+    }
+   ]
+  },
   "review_date": "2026-10-10",
   "source_validation": {
    "ledger_provenance": {
@@ -208,12 +244,12 @@
     "contract_target_id": "dwp.uc.households_by_area",
     "moved": 348,
     "relative_change": {
-     "max": 0.02075377022025915,
-     "median": 0.0005261616187282048,
-     "min": -0.015145817484678248
+     "max": 0.020753770220258927,
+     "median": 0.0004677158484543975,
+     "min": -0.015349861685516553
     },
     "removed": 0,
-    "total_after": 6197311.000000003,
+    "total_after": 6196835.244699186,
     "total_before": 6197311.0000000065
    },
    {
@@ -306,10 +342,10 @@
     "relative_change": {
      "max": 0.14490191005576492,
      "median": 0.14490191005576447,
-     "min": 0.14490191005576425
+     "min": 0.1223660897722858
     },
     "removed": 0,
-    "total_after": 1235604245095.7305,
+    "total_after": 1232438335527.1216,
     "total_before": 1079222800000.0005
    },
    {
@@ -336,12 +372,12 @@
     "contract_target_id": "hmrc.employment_income.count",
     "moved": 358,
     "relative_change": {
-     "max": 0.09691591483362005,
+     "max": 0.09691591483362028,
      "median": 0.09691591483361983,
-     "min": 0.09691591483361917
+     "min": 0.0714116034294403
     },
     "removed": 0,
-    "total_after": 29767007.18083994,
+    "total_after": 29699224.79520553,
     "total_before": 27136999.999999996
    },
    {
@@ -365,7 +401,7 @@
     "moved": 0,
     "relative_change": null,
     "removed": 0,
-    "total_after": 6492749.999999996,
+    "total_after": 6483133.706535337,
     "total_before": 0.0
    },
    {
@@ -376,12 +412,12 @@
     "contract_target_id": "hmrc.self_employment_income.amount",
     "moved": 649,
     "relative_change": {
-     "max": 0.14331296461339416,
-     "median": 0.14331296461339393,
-     "min": 0.1433129646133937
+     "max": 0.14294314953489495,
+     "median": 0.14294314953489473,
+     "min": 0.1429431495348945
     },
     "removed": 0,
-    "total_after": 122073125869.9226,
+    "total_after": 122033640196.2501,
     "total_before": 106771400000.0
    },
    {
@@ -392,12 +428,12 @@
     "contract_target_id": "hmrc.self_employment_income.amount",
     "moved": 358,
     "relative_change": {
-     "max": 0.14331296461339416,
-     "median": 0.1433129646133937,
-     "min": 0.14331296461339327
+     "max": 0.14848414301975144,
+     "median": 0.14294314953489495,
+     "min": 0.12207292116201285
     },
     "removed": 0,
-    "total_after": 122073125869.9225,
+    "total_after": 121238534619.37675,
     "total_before": 106771400000.0
    },
    {
@@ -424,12 +460,12 @@
     "contract_target_id": "hmrc.self_employment_income.count",
     "moved": 358,
     "relative_change": {
-     "max": 0.07175157004734078,
-     "median": 0.07175157004734034,
-     "min": 0.07175157004733967
+     "max": 0.071751570047341,
+     "median": 0.07175157004734056,
+     "min": 0.05304195622067387
     },
     "removed": 0,
-    "total_after": 3936543.5167838833,
+    "total_after": 3927461.018620408,
     "total_before": 3672999.9999999898
    },
    {
@@ -438,10 +474,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_a",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -1.6844658558778924e-05,
+     "median": -1.6844658558889947e-05,
+     "min": -2.6006634056052746e-05
+    },
     "removed": 0,
-    "total_after": 5590029.000000002,
+    "total_after": 5590016.0,
     "total_before": 5590029.000000002
    },
    {
@@ -450,10 +490,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_b",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -3.939036839839538e-05,
+     "median": -0.0005135430804383834,
+     "min": -0.0005135430804384944
+    },
     "removed": 0,
-    "total_after": 4737062.999999998,
+    "total_after": 4736801.0,
     "total_before": 4737062.999999998
    },
    {
@@ -462,10 +506,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_c",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -0.00015837497062387573,
+     "median": -0.0005518535519896117,
+     "min": -0.0005518535519898338
+    },
     "removed": 0,
-    "total_after": 5379590.999999999,
+    "total_after": 5378951.0,
     "total_before": 5379590.999999999
    },
    {
@@ -474,10 +522,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_d",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -0.0005734511874393444,
+     "median": -0.0005914353706309994,
+     "min": -0.0005914353706311104
+    },
     "removed": 0,
-    "total_after": 3847140.000000001,
+    "total_after": 3846358.0,
     "total_before": 3847140.000000001
    },
    {
@@ -486,10 +538,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_e",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -0.001025098497008603,
+     "median": -0.0034387048149114863,
+     "min": -0.0034387048149115973
+    },
     "removed": 0,
-    "total_after": 2411808.9999999995,
+    "total_after": 2409630.0,
     "total_before": 2411808.9999999995
    },
    {
@@ -498,10 +554,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_f",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -0.0016784781797836157,
+     "median": -0.003466291390491316,
+     "min": -0.0034662913904914827
+    },
     "removed": 0,
-    "total_after": 1283745.0000000002,
+    "total_after": 1282543.0,
     "total_before": 1283745.0000000002
    },
    {
@@ -510,10 +570,14 @@
     "cells_after": 294,
     "cells_before": 294,
     "contract_target_id": "mhclg.council_tax_stock.by_area.band_g",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 58,
+    "relative_change": {
+     "max": -0.001350403135053413,
+     "median": -0.005071091878525447,
+     "min": -0.005071091878525613
+    },
     "removed": 0,
-    "total_after": 861732.0000000003,
+    "total_after": 860580.0,
     "total_before": 861732.0000000003
    },
    {
@@ -542,10 +606,10 @@
     "relative_change": {
      "max": 0.018656160313145653,
      "median": -0.02421743501582363,
-     "min": -0.0572465060621099
+     "min": -0.05757281516946855
     },
     "removed": 0,
-    "total_after": 7364365.0,
+    "total_after": 7363827.0,
     "total_before": 7553012.999999998
    },
    {
@@ -572,12 +636,12 @@
     "contract_target_id": "ons.age.10_20",
     "moved": 359,
     "relative_change": {
-     "max": 0.0357602015418772,
+     "max": 0.03546052464334948,
      "median": -0.005796818826765415,
-     "min": -0.09713961611420652
+     "min": -0.097648809285386
     },
     "removed": 0,
-    "total_after": 8239548.0,
+    "total_after": 8238776.0,
     "total_before": 8331437.0
    },
    {
@@ -604,12 +668,12 @@
     "contract_target_id": "ons.age.20_30",
     "moved": 359,
     "relative_change": {
-     "max": 0.0551350298180775,
-     "median": -0.0036695029213320574,
+     "max": 0.051666874436401944,
+     "median": -0.0037147337378239387,
      "min": -0.07217514582896711
     },
     "removed": 0,
-    "total_after": 8692702.0,
+    "total_after": 8687364.0,
     "total_before": 8715225.0
    },
    {
@@ -637,11 +701,11 @@
     "moved": 359,
     "relative_change": {
      "max": 0.055338881470350376,
-     "median": 0.004119698338026723,
+     "median": 0.004056494684425704,
      "min": -0.048337987056428
     },
     "removed": 0,
-    "total_after": 9589974.0,
+    "total_after": 9585467.0,
     "total_before": 9572397.000000006
    },
    {
@@ -668,12 +732,12 @@
     "contract_target_id": "ons.age.40_50",
     "moved": 359,
     "relative_change": {
-     "max": 0.06336890817209251,
-     "median": 0.01890653055841507,
-     "min": -0.018764549356532045
+     "max": 0.06174777938644338,
+     "median": 0.01877794223452245,
+     "min": -0.020260463918555516
     },
     "removed": 0,
-    "total_after": 8781770.0,
+    "total_after": 8779519.0,
     "total_before": 8622506.0
    },
    {
@@ -700,12 +764,12 @@
     "contract_target_id": "ons.age.50_60",
     "moved": 359,
     "relative_change": {
-     "max": 0.044511936792161366,
+     "max": 0.043169322762024454,
      "median": -0.012938618696336057,
      "min": -0.041353800025795806
     },
     "removed": 0,
-    "total_after": 8943474.0,
+    "total_after": 8941737.0,
     "total_before": 9036815.999999998
    },
    {
@@ -732,12 +796,12 @@
     "contract_target_id": "ons.age.60_70",
     "moved": 359,
     "relative_change": {
-     "max": 0.0614122169888609,
-     "median": 0.03151080510499682,
+     "max": 0.06005393782656432,
+     "median": 0.03150459292553398,
      "min": 0.006473383375800612
     },
     "removed": 0,
-    "total_after": 8105731.0,
+    "total_after": 8104402.0,
     "total_before": 7861033.999999999
    },
    {
@@ -764,12 +828,12 @@
     "contract_target_id": "ons.age.70_80",
     "moved": 359,
     "relative_change": {
-     "max": 0.05601786931343722,
-     "median": 0.008027058626375316,
+     "max": 0.054665207110632164,
+     "median": 0.007949017676929682,
      "min": -0.01600220811935782
     },
     "removed": 0,
-    "total_after": 6056392.0,
+    "total_after": 6055475.0,
     "total_before": 5998604.999999997
    },
    {
@@ -974,10 +1038,14 @@
     "cells_after": 31,
     "cells_before": 31,
     "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
-    "moved": 0,
-    "relative_change": null,
+    "moved": 31,
+    "relative_change": {
+     "max": -6.905600441942106e-05,
+     "median": -6.905600441953208e-05,
+     "min": -6.905600441953208e-05
+    },
     "removed": 0,
-    "total_after": 14480.999999999996,
+    "total_after": 14480.0,
     "total_before": 14480.999999999996
    },
    {
@@ -1089,7 +1157,7 @@
     "total_before": 5305.0
    }
   ],
-  "moved": 18374,
+  "moved": 18811,
   "removed": 0,
   "rows_after": 21804,
   "rows_before": 20885
