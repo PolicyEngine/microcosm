@@ -86,7 +86,11 @@ STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
 #: counts bridge by ``return_count`` (counts are not aged), amounts by the
 #: closest amount Historic Table 2 carries. The factor band below applies to
 #: the sibling. The bridge is stamp-invariant: if the stamp is corrected
-#: (#1030) both levels move together.
+#: (#1030) both levels move together. A sibling the compiler binds as a share
+#: of a national control (``return_count``, ``adjusted_gross_income`` and
+#: ``itemized_deductions_amount`` are ``_SOI_HT2_NATIONAL_CONTROLS`` columns)
+#: is read at the file's own level (:func:`cd_file_level`), so the bridge
+#: still measures the file's gap and not the control's.
 STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
     "charitable_amount": "itemized_deductions_amount",
     "charitable_returns": "return_count",
@@ -194,6 +198,33 @@ def record_set_spec_id(spec) -> str:
 
 def is_cd_file_spec(spec) -> bool:
     return record_set_spec_id(spec).startswith(CD_FILE_RECORD_SET_SPEC_PREFIX)
+
+
+def cd_file_level(spec, *, aged_like=None) -> float:
+    """A district-file spec's value on the district file's own basis.
+
+    The compiler binds some district-file rows as shares of a national
+    control: such a row names its denominator
+    (``soi_share_total_source_record_id``) and its ``uprating_factor`` is
+    control / the file's US row (microcosm#1229, #1040, and the
+    ``_SOI_HT2_NATIONAL_CONTROLS`` columns). Dividing the factor out gives the
+    file's own level, which is what a level bridge compares with Historic
+    Table 2. A share ages from its control's period; with ``aged_like``, the
+    level is re-aged to that spec's aging factor, so it sits on the same
+    basis as an unrebased district-file row (the two differ once #1030 ages
+    the file from its data year). Other specs return their value.
+    """
+
+    metadata = _metadata(spec)
+    value = float(spec.value)
+    if not metadata.get("soi_share_total_source_record_id"):
+        return value
+    value /= float(metadata["uprating_factor"])
+    if aged_like is not None:
+        value *= float(_metadata(aged_like).get("aging_factor", "1")) / float(
+            metadata.get("aging_factor", "1")
+        )
+    return value
 
 
 def soi_materializer_semantics(spec) -> tuple:
@@ -382,11 +413,12 @@ def state_cd_soi_surface(
         cd_file_state_by_key[key] = spec
 
     # Each state concept both files carry: its Historic Table 2 / district-file
-    # ratio, judged against the measure's median ratio across states.
+    # ratio (the file's own level, ``cd_file_level``), judged against the
+    # measure's median ratio across states.
     vintage_ratio: dict[tuple, float] = {}
     for key in ht2_by_key.keys() & cd_file_state_by_key.keys():
         ht2_value = float(ht2_by_key[key].value)
-        cd_value = float(cd_file_state_by_key[key].value)
+        cd_value = cd_file_level(cd_file_state_by_key[key])
         vintage_ratio[key] = (
             ht2_value / cd_value
             if cd_value != 0.0 and (ht2_value > 0) == (cd_value > 0)
@@ -480,12 +512,18 @@ def state_cd_soi_surface(
         sibling_key = (state, (sibling, *identity[1:]))
         ht2_sibling = ht2_by_key.get(sibling_key)
         cd_sibling = cd_file_state_by_key.get(sibling_key)
-        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
+        # The bridged row is a district-file level, so the sibling must be
+        # too: a sibling the compiler bound as a national share is read at
+        # its own file level, aged as the bridged row is.
+        cd_sibling_level = (
+            None if cd_sibling is None else cd_file_level(cd_sibling, aged_like=spec)
+        )
+        if ht2_sibling is None or cd_sibling_level is None or cd_sibling_level == 0:
             raise ValueError(
                 f"Level bridge {measure} -> {sibling} in state {state} needs "
                 "the sibling's state total in both files."
             )
-        factor = float(ht2_sibling.value) / float(cd_sibling.value)
+        factor = float(ht2_sibling.value) / cd_sibling_level
         # A sign conflict is a data defect, not a level disagreement: refuse
         # it before the band, which only judges finite positive ratios.
         if not (math.isfinite(factor) and factor > 0.0):
@@ -498,7 +536,7 @@ def state_cd_soi_surface(
         # rows) the rebase of its own district block.
         trusted = within_band(
             sibling_key,
-            factor,
+            vintage_ratio[sibling_key],
             median_ratio.get(sibling_key[1], math.nan),
             f"level_bridge:{measure}",
             measure,
