@@ -248,7 +248,9 @@ def _uc(name: str, level: str, area: str, value: float) -> TargetSpec:
     )
 
 
-def _uc_surface(off_surface_cells=()) -> tuple[dict[str, float], dict]:
+def _uc_surface(
+    off_surface_cells=(), area_region_codes=None
+) -> tuple[dict[str, float], dict]:
     # A GB caseload of 300 over two constituencies of 100 (Scotland, Wales).
     # Wales has its one authority; Scotland's tier carries one of two.
     registry = TargetRegistry(
@@ -286,6 +288,7 @@ def _uc_surface(off_surface_cells=()) -> tuple[dict[str, float], dict]:
         bound_national_target_ids=("dwp.uc.households",),
         period=2025,
         off_surface_cells=off_surface_cells,
+        area_region_codes=area_region_codes,
     )
     return dict(zip(surface["area_code"], surface["value"], strict=True)), receipt
 
@@ -315,3 +318,20 @@ def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours():
     (entry,) = receipt["off_surface_cells"]["implied_absent"]
     assert entry["implied_value"] == pytest.approx(40.0)
     assert entry["leg"] == "S92000003"
+
+
+def test_an_off_surface_area_the_runs_ladder_does_not_carry_is_left_out():
+    target = "dwp.uc.households_by_area"
+    cells = [
+        _off("local_authority", "S12000034", 40.0, target_id=target),
+        _off("local_authority", "E06999999", 5.0, target_id=target),
+    ]
+    # A run with its own ladder carries only its areas: the English authority
+    # is not in it, so it is named in the receipt and left out.
+    values, receipt = _uc_surface(cells, area_region_codes={"E06000001": "E12000001"})
+    assert values["S12000033"] == pytest.approx(90.0)
+    assert receipt["off_surface_cells"]["areas_outside_the_ladder"] == ["E06999999"]
+    assert receipt["off_surface_cells"]["rows_added"] == 1
+    # Under the committed crosswalk an area that cannot be placed is a defect.
+    with pytest.raises(ValueError, match="E06999999.*local-area crosswalk"):
+        _uc_surface(cells)

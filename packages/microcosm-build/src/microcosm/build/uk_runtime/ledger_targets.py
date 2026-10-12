@@ -2562,6 +2562,7 @@ def uk_local_target_surface(
         "implied_absent": [],
         "rows_added": 0,
     }
+    areas_outside_the_ladder: set[str] = set()
     if off_surface_cells:
         # The first pass names the legs a control moves; only there can a
         # cell that is off the surface leave its share on its neighbours.
@@ -2595,9 +2596,23 @@ def uk_local_target_surface(
                 controlled_legs.add(
                     (target_id, str(row["grain"]), leg_of_area(row["geography_id"]))
                 )
+        placed_cells = []
+        for cell in off_surface_cells:
+            # As for the leg licences: under the committed crosswalk an area
+            # that cannot be placed is a register defect and refuses. Under a
+            # run's own ladder it is an area the run does not carry: it is
+            # left out and named in the receipt.
+            try:
+                leg_of_area(str(cell["geography_id"]))
+            except ValueError:
+                if area_region_codes is None:
+                    raise
+                areas_outside_the_ladder.add(str(cell["geography_id"]))
+                continue
+            placed_cells.append(cell)
         off_surface_rows, off_surface_receipt = uk_off_surface_frame_rows(
             bound_rows,
-            off_surface_cells,
+            placed_cells,
             leg_of_area=leg_of_area,
             controlled_legs=controlled_legs,
             frame_only_rows=frame_only_rows,
@@ -2605,7 +2620,10 @@ def uk_local_target_surface(
         if off_surface_rows:
             reconciliation_rows.extend(off_surface_rows)
             reconciliation, raw_surface, reconciled, receipt = reconcile()
-    receipt["off_surface_cells"] = off_surface_receipt
+    receipt["off_surface_cells"] = {
+        **off_surface_receipt,
+        "areas_outside_the_ladder": sorted(areas_outside_the_ladder),
+    }
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
         local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
     )
