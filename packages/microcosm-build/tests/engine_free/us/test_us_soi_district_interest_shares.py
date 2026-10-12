@@ -22,7 +22,6 @@ Invariants, for every fact set the compile accepts:
 """
 
 # ruff: noqa: F403, F405
-import dataclasses
 import random
 
 from test_support.microcosm_build.us_fiscal_targets import *
@@ -279,6 +278,52 @@ def test_a_relabeled_district_measure_binds_the_same_shares() -> None:
         }
 
     assert values("mortgage_interest_paid") == values("interest_paid_deduction")
+
+
+def test_the_other_line_10_parts_stay_inert() -> None:
+    """PolicyEngine/chronicle#345's district-file shape compiles only line 8a.
+
+    That package relabels line 8a to mortgage_interest_paid_* and adds lines
+    8b, 8c and 9 under Table 2.1's own ids, each on its own column. Those ids
+    are unmapped (Table 2.1 binds only their total), so they bind nothing at
+    any geography, and Table 2.1's own 8a row stays unmapped too.
+    """
+
+    others = {
+        "home_mortgage_personal_seller": "A19500",
+        "deductible_points": "A19530",
+        "investment_interest_paid": "A19570",
+    }
+    facts = [
+        *_district_file(_WORLD, measure_prefix="mortgage_interest_paid"),
+        *_national_rows(),
+        _table_2_1_fact("mortgage_interest_paid_amount", 167e9),
+    ]
+    for prefix, column in others.items():
+        facts += [
+            _cd_fact(f"{prefix}_amount", column, 1e9),
+            _cd_fact(
+                f"{prefix}_amount",
+                column,
+                1e8,
+                row="hi_total",
+                level="state",
+                geography_id="0400000US15",
+            ),
+        ]
+    registry = _compile(facts)
+    measures = {spec.metadata.get("source_measure_id") for spec in registry.specs}
+    assert measures.isdisjoint({f"{prefix}_amount" for prefix in others})
+    assert "mortgage_interest_paid_amount" in {
+        spec.metadata["source_measure_id"] for spec in _district_file_specs(registry)
+    }
+    assert not [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("ledger_layout_record_set_id") == _T21_RECORD_SET
+        and spec.metadata.get("source_measure_id") == "mortgage_interest_paid_amount"
+    ]
+    assert len(_district_file_specs(registry)) == 6
 
 
 @pytest.mark.parametrize("column", [None, "", "A19570", "A19500", "A04470"])
