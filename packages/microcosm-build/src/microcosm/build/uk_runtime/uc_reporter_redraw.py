@@ -31,7 +31,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UC_CAPITAL_WITH_PROPERTY_DEFINITION,
-    UC_PROPERTY_CAPITAL_OWNERS,
+    PROPERTY_CAPITAL_OWNER_COLUMN,
     UC_PROPERTY_CAPITAL_SHARE,
     UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
     UC_PROPERTY_CAPITAL_SOURCES,
@@ -202,7 +202,7 @@ def redraw_spi_reported_uc(
             "is_benunit_head",
             "is_parent",
             "age",
-            UC_PROPERTY_CAPITAL_OWNERS,
+            PROPERTY_CAPITAL_OWNER_COLUMN,
             UC_REPORTER_REDRAW_OUTPUT,
             *_PERSON_INCOME_COLUMNS,
         ),

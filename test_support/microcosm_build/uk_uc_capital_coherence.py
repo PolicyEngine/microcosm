@@ -9,7 +9,6 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
-from microcosm.build.uk_runtime.frs_take_up import UKTakeUpPopulationPolicy
 from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -43,11 +42,6 @@ from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph.executor import _project_context
 from microcosm.graph.population import Population
 
-#: The engine's ages at 2024, which engine-free tests cannot read.
-POLICY = UKTakeUpPopulationPolicy(
-    adult_age=18, state_pension_age=66, instant="2024-01-01", source="fixture"
-)
-
 
 def _stage():
     spec = load_country_spec("uk")
@@ -78,6 +72,7 @@ def _frame():
             "person_household_id": [row[0] for row in rows],
             "universal_credit_reported": [row[8] for row in rows],
             "is_benunit_head": True,
+            "is_household_head": True,
             "is_parent": [row[5] > 0 for row in rows],
             "age": 40,
             "is_uc_claimant": True,
@@ -93,6 +88,7 @@ def _frame():
                     "person_household_id": row[0],
                     "universal_credit_reported": 0.0,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": row[5] > 0,
                     "age": 40,
                     "is_uc_claimant": True,
@@ -106,6 +102,7 @@ def _frame():
                     "person_household_id": row[0],
                     "universal_credit_reported": 0.0,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": False,
                     "age": 5,
                     "is_uc_claimant": False,

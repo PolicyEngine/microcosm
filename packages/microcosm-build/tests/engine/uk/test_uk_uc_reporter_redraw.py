@@ -5,9 +5,10 @@ from test_support.microcosm_build.uk_uc_reporter_redraw import *
 
 
 def test_live_engine_screen_reads_the_recorded_capital_with_property() -> None:
-    """The screen's capital is the FRS carrier plus the unit's property share,
-    as uc_capital_coherence records it: unit 103 holds no financial capital
-    but its household's other property is over the UC limit (microcosm#1095)."""
+    """The screen's capital is the FRS carrier plus the property the unit
+    holds, as uc_capital_coherence records it: unit 103 holds no financial
+    capital but its household's other property is over the UC limit
+    (microcosm#1095)."""
 
     person = pd.DataFrame(
         {
@@ -16,6 +17,7 @@ def test_live_engine_screen_reads_the_recorded_capital_with_property() -> None:
             "person_household_id": [1, 2, 3],
             "age": [40, 40, 40],
             "is_benunit_head": [True, True, True],
+            "is_household_head": [True, True, True],
             "is_uc_claimant": [True, True, True],
             UC_REPORTER_REDRAW_OUTPUT: [0.0, 0.0, 0.0],
             "employment_income": [0.0, 0.0, 0.0],
@@ -43,7 +45,8 @@ def test_live_engine_screen_reads_the_recorded_capital_with_property() -> None:
             "tenure_type": ["OWNED_OUTRIGHT", "OWNED_OUTRIGHT", "OWNED_OUTRIGHT"],
             "rent": [0.0, 0.0, 0.0],
             "savings": [100_000.0, 100_000.0, 0.0],
-            "other_residential_property_value": [0.0, 0.0, 16_001.0],
+            # At 90% of its value, GBP 18,000 of property is GBP 16,200.
+            "other_residential_property_value": [0.0, 0.0, 18_000.0],
             "non_residential_property_value": [0.0, 0.0, 0.0],
             "corporate_wealth": [0.0, 0.0, 0.0],
         }

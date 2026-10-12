@@ -491,9 +491,7 @@ def _evaluate_column_implication(
     carrier = pd.to_numeric(target[carrier_column], errors="coerce").to_numpy(
         dtype=float
     )
-    shares, qualifying_age = _capital_property_shares(
-        context, frame, target, property_shares
-    )
+    shares = _capital_property_shares(frame, target, property_shares)
     # A declared tolerance admits GBP sum_tolerance plus one float32 step of
     # the expected value, so the carrier-plus-share sum survives a float32
     # round-trip of the export; without one the capital must equal it exactly.
@@ -588,7 +586,6 @@ def _evaluate_column_implication(
             "property_shares": {
                 column: dict(rule) for column, rule in property_shares.items()
             },
-            "pension_credit_qualifying_age": qualifying_age,
             "capital_columns": {
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
@@ -603,9 +600,9 @@ def _declared_property_shares(
     """The declared property-share rules, refused unless they are the code's."""
 
     from microcosm.build.uk_runtime.uc_capital_coherence import (
-        PENSION_CREDIT_PROPERTY_CAPITAL_OWNERS,
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
-        UC_PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
@@ -613,13 +610,15 @@ def _declared_property_shares(
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
-            "owners": UC_PROPERTY_CAPITAL_OWNERS,
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
         "pension_credit_reported_capital": {
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
-            "owners": PENSION_CREDIT_PROPERTY_CAPITAL_OWNERS,
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
         },
     }
     declared = {
@@ -638,24 +637,20 @@ def _declared_property_shares(
 
 
 def _capital_property_shares(
-    context: EvidenceContext,
     frame: Frame,
     target: pd.DataFrame,
     property_shares: Mapping[str, Mapping[str, Any]],
-) -> tuple[dict[str, np.ndarray], int | None]:
+) -> dict[str, np.ndarray]:
     """Each declared capital column's property share, in target row order."""
 
-    from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
-    from microcosm.build.uk_runtime.national_frame import uk_time_period
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         pension_credit_property_capital_share,
         uc_recorded_property_share,
     )
 
     shares: dict[str, np.ndarray] = {}
-    qualifying_age: int | None = None
     if not property_shares:
-        return shares, qualifying_age
+        return shares
     person = frame.table("person")
     household = frame.table("household")
     if "uc_reported_capital" in property_shares:
@@ -663,18 +658,10 @@ def _capital_property_shares(
             person, target, household
         )
     if "pension_credit_reported_capital" in property_shares:
-        # Engine-free callers supply the take-up population policy; builds
-        # read the engine's ages at the frame's instant, as the stage does.
-        policy = context.artifacts.get(
-            "take_up_population_policy"
-        ) or uk_take_up_population_policy(uk_time_period(frame))
-        qualifying_age = int(policy.state_pension_age)
         shares["pension_credit_reported_capital"] = (
-            pension_credit_property_capital_share(
-                person, target, household, qualifying_age=qualifying_age
-            )
+            pension_credit_property_capital_share(person, target, household)
         )
-    return shares, qualifying_age
+    return shares
 
 
 def _evaluate_take_up_signal(

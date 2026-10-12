@@ -10,7 +10,6 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
-from microcosm.build.uk_runtime.frs_take_up import UKTakeUpPopulationPolicy
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
@@ -33,11 +32,6 @@ from microcosm.build.uk_runtime.uc_reporter_redraw import (
 )
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
-
-#: The engine's ages at 2024, which engine-free tests cannot read.
-POLICY = UKTakeUpPopulationPolicy(
-    adult_age=18, state_pension_age=66, instant="2024-01-01", source="fixture"
-)
 
 
 def _stage():
@@ -166,6 +160,7 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": age,
                     "is_benunit_head": member == 0,
+                    "is_household_head": member == 0,
                     "is_parent": children > 0,
                     "is_uc_child": benunit_id == 204,
                     "is_uc_claimant": True,
@@ -186,6 +181,7 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": 10,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": False,
                     "is_uc_child": True,
                     "is_uc_claimant": False,
