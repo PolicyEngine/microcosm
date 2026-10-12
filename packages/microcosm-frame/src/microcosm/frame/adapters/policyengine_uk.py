@@ -7,10 +7,10 @@ without the UK extra.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -20,12 +20,13 @@ from microcosm.frame.adapters.policyengine_uk_concepts import (
 from microcosm.frame.bundle import Frame
 from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables
-from microcosm.frame.rules import ExportContract
+from microcosm.frame.rules import ExportContract, RulesEngine
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
 __all__ = [
     "POLICYENGINE_UK_CONCEPT_MAPPING",
     "PolicyEngineUKEngine",
+    "ProjectingRulesEngine",
     "UK_SCHEMA",
     "validate_uc_claimant_input",
 ]
@@ -40,6 +41,31 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
     str: "str",
 }
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
+
+
+class ProjectingRulesEngine(RulesEngine, Protocol):
+    """A rules engine that can read a bundle from an earlier year.
+
+    ``RulesEngine.materialize`` reads the bundle's values as ``period``
+    inputs. An engine that projects a dataset forward itself accepts
+    ``dataset_period``: the year the bundle's values belong to. It stamps the
+    dataset with that year and computes ``variables`` at ``period`` on its own
+    projection, as it does for a released file. A stage that needs this names
+    the protocol. It is declared beside the adapter that implements it:
+    ``microcosm.frame.rules`` is inside pinned kernel hashes, and a
+    typing-only addition there would move them.
+    """
+
+    def materialize(
+        self,
+        bundle: Frame,
+        variables: Sequence[str],
+        period: int | str,
+        *,
+        dataset_period: int | str | None = None,
+    ) -> Mapping[str, np.ndarray]:
+        """Compute ``variables`` for ``period`` on a ``dataset_period`` bundle."""
+        ...
 
 
 class PolicyEngineUKEngine:

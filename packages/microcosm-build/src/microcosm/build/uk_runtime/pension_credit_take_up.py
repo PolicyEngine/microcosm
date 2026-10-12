@@ -49,10 +49,8 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
     _household_to_benunit_weights,
 )
 from microcosm.frame import Frame
-from microcosm.frame.rules import (
-    ProjectingRulesEngine,
-    assert_rules_engine_country,
-)
+from microcosm.frame.adapters.policyengine_uk import ProjectingRulesEngine
+from microcosm.frame.rules import assert_rules_engine_country
 
 PENSION_CREDIT_TAKE_UP_STAGE_NAME = "pension_credit_take_up"
 PENSION_CREDIT_TAKE_UP_OUTPUT = "would_claim_pc"

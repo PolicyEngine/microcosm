@@ -25,7 +25,6 @@ from microcosm.frame.schema import EntitySchema, VariableMetadata
 
 __all__ = [
     "RulesEngine",
-    "ProjectingRulesEngine",
     "ExportContract",
     "assert_rules_engine_country",
     "materialize_rules_engine_predictors",
@@ -103,29 +102,6 @@ class RulesEngine(Protocol):
         period: int | str,
     ) -> None:
         """Write the bundle as an engine-native dataset at ``path``."""
-        ...
-
-
-class ProjectingRulesEngine(RulesEngine, Protocol):
-    """A rules engine that can read a bundle from an earlier year.
-
-    ``RulesEngine.materialize`` reads the bundle's values as ``period``
-    inputs. An engine that projects a dataset forward itself accepts
-    ``dataset_period``: the year the bundle's values belong to. It stamps the
-    dataset with that year and computes ``variables`` at ``period`` on its own
-    projection, as it does for a released file. A stage that needs this names
-    the protocol; an engine without it does not satisfy the stage.
-    """
-
-    def materialize(
-        self,
-        bundle: Frame,
-        variables: Sequence[str],
-        period: int | str,
-        *,
-        dataset_period: int | str | None = None,
-    ) -> Mapping[str, np.ndarray]:
-        """Compute ``variables`` for ``period`` on a ``dataset_period`` bundle."""
         ...
 
 
