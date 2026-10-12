@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
@@ -303,6 +304,11 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    # Schedule E line 32. PE-US means partnership_s_corp_income to be that
+    # total (passive_partnership_s_corp_income is its passive subset), but the
+    # processed PUF donor builds it from the nonpassive fields only
+    # ((E26190 - E26180) + (E25980 - E25960), not E26270), so this frame's
+    # column is narrower than the line it targets (microcosm#1228).
     "partnership_and_s_corp_net_income_less_loss": (
         "tax_unit_partnership_s_corp_income"
     ),
@@ -3269,6 +3275,11 @@ def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
     return "sum"
 
 
+#: The district file's family token, with or without its plan vintage
+#: (``congressional_district_2022``); nothing else that starts the same way.
+_SOI_CONGRESSIONAL_DISTRICT_FAMILY = re.compile(r"congressional_district(_\d{4})?")
+
+
 class UnregisteredSoiNetIncomeLessLossFamilyError(ValueError):
     """A net-income-(less-loss) measure id arrived from an unreviewed family."""
 
@@ -3288,7 +3299,7 @@ def _soi_source_family(record_set_id: str) -> str:
     if not rest:
         return ""
     family = rest[0]
-    if family.startswith("congressional_district"):
+    if _SOI_CONGRESSIONAL_DISTRICT_FAMILY.fullmatch(family):
         return "congressional_district"
     return family
 

@@ -44,7 +44,7 @@ Amounts are aged by the rows' own factor, 1.12034597479376; counts are not aged,
 - **`modal_resolve.py`** runs the five arms on Modal: 16 CPUs each, torch 2.12, the kernel packages from this branch's HEAD.
 - **`analyze.py`** scores each arm and writes `results/summary.{json,md}`.
 
-Inputs live in `/Users/maxghenis/PolicyEngine/_build_artifacts/1228-net-income-resolve/inputs` and runs in `.../runs`.
+Inputs live in `/Users/maxghenis/PolicyEngine/_build_artifacts/1228-net-income-resolve/inputs` and runs in `.../runs`. The scripts hard-code the Route A run directory (`_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c`), as research harnesses here do. The arms' recorded metrics predate the inputs-digest and `resolve.py`-digest fields that `modal_resolve.py` now checks before reusing a finished arm.
 
 ## Results
 

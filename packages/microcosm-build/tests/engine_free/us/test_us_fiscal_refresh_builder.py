@@ -2927,7 +2927,9 @@ def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
     assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
 
 
-def test_soi_indicator_rows_flag_positive_component_items() -> None:
+def test_soi_indicator_rows_flag_component_items() -> None:
+    """A return counts when its component is positive; a net-income-(less-loss)
+    return counts when its signed total is nonzero (microcosm#1228)."""
     builder = _load_builder_module()
 
     assert np.array_equal(
@@ -3017,18 +3019,23 @@ def _cached_builder_module():
 def test_net_income_less_loss_rows_are_the_sum_of_their_table_1_4_legs(
     concept: str, rows: list[tuple[float, int]]
 ) -> None:
-    """For every signed tax-unit vector and nonnegative weights
-    (microcosm#1228):
+    """For every signed tax-unit vector and nonnegative weights, read as one
+    signed column (microcosm#1228):
 
     - count conservation: the weighted less-loss count equals the net-income
-      leg's count plus the net-loss leg's count (HT2 N00900 = Table 1.4
-      col 31 + col 33);
+      leg's count plus the net-loss leg's count;
     - amount conservation: the weighted less-loss amount equals the net-income
-      leg's amount minus the net-loss leg's amount (A00900 = col 32 - col 34);
+      leg's amount minus the net-loss leg's amount;
     - bounds: the less-loss count is at least the net-income count, and the
       less-loss amount at most the net-income amount;
     - sign symmetry: negating every value leaves the count unchanged and
       negates the amount.
+
+    For business the conservation laws are the published identities
+    N00900 = Table 1.4 col 31 + col 33 and A00900 = col 32 - col 34. Table
+    1.4's rental legs report Schedule E lines 26 + 39 + 40 and its TY2021+
+    partnership and S-corp legs are per entity type, so for those the property
+    checks the model's own decomposition of one column.
     """
     builder = _cached_builder_module()
     values = np.array([value for value, _ in rows], dtype=np.float64)

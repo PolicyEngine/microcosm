@@ -1,9 +1,11 @@
-"""Run the four #1228 arms of the Route A re-solve on Modal.
+"""Run the five #1228 arms of the Route A re-solve on Modal.
 
 Each arm is one ``resolve.py`` calibration of the release's 5,694-target
 national_state surface (352,932 households) in its own container. The kernel
 packages are installed from this worktree's committed tree; the launch refuses
-a tree whose kernel sources differ from HEAD, and every run records that HEAD.
+a tree whose kernel sources or ``resolve.py`` differ from HEAD, and every run
+records that HEAD. A finished arm is reused only when its HEAD, its inputs'
+``MANIFEST.json`` digest and its ``resolve.py`` digest all match.
 
     uv run --no-sync modal run --detach experiments/1228-net-income-less-loss/modal_resolve.py::launch --inputs DIR
     uv run --no-sync modal run experiments/1228-net-income-less-loss/modal_resolve.py::collect --into DIR
@@ -64,7 +66,8 @@ def _head() -> str:
 def _kernel_clean() -> bool:
     status = subprocess.run(
         ["git", "-C", str(REPO), "status", "--porcelain", "--"]
-        + [f"packages/{name}/src" for name in KERNEL],
+        + [f"packages/{name}/src" for name in KERNEL]
+        + [str(HERE.relative_to(REPO) / "resolve.py")],
         capture_output=True,
         text=True,
         check=True,
@@ -130,8 +133,19 @@ def run_arm(arm: str) -> dict:
     out_root = Path(VOLUME_ROOT) / "runs"
     finished = out_root / arm / "metrics.json"
     if finished.exists():
+        import hashlib
+
         payload = json.loads(finished.read_text())
-        if payload.get("git_sha") == GIT_SHA:
+        identity = {
+            "git_sha": GIT_SHA,
+            "inputs_manifest_sha256": hashlib.sha256(
+                Path(f"{VOLUME_ROOT}/inputs/MANIFEST.json").read_bytes()
+            ).hexdigest(),
+            "resolve_sha256": hashlib.sha256(
+                Path("/opt/resolve/resolve.py").read_bytes()
+            ).hexdigest(),
+        }
+        if all(payload.get(key) == value for key, value in identity.items()):
             return {"arm": arm, "cached": True, "final_loss": payload["final_loss"]}
     sys.argv = [
         "resolve.py",

@@ -16,6 +16,7 @@ Run: ``python resolve.py --inputs DIR --out DIR --arm ARM [--epochs N]``
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -215,6 +216,10 @@ def main() -> None:
         "platform": platform.platform(),
         "cpus": os.cpu_count(),
         "git_sha": os.environ.get("MICROCOSM_GIT_SHA", ""),
+        "inputs_manifest_sha256": hashlib.sha256(
+            (args.inputs / "MANIFEST.json").read_bytes()
+        ).hexdigest(),
+        "resolve_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "trajectory": trajectory,
         "release_row_estimates": release_estimates.tolist(),
         "concept_row_estimates": concept_estimates.tolist(),

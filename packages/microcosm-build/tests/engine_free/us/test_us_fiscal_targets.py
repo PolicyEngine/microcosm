@@ -898,9 +898,10 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     38c1db8880da, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. microcosm#1228 moved the
     version from e1f9906bf0e0 (full f5bd921d6b21 -> 9f6c65fe8734) by binding
-    the 312 Historic Table 2 business, partnership and rental rows (3,294 on
-    full with the district file's) to signed net-income-(less-loss)
-    concepts; no value changed. microcosm#1206 moved it from f96be9f41781 by
+    the 312 Historic Table 2 business, partnership and rental rows to signed
+    net-income-(less-loss) concepts (3,294 on full: these, 2,928
+    district-file rows and 54 single-district-state Historic Table 2 rows);
+    no value changed. microcosm#1206 moved it from f96be9f41781 by
     binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
@@ -1101,6 +1102,9 @@ def test_soi_source_family_strips_period_and_district_vintage() -> None:
     assert family("irs_soi.ty2026.congressional_district_2024.all_returns") == (
         "congressional_district"
     )
+    assert family("irs_soi.ty2023.congressional_district_table_1_4") == (
+        "congressional_district_table_1_4"
+    )
     assert family("irs_soi") == ""
     assert family("census_acs.acs1_2024.s0101") == ""
 
@@ -1119,6 +1123,7 @@ def test_net_income_less_loss_binding_depends_only_on_the_family() -> None:
             "historic_table_2",
             "congressional_district_2022",
             "congressional_district_2024",
+            "congressional_district_table_1_4",
             "table_1_4",
             "table_1_1",
             "table_2_1",
@@ -1144,8 +1149,8 @@ def test_net_income_less_loss_binding_depends_only_on_the_family() -> None:
         fact = _net_income_less_loss_fact(
             measure_id, value, record_set_id=record_set_id, period=period
         )
-        registered = family == "historic_table_2" or family.startswith(
-            "congressional_district"
+        registered = family == "historic_table_2" or bool(
+            re.fullmatch(r"congressional_district(_\d{4})?", family)
         )
         if not registered:
             with pytest.raises(
@@ -1174,8 +1179,11 @@ def test_pinned_feed_net_income_less_loss_rows_bind_signed_concepts(
     a signed concept, every one comes from Historic Table 2 or the district
     file, and no row binds a one-sided Table 1.4 leg. national_state carries
     the 6 ids x (51 states + the US) = 312 Historic Table 2 rows; full adds
-    the district file's. On every one of these families the 51 state rows sum
-    to at most the national row."""
+    2,928 district-file rows and 54 Historic Table 2 rows of the nine
+    single-district states, which full classes as district rows. As a data
+    pin (the US row includes territories and other areas, so it is not a law
+    for signed amounts), each measure's 51 state rows sum to at most its
+    national row."""
     registry, surface, _ = pinned_feed_national_state_surface
 
     rows = [

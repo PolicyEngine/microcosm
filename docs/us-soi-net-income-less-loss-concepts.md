@@ -17,7 +17,10 @@ measures, and how `fiscal_targets.py` binds them now.
 The amount nets losses against income. The count is every return with an
 entry on the line, net income or net loss. Table 1.4 splits each line into a
 "net income" column and a "net loss" column, and the HT2 columns are their
-union.
+union. Publication 1304 prints this convention for its own "(less loss)"
+lines: in the TY2021 report's summary table, TY2020 business "net income
+(less loss)" returns are 27,727 thousand = 19,977 net income + 7,750 net
+loss, and partnership and S corporation returns are 9,002 = 5,902 + 3,100.
 
 **Business income.** Table 1.4 "Business or profession" net income and net
 loss:
@@ -37,12 +40,17 @@ splits partnership from S corporation, so no combined net-income count
 exists. HT2 A26270 equals the net within 0.8% in TY2020 and the summed
 partnership and S-corp nets within 0.2–0.35% in TY2021–TY2023.
 
-**Rental and royalty income.** N25870/A25870 first appear in TY2022. Table
-1.4's "Total rental and royalty" includes Form 4835 farm rental. Schedule E
-line 26 does not, because farm rental goes on line 40. In TY2022 HT2 A25870
-is 0.919 of the Table 1.4 total net, and 0.983 once farm rental is removed.
-In TY2023 the ratios are 0.919 and 0.992. HT2 N25870 is 0.97 and 0.96 of the
-Table 1.4 NI + NL returns, about the farm-rental-only returns.
+**Rental and royalty income.** N25870/A25870 first appear in TY2022. Both
+doc guides tie them to Schedule E line 26 alone. Publication 1304 defines
+Table 1.4's "Total rental and royalty net income or loss" as "line 26 +
+lines 39 and 40, Schedule E", so the Table 1.4 total also carries REMIC
+income (line 39) and Form 4835 farm rental (line 40). The amounts agree:
+in TY2022 HT2 A25870 is 0.919 of the Table 1.4 total net, and 0.983 once
+farm rental is removed; in TY2023 the ratios are 0.919 and 0.992. HT2
+N25870 is 0.97 and 0.96 of the Table 1.4 NI + NL returns. The gap is
+consistent with returns whose only entries are on lines 39 or 40, or with
+the population-versus-sample difference between the files; it is not
+resolved here.
 
 The workbooks are the feed-pinned `20in14ar.xls` … `23in14ar.xls` and
 `20in55cmcsv.csv` … `23in55cmcsv.csv`. The script and its output are in
@@ -81,6 +89,27 @@ Two further gaps sat on the same rows:
 | `partnership_and_s_corp_net_income_less_loss` | `tax_unit_partnership_s_corp_income` | signed sum | total ≠ 0 | `schedule_e_line_32_net_income_less_loss` |
 | `rent_and_royalty_net_income_less_loss` | `rental_income` | signed sum | total ≠ 0 | `schedule_e_line_26_net_income_less_loss` |
 
+These are the frame's closest columns, with two caveats from the donor
+lineage:
+
+- **Partnership and S corporation income is narrower than line 32 in this
+  frame.** The processed PUF donor builds `partnership_s_corp_income` from
+  the nonpassive fields only. policyengine-us-data `datasets/puf/puf.py`
+  computes `(E26190 − E26180) + (E25980 − E25960)`, commented "active"
+  S-corp and partnership income, and microcosm's fallback in
+  `us_runtime/puf_support.py` reads the same fields. It does not use E26270,
+  the line-32 total that includes passive income. The Route A frame starts
+  at $315B net ($411B positive part) against a $1,158B target, so this
+  binding asks calibration to roughly triple the carriers' mass; the release
+  binding asked the same of the positive part. The column is still the right
+  one to bind: PE-US documents `passive_partnership_s_corp_income` as a
+  subset of `partnership_s_corp_income`, so the model column is meant to be
+  line 32. The donor gap is a frame defect.
+- **Rental's donor is `E25850 − E25860`** (Schedule E rent and royalty net
+  income less net loss). Line 26 is after the passive-loss limitation; that
+  these PUF fields are too is not verified here. The re-solve lands the
+  line-26 net at $98.4B against $95.9B, so the levels are compatible.
+
 - The six measure ids bind these concepts.
 - Only HT2 and the district file are reviewed to publish them
   (`_SOI_NET_INCOME_LESS_LOSS_FAMILIES`). The same id from any other family
@@ -99,8 +128,11 @@ Two further gaps sat on the same rows:
 On the pinned feed (`consumer_facts_us_51aa40f`, compile at 2024 with aging,
 the packaged district crosswalk and Medicaid substitution) the change:
 
-- rebinds 3,294 specs: 312 on `national_state` (6 ids × 51 states + the US
-  row) and the district file's 2,982 on `full`;
+- rebinds 3,294 specs. 312 are the Historic Table 2 rows on
+  `national_state` (6 ids × 51 states + the US row). The other 2,982 sit on
+  `full` only: 2,928 district-file rows (each id's US, 51 state and 436
+  district rows) and 54 Historic Table 2 rows of the nine single-district
+  states, which `full` classes as district rows;
 - changes no target value, and no spec enters or leaves either surface;
 - moves `national_state` `e1f9906bf0e0` → `38c1db8880da` and `full`
   `f5bd921d6b21` → `9f6c65fe8734`.
@@ -114,8 +146,18 @@ the packaged district crosswalk and Medicaid substitution) the change:
   - a less-loss amount equals the net-income leg's amount minus the net-loss
     leg's amount.
 
-  This is the identity the IRS columns satisfy. Hypothesis property:
-  `test_net_income_less_loss_rows_are_the_sum_of_their_table_1_4_legs`.
+  For business this is the published identity in every year (N00900 =
+  Table 1.4 NI + NL returns, A00900 = NI − NL), and for partnership and S
+  corporation in TY2020's combined columns. Table 1.4's rental legs report a
+  different line (Schedule E lines 26 + 39 + 40, which is why the model's
+  rental legs add farm rent), and its TY2021+ partnership and S-corp legs are
+  per entity type. For those two the property checks the model's own
+  decomposition of one signed column, not a published identity. Hypothesis
+  property: `test_net_income_less_loss_rows_are_the_sum_of_their_table_1_4_legs`.
+- **End to end.** `test_net_income_less_loss_rows_materialize_signed_totals_and_nonzero_counts`
+  materializes the six concepts through the SOI slice on a fake engine: a
+  unit whose members net to a loss, an SSTB-only unit and a farm-rent-only
+  unit, hand-computed.
 - **Bounds and sign symmetry.** The less-loss count is at least the
   net-income count, and the amount at most the net-income amount. Negating
   every value keeps the count and negates the amount. Same property.
@@ -129,7 +171,9 @@ the packaged district crosswalk and Medicaid substitution) the change:
   - only those rows bind a signed concept;
   - no row binds a one-sided leg;
   - `national_state` carries 312 of them;
-  - each family's 51 state rows sum to at most the US row.
+  - each family's 51 state rows sum to at most the US row. This is a data
+    pin, not a law: the US row includes territories and other areas, which
+    could be net negative for a signed amount.
 
 ## The method choice
 
@@ -151,7 +195,8 @@ drops the Schedule C counts:
 
 **The frame limits option 1.** The `puf_tax_detail` stage lists
 `self_employment_income_before_lsr` under `nonnegative_outputs`
-(`us/spec/sources.yaml`). As a result:
+(`us/spec/sources.yaml`), although the donor's `self_employment_income` is
+the signed E00900. As a result:
 
 - the Route A frame carries 0.39M weighted Schedule C loss units before
   calibration (0.65M after), against 8.39M loss returns in Table 1.4

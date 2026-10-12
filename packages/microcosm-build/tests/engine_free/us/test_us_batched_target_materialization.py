@@ -585,3 +585,105 @@ def test_refusal_reads_a_value_held_only_on_baseline() -> None:
         builder._refuse_batch_population_aggregates(
             root, batch=1, batches=3, n_households=6
         )
+
+
+# microcosm#1228: pinned inputs in household 4 (tax units 40 = persons 7 and
+# 8, 41 = person 9, 42 = person 10). Spouses 7 and 8 net to a Schedule C
+# loss; person 10's business is an SSTB, so all of it sits outside
+# self_employment_income; tax unit 40's only rental is Form 4835 farm rent.
+_NET_INCOME_LESS_LOSS_PINS = {
+    ("total_self_employment_income", 7): 300.0,
+    ("total_self_employment_income", 8): -500.0,
+    ("total_self_employment_income", 9): 0.0,
+    ("total_self_employment_income", 10): 150.0,
+    ("self_employment_income", 10): 0.0,
+    ("rental_income", 7): 0.0,
+    ("rental_income", 8): 0.0,
+    ("rental_income", 9): -100.0,
+    ("rental_income", 10): 0.0,
+    ("farm_rent_income", 7): 400.0,
+    ("farm_rent_income", 8): 0.0,
+    ("farm_rent_income", 9): 0.0,
+    ("farm_rent_income", 10): 0.0,
+    ("tax_unit_partnership_s_corp_income", 40): -50.0,
+    ("tax_unit_partnership_s_corp_income", 41): 0.0,
+    ("tax_unit_partnership_s_corp_income", 42): 75.0,
+}
+
+
+def test_net_income_less_loss_rows_materialize_signed_totals_and_nonzero_counts(
+    monkeypatch,
+) -> None:
+    """End to end through the SOI slice (microcosm#1228): each signed concept
+    sums its tax-unit total and counts the units with a nonzero total, after
+    the persons of a unit net; business reads every Schedule C, SSTB
+    included; line-26 rental leaves out farm rent, which only the Table 1.4
+    leg carries. Hand-computed for household 4."""
+
+    import test_support.microcosm_build.us_batched_target_materialization as harness
+    from microcosm.build.us_runtime.fiscal_targets import SOI_VARIABLE_MAP
+
+    real_record_value = harness._record_value
+
+    def record_value(variable, record_id):
+        pinned = _NET_INCOME_LESS_LOSS_PINS.get((variable, int(record_id)))
+        return real_record_value(variable, record_id) if pinned is None else pinned
+
+    monkeypatch.setattr(harness, "_record_value", record_value)
+    for variable, entity in (
+        ("total_self_employment_income", "person"),
+        ("self_employment_income", "person"),
+        ("tax_unit_partnership_s_corp_income", "tax_unit"),
+    ):
+        monkeypatch.setitem(harness._VARIABLE_ENTITIES, variable, entity)
+    builder = _load_builder_module()
+    _install_fake_engine(builder, monkeypatch, reform_specs=())
+    concepts = (
+        "business_net_income_less_loss",
+        "business_net_profits",
+        "business_net_losses",
+        "partnership_and_s_corp_net_income_less_loss",
+        "rent_and_royalty_net_income_less_loss",
+        "rent_and_royalty_net_income",
+    )
+    # The fake engine installs a reduced map; add the real bindings of the
+    # concepts under test.
+    monkeypatch.setattr(
+        builder,
+        "SOI_VARIABLE_MAP",
+        {
+            **builder.SOI_VARIABLE_MAP,
+            **{concept: SOI_VARIABLE_MAP[concept] for concept in concepts},
+        },
+    )
+    specs = tuple(
+        spec
+        for concept in concepts
+        for spec in (
+            _soi(f"{concept}_amount", concept),
+            _soi(f"{concept}_returns", concept, measure_mode="indicator_sum"),
+        )
+    )
+
+    target_frame, _, compilation = builder._materialize_target_frame(
+        _nested_frame(), specs, maximum_microsim_batch_size=None
+    )
+    assert compilation["dropped_target_names"] == []
+    household = target_frame.table("household").set_index("household_id").loc[4]
+
+    # Business: units 40 (300 - 500 = -200), 41 (0), 42 (SSTB-only 150).
+    assert household["business_net_income_less_loss_amount"] == -50.0
+    assert household["business_net_income_less_loss_returns"] == 2.0
+    assert household["business_net_profits_amount"] == 150.0
+    assert household["business_net_profits_returns"] == 1.0
+    assert household["business_net_losses_amount"] == 200.0
+    assert household["business_net_losses_returns"] == 1.0
+    # Partnership/S-corp: units 40 (-50), 41 (0), 42 (75).
+    assert household["partnership_and_s_corp_net_income_less_loss_amount"] == 25.0
+    assert household["partnership_and_s_corp_net_income_less_loss_returns"] == 2.0
+    # Line 26 rental: unit 40's farm rent does not count; unit 41 is a loss.
+    assert household["rent_and_royalty_net_income_less_loss_amount"] == -100.0
+    assert household["rent_and_royalty_net_income_less_loss_returns"] == 1.0
+    # The Table 1.4 leg includes farm rent and takes the positive part.
+    assert household["rent_and_royalty_net_income_amount"] == 400.0
+    assert household["rent_and_royalty_net_income_returns"] == 1.0

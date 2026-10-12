@@ -38,7 +38,7 @@ ARMS = (
     "drop",
     "rebase_positive_part",
 )
-#: Table 1.4 TY2022 all-returns legs (23in14ar/22in14ar; amounts in dollars),
+#: Table 1.4 TY2022 all-returns legs (22in14ar.xls; amounts in dollars),
 #: aged by the HT2 rows' factor so they sit beside the 2024 targets.
 AGING = 1.12034597479376
 IRS_TY2022 = {
