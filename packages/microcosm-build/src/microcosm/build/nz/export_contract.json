@@ -58,6 +58,8 @@
     "family_weight"
   ],
   "optional": [
+    "source_household_id",
+    "family_source_household_id",
     "age",
     "sex",
     "region_code",

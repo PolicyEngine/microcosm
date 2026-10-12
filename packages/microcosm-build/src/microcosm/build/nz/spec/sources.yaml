@@ -1,9 +1,9 @@
 sources:
-- byte_size: 2897
+- byte_size: 2928
   id: nz_populace_us_support_contract
   loader: kernel:load_populace_us_support_pool
   role: nz_populace_us_support_pool
-  sha256: cc1eef0769c79917f33c5ba0f99edf861070143168db48e0145b71efeee751d1
+  sha256: cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31
   vintage_authorities:
   - id: nz_support_pool_2024_buildp
     kind: survey_period
@@ -60,6 +60,7 @@ stages:
   - person_id
   - household_id
   - person_household_id
+  - source_household_id
   - household_weight
   - support_stratum
   - donor_country_code

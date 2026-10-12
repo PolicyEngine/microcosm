@@ -399,9 +399,13 @@ local `--spec-dir`.
 Extensions can wrap a factory in `TransportExtension` to declare additional
 sources and ordered checkpoints. Source names must be new; skeleton predecessor
 sets must stay identical except for explicit `package_inputs` artifact edges
-from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
-nodes cannot gain predecessors. Checkpoints run after calibration and before export,
-and must not depend on the exported dataset. `transport_rules_node` supplies
+from extension nodes to a terminal `transport.package@1` receipt and the
+battery evidence edges described below. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. Explicit `gate_inputs` artifact
+edges may attach required extension diagnostics to a skeleton
+`gates.battery@1` node; its existing report edge governs export permission.
+Only package receipts and battery nodes may gain these declared artifact
+predecessors. `transport_rules_node` supplies
 the prepared engine reference and period from the binding, so extensions do
 not repeat period values.
 An optional `entitlement_graph.json` legacy resource installs the entitlement
