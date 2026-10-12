@@ -281,6 +281,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
+        # Reviewed held-out population-structure diagnostic over the written
+        # H5; no population treatment.
+        "population_structure_holdout.py",
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
