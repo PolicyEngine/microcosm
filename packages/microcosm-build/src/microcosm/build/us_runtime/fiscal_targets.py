@@ -1103,7 +1103,7 @@ def compile_us_fiscal_target_registry(
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
     """
-    materialized_facts = tuple(facts)
+    materialized_facts = _without_source_column_concept_exclusions(tuple(facts))
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -1186,7 +1186,8 @@ def us_fiscal_target_exclusion_receipt(
       ``_M_CHIP_STATE_FIPS`` state, at every period (dropped).
     - ``source_column_concept_exclusion``: SOI facts read from an IRS column
       that ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` lists for their
-      measure id, at every vintage (dropped).
+      measure id, at every vintage, as the feed carries them, before the
+      congressional-district crosswalk (dropped).
     - ``allowlisted_vintage_bypass``: facts latest-vintage selection activates
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
@@ -1197,7 +1198,13 @@ def us_fiscal_target_exclusion_receipt(
     it raises on a vintage bypass nobody reviewed.
     """
 
-    materialized_facts = tuple(facts)
+    raw_facts = tuple(facts)
+    source_column = {
+        _source_record_id(fact)
+        for fact in raw_facts
+        if _is_source_column_concept_exclusion(fact) and _source_record_id(fact)
+    }
+    materialized_facts = _without_source_column_concept_exclusions(raw_facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -1205,7 +1212,6 @@ def us_fiscal_target_exclusion_receipt(
         )
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
-    source_column: set[str] = set()
     m_chip: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
@@ -1215,8 +1221,6 @@ def us_fiscal_target_exclusion_receipt(
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
             reviewed.add(source_record_id)
-        elif _is_source_column_concept_exclusion(fact):
-            source_column.add(source_record_id)
         elif _source_name(fact) == "cms_medicaid":
             reference = _reference_from_ledger_fact(fact, target_period=target_period)
             if reference is not None and _is_m_chip_state_chip_enrollment(
@@ -3204,6 +3208,23 @@ def _is_source_column_concept_exclusion(fact: object) -> bool:
             )
         return False
     return (measure_id, column) in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+
+
+def _without_source_column_concept_exclusions(
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """Drop facts read from a listed column, before the district crosswalk.
+
+    The crosswalk sums several source districts into one current district and
+    keeps one contributor's layout, so the column check must see each source
+    fact: afterwards an excluded contribution could inherit a corrected
+    column, and a fact with no column could hide behind one that has it.
+    Raises ``MissingSoiSourceColumnError`` for a listed district fact with no
+    column.
+    """
+    return tuple(
+        fact for fact in facts if not _is_source_column_concept_exclusion(fact)
+    )
 
 
 def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:

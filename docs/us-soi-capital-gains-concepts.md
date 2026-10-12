@@ -158,8 +158,8 @@ takes (a):
   district share left over after the district's AGI distribution has a log
   standard deviation of 0.227 for counts and 0.223 for amounts. The
   AGI-composition error of the share proxy is 0.024 and 0.009.
-- **The rebased return counts agree with the HT2 state rows as well as any
-  pair on `full`; the amounts are the loosest pair.** Both files' state rows
+- **The rebased return counts agree with the HT2 state rows among the
+  tightest of the pairs on `full`; the amounts are the loosest pair.** Both files' state rows
   stay on `full`. Each of the 45 measures they share pairs two state targets
   for every state. After dividing out each pair's common offset (coverage and
   aging, which differ by measure), the capital-gains return counts differ by
@@ -175,9 +175,10 @@ file has no rows for other areas (territories, APO/FPO and foreign
 addresses), so its US row equals the sum of its 51 states, and its rebased
 states and districts each sum to the control itself. HT2's US row includes
 other areas, so its rebased states sum to 99.2% of the control for returns
-and 98.0% for amounts. Every congressional-district capital-gains target
-therefore sits above the matching HT2 share, by 0.8% for returns and 2.1%
-for amounts in aggregate. This is accepted, not corrected. The model has
+and 98.0% for amounts. In aggregate, then, the congressional-district
+capital-gains targets sit above the matching HT2 shares, by 0.8% for returns
+and 2.1% for amounts; state by state they scatter around that (Montana's
+amount is 0.73x HT2's, below it, because of the suppression above). This is accepted, not corrected. The model has
 households in the 50 states and DC only, and the national Table 1.4 row on
 the same surface already asks them for the whole control; the other-area
 part of HT2's split is a share no model household can carry. The

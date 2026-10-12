@@ -537,7 +537,10 @@ _COMPILED_FAMILY_NOTES = {
         "artifact record count changes only L0, never target membership. "
         "There is no local-versus-national surface. "
         "Congressional-district rows inform shape while national and state "
-        "actuals retain control ownership."
+        "actuals retain control ownership. Its capital-gains rows ship as shares "
+        "of its own US row scaled to the national Table 1.4 control, and that US "
+        "row retires (microcosm#1038); facts it reads from the wrong IRS column "
+        "are excluded (US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS)."
     ),
 }
 
