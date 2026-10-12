@@ -896,18 +896,21 @@ US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
 #   prints "8926:24"). N85770/A85770 is what the Historic Table 2 rows of
 #   these measure ids read and what assigned_aca_ptc measures. The amount was
 #   dropped before by a hard-coded congressional-district check; the returns
-#   row compiled as premium-tax-credit recipients.
-# - N19300/A19300 as "Mortgage interest paid" (Schedule A line 8a). The
-#   interest deduction interest_deduction measures is line 10: lines 8a-8c
-#   plus investment interest (line 9). The file carries 8b, 8c and 9 as
-#   separate columns and no line 10 total.
+#   row compiled as premium-tax-credit recipients. A package corrected to read
+#   N85770/A85770 compiles as assigned_aca_ptc targets with no further gate,
+#   which is intended: those columns are the premium tax credit.
 #
-# Chronicle's congressional_district_2022 package reads these six columns
-# under the limited_state_local_taxes_*, premium_tax_credit_* and
-# interest_paid_deduction_* measure ids. Of its other 50 measures, the 46 it
-# shares with a Historic Table 2 package read the same column there, and the
-# other four (charitable contributions A19700, qualified business income
-# deduction A04475) match their doc-guide definitions.
+# Chronicle's congressional_district_2022 package reads these four columns
+# under the limited_state_local_taxes_* and premium_tax_credit_* measure ids;
+# the 46 other measures it shares with a Historic Table 2 package read the
+# same column there. Of the six it has alone, interest_paid_deduction_* reads
+# N19300/A19300, "Mortgage interest paid" (Schedule A line 8a), while
+# interest_deduction is the line 10 total (lines 8a-8c plus investment
+# interest on line 9; 8a is 85.6% of it in the TY2022 US row). That is a
+# component of the measure's concept, not another concept, so it is not
+# listed here: like the line 7 capital-gains rows, it needs a share-or-drop
+# decision of its own, which also binds the state_cd surface's itemized
+# bridge.
 # A congressional-district fact of a listed measure that carries no
 # layout.source_column_id refuses the compile, so a feed schema change cannot
 # silently lift the exclusion.
@@ -941,22 +944,6 @@ US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS: dict[tuple[str, str], str] = {
         "tax credit (Form 8962 line 24, A85770). Chronicle's "
         "congressional_district_2022 package reads it under this measure id: "
         "TY2022 US $14.2B against $53.1B for A85770 in the same file."
-    ),
-    ("interest_paid_deduction_returns", "N19300"): (
-        "N19300 counts returns with home mortgage interest reported on Form "
-        "1098 (Schedule A line 8a), not returns with the interest deduction "
-        "(line 10: lines 8a-8c and investment interest on line 9) "
-        "interest_deduction measures. Chronicle's congressional_district_2022 "
-        "package reads it under this measure id: TY2022 US 11,352,500 "
-        "returns; the file has no line 10 column."
-    ),
-    ("interest_paid_deduction_amount", "A19300"): (
-        "A19300 is home mortgage interest reported on Form 1098 (Schedule A "
-        "line 8a), one part of the line 10 interest deduction "
-        "interest_deduction measures. Chronicle's congressional_district_2022 "
-        "package reads it under this measure id: TY2022 US $140.1B, 85.6% of "
-        "lines 8a-8c and 9 ($163.7B, A19300 + A19500 + A19530 + A19570) in "
-        "the same file."
     ),
 }
 
@@ -1658,10 +1645,10 @@ def _rebase_stale_soi_capital_gains_distributions(
     congressional-district state or district row of that file's US row),
     scaled to the concept-matched control of ``_soi_capital_gains_active_totals``
     at or after that period, and declares the bridge in ``soi_source_concept``
-    / ``soi_control_concept``. Without such a control the row is dropped; with
-    a control but no family total its share is undefined and the compile
-    refuses. Each family's national all-AGI row retires because the control's
-    own row owns the national concept.
+    / ``soi_control_concept``. Without such a control or a nonzero national
+    row of its own family the row is dropped, never shipped as a line-7 level.
+    Each family's national all-AGI row retires because the control's own row
+    owns the national concept.
 
     One factor per family, quantity and period scales a family's state and
     district rows alike, so the district-to-state hierarchy reconciliation that
@@ -1692,13 +1679,9 @@ def _rebase_stale_soi_capital_gains_distributions(
         ):
             continue
         if source_total is None or source_total.value == 0:
-            raise MissingSoiCapitalGainsShareTotalError(
-                f"SOI capital-gains row {spec.name!r} has a control but its "
-                f"{family} family has no nonzero national all-AGI total for "
-                f"{key} at {spec.metadata['source_period']}, so its share is "
-                "undefined; a line-7 row must never ship as a level "
-                "(microcosm#1038)."
-            )
+            # Unanchored: a share needs its own family's national row. Never
+            # divided by another family's total, never shipped as a level.
+            continue
 
         if _is_national_all_agi_spec(spec):
             continue
@@ -1845,10 +1828,6 @@ class AmbiguousSoiCapitalGainsShareTotalError(ValueError):
     """One share family carries two different national totals for one period."""
 
 
-class MissingSoiCapitalGainsShareTotalError(ValueError):
-    """A share-family row has a control but no national total of its own."""
-
-
 @dataclass(frozen=True)
 class _SoiShareTotal:
     value: float
@@ -1865,7 +1844,10 @@ def _soi_capital_gains_share_national_totals(
     US row, never by another family's. Two different values under one key
     refuse the compile instead of letting feed order pick the denominator;
     equal values under two record ids keep the smaller id, so the named
-    denominator does not depend on feed order either.
+    denominator does not depend on feed order either. Congressional-district
+    packages of different boundary vintages for one tax year share the
+    ``congressional_district`` family, so their US rows must agree or the
+    compile refuses.
     """
     totals: dict[tuple[str, str, str, str, str], _SoiShareTotal] = {}
     for fact in facts:
@@ -3212,10 +3194,8 @@ def _is_source_column_concept_exclusion(fact: object) -> bool:
         return False
     column = _str_at(fact, "layout", "source_column_id")
     if not column:
-        if (
-            _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
-            == "congressional_district"
-        ):
+        # Any congressional-district package, whatever its boundary vintage.
+        if ".congressional_district_" in _str_at(fact, "layout", "record_set_id"):
             raise MissingSoiSourceColumnError(
                 f"{_source_record_id(fact)} is a congressional-district "
                 f"{measure_id} fact with no layout.source_column_id, so "

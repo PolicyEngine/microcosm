@@ -152,20 +152,31 @@ takes (a):
   district share left over after the district's AGI distribution has a log
   standard deviation of 0.227 for counts and 0.223 for amounts. The
   AGI-composition error of the share proxy is 0.024 and 0.009.
-- **The rebased rows agree with the HT2 state rows about as well as other
-  pairs on `full` already do.** The congressional-district and HT2 state
-  return counts for capital gains differ by a median 0.6% (95th percentile
-  2.1%). The `return_count` pair differs by 1.6% (2.4%).
-  - Amounts differ more: a median 2.8% (95th percentile 15.4%, Montana
-    −27.0%). The cause is item suppression in the congressional-district
-    file's A01000. Montana's is 32.5% below HT2's at the state level. That is
-    still inside the qualified-dividends amount pair, 11.6% (21.7%).
+- **The rebased return counts agree with the HT2 state rows as well as any
+  pair on `full`; the amounts are the loosest pair.** Both files' state rows
+  stay on `full`. Each of the 45 measures they share pairs two state targets
+  for every state. After dividing out each pair's common offset (coverage and
+  aging, which differ by measure), the capital-gains return counts differ by
+  a median 0.4% and at most 1.4%. The capital-gains amounts differ by a
+  median 1.8% and up to 28% (Montana), 18% (West Virginia) and 17%
+  (Mississippi): the widest 95th percentile of the 45 pairs. The cause is item
+  suppression in the congressional-district file's A01000; Montana's is 32.5%
+  below HT2's at the state level. Other pairs have worse single states (the
+  qualified-dividends amount pair: Hawaii, −58%).
 
-The congressional-district file has no rows for other areas, so its US row
-equals the sum of its 51 states. The rebased states and districts therefore
-each sum to the control itself. HT2's US row includes other areas, so its
-rebased states sum to 99.2% of the control for returns and 98.0% for
-amounts.
+**The two families split the control differently.** The congressional-district
+file has no rows for other areas (territories, APO/FPO and foreign
+addresses), so its US row equals the sum of its 51 states, and its rebased
+states and districts each sum to the control itself. HT2's US row includes
+other areas, so its rebased states sum to 99.2% of the control for returns
+and 98.0% for amounts. Every congressional-district capital-gains target
+therefore sits above the matching HT2 share, by 0.8% for returns and 2.1%
+for amounts in aggregate. This is accepted, not corrected. The model has
+households in the 50 states and DC only, and the national Table 1.4 row on
+the same surface already asks them for the whole control; the other-area
+part of HT2's split is a share no model household can carry. The
+alternative, scaling the district file by HT2's 51-state share of its own US
+row, would mix the two families' totals in one factor.
 
 **Vintage.** A share divides a row by the US row of the same package, so the
 package's period stamp cancels. The value lands at the control's period
@@ -174,15 +185,21 @@ ty2023, as on the pinned feed, or truthfully at 2022
 (`test_congressional_district_capital_gains_ignore_the_package_stamp`).
 
 microcosm#1030 corrects restamped facts to age from their data year, but it
-refuses any restamped fact that was rebased. Before it merges with this change,
-that refusal must admit a share whose `soi_share_total_source_record_id` is a
-restamp of the same package, and leave `uprating_to_period` at the control's
-period. Starting the aging at 2022 instead would apply the Table 1.4
-2022-to-2023 fall twice (x0.761).
+refuses any restamped fact that was rebased, so as written it refuses every
+compile that carries these rows. It must admit a share whose
+`soi_share_total_source_record_id` is a restamp of the same package and
+stamp: move `source_period` and `uprating_from_period` to the data year,
+and leave `uprating_to_period` at the control's period. Starting the aging at
+2022 instead would apply the Table 1.4 2022-to-2023 fall twice (x0.761).
+Whichever of the two changes merges second runs its CI on a merge ref that
+contains the first; the stamp test above then fails until that narrowing is
+in place.
 
 ### Effect on the pinned feed
 
-Release compile at 2024, as above:
+Release compile at 2024 on the `51aa40f` feed, as above. "Before" is #1036 on
+main; "after" adds microcosm#1038's changes, including the column exclusions
+below (#1224), which remove 1,464 of the 1,466 specs:
 
 | `full` surface | Before | After |
 |---|---:|---:|
@@ -190,21 +207,22 @@ Release compile at 2024, as above:
 | Congressional-district capital-gains amounts, states and districts (each sum) | $1,522.19B | $1,270.86B |
 | California returns / amount | 3,808,930 / $214.08B | 1,581,478 / $178.73B |
 | New York returns / amount | 2,015,540 / $127.96B | 836,858 / $106.83B |
-| Compiled targets, all on `full` | 32,842 (`e02123644d42`) | 31,376 (`059dc56d78db`) |
-| `national_state` targets | 5,694 (`65e4dde11c83`) | 5,694 (`47dce807b412`) |
+| Compiled targets, all on `full` | 33,250 (`f09571684885`) | 31,784 (`6e1ac91262bc`) |
+| `national_state` targets | 6,102 (`882f4764a248`) | 6,102 (`84504a7afd57`) |
 
 - The 974 congressional-district capital-gains rows move by one factor per
   measure: 0.415202720927 for returns and 0.834893818418 for amounts.
 - The two US rows retire.
 - The Historic Table 2 rows keep their values. The 120 of them (102 on
-  `national_state`) gain only `soi_share_total_source_record_id`.
+  `national_state`) gain only `soi_share_total_source_record_id`, which is
+  the whole `national_state` change.
 
 ### Two mislabeled columns in the same package
 
 On the same surface, Chronicle's `congressional_district_2022` package reads
-four IRS columns under measure ids whose concept they do not carry. They are
-the only differences between its column mapping and the Historic Table 2
-package's (all 56 measures compared):
+four IRS columns under measure ids whose concept they do not carry. Of the
+package's 56 measures, 50 have a twin in a Historic Table 2 package, and
+these four are the only ones that read a different column from their twin:
 
 | Measure id | Congressional-district column | Doc-guide definition | Column the measure means |
 |---|---|---|---|
@@ -218,7 +236,19 @@ returns rows compiled as `assigned_aca_ptc` recipients.
 `US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS` in `fiscal_targets.py` now drops
 all four, keyed by (measure id, `layout.source_column_id`). It lists them in
 the release's exclusion receipt. A corrected package that reads the right
-columns passes untouched.
+columns passes untouched. A congressional-district fact of a listed measure
+that names no column refuses the compile, so a feed schema change cannot
+quietly lift the exclusion.
+
+Of the six measures with no HT2 twin, `interest_paid_deduction_*` reads
+N19300 / A19300, mortgage interest paid (Schedule A line 8a), while
+`interest_deduction` is the line 10 total (lines 8a-8c and investment
+interest on line 9; A19300 is 85.6% of it in the TY2022 US row). That is a
+component of the concept, as N01000 is a superset of capital gains, not a
+different concept, so it is left out of the register. Whether those rows
+should ship as shares of a national line 10 control or be dropped is a
+separate decision. It also governs the `state_cd` surface, which bridges
+them onto the HT2 basis.
 
 `test_pinned_feed_no_congressional_district_family_sums_past_its_national_target`
 holds the invariant for every congressional-district family on `full`.
