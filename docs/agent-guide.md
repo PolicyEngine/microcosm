@@ -224,6 +224,15 @@ SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
 never feeds calibration or refuses a release; unavailable measurements are
 reported explicitly. The report records the difference between SSA's December
 2024 recipient snapshot and the model's positive annual benefits.
+It also writes `us_population_structure_holdout.json` from the written H5
+alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
+people 65+ living alone (ACS 2024 B09021), people receiving Social Security in
+total, 65+ and under 65 (SSA Monthly Statistical Snapshot, December 2024,
+Table 1), beneficiaries per component against Table 2's benefit types, and the
+number of people carrying more than one positive component. None of these is a
+calibration target; the report never refuses a release.
+`tools/report_us_population_structure.py <h5>` writes the same report for an
+already published release.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
