@@ -1036,9 +1036,9 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     84504a7afd57, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. microcosm#1038 took it from
     33,250 compiled (full f09571684885) and 882f4764a248: it drops
-    the congressional-district capital-gains US rows and the
-    congressional-district SALT, premium-tax-credit and interest-paid rows
-    read from the wrong IRS column, all on the full surface, and moves
+    the congressional-district capital-gains US rows and (#1224) the
+    congressional-district SALT and premium-tax-credit rows read from the
+    wrong IRS column, all on the full surface, and moves
     national_state only by one provenance key, soi_share_total_source_record_id,
     on the 102 Historic Table 2 capital-gains rows. microcosm#1035 moved it
     from e1f9906bf0e0 at the same counts by choosing the capital-gains control
