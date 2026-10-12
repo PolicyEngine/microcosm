@@ -362,6 +362,10 @@ def test_apply_refuses_a_backed_spec_compared_at_another_period() -> None:
 
 
 def test_apply_moves_a_rebased_specs_control_period_to_the_controls_data_year() -> None:
+    # The pinned feed's case while the capital-gains control is chosen by
+    # period: Historic Table 2 counts rebased onto the congressional-district
+    # US row. microcosm#1036 chooses the control by concept, which never picks
+    # that row; the branch still covers any restamped control.
     control_id = (
         "irs_soi.ty2023.congressional_district_2022.all_returns.us."
         "net_capital_gains_returns"
