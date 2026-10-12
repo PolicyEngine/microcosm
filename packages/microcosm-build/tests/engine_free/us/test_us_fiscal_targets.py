@@ -895,7 +895,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    31bd18096d33, 32 CHIP rows none of them for an M-CHIP state, no
+    1aafec44dbfa, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. Raking the 224 Table 2.5
     EITC child bins to their splits' total rows moved the version from
     3fad14f85468. microcosm#1227 moved it from e1f9906bf0e0 by doubling the
@@ -913,7 +913,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "31bd18096d33"
+    assert surface.version == "1aafec44dbfa"
     chip = [
         spec
         for spec in surface.specs

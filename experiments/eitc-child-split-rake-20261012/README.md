@@ -36,12 +36,20 @@ split in one group share one factor. The PR implements this.
 No source forces the choice: no TY2024 child mix is published (§1). But the
 evidence points one way:
 
-- Over 11 year pairs, keeping the all-AGI child mix predicted next year's
+- Over seven clean year pairs (11 runs: four pairs are scored against two
+  kinds of margins), keeping the all-AGI child mix predicted next year's
   split totals better than keeping each AGI group's mix (§2).
 - It is far closer to the other EITC-by-children targets already on the
   surface (§3).
 - The TY2023 mix it keeps is confirmed by SOI's full-population TY2023 data
   (§4).
+
+The recommendation puts the national split totals and consistency across
+target families first. On individual bins it is roughly a wash. Against
+mid-November margins, (c)'s sqrt-weighted capped bin error is 0.1299
+against the bins' 0.1291 for amount (slightly worse), and 0.1204 against
+0.1226 for returns (better). No calibration solve here shows release quality
+improving: the evidence is about the targets, not the fitted weights.
 
 ## The four options on the pinned feed
 
@@ -55,8 +63,8 @@ substitution, then `_select_target_surface`). Source:
 | What moves | nothing | 8 total rows, ×0.864–1.052 | 224 bins, ×0.857–1.226 (total rows keep their values) | 8 total rows removed |
 | Total row = Σ its bins | no (0.951–1.157) | yes | yes | n/a |
 | Implied childless share of EITC (amount / returns) | 3.71% / 27.73% (totals), 3.21% / 26.11% (bins) | 3.21% / 26.11% | 3.71% / 27.73% | 3.21% / 26.11% |
-| national_state | 6,102 at 3fad14f85468 | 6,102 at 937b3df341a7 | 6,102 at 31bd18096d33 | 6,094 at 41a1fa2b013f |
-| full | 33,250 at c3aaea9c1e8c | 33,250 at 0f294d4f9312 | 33,250 at ac32014f3325 | 33,242 at 469b8ed2c5db |
+| national_state | 6,102 at 3fad14f85468 | 6,102 at a211cbec63ec | 6,102 at 1aafec44dbfa | 6,094 at 41a1fa2b013f |
+| full | 33,250 at c3aaea9c1e8c | 33,250 at a83fc4bad02f | 33,250 at ec807d77a746 | 33,242 at 469b8ed2c5db |
 | Table 2.5 share of loss weight, national_state / full | 1.555% / 0.605% | 1.555% / 0.605% | 1.548% / 0.603% | 1.272% / 0.494% |
 | Table 2.5 rows' weights vs (a) | — | ×0.930–1.026 | ×0.926–1.101 | ×1.0003–1.0029 |
 | Largest weight move of any other row | — | 8×10⁻⁶ | 1.5×10⁻⁴ | 2.9×10⁻³ |
@@ -107,7 +115,7 @@ that keeps the all-AGI child mix.
 `backtest.py` uprates Table 2.5 TY *s* to TY *s*+1 the way the compiler does,
 under each option, and scores the result against the published Table 2.5 TY
 *s*+1. All options conserve the active total, which the mid-November file
-puts 3–6% below complete-year SOI (§5), so predictions are scored against
+mostly puts 3–6% below complete-year SOI (§5), so predictions are scored against
 the TY *s*+1 table rescaled to the same total: the options differ only in how
 they split it.
 
@@ -126,12 +134,12 @@ they split it.
 
 Mean absolute error of the four splits' national totals (scored as above):
 
-| Margins, kind | Bins: (a) bins, (b), (d) | All-AGI mix: (a) totals, (c) | Split×group cells TVD, bins / (c) |
-|---|---|---|---|
-| fs, amount (4 pairs) | 5.39% (worst 19.7%) | 2.87% (worst 18.0%) | 0.0368 / 0.0366 |
-| fs, returns (4 pairs) | 5.01% (worst 10.8%) | 2.07% (worst 7.5%) | 0.0361 / 0.0321 |
-| oracle, amount (7 pairs) | 3.03% (worst 14.5%) | 2.09% (worst 18.0%) | 0.0257 / 0.0244 |
-| oracle, returns (7 pairs) | 2.68% (worst 9.6%) | 1.60% (worst 7.5%) | 0.0250 / 0.0228 |
+| Margins, kind | Bins: (a) bins, (b), (d) | All-AGI mix: (a) totals, (c) | Split×group cells TVD, bins / (c) | Bin rows, sqrt-weighted capped error, bins / (c) |
+|---|---|---|---|---|
+| fs, amount (4 pairs) | 5.39% (worst 19.7%) | 2.87% (worst 18.0%) | 0.0368 / 0.0366 | 0.1291 / 0.1299 |
+| fs, returns (4 pairs) | 5.01% (worst 10.8%) | 2.07% (worst 7.5%) | 0.0361 / 0.0321 | 0.1226 / 0.1204 |
+| oracle, amount (7 pairs) | 3.03% (worst 14.5%) | 2.09% (worst 18.0%) | 0.0257 / 0.0244 | 0.1024 / 0.1025 |
+| oracle, returns (7 pairs) | 2.68% (worst 9.6%) | 1.60% (worst 7.5%) | 0.0250 / 0.0228 | 0.1026 / 0.1017 |
 
 - **Childless is the systematic miss.** The bins under-predicted childless
   EITC in all 11 clean runs, by 1.1–19.7%. The all-AGI mix missed it both
@@ -141,8 +149,10 @@ Mean absolute error of the four splits' national totals (scored as above):
 - **The exceptions.** In TY2015→2016 both did well, and the bins did better.
   In TY2022→2023 childless EITC fell from 4.38% to 3.71% of the amount, so
   keeping the TY2022 mix missed it by +18%; the bins missed by −4.4% to −7.0%.
-- **Cells.** On the split × AGI-group cells, (c) was as good or better on
-  average, and its within-cell shape is the bins' own.
+- **Cells and bins.** On the split × AGI-group cells, (c) was as good or
+  better on average, and its within-cell shape is the bins' own. On the 112
+  individual bin rows per kind, it is slightly worse for amount and better
+  for returns (last column).
 
 ### 3. Consistency with the other EITC-by-children targets
 
@@ -180,7 +190,7 @@ latest published mix to TY2024. The bins project a further fall, to 3.21%.
 No published source supports that fall, and the bins' record in §2 is to
 under-predict childless EITC.
 
-### 5. Separate finding: the mid-November totals run 3–6% below complete-year SOI
+### 5. Separate finding: the mid-November totals mostly run 3–6% below complete-year SOI
 
 | TY | Returns: mid-November / Table 2.5 | Amount: mid-November / Table 2.5 |
 |---|---|---|
@@ -190,6 +200,10 @@ under-predict childless EITC.
 | 2021 | 0.971 | 0.973 |
 | 2022 | 0.939 | 0.957 |
 | 2023 | 0.946 | 0.957 |
+
+Returns ran 2.9–6.1% below in every year. The amount ran 2.7–4.3% below,
+except TY2018, when the mid-November amount was 1.2% above (its $40,000–$50,000
+and $50,000-and-over groups ran 1.9× and 8.3× Table 2.5's).
 
 The TY2024 EITC targets (`irs_soi.ty2024.filing_season_week47.*`, also release
 critical-fit gates in `us_critical_targets.py`) are mid-November levels. All
