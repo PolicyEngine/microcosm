@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+import warnings
+from datetime import date, timedelta
 
 import pytest
 
 from microcosm.build.uk_runtime.uprating_holds import (
+    UK_HOLD_EXPIRY_NOTICE_DAYS,
     assert_uk_uprating_holds_declared,
     is_uprating_hold,
     load_uk_uprating_holds,
@@ -106,6 +108,49 @@ def test_an_expired_hold_is_refused():
             scope="national",
             holds=_holds(_hold("t", expires_on="2026-01-01")),
         )
+
+
+def test_a_hold_signed_after_the_evaluation_date_is_not_yet_in_force():
+    registry = TargetRegistry([_spec("t", "2024")], country="uk")
+    with pytest.raises(ValueError, match=r"signed after the evaluation date.*\['t'\]"):
+        assert_uk_uprating_holds_declared(
+            registry,
+            calibration_period=2025,
+            evaluated_on=date(2026, 9, 30),
+            scope="national",
+            holds=_holds(_hold("t", approved_on="2026-10-01")),
+        )
+    # In force on the day it is signed.
+    assert_uk_uprating_holds_declared(
+        registry,
+        calibration_period=2025,
+        evaluated_on=date(2026, 10, 1),
+        scope="national",
+        holds=_holds(_hold("t", approved_on="2026-10-01")),
+    )
+
+
+def test_the_compile_warns_when_a_hold_is_about_to_lapse():
+    registry = TargetRegistry([_spec("t", "2024")], country="uk")
+    expires = date(2026, 12, 11)
+
+    def run(evaluated_on: date) -> dict:
+        return assert_uk_uprating_holds_declared(
+            registry,
+            calibration_period=2025,
+            evaluated_on=evaluated_on,
+            scope="national",
+            holds=_holds(_hold("t", expires_on=expires.isoformat())),
+        )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        receipt = run(expires - timedelta(days=UK_HOLD_EXPIRY_NOTICE_DAYS + 1))
+    assert receipt["earliest_expiry"] == "2026-12-11"
+    with pytest.warns(UserWarning, match="expire 2026-12-11, within 14 days"):
+        run(expires - timedelta(days=UK_HOLD_EXPIRY_NOTICE_DAYS))
+    with pytest.warns(UserWarning, match="expire 2026-12-11"):
+        run(expires)
 
 
 def test_a_declaration_for_a_target_no_longer_held_is_stale():
@@ -216,6 +261,23 @@ def test_every_committed_hold_is_signed():
     assert unsigned == []
 
 
+def test_no_committed_hold_is_about_to_lapse():
+    # Feed-backed compiles are skipped in CI, so nothing there would show that
+    # the holds are about to lapse: this fails UK_HOLD_EXPIRY_NOTICE_DAYS days
+    # before the earliest expiry, while the builds still pass. It is a clock
+    # on purpose. Clear it by binding a newer fact or an index, or by a new
+    # review and signature in uk/uprating_holds.json.
+    earliest = min(
+        date.fromisoformat(entry["expires_on"])
+        for entry in load_uk_uprating_holds()["holds"]
+    )
+    days_left = (earliest - date.today()).days
+    assert days_left > UK_HOLD_EXPIRY_NOTICE_DAYS, (
+        f"UK uprating holds expire on {earliest.isoformat()}, in {days_left} "
+        "day(s); every UK build refuses them from the next day."
+    )
+
+
 def test_the_committed_declarations_are_well_formed():
     payload = load_uk_uprating_holds()
     seen: set[str] = set()
@@ -223,7 +285,9 @@ def test_the_committed_declarations_are_well_formed():
         assert entry["scope"] in {"national", "local"}
         assert entry["reason"].strip()
         assert entry["tracking"].strip()
-        date.fromisoformat(entry["expires_on"])
+        assert date.fromisoformat(entry["approved_on"]) < date.fromisoformat(
+            entry["expires_on"]
+        )
         for target_id in entry["target_ids"]:
             assert target_id not in seen
             seen.add(target_id)

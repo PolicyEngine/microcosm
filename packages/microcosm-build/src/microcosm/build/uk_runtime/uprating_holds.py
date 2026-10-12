@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import functools
 import json
+import warnings
 from collections.abc import Iterable, Mapping
 from datetime import date
 from importlib import resources as importlib_resources
@@ -62,6 +63,12 @@ UK_HOLD_KINDS = (
     "control_rescaled",
     "reviewed_no_index",
 )
+#: How long before a hold lapses the compile starts to warn, and a test on
+#: the committed register starts to fail. Every entry is signed for a short
+#: window, so the holds lapse together: without the notice the first sign of
+#: an expiry would be every UK build refusing on the same morning.
+UK_HOLD_EXPIRY_NOTICE_DAYS = 14
+
 #: The one status that puts a signed register entry in force. Any other value
 #: (``proposed``, ``rejected``, ``withdrawn``, a typo) leaves it out of force.
 UK_SIGNED_STATUS = "approved"
@@ -241,6 +248,11 @@ def assert_uk_uprating_holds_declared(
     has signed (no approver, no approval date, or a status other than
     ``approved``) is not in force, so its rows are refused like undeclared
     ones. A register passed in is validated as the committed one is.
+
+    A hold is in force from ``approved_on`` through ``expires_on``, as a
+    measure exclusion is: evaluated before its signature it is refused as not
+    yet in force, and after its expiry as expired. Within
+    ``UK_HOLD_EXPIRY_NOTICE_DAYS`` of an expiry the compile warns.
     """
 
     declared = _declaration_index(
@@ -277,20 +289,46 @@ def assert_uk_uprating_holds_declared(
         if target_id in declared
         and date.fromisoformat(str(declared[target_id]["expires_on"])) < evaluated_on
     )
+    premature = sorted(
+        target_id
+        for target_id in held
+        if target_id in declared
+        and uk_hold_is_signed(declared[target_id])
+        and evaluated_on < date.fromisoformat(str(declared[target_id]["approved_on"]))
+    )
     scoped_declarations = {
         target_id
         for target_id, entry in declared.items()
         if entry.get("scope", scope) == scope
     }
     stale = sorted(scoped_declarations - set(held))
-    if undeclared or unsigned or expired or stale:
+    if undeclared or unsigned or expired or premature or stale:
         raise ValueError(
             f"UK {scope} uprating holds refused: undeclared {undeclared}; unsigned "
-            f"{unsigned}; expired {expired}; stale declarations {stale}. Declare "
-            "an uprating_index on the contract target or a hold in "
+            f"{unsigned}; expired {expired}; signed after the evaluation date "
+            f"{evaluated_on.isoformat()} {premature}; stale declarations {stale}. "
+            "Declare an uprating_index on the contract target or a hold in "
             "uk/uprating_holds.json; a hold is in force only once it carries "
-            "approved_by and approved_on and its status is approved "
-            "(microcosm#1123)."
+            "approved_by and approved_on and its status is approved, from "
+            "approved_on through expires_on (microcosm#1123)."
+        )
+    lapsing: dict[str, list[str]] = {}
+    for target_id in sorted(held):
+        expires_on = str(declared[target_id]["expires_on"])
+        if (date.fromisoformat(expires_on) - evaluated_on).days <= (
+            UK_HOLD_EXPIRY_NOTICE_DAYS
+        ):
+            lapsing.setdefault(expires_on, []).append(target_id)
+    for expires_on, target_ids in sorted(lapsing.items()):
+        warnings.warn(
+            f"UK {scope} uprating holds for {len(target_ids)} target(s) expire "
+            f"{expires_on}, within {UK_HOLD_EXPIRY_NOTICE_DAYS} days of the "
+            f"evaluation date {evaluated_on.isoformat()}: {target_ids[:5]}. Bind "
+            "a newer fact or an index, or review and sign the holds again in "
+            "uk/uprating_holds.json before the compile refuses them "
+            "(microcosm#1123).",
+            UserWarning,
+            stacklevel=2,
         )
     by_kind: dict[str, list[str]] = {}
     for target_id in sorted(held):
@@ -298,6 +336,10 @@ def assert_uk_uprating_holds_declared(
     return {
         "scope": scope,
         "calibration_period": str(calibration_period),
+        "earliest_expiry": min(
+            (str(declared[target_id]["expires_on"]) for target_id in held),
+            default=None,
+        ),
         "held_targets": len(held),
         "held_cells": sum(len(names) for names in held.values()),
         "by_kind": by_kind,
