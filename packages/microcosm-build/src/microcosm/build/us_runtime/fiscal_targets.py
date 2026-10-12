@@ -873,10 +873,20 @@ US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
 #   these measure ids read and what assigned_aca_ptc measures. The amount was
 #   dropped before by a hard-coded congressional-district check; the returns
 #   row compiled as premium-tax-credit recipients.
+# - N19300/A19300 as "Mortgage interest paid" (Schedule A line 8a). The
+#   interest deduction interest_deduction measures is line 10: lines 8a-8c
+#   plus investment interest (line 9). The file carries 8b, 8c and 9 as
+#   separate columns and no line 10 total.
 #
-# Chronicle's congressional_district_2022 package reads these four columns
-# under the limited_state_local_taxes_* and premium_tax_credit_* measure ids;
-# every other measure it shares with Historic Table 2 reads the same column.
+# Chronicle's congressional_district_2022 package reads these six columns
+# under the limited_state_local_taxes_*, premium_tax_credit_* and
+# interest_paid_deduction_* measure ids. Of its other 50 measures, the 46 it
+# shares with a Historic Table 2 package read the same column there, and the
+# other four (charitable contributions A19700, qualified business income
+# deduction A04475) match their doc-guide definitions.
+# A congressional-district fact of a listed measure that carries no
+# layout.source_column_id refuses the compile, so a feed schema change cannot
+# silently lift the exclusion.
 US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS: dict[tuple[str, str], str] = {
     ("limited_state_local_taxes_returns", "N18425"): (
         "N18425 counts returns with state and local income taxes (Schedule A "
@@ -907,6 +917,22 @@ US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS: dict[tuple[str, str], str] = {
         "tax credit (Form 8962 line 24, A85770). Chronicle's "
         "congressional_district_2022 package reads it under this measure id: "
         "TY2022 US $14.2B against $53.1B for A85770 in the same file."
+    ),
+    ("interest_paid_deduction_returns", "N19300"): (
+        "N19300 counts returns with home mortgage interest reported on Form "
+        "1098 (Schedule A line 8a), not returns with the interest deduction "
+        "(line 10: lines 8a-8c and investment interest on line 9) "
+        "interest_deduction measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US 11,352,500 "
+        "returns; the file has no line 10 column."
+    ),
+    ("interest_paid_deduction_amount", "A19300"): (
+        "A19300 is home mortgage interest reported on Form 1098 (Schedule A "
+        "line 8a), one part of the line 10 interest deduction "
+        "interest_deduction measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US $140.1B, 85.6% of "
+        "lines 8a-8c and 9 ($163.7B, A19300 + A19500 + A19530 + A19570) in "
+        "the same file."
     ),
 }
 
@@ -1607,9 +1633,10 @@ def _rebase_stale_soi_capital_gains_distributions(
     congressional-district state or district row of that file's US row),
     scaled to the concept-matched control of ``_soi_capital_gains_active_totals``
     at or after that period, and declares the bridge in ``soi_source_concept``
-    / ``soi_control_concept``. Without such a control or family total, the row
-    is dropped. Each family's national all-AGI row retires because the
-    control's own row owns the national concept.
+    / ``soi_control_concept``. Without such a control the row is dropped; with
+    a control but no family total its share is undefined and the compile
+    refuses. Each family's national all-AGI row retires because the control's
+    own row owns the national concept.
 
     One factor per family, quantity and period scales a family's state and
     district rows alike, so the district-to-state hierarchy reconciliation that
@@ -1640,7 +1667,13 @@ def _rebase_stale_soi_capital_gains_distributions(
         ):
             continue
         if source_total is None or source_total.value == 0:
-            continue
+            raise MissingSoiCapitalGainsShareTotalError(
+                f"SOI capital-gains row {spec.name!r} has a control but its "
+                f"{family} family has no nonzero national all-AGI total for "
+                f"{key} at {spec.metadata['source_period']}, so its share is "
+                "undefined; a line-7 row must never ship as a level "
+                "(microcosm#1038)."
+            )
 
         if _is_national_all_agi_spec(spec):
             continue
@@ -1785,6 +1818,10 @@ def _soi_capital_gains_share_family_from_spec(spec: TargetSpec) -> str | None:
 
 class AmbiguousSoiCapitalGainsShareTotalError(ValueError):
     """One share family carries two different national totals for one period."""
+
+
+class MissingSoiCapitalGainsShareTotalError(ValueError):
+    """A share-family row has a control but no national total of its own."""
 
 
 @dataclass(frozen=True)
@@ -2759,14 +2796,38 @@ def _period_free_source_record_id(source_record_id: str) -> str:
     return _normalized_record_set_id(source_record_id)
 
 
+class MissingSoiSourceColumnError(ValueError):
+    """A congressional-district fact of a listed measure names no IRS column."""
+
+
 def _is_source_column_concept_exclusion(fact: object) -> bool:
-    """Whether an SOI fact reads a column its measure id does not mean."""
+    """Whether an SOI fact reads a column its measure id does not mean.
+
+    A congressional-district fact of a measure the register lists must name
+    its column: without one the exclusion could not tell a mislabeled column
+    from a corrected one, so the compile refuses instead of guessing.
+    """
     if _source_name(fact) != "irs_soi":
         return False
-    return (
-        _measure_id(fact),
-        _str_at(fact, "layout", "source_column_id"),
-    ) in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+    measure_id = _measure_id(fact)
+    if measure_id not in {
+        measure for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+    }:
+        return False
+    column = _str_at(fact, "layout", "source_column_id")
+    if not column:
+        if (
+            _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+            == "congressional_district"
+        ):
+            raise MissingSoiSourceColumnError(
+                f"{_source_record_id(fact)} is a congressional-district "
+                f"{measure_id} fact with no layout.source_column_id, so "
+                "US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS cannot tell which "
+                "IRS column it reads (microcosm#1038)."
+            )
+        return False
+    return (measure_id, column) in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
 
 
 def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:

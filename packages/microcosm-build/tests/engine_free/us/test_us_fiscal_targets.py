@@ -129,10 +129,14 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             groupby_value_id="hi_01",
             geography_id="5001700US1501",
         ),
-        _soi_congressional_district_fact(
+        # N19300 is line 8a mortgage interest, not the line 10 interest
+        # deduction the measure id means, so it never compiles either.
+        _cd_column_fact(
             "interest_paid_deduction_returns",
-            23_456,
+            "N19300",
+            value=23_456,
             groupby_value_id="hi_01",
+            geography_level="congressional_district",
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
@@ -190,7 +194,9 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
     assert not any(
-        source_id.endswith("premium_tax_credit_amount")
+        source_id.endswith(
+            ("premium_tax_credit_amount", "interest_paid_deduction_returns")
+        )
         and ".congressional_district_2022." in source_id
         for source_id in source_ids
     )
@@ -198,7 +204,7 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
     assert any(
         "hi_total.adjusted_gross_income" in source_id for source_id in source_ids
     )
-    assert len(cd_specs) == 11
+    assert len(cd_specs) == 10
     by_measure = {
         spec.metadata["source_measure_id"]: spec
         for spec in cd_specs
@@ -241,12 +247,6 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
         qbi_returns.metadata["base_variable"] == "qualified_business_income_deduction"
     )
     assert qbi_returns.value == 12_345
-
-    interest_returns = by_measure["interest_paid_deduction_returns"]
-    assert interest_returns.metadata["measure_mode"] == "indicator_sum"
-    assert interest_returns.metadata["base_variable"] == "interest_deduction"
-    assert interest_returns.metadata["itemized_only"] == "true"
-    assert interest_returns.value == 23_456
 
     charitable_returns = by_measure["charitable_returns"]
     assert charitable_returns.metadata["measure_mode"] == "indicator_sum"
@@ -828,28 +828,68 @@ def test_source_column_exclusion_drops_only_the_mislabeled_column() -> None:
 
 
 def test_source_column_exclusions_name_the_columns_their_guides_define() -> None:
-    """Each entry's reason names its own column and the column its measure id
-    means, as 22incddocguide.docx defines them: N18425/A18425 (state and local
-    income taxes, Schedule A line 5a) stand in for the limited deduction
-    N18460/A18460 (line 5e), and N85530/A85530 (additional Medicare tax) for
-    the premium tax credit N85770/A85770."""
+    """Each entry's reason names its own column and what its measure id means,
+    as 22incddocguide.docx defines them: N18425/A18425 (state and local income
+    taxes, Schedule A line 5a) stand in for the limited deduction N18460/A18460
+    (line 5e), N85530/A85530 (additional Medicare tax) for the premium tax
+    credit N85770/A85770, and N19300/A19300 (line 8a mortgage interest) for the
+    line 10 interest deduction, which the file has no column for."""
     right_columns = {
         ("limited_state_local_taxes_returns", "N18425"): "N18460",
         ("limited_state_local_taxes_amount", "A18425"): "A18460",
         ("premium_tax_credit_returns", "N85530"): "N85770",
         ("premium_tax_credit_amount", "A85530"): "A85770",
+        ("interest_paid_deduction_returns", "N19300"): None,
+        ("interest_paid_deduction_amount", "A19300"): None,
     }
     assert set(US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS) == set(right_columns)
     for key, reason in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items():
         measure_id, column = key
         assert column in reason
-        assert right_columns[key] in reason
         # Counts read N columns and amounts read A columns.
-        assert (
-            column[0]
-            == right_columns[key][0]
-            == ("N" if measure_id.endswith("_returns") else "A")
-        )
+        assert column[0] == ("N" if measure_id.endswith("_returns") else "A")
+        right_column = right_columns[key]
+        if right_column is None:
+            assert "line 10" in reason
+        else:
+            assert right_column in reason
+            assert right_column[0] == column[0]
+
+
+def test_source_column_exclusion_refuses_a_district_fact_without_a_column() -> None:
+    """A congressional-district fact of a listed measure that names no IRS
+    column refuses the compile and the receipt, because the register could not
+    tell a mislabeled column from a corrected one. A Historic Table 2 fact of
+    the same measure without a column (the US package publishes none) still
+    compiles."""
+    unnamed = _soi_congressional_district_fact(
+        "limited_state_local_taxes_amount",
+        250_000_000.0,
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    ht2 = _soi_capital_gains_fact(
+        2022,
+        source_record_id=(
+            "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount"
+        ),
+        measure_id="limited_state_local_taxes_amount",
+        value=122_000_000_000.0,
+    )
+    reference = packaged_reference_facts()
+
+    for facts in ([*reference, unnamed], [*reference, ht2, unnamed]):
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            us_fiscal_target_exclusion_receipt(facts)
+    registry = compile_us_fiscal_target_registry(
+        [*reference, ht2], allow_unaged_dollar_targets=True
+    )
+    assert ht2["lineage"]["source_record_id"] in {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
 
 
 def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
@@ -4998,6 +5038,27 @@ def test_congressional_district_capital_gains_rows_without_a_control_are_dropped
     )
 
     assert _congressional_district_capital_gains_specs(registry) == {}
+
+
+def test_capital_gains_share_row_without_its_family_total_refuses() -> None:
+    """A congressional-district row with a Schedule D control but no US row of
+    its own has no defined share. The compile refuses instead of dropping it
+    silently or letting another family's total stand in (microcosm#1038)."""
+    facts = [
+        *packaged_reference_facts(),
+        *(
+            fact
+            for fact in _capital_gains_cd_package_facts()
+            if fact["layout"]["groupby_value_id"] != "us"
+        ),
+        *_capital_gains_ht2_facts(),
+        *_capital_gains_t14_facts(),
+    ]
+
+    with pytest.raises(
+        fiscal_targets.MissingSoiCapitalGainsShareTotalError, match="hi_total"
+    ):
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
 
 def test_capital_gains_share_family_refuses_two_national_totals() -> None:
