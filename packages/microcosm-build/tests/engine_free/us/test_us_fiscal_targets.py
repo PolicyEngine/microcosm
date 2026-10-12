@@ -1038,8 +1038,15 @@ def test_pinned_feed_corrects_the_translated_congressional_district_specs(
         ("soi-state-2022", False, False): 2,
         ("soi-w2-statistics-2020", False, True): 1,
     }
+    # Every corrected congressional-district spec reads TY2022, except an
+    # aged share (microcosm#1040), whose source_period records where its
+    # aging starts: the control's period.
     assert all(
         spec.metadata["source_period"] == "2022"
+        or (
+            "uprating_factor" in spec.metadata
+            and spec.metadata["source_period"] == spec.metadata["uprating_to_period"]
+        )
         for spec in registry.specs
         if spec.metadata.get("source_vintage_correction", "").startswith(
             "soi-congressional-district-2022"
