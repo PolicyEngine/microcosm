@@ -7,7 +7,7 @@
    "factor": 1.0363754910057321
   }
  },
- "code_head": "67e7af0742cfcd60eeaaab35140bf04960b26640",
+ "code_head": "cd39d037e219f54aeb339a16d06fae36555b4c8b",
  "code_modifications": {
   "diff_sha256": null,
   "files": []
@@ -55,7 +55,7 @@
    "hmrc_itl": 33,
    "hmrc_itl_marginal_rate": 24,
    "hmrc_salary_sacrifice": 5,
-   "hmrc_spi": 157,
+   "hmrc_spi": 170,
    "hmrc_spi_region": 360,
    "hmrc_tfc": 2,
    "isc": 1,
@@ -72,7 +72,7 @@
    "slc_repayments": 3,
    "slc_student_support": 6
   },
-  "national_rows": 1200
+  "national_rows": 1213
  },
  "coverage": {
   "checked_targets": 400
@@ -4661,10 +4661,13 @@
      "E06000053"
     ],
     "grain": "la",
+    "household_share": 0.026107455697076093,
     "implied_from_grain": "constituency",
     "implied_value": 1780449884.7996674,
     "leg": "E12000009",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.019683625370474852,
+    "share_ratio": 0.7539465200616743,
     "status": "added",
     "target_id": "hmrc.employment_income.amount",
     "tier_ratio": 1.0004387228712186,
@@ -4676,10 +4679,13 @@
      "E06000053"
     ],
     "grain": "la",
+    "household_share": 0.026107455697076093,
     "implied_from_grain": "constituency",
     "implied_value": 56851.97947099991,
     "leg": "E12000009",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.023250926583600492,
+    "share_ratio": 0.8905856952657583,
     "status": "added",
     "target_id": "hmrc.employment_income.count",
     "tier_ratio": 1.0003619399983914,
@@ -4691,10 +4697,13 @@
      "E06000053"
     ],
     "grain": "la",
+    "household_share": 0.026107455697076093,
     "implied_from_grain": "constituency",
     "implied_value": 3719.8047123752767,
     "leg": "E12000009",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.008459488684637334,
+    "share_ratio": 0.3240257795624549,
     "status": "added",
     "target_id": "hmrc.higher_rate_taxpayers.count",
     "tier_ratio": 0.9993631925281257,
@@ -4705,10 +4714,13 @@
      "E14001416"
     ],
     "grain": "constituency",
+    "household_share": 0.013133764550569084,
     "implied_from_grain": "la",
     "implied_value": 39176259.82549095,
     "leg": "E12000002",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.004824614704986003,
+    "share_ratio": 0.36734438830616567,
     "status": "added",
     "target_id": "hmrc.self_employment_income.amount",
     "tier_ratio": 1.0011390932642201,
@@ -4720,10 +4732,13 @@
      "E06000053"
     ],
     "grain": "la",
+    "household_share": 0.026107455697076093,
     "implied_from_grain": "constituency",
     "implied_value": 161279993.5241623,
     "leg": "E12000009",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.017096219270832082,
+    "share_ratio": 0.6548404972586729,
     "status": "added",
     "target_id": "hmrc.self_employment_income.amount",
     "tier_ratio": 0.9988622027929145,
@@ -4735,10 +4750,13 @@
      "E06000053"
     ],
     "grain": "la",
+    "household_share": 0.026107455697076093,
     "implied_from_grain": "constituency",
     "implied_value": 6922.432830858743,
     "leg": "E12000009",
+    "share_bound": "at most 1.5 times the household share",
     "share_of_leg": 0.017457043543999653,
+    "share_ratio": 0.668661234038013,
     "status": "added",
     "target_id": "hmrc.self_employment_income.count",
     "tier_ratio": 0.9957614290039356,
@@ -5037,6 +5055,7 @@
     ]
    },
    "calibration_period": "2025",
+   "earliest_expiry": "2026-12-11",
    "held_cells": 9707,
    "held_targets": 29,
    "scope": "local"
@@ -5139,6 +5158,7 @@
     ]
    },
    "calibration_period": "2025",
+   "earliest_expiry": "2026-12-11",
    "held_cells": 249,
    "held_targets": 88,
    "scope": "national"

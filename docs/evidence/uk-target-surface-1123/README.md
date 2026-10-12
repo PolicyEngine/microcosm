@@ -8,10 +8,10 @@ from them by `scripts/extract_surface_receipts.py`.
 
 ## The two receipts
 
-- **Before:** `before-d1fda720b.json`. `main` at `d1fda720b`, the commit the
+- **Before:** `before-51a263726.json`. `main` at `51a263726`, the commit the
   branch is rebased on, with only the commit that adds the receipt tool (it
   moves no value), on the feed `main` pins, Chronicle `1ee7dfe`.
-- **After:** `after-67e7af074.json`. Branch commit `67e7af074`, on the feed it
+- **After:** `after-cd39d037e.json`. Branch commit `cd39d037e`, on the feed it
   pins, Chronicle `942a1fa`, with `--communal`.
 
 Both use review date 2026-10-12 and the 2021 output-area ladder of the
@@ -22,17 +22,19 @@ Both use review date 2026-10-12 and the 2021 output-area ladder of the
 from `code_head`, with the SHA-256 of its content, and the diff of the tracked
 ones. The extracts keep the file list and the diff's digest.
 
-- **After** ran on a clean tree: no file differs from `67e7af074`. The hold
+- **After** ran on a clean tree: no file differs from `cd39d037e`. The hold
   register is signed, so the compile needs no overlay.
 - **Before** names six files. `main` does not carry the receipt tool, so the
-  tool's commit was laid over `d1fda720b`, uncommitted, with the provenance
-  record added to the tool. The receipt holds that diff.
+  tool's commit was laid over `51a263726`, uncommitted, with the provenance
+  record added to the tool. That overlay is `before-overlay.diff` here; its
+  SHA-256 is the `diff_sha256` that `surface-diff.json` records for the
+  before receipt.
 
 ## `surface-diff.json`
 
 What the surface moves between the two receipts.
 
-- **National, bound rows:** 1,164 before and 1,200 after. 36 added, none
+- **National, bound rows:** 1,177 before and 1,213 after. 36 added, none
   removed, 552 moved.
   - Added: the 12 nation household control cells and the 24 Income Tax
     liabilities Table 2.2 marginal-rate cells.
@@ -51,7 +53,7 @@ What the surface moves between the two receipts.
     widest move is 0.5%.
 
 The national count is of bound rows, after the measure exclusions. The
-reference register is larger (1,232 active references before, 1,268 after).
+reference register is larger (1,245 active references before, 1,281 after).
 
 ## `reconciliation.json`
 
@@ -81,7 +83,9 @@ How the after surface was reconciled.
   still count in their leg. 44 frame rows: 38 deferred cells with a published
   value, and 6 implied for cells the publisher's table does not carry. Torbay
   and the Isles of Scilly are implied at 2.3% of the South West's employees;
-  their share of its households is 2.6%. `areas_outside_the_ladder` is empty.
+  their share of its households is 2.6%. Each implied row carries that
+  `household_share` and its `share_ratio`, which the compile refuses above
+  1.5: the ratios are 0.32 to 0.89. `areas_outside_the_ladder` is empty.
 - **`cross_grain_groups`:** every group's factor by leg. The local-authority
   legs under the constituency totals (`constituency_over_la`) are 1.018 to
   1.021 on employment counts and 1.008 to 1.011 on employment amounts. The
@@ -90,8 +94,9 @@ How the after surface was reconciled.
 - **`subset_relations`:** each declared part against its whole on the compiled
   values. All 20 tests hold and none is skipped. The nine age bands and the
   two 90-and-over rows are tested on their sum, which equals the UK total.
-- **`partitions`, `uprating_holds`, `communal_validation`:** counts and
-  spreads.
+- **`uprating_holds`:** the held targets by kind and the earliest expiry,
+  2026-12-11, at both grains.
+- **`partitions`, `communal_validation`:** counts and spreads.
 
 ## Reproducing
 

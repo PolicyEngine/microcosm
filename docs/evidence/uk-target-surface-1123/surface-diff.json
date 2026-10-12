@@ -1,6 +1,6 @@
 {
  "after": {
-  "code_head": "67e7af0742cfcd60eeaaab35140bf04960b26640",
+  "code_head": "cd39d037e219f54aeb339a16d06fae36555b4c8b",
   "code_modifications": {
    "diff_sha256": null,
    "files": []
@@ -52,17 +52,17 @@
     "version": 1
    },
    "register_completeness": {
-    "approved_reference_count": 1200,
-    "approved_registry_version": "a111670c6881",
+    "approved_reference_count": 1213,
+    "approved_registry_version": "90cfbfc7813f",
     "band_edge_registry_reconciled": true,
     "compiled_local_reference_count": 21804,
-    "compiled_reference_count": 1268,
-    "compiled_registry_version": "18535d11c697",
+    "compiled_reference_count": 1281,
+    "compiled_registry_version": "06216f872c0e",
     "exclusions_evaluated_on": "2026-10-12",
     "frozen_registry_version": null,
     "local_registry_version": "27f3582a85a5",
     "measure_exclusion_count": 68,
-    "reconciled_registry_version": "06f19b761624",
+    "reconciled_registry_version": "cbef907d4c52",
     "validation_periods": {
      "local": [],
      "national": []
@@ -94,7 +94,7 @@
   }
  },
  "before": {
-  "code_head": "d1fda720b77564270fa702a232c19d4055229489",
+  "code_head": "51a2637268633f53120acd812d0d156c79f1f7f5",
   "code_modifications": {
    "diff_sha256": "23754681fea0470955de46c3cfa240e42c2b8b5ea1975f048182a0b3a50b79c4",
    "files": [
@@ -177,12 +177,12 @@
     "version": 1
    },
    "register_completeness": {
-    "approved_reference_count": 1164,
-    "approved_registry_version": "499195ec7f97",
+    "approved_reference_count": 1177,
+    "approved_registry_version": "20a97df0b099",
     "band_edge_registry_reconciled": true,
     "compiled_local_reference_count": 20885,
-    "compiled_reference_count": 1232,
-    "compiled_registry_version": "a202155ca787",
+    "compiled_reference_count": 1245,
+    "compiled_registry_version": "ccc69cc145cd",
     "exclusions_evaluated_on": "2026-10-12",
     "frozen_registry_version": null,
     "local_registry_version": "8773c453fac5",
@@ -5069,7 +5069,7 @@
   ],
   "moved_count": 552,
   "removed": [],
-  "rows_after": 1200,
-  "rows_before": 1164
+  "rows_after": 1213,
+  "rows_before": 1177
  }
 }
