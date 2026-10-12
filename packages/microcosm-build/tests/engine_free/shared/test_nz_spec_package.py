@@ -121,6 +121,18 @@ def _input_surface() -> dict[str, dict[str, Any]]:
     return {module["path"]: module for module in surface["modules"]}
 
 
+def _reporting_parameter_paths(value: object, path: str) -> Iterator[str]:
+    """Each executable parameter leaf needs its own method citation."""
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            yield from _reporting_parameter_paths(child, f"{path}/{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _reporting_parameter_paths(child, f"{path}/{index}")
+    else:
+        yield path
+
+
 # ---------------------------------------------------------------------------
 # Validators (exercised by Hypothesis below, applied to the package here)
 # ---------------------------------------------------------------------------
@@ -1653,3 +1665,268 @@ class TestDeclaredResources:
         assert artifact["size_bytes"] == 462915783
         assert {"donor_country_code", "support_stratum"} <= set(donor.outputs)
         assert "US donor support records" in donor.survey
+
+
+class TestReportingClassifiers:
+    def test_reporting_resource_is_packaged_and_loader_visible(self) -> None:
+        from microcosm.build.transport.compose import load_transport_spec
+
+        resources = load_transport_spec("nz")["resources"]
+        assert resources["reporting_classifiers"] == _load("reporting_classifiers.json")
+
+    def test_every_executable_parameter_cites_its_addendum_item(self) -> None:
+        document = _load("reporting_classifiers.json")
+        paths = {
+            path: item
+            for classifier, item in (("income_decile", "A1"), ("receipt_group", "A2"))
+            for path in _reporting_parameter_paths(
+                document[classifier], f"/{classifier}"
+            )
+        }
+        assert set(document["parameter_provenance"]) == set(paths)
+        for path, item in paths.items():
+            citation = document["parameter_provenance"][path]
+            assert citation["item"] == item
+            assert citation["source"].endswith("/g8-method-addendum.md")
+
+    def test_income_names_assigned_receipt_and_gross_components_only(self) -> None:
+        document = _load("reporting_classifiers.json")
+        classifier = document["income_decile"]
+        assert classifier["entity"] == "family"
+        assert classifier["membership_column"] == "person_family_id"
+        assert classifier["weight_entity"] == "household"
+        assert classifier["expected_weight_kind"] == "calibrated"
+        assert classifier["tie_key"] == classifier["unit_id_column"] == "family_id"
+        assert classifier["n_bins"] == 10
+        assert classifier["rank_method"] == "weighted_midpoint"
+        market = [row for row in classifier["components"] if row["kind"] == "market"]
+        assert {row["column"] for row in market} == {
+            "employment_income",
+            "nonfarm_self_employment_income",
+            "farm_self_employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "private_pension_income",
+        }
+        assert all(row["annualisation_factor"] == 1 for row in market)
+        benefits = [row for row in classifier["components"] if row["kind"] == "benefit"]
+        assert all(row["annualisation_factor"] == 52 for row in benefits)
+        assert all(row["tax_basis"] == "before_tax" for row in classifier["components"])
+        super_income = next(
+            row for row in benefits if row["receipt_column"] == "receives_nz_super"
+        )
+        assert super_income["column"] == "nz_super_weekly_amount_before_tax"
+        assert super_income["column"] in _bindings()["nz_super"]["variables"]
+        assert all("entitled" not in row["receipt_column"] for row in benefits)
+
+    def test_unavailable_before_tax_paid_amounts_refuse_activation(self) -> None:
+        from microcosm.frame.reporting import validate_income_classifier
+
+        document = _load("reporting_classifiers.json")
+        classifier = document["income_decile"]
+        missing = {
+            row["receipt_column"]
+            for row in classifier["components"]
+            if row["column"] is None
+        }
+        assert missing == {
+            "receives_jobseeker_support",
+            "receives_sole_parent_support",
+            "receives_supported_living_payment",
+            "receives_veterans_pension",
+        }
+        assert missing == {row["receipt_column"] for row in document["blocked_inputs"]}
+        with pytest.raises(ValueError, match="(?:column|before.tax)"):
+            validate_income_classifier(classifier)
+        paid = _bindings()["main_benefits_rates"]["variables"]
+        assert {
+            "jobseeker_support_net_weekly_payment",
+            "sole_parent_support_net_weekly_payment",
+            "supported_living_payment_net_weekly_payment",
+        } <= set(paid)
+        assert not any("before_tax" in name for name in paid)
+
+    @pytest.mark.parametrize(
+        ("entity", "column"),
+        [
+            ("person", "jobseeker_support_net_weekly_payment"),
+            ("person", "sole_parent_support_net_weekly_payment"),
+            ("person", "supported_living_payment_net_weekly_payment"),
+            ("family", "accommodation_supplement"),
+            ("family", "accommodation_supplement_rounded_weekly_payment"),
+            ("family", "working_for_families"),
+        ],
+    )
+    def test_spec_refuses_net_benefit_and_outcome_income_columns(
+        self, entity: str, column: str
+    ) -> None:
+        from microcosm.frame.reporting import validate_income_classifier
+
+        classifier = _load("reporting_classifiers.json")["income_decile"]
+        # Resolve only the unavailable amount declarations for this contract
+        # test; these fixture names make no claim about available engine outputs.
+        for index, component in enumerate(classifier["components"]):
+            if component["column"] is None:
+                component["column"] = f"fixture_before_tax_amount_{index}"
+        classifier["components"].append(
+            {
+                "entity": entity,
+                "column": column,
+                "kind": "market",
+                "tax_basis": "before_tax",
+                "annualisation_factor": 1,
+            }
+        )
+        with pytest.raises(ValueError, match="Excluded income component"):
+            validate_income_classifier(classifier)
+
+    def test_mc11_and_receipt_group_select_one_superannuitant_predicate(self) -> None:
+        from microcosm.build.transport.compose import load_transport_spec
+        from microcosm.frame.reporting import validate_receipt_classifier
+
+        document = _load("reporting_classifiers.json")
+        classifier = validate_receipt_classifier(document["receipt_group"])
+        reference = _load("as_rate_bridge.json")["superannuitant_units"]["predicate"]
+        selected = load_transport_spec("nz")["resources"][reference["resource"]]
+        for key in reference["path"]:
+            selected = selected[key]
+        assert selected == classifier["predicates"]["superannuitant"]
+        assert selected == {
+            "entity": "person",
+            "columns": ["receives_nz_super", "receives_veterans_pension"],
+            "reduction": "any",
+        }
+        assert classifier["priority"] == ["superannuitant", "beneficiary"]
+        assert classifier["default"] == "other"
+        assert classifier["predicates"]["beneficiary"]["columns"] == [
+            "receives_jobseeker_support",
+            "receives_sole_parent_support",
+            "receives_supported_living_payment",
+        ]
+
+    def test_unsupported_veterans_receipt_is_explicit_and_required(self) -> None:
+        document = _load("reporting_classifiers.json")
+        declared = _load("axiom_input_closure.json")["receipt_flags"]["columns"]
+        (unsupported,) = document["unsupported_receipt_inputs"]
+        assert unsupported["column"] == "receives_veterans_pension"
+        assert f"person.{unsupported['column']}" not in declared
+        assert (
+            unsupported["column"]
+            in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
+        )
+        assert "missing flag never implies false" in unsupported["required_behavior"]
+        assert document["mixed_unit_audit"]["per_scenario"] is True
+
+    def test_as_non_beneficiary_binding_agrees_for_supported_receipt_flags(
+        self,
+    ) -> None:
+        document = _load("reporting_classifiers.json")
+        classifier = document["receipt_group"]
+        expected = {
+            f"person.{column}"
+            for predicate in classifier["predicates"].values()
+            for column in predicate["columns"]
+        }
+        entries = _load("axiom_input_closure.json")["entries"]
+        (entry,) = [
+            row
+            for row in entries
+            if row["input"] == "accommodation_supplement_non_beneficiary"
+        ]
+        binding = entry["state_binding"]
+        assert binding["test"] == "any_true"
+        assert binding["group_rule"] == "any_member"
+        assert binding["negate"] is True
+        assert "person.receives_nz_super" in binding["columns"]
+        assert expected - set(binding["columns"]) == {
+            "person.receives_veterans_pension"
+        }
+        assert (
+            "must be extended"
+            in document["as_non_beneficiary_audit"]["veterans_pension"]
+        )
+
+    def test_baseline_cells_are_declared_for_every_scenario_and_variant(self) -> None:
+        document = _load("reporting_classifiers.json")
+        contract = document["baseline_cell_contract"]
+        assert contract["scenario_ids"] == [
+            row["id"] for row in _load("scenarios.json")["scenarios"]
+        ]
+        assert (
+            contract["boundary_scenario"]
+            == document["income_decile"]["boundary_scenario"]
+            == "S0"
+        )
+        assert contract["join_column"] == "family_id"
+        assert contract["variant_rule"] == "carry_baseline_cell_by_unit_id"
+        assert contract["diagnostics"] == "report_each_scenario_weighted_decile_shares"
+
+    def test_pinned_donor_unit_ids_survive_rebuilds_and_row_permutations(self) -> None:
+        import pandas as pd
+
+        from microcosm.frame.unit_construction import (
+            BenefitUnitRule,
+            DependentChildRule,
+            build_benefit_units,
+        )
+
+        person = pd.DataFrame(
+            {
+                "person_id": [102, 101, 202, 201],
+                "person_household_id": [10, 10, 20, 20],
+                "age": [30, 30, 30, 30],
+                "partner_person_id": pd.array([101, 102, None, None], dtype="Int64"),
+                "parent_1_person_id": pd.array([None] * 4, dtype="Int64"),
+                "parent_2_person_id": pd.array([None] * 4, dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": [10, 20],
+                "reference_person_id": [102, 202],
+                "source_household_id": ["same_source", "same_source"],
+            }
+        )
+        rule = BenefitUnitRule(
+            entity="family",
+            dependent_child=DependentChildRule(max_age=17, financial_independence=None),
+            unparented_child="reference_person_unit",
+            split_parents="first_parent_unit",
+            provenance={"purpose": "Adult-only stable-id reporting fixture"},
+        )
+        units, membership = build_benefit_units(person, household, rule)
+        repeated, repeated_membership = build_benefit_units(person, household, rule)
+        permuted, permuted_membership = build_benefit_units(
+            person.iloc[[3, 1, 0, 2]], household.iloc[::-1], rule
+        )
+        pd.testing.assert_frame_equal(units, repeated)
+        pd.testing.assert_frame_equal(units, permuted)
+        pd.testing.assert_series_equal(membership, repeated_membership)
+        pd.testing.assert_series_equal(membership, permuted_membership.sort_index())
+        assert units["family_id"].tolist() == [102, 201, 202]
+        assert units["family_source_household_id"].tolist() == ["same_source"] * 3
+
+    def test_s0_through_s4_structural_zero_cells_are_listed_on_support_entry(
+        self,
+    ) -> None:
+        document = _load("reporting_classifiers.json")
+        zeros = document["structural_zero_cells"]
+        assert zeros == [
+            {
+                "scenario": f"S{index}",
+                "cell": "beneficiary_superannuitant_other/superannuitant",
+            }
+            for index in range(5)
+        ]
+        support = next(
+            row
+            for row in _load("gates.json")["gates"]
+            if row["id"] == "reported_cell_support"
+        )
+        for row in zeros:
+            assert f"{row['scenario']}/{row['cell']}" in support["notes"]
+        assert (
+            "actual structural-zero diagnostics are derived from reported amounts"
+            in (support["notes"])
+        )

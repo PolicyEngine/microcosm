@@ -1,0 +1,743 @@
+{
+  "version": 1,
+  "country": "nz",
+  "description": "Benefit-unit reporting classifiers implementing the G8 method addendum A1 and A2. Executable declarations are selected individually; provenance and activation gaps remain explicit spec data.",
+  "status": "A1 provisional for confirmation at D2; activation blocked by missing before-tax paid main-benefit amounts and Veterans Pension receipt/amount inputs",
+  "income_decile": {
+    "entity": "family",
+    "person_entity": "person",
+    "unit_id_column": "family_id",
+    "membership_column": "person_family_id",
+    "weight_entity": "household",
+    "expected_weight_kind": "calibrated",
+    "tie_key": "family_id",
+    "boundary_scenario": "S0",
+    "n_bins": 10,
+    "rank_method": "weighted_midpoint",
+    "components": [
+      {
+        "entity": "person",
+        "column": "employment_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "nonfarm_self_employment_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "farm_self_employment_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "interest_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "dividend_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "rental_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": "private_pension_income",
+        "kind": "market",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 1
+      },
+      {
+        "entity": "person",
+        "column": null,
+        "kind": "benefit",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 52,
+        "receipt_column": "receives_jobseeker_support"
+      },
+      {
+        "entity": "person",
+        "column": null,
+        "kind": "benefit",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 52,
+        "receipt_column": "receives_sole_parent_support"
+      },
+      {
+        "entity": "person",
+        "column": null,
+        "kind": "benefit",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 52,
+        "receipt_column": "receives_supported_living_payment"
+      },
+      {
+        "entity": "person",
+        "column": "nz_super_weekly_amount_before_tax",
+        "kind": "benefit",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 52,
+        "receipt_column": "receives_nz_super"
+      },
+      {
+        "entity": "person",
+        "column": null,
+        "kind": "benefit",
+        "tax_basis": "before_tax",
+        "annualisation_factor": 52,
+        "receipt_column": "receives_veterans_pension"
+      }
+    ],
+    "excluded_columns": [
+      {
+        "entity": "family",
+        "column": "accommodation_supplement"
+      },
+      {
+        "entity": "family",
+        "column": "accommodation_supplement_rounded_weekly_payment"
+      },
+      {
+        "entity": "family",
+        "column": "working_for_families"
+      },
+      {
+        "entity": "family",
+        "column": "family_tax_credit_prescribed_amount"
+      },
+      {
+        "entity": "person",
+        "column": "jobseeker_support_net_weekly_payment"
+      },
+      {
+        "entity": "person",
+        "column": "sole_parent_support_net_weekly_payment"
+      },
+      {
+        "entity": "person",
+        "column": "supported_living_payment_net_weekly_payment"
+      }
+    ]
+  },
+  "receipt_group": {
+    "entity": "family",
+    "person_entity": "person",
+    "unit_id_column": "family_id",
+    "membership_column": "person_family_id",
+    "predicates": {
+      "superannuitant": {
+        "entity": "person",
+        "columns": [
+          "receives_nz_super",
+          "receives_veterans_pension"
+        ],
+        "reduction": "any"
+      },
+      "beneficiary": {
+        "entity": "person",
+        "columns": [
+          "receives_jobseeker_support",
+          "receives_sole_parent_support",
+          "receives_supported_living_payment"
+        ],
+        "reduction": "any"
+      }
+    },
+    "priority": [
+      "superannuitant",
+      "beneficiary"
+    ],
+    "default": "other"
+  },
+  "baseline_cell_contract": {
+    "boundary_scenario": "S0",
+    "scenario_ids": [
+      "S0",
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "V1",
+      "V2",
+      "V3"
+    ],
+    "join_column": "family_id",
+    "variant_rule": "carry_baseline_cell_by_unit_id",
+    "diagnostics": "report_each_scenario_weighted_decile_shares",
+    "citation": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    }
+  },
+  "rank_method_note": "Provisional within-unit weighted rank convention: sort by income then stable unit id, assign floor(n_bins * (preceding_weight + unit_weight / 2) / total_weight) + 1, clamped to 1..n_bins. Tied units are ordered and may split across bins; no row is split. This midpoint convention adds a precise boundary convention to A1 and awaits hub confirmation.",
+  "tie_key_evidence": {
+    "stability": "Same pinned donor and unit rule preserve person ids across rebuilds; each family id is its head person id. Units sharing source household lineage remain distinct units.",
+    "implementation": [
+      "packages/microcosm-frame/src/microcosm/frame/unit_construction.py:388-409",
+      "packages/microcosm-build/src/microcosm/build/transport/population_kernels.py:209-228",
+      "packages/microcosm-frame/src/microcosm/frame/transport.py:843-856"
+    ],
+    "citation": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    }
+  },
+  "blocked_inputs": [
+    {
+      "receipt_column": "receives_jobseeker_support",
+      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
+      "unavailable_bound_outputs": [
+        "jobseeker_support_net_weekly_payment",
+        "jobseeker_support_gross_weekly_rate",
+        "jobseeker_support_weekly_income_test_reduction"
+      ],
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    },
+    {
+      "receipt_column": "receives_sole_parent_support",
+      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
+      "unavailable_bound_outputs": [
+        "sole_parent_support_net_weekly_payment"
+      ],
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    },
+    {
+      "receipt_column": "receives_supported_living_payment",
+      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
+      "unavailable_bound_outputs": [
+        "supported_living_payment_net_weekly_payment"
+      ],
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    },
+    {
+      "receipt_column": "receives_veterans_pension",
+      "required": "before-tax weekly paid engine amount after the income test, multiplied by assigned receipt; null column refuses activation",
+      "unavailable_bound_outputs": [],
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    }
+  ],
+  "unsupported_receipt_inputs": [
+    {
+      "column": "receives_veterans_pension",
+      "evidence": "axiom_input_closure.json receipt_flags omits this flag; main_benefit_receiving_veterans_pension defaults false because Veterans Pension is not modelled in v0",
+      "required_behavior": "Missing flag is refused; a missing flag never implies false.",
+      "citation": {
+        "item": "A2",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    }
+  ],
+  "disclosures": [
+    {
+      "note": "NZ Super is overstated for single people who share a home because the shares-residence input defaults false; this moves their deciles upward.",
+      "evidence": "axiom_input_closure.json:1045-1052",
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    },
+    {
+      "note": "Market-income components follow the existing family gross-income concept mapping. Rental income is after business expenses. The rental and private-pension concept descriptions do not explicitly say before tax; their before-tax transport interpretation must be verified before activation.",
+      "evidence": "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json:670-688; packages/microcosm-frame/src/microcosm/frame/concepts.py:990-1000,1040-1051",
+      "citation": {
+        "item": "A1",
+        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      }
+    }
+  ],
+  "mixed_unit_audit": {
+    "measure": "units_satisfying_multiple_receipt_predicates",
+    "per_scenario": true,
+    "citation": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    }
+  },
+  "structural_zero_cells": [
+    {
+      "scenario": "S0",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "S1",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "S2",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "S3",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "S4",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    }
+  ],
+  "structural_zero_citation": {
+    "item": "A2",
+    "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+  },
+  "parameter_provenance": {
+    "/income_decile/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/person_entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/unit_id_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/membership_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/weight_entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/expected_weight_kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/tie_key": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/boundary_scenario": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/n_bins": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/rank_method": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/0/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/0/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/0/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/0/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/0/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/1/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/1/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/1/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/1/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/1/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/2/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/2/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/2/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/2/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/2/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/3/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/3/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/3/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/3/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/3/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/4/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/4/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/4/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/4/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/4/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/5/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/5/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/5/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/5/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/5/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/6/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/6/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/6/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/6/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/6/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/7/receipt_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/8/receipt_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/9/receipt_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/10/receipt_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/kind": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/tax_basis": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/annualisation_factor": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/components/11/receipt_column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/0/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/0/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/1/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/1/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/2/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/2/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/3/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/3/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/4/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/4/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/5/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/5/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/6/entity": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/income_decile/excluded_columns/6/column": {
+      "item": "A1",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/entity": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/person_entity": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/unit_id_column": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/membership_column": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/superannuitant/entity": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/superannuitant/columns/0": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/superannuitant/columns/1": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/superannuitant/reduction": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/beneficiary/entity": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/beneficiary/columns/0": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/beneficiary/columns/1": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/beneficiary/columns/2": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/predicates/beneficiary/reduction": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/priority/0": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/priority/1": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "/receipt_group/default": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    }
+  },
+  "as_non_beneficiary_audit": {
+    "nz_super": "The existing accommodation_supplement_non_beneficiary state binding negates any_true over assigned member receipt flags, including NZ Super. A unit with any assigned NZ Super receipt is therefore not a non-beneficiary.",
+    "veterans_pension": "The same binding omits the unsupported Veterans Pension flag, so it must be extended when that receipt input is activated. A missing Veterans Pension flag continues to block reporting rather than classify its recipients as other.",
+    "evidence": "axiom_input_closure.json:1183-1204",
+    "citation": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    }
+  }
+}

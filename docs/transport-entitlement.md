@@ -96,6 +96,63 @@ does not accept an `aging_index` parameter. If pre-calibration quantile maps are
 aged too, those variants must branch from CREATE. V3 declares its receipt
 override before its independent problem and calibration.
 
+Reporting classifiers are available as three declarative kernels:
+`reporting.income_decile@1`, `reporting.carry_income_decile@1`, and
+`reporting.receipt_group@1`. Their `classifier` parameter is canonical JSON,
+with a resource `classifier_sha256` and a `scenario` label. Income kernels
+also declare `entities`, person first, including the reporting entity and
+the stored weight entity. They reconstruct the Frame and resolve the unit's
+inherited weights; the declared weight kind is checked. Every kernel owns
+exactly one all-row classifier column: `income_decile` as `int64`, or
+`receipt_group` as `string`.
+
+The baseline income kernel runs only for `boundary_scenario`. Declared market
+and benefit components must be before tax. Benefit components multiply the
+engine payment by assigned boolean receipt and their annualisation factor;
+missing flags, net components and explicitly excluded outcome columns refuse.
+Member amounts sum in stable person-ID order. Income ties sort by the declared
+unique tie key. The provisional `weighted_midpoint` convention assigns a unit
+at cumulative weight before it plus half its own weight; an exact boundary
+enters the higher decile. Zero-weight units have deterministic labels and no
+weighted mass. A single positive-weight unit enters decile 6 with ten bins;
+an all-zero population refuses. Each receipt reports all decile weighted shares.
+Bin positions within the floating-point roundoff bound of an integer boundary
+are snapped to that boundary, preserving this convention when weights scale.
+
+The baseline node declares `baseline_cells` with nominal type
+`microcosm.reporting.income-cells`, version 1. Variant nodes consume it through
+an ordinary typed artifact edge naming the baseline producer, for example:
+
+```json
+{"name": "baseline_cells", "producer": "baseline.income", "artifact": "baseline_cells"}
+```
+
+Typed artifact edges already support different populations. The carry kernel
+checks the baseline scenario, classifier digest, entity, ID column, bin count,
+and exact unit-ID set, then joins the saved labels by ID. It reads no income
+amounts and reports weighted shares under the variant's weights. This preserves
+baseline cells when calibration or assigned receipt changes. Wiring these
+kernels into the production graph is the separate G8-w package.
+
+Receipt predicates name assigned person flag columns and an any-member
+reduction. All flags must be nonmissing booleans. The declared priority selects
+the first matching group; the default handles unmatched units. Scenario receipts
+include `mixed_units`, predicate counts and group counts. A mixed unit matches
+more than one predicate, regardless of which member receives each programme.
+
+`nz/reporting_classifiers.json` records addendum A1/A2 parameters and provenance.
+Its superannuitant predicate is also referenced by MC11 in `as_rate_bridge.json`.
+The cell-support gate entry explicitly lists the S0–S4 superannuitant structural
+zeros in its notes, and the classifier resource records them as data. The gate
+continues to identify actual structural zeros from the measured amounts.
+The income declaration deliberately refuses unresolved before-tax main-benefit
+and Veterans Pension payment columns. The current bindings request net weekly
+main-benefit payments and a separate gross Jobseeker rate; the bindings do not
+declare a verified before-tax paid amount. The assigned Veterans Pension flag is also
+unsupported in the current closure and must be supplied before classification.
+Family IDs used for ties are deterministic head-person IDs for the same pinned
+donor and unit rule; source-household keys shared by clones do not replace them.
+
 Engine components and masks can declare an NZS/VP alternative; an explicit
 exclusion input and counted excluded-unit reference can declare the fallback.
 The toy tests exercise these declaration and grouping shapes with invented

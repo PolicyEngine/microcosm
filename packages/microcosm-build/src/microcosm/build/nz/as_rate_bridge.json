@@ -418,7 +418,20 @@
   "superannuitant_units": {
     "central": "exclude_and_count",
     "scenario_s5": "reg17_superannuitant_base_rate",
-    "status": "The harness has no NZ Superannuation or Veteran's Pension base-rate branch. G7 implements one from the reg 17 text if it can; otherwise the MC11 fallback stands: superannuitant units are excluded from the central run and counted. Scenario S5 carries the alternative. Awaiting D1 (MC11)."
+    "status": "The harness has no NZ Superannuation or Veteran's Pension base-rate branch. G7 implements one from the reg 17 text if it can; otherwise the MC11 fallback stands: superannuitant units are excluded from the central run and counted. Scenario S5 carries the alternative. Awaiting D1 (MC11).",
+    "predicate": {
+      "resource": "reporting_classifiers",
+      "path": [
+        "receipt_group",
+        "predicates",
+        "superannuitant"
+      ]
+    },
+    "predicate_citation": {
+      "item": "A2",
+      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    },
+    "predicate_note": "MC11 exclude-and-count and reporting must select this one assigned-member receipt predicate. A bridge implementation must resolve the reference rather than infer superannuitants from entitlement or age."
   },
   "beneficiary_note": "The harness computes the base rate from zero-income Jobseeker Support for every scenario, beneficiary or not; accommodation_supplement_non_beneficiary itself comes from the receipt layer through the group encode, not from this bridge.",
   "differential_expectations": {
