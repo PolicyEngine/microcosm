@@ -73,9 +73,15 @@ def pytest_collection_modifyitems(items) -> None:
 def fake_telemetry_emitters(monkeypatch, tmp_path):
     """Default every workspace test to in-memory telemetry, never production."""
     from huggingface_hub import constants as hf_constants
+    from microcosm_emitter.host import launcher
 
     from microcosm.build import telemetry_emitter
-    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+    from microcosm.build.uk_runtime import orrery_publication
+    from test_support.microcosm_build.telemetry import (
+        FakeTelemetryEmitter,
+        fake_publication_inventory,
+        fake_publish_graph,
+    )
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
@@ -102,6 +108,15 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     monkeypatch.setattr(
         telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(start)
     )
+    monkeypatch.setattr(
+        orrery_publication, "publication_inventory", fake_publication_inventory
+    )
+    monkeypatch.setattr(orrery_publication, "publish_graph", fake_publish_graph)
+
+    def unexpected_start(*args, **options):
+        pytest.fail("A build test tried to start a real emitter service")
+
+    monkeypatch.setattr(launcher, "start_services", unexpected_start)
     # Reset any cached handle left by a previously loaded build entrypoint.
     for module in tuple(sys.modules.values()):
         if isinstance(

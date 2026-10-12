@@ -51,10 +51,12 @@ immutable publication before Hugging Face artifact staging, and preserves
 durable retry jobs and receipt snapshots. See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 
-Supported US and UK build commands start one local provider service with separate
+Supported US and UK build commands start one local emitter service with separate
 telemetry and graph-publication workers. Microcosm supplies build metadata and
-graph files; provider packages own authentication, durable queues and delivery.
-This draft migration requires published provider packages before merge; see the
+graph files; the required `microcosm-emitter` package owns authentication,
+durable queues and delivery. Telemetry and graph publication are internal
+libraries in that single package, not separate installations.
+This draft migration requires a published emitter release before merge; see the
 [migration prerequisites](docs/orrery-publication.md#deferred-migration-prerequisites).
 The telemetry worker reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events

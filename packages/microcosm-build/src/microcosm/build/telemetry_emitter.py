@@ -1,21 +1,30 @@
-"""Microcosm metadata adapter for the independently packaged local provider."""
+"""Microcosm metadata adapter for the independently packaged local emitter."""
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from microcosm_provider_client.launcher import start_services
-from microcosm_provider_orrery.client import default_spool_path, publish_graph
-from microcosm_provider_orrery.contracts import PublicationInventory, PublicationReceipt
-from microcosm_provider_telemetry.client import (
-    LocalTelemetryEmitter as ProviderTelemetryEmitter,
+from microcosm_emitter.host.launcher import start_services
+from microcosm_emitter.orrery.client import (
+    GraphPublicationClient,
+    default_spool_path,
+    publish_graph,
 )
-from microcosm_provider_telemetry.client import (
+from microcosm_emitter.orrery.contracts import (
+    PublicationFileRole,
+    PublicationInventory,
+    PublicationReceipt,
+)
+from microcosm_emitter.telemetry.client import (
+    LocalTelemetryEmitter as EmitterTelemetryClient,
+)
+from microcosm_emitter.telemetry.client import (
     TelemetryRun,
 )
-from microcosm_provider_telemetry.constants import (
+from microcosm_emitter.telemetry.constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     SERVICE_START_WARNING,
 )
@@ -23,12 +32,14 @@ from microcosm_provider_telemetry.constants import (
 from microcosm.build.telemetry_identity import runtime_identity
 
 
-class LocalTelemetryEmitter(ProviderTelemetryEmitter):
-    """Supply build identity and select both workers in one provider process."""
+class LocalTelemetryEmitter(EmitterTelemetryClient):
+    """Supply build identity and select both workers in one emitter process."""
 
-    def __init__(self, *, run, transport, handle=None, spool_path=None):
+    def __init__(self, *, run, transport, handle=None, graph_client=None):
         super().__init__(run=run, transport=transport, handle=handle)
-        self._spool_path = Path(spool_path) if spool_path else None
+        self._graph_client = (
+            graph_client if graph_client is not None else GraphPublicationClient()
+        )
 
     @classmethod
     def start(
@@ -53,7 +64,6 @@ class LocalTelemetryEmitter(ProviderTelemetryEmitter):
             release_id=release_id,
             run_kind=run_kind,
         )
-        path = None
         try:
             path = Path(spool_path) if spool_path else default_spool_path()
             identity = runtime_identity()
@@ -66,6 +76,7 @@ class LocalTelemetryEmitter(ProviderTelemetryEmitter):
                     "telemetry": {
                         **shared,
                         "registration": run.as_registration(),
+                        "identity": identity,
                         "heartbeat_seconds": heartbeat_seconds,
                     },
                     "orrery": shared,
@@ -77,21 +88,19 @@ class LocalTelemetryEmitter(ProviderTelemetryEmitter):
                 SERVICE_START_WARNING.format(error_type=type(error).__name__),
                 file=sys.stderr,
             )
-            return cls(run=run, transport=None, spool_path=path)
-        emitter = cls(
+            return cls(run=run, transport=None)
+        return cls(
             run=run,
             transport=handle.client.for_module("telemetry"),
             handle=handle,
-            spool_path=path,
+            graph_client=GraphPublicationClient(handle.client.for_module("orrery")),
         )
-        emitter.emit(
-            event_type="run",
-            stage_id="created",
-            status="started",
-            message="Build started",
-            details={"identity": identity},
-        )
-        return emitter
+
+    def publication_inventory(
+        self, directory: Path, roles: Mapping[str, PublicationFileRole]
+    ) -> PublicationInventory | None:
+        """Ask the existing graph worker to measure selected public files."""
+        return self._graph_client.inventory(directory, roles)
 
     def publish_graph(
         self,
@@ -103,12 +112,11 @@ class LocalTelemetryEmitter(ProviderTelemetryEmitter):
         return publish_graph(
             directory,
             inventory,
-            spool_path=self._spool_path,
-            available=lambda: self.available,
+            client=self._graph_client,
             wait_seconds=wait_seconds,
         )
 
 
 def start_local_telemetry_emitter_service(**run: Any) -> LocalTelemetryEmitter:
-    """Construct the build adapter without importing provider service internals."""
+    """Construct the build adapter without importing emitter service internals."""
     return LocalTelemetryEmitter.start(**run)

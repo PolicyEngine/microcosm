@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm_provider_orrery.client import publication_inventory, publish_graph
-from microcosm_provider_orrery.contracts import (
+from microcosm_emitter.orrery.client import publication_inventory, publish_graph
+from microcosm_emitter.orrery.contracts import (
     PublicationFileRole,
     PublicationReceipt,
 )
@@ -153,7 +153,20 @@ def finalize_graph(
             preserved = Path(args.attempt_evidence) / "orrery-publication"
             for name in roles:
                 materialize_bytes((output / name).read_bytes(), preserved / name)
-            inventory = publication_inventory(preserved, roles)
+            emitter = rowwise_staging.active_telemetry_emitter()
+            inventory = (
+                publication_inventory(preserved, roles)
+                if emitter is None
+                else emitter.publication_inventory(preserved, roles)
+            )
+            if inventory is None:
+                receipt.update(
+                    status="failed",
+                    error_code="local_service_unavailable",
+                    preserved_directory=str(preserved),
+                    recorded_execution=execution is not None,
+                )
+                raise RuntimeError("Local graph inventory service is unavailable.")
             materialize_bytes(canonical_json(inventory), preserved / INVENTORY_NAME)
             materialize_bytes(canonical_json(inventory), output / INVENTORY_NAME)
             names = [*roles, INVENTORY_NAME]
@@ -167,7 +180,6 @@ def finalize_graph(
                 "recorded_execution": execution is not None,
             }
             if publication_enabled(args):
-                emitter = rowwise_staging.active_telemetry_emitter()
                 if emitter is None:
                     # Durable enqueue is still possible without a running
                     # emitter; the retry command requires no telemetry run.
@@ -181,8 +193,9 @@ def finalize_graph(
     except Exception:
         # No credential, exception text, paths to raw input data, or signed URL
         # is copied from an exception into public evidence or telemetry.
+        if receipt["status"] != "failed":
+            receipt["error_code"] = "graph_export_or_enqueue_failed"
         receipt["status"] = "failed"
-        receipt["error_code"] = "graph_export_or_enqueue_failed"
     materialize_bytes(canonical_json(receipt), output / RECEIPT_NAME)
     names.append(RECEIPT_NAME)
     if manifest is not None:

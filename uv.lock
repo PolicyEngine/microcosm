@@ -804,12 +804,10 @@ dependencies = [
     { name = "jsonschema" },
     { name = "microcosm-calibrate" },
     { name = "microcosm-diagnostics" },
+    { name = "microcosm-emitter" },
     { name = "microcosm-fit" },
     { name = "microcosm-frame" },
     { name = "microcosm-graph" },
-    { name = "microcosm-provider-client" },
-    { name = "microcosm-provider-orrery" },
-    { name = "microcosm-provider-telemetry" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -850,12 +848,10 @@ requires-dist = [
     { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
+    { name = "microcosm-emitter", git = "https://github.com/PolicyEngine/microcosm-emitter?rev=e522ced07d48d402e77fc63f30b97451c733204f" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
-    { name = "microcosm-provider-client", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-client&rev=06e47847983ee67ccdb6a596062251322d07f793" },
-    { name = "microcosm-provider-orrery", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-orrery&rev=06e47847983ee67ccdb6a596062251322d07f793" },
-    { name = "microcosm-provider-telemetry", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-telemetry&rev=06e47847983ee67ccdb6a596062251322d07f793" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
@@ -966,6 +962,18 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.10,<3" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "microcosm-emitter"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?rev=e522ced07d48d402e77fc63f30b97451c733204f#e522ced07d48d402e77fc63f30b97451c733204f" }
+dependencies = [
+    { name = "alembic" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "psutil" },
+    { name = "sqlalchemy" },
+]
 
 [[package]]
 name = "microcosm-fit"
@@ -1079,47 +1087,6 @@ requires-dist = [
 dev = [
     { name = "hypothesis", specifier = ">=6" },
     { name = "pytest", specifier = ">=8" },
-]
-
-[[package]]
-name = "microcosm-provider-client"
-version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-client&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
-dependencies = [
-    { name = "psutil" },
-]
-
-[[package]]
-name = "microcosm-provider-core"
-version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-core&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
-dependencies = [
-    { name = "alembic" },
-    { name = "huggingface-hub" },
-    { name = "sqlalchemy" },
-]
-
-[[package]]
-name = "microcosm-provider-orrery"
-version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-orrery&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
-dependencies = [
-    { name = "httpx" },
-    { name = "microcosm-provider-client" },
-    { name = "microcosm-provider-core" },
-]
-
-[[package]]
-name = "microcosm-provider-telemetry"
-version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-telemetry&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
-dependencies = [
-    { name = "alembic" },
-    { name = "huggingface-hub" },
-    { name = "microcosm-provider-client" },
-    { name = "microcosm-provider-core" },
-    { name = "psutil" },
-    { name = "sqlalchemy" },
 ]
 
 [[package]]

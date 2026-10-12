@@ -15,7 +15,7 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the external local provider and a durable queue;
+an independent worker inside the external `microcosm-emitter` service and a durable queue;
 see [configuration and retry](orrery-publication.md). No new producer secret or
 environment variable is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
@@ -98,7 +98,7 @@ These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
 fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
-provider startup and publication APIs with fakes. Provider process, persistence
+emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
 and HTTP-delivery tests belong in microcosm-emitter; do not copy them
 into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
 sockets or service processes.
