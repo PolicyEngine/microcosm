@@ -111,6 +111,28 @@ exclusion register instead.
   wiring is safe and normal (the keogh ALD facts rode the feed unmapped for
   weeks).
 
+### One national level per quantity (microcosm#1243)
+
+When a new fact gives a quantity a second national all-AGI row, the surface
+binds two levels of one model quantity, and no weights can meet both. The
+usual case is a newer Pub 1304 Table 1.x row beside the stale Historic Table 2
+(HT2) US row. HT2 state rows become shares of the newer row in three passes:
+taxable interest (#489), capital gains (#1035) and
+`_rebase_stale_soi_ht2_distributions` for the 14 columns in
+`_SOI_HT2_NATIONAL_CONTROLS`. That last register pairs each HT2 column with
+the Table 1.x column of the same Form 1040 line.
+
+- **Before you register a column**, verify the concept match. Check the HT2
+  documentation guide's line reference against the Table 1.x header, and
+  check that the same-year HT2 US row and Table 1.x total agree. The 14
+  registered columns agree within 2.7% in TY2020-TY2023; capital gains
+  differ by 2.36x and need a declared bridge instead
+  ([us-soi-national-controls.md](us-soi-national-controls.md),
+  [us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)).
+- `test_pinned_feed_no_soi_state_family_sums_past_its_national_target`
+  fails a re-pin that adds a second national value for a compared quantity,
+  or a state family past its national target.
+
 ### State AGI bands bind as shares of the state total (microcosm#940)
 
 A state's total return count and AGI leave its top tail free, and the top
@@ -146,7 +168,9 @@ binds them:
   stay the same share of the state total they bind beside, at every stage.
   The control may be older than the bands (TY2023 bands on the TY2022 state
   total): the newest published shares scale onto the level the state total
-  binds at, rather than binding a second, differently aged level.
+  binds at, rather than binding a second, differently aged level. A state
+  total that is itself rebased onto a national control (#1243) sits at that
+  control's period, and its bands land there too.
 - **One vintage.** State bands are the one family selected by vintage, not
   per row. Every eligible vintage (not after the build period) of a binding
   band stays a candidate through latest-vintage selection, and

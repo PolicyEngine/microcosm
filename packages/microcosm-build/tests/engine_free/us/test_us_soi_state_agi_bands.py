@@ -605,6 +605,89 @@ def test_rebased_bands_age_with_the_state_total() -> None:
         )
 
 
+def _national_fact(record_set_id: str, measure_id: str, period: int, value: float):
+    return _fact(
+        source_record_id=f"{record_set_id}.all.{measure_id}",
+        record_set_id=record_set_id,
+        measure_id=measure_id,
+        value=value,
+        period=period,
+        geography_level="country",
+        geography_id="0100000US",
+        dimensions={"filing_status": "all", "income_range": "all"},
+        groupby_dimension=AGI,
+        groupby_value_id="all",
+    )
+
+
+def test_bands_follow_a_state_total_rebased_onto_its_national_control() -> None:
+    """When the HT2 state total is itself a share of a newer Table 1.1
+    control (microcosm#1243), it sits at the control's period, and the bands
+    land there with it: every band keeps its exact share of the aged total,
+    and AGI bands take the total's 2023->2024 link, not 2022->2024."""
+    us_returns, us_agi = 160_000_000.0, 14_800_000_000_000.0
+    control_returns, control_agi = 161_000_000.0, 15_300_000_000_000.0
+    registry = _compile(
+        [
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+            _national_fact(
+                "irs_soi.ty2022.historic_table_2.us", "return_count", 2022, us_returns
+            ),
+            _national_fact(
+                "irs_soi.ty2022.historic_table_2.us",
+                "adjusted_gross_income",
+                2022,
+                us_agi,
+            ),
+            _national_fact(
+                "irs_soi.ty2023.table_1_1", "return_count", 2023, control_returns
+            ),
+            _national_fact(
+                "irs_soi.ty2023.table_1_1",
+                "adjusted_gross_income",
+                2023,
+                control_agi,
+            ),
+        ]
+    )
+    cbo = (
+        _cbo_agi_fact(2022, 14_000_000_000_000),
+        _cbo_agi_fact(2023, 15_000_000_000_000),
+        _cbo_agi_fact(2024, 16_000_000_000_000),
+    )
+    aged = {
+        spec.name: spec
+        for spec in age_us_dollar_targets(registry, cbo, target_period=2024).specs
+    }
+    total_agi = aged[
+        "irs_soi.ty2022.historic_table_2.state_broad.co.all.adjusted_gross_income"
+    ]
+    total_returns = aged[
+        "irs_soi.ty2022.historic_table_2.state_broad.co.all.return_count"
+    ]
+    link = 16 / 15
+
+    assert total_agi.metadata["uprating_to_period"] == "2023"
+    assert total_agi.value == pytest.approx(
+        CO_2022_TOTAL_AGI * control_agi / us_agi * link, rel=1e-12
+    )
+    assert total_returns.value == pytest.approx(
+        CO_2022_TOTAL_RETURNS * control_returns / us_returns, rel=1e-12
+    )
+    for band in BINDING_BANDS:
+        agi = aged[_co_name(band, "adjusted_gross_income")]
+        returns = aged[_co_name(band, "return_count")]
+        assert agi.metadata["uprating_to_period"] == "2023"
+        assert float(agi.metadata["aging_factor"]) == pytest.approx(link, rel=1e-12)
+        assert agi.value / total_agi.value == pytest.approx(
+            float(agi.metadata["state_agi_band_share"]), rel=1e-12
+        )
+        assert returns.value / total_returns.value == pytest.approx(
+            float(returns.metadata["state_agi_band_share"]), rel=1e-12
+        )
+
+
 def test_release_coverage_requires_both_top_tail_rows_in_each_state() -> None:
     """The release requires a $1M+ AGI row and a $1M+ count row for every one
     of the 51 states: dropping one state's row fails exactly that state's
@@ -1173,17 +1256,29 @@ def test_pinned_feed_binds_every_state_band_from_ty2023(pinned_feed_registry) ->
             float(spec.metadata["state_agi_band_share"]), rel=1e-12
         )
 
+    # Colorado's TY2022 totals are themselves shares of Table 1.1's TY2023
+    # totals (microcosm#1243), so the $1M+ rows are the published TY2023
+    # share of that rebased total, aged from 2023.
+    co_fips = POSTAL_TO_FIPS["CO"]
     top = bands[_co_name("1m_plus", "adjusted_gross_income")]
     share = 47_266_883_000 / sum(agi for _, agi in CO_2023.values())
     assert float(top.metadata["state_agi_band_share"]) == pytest.approx(
         share, rel=1e-12
     )
+    total_agi = totals[(co_fips, "adjusted_gross_income")]
+    assert top.metadata["uprating_to_period"] == "2023"
+    assert top.metadata["aging_factor"] == total_agi.metadata["aging_factor"]
     assert top.value == pytest.approx(
-        CO_2022_TOTAL_AGI * share * float(top.metadata["aging_factor"]), rel=1e-12
+        CO_2022_TOTAL_AGI
+        * float(total_agi.metadata["uprating_factor"])
+        * share
+        * float(top.metadata["aging_factor"]),
+        rel=1e-12,
     )
     top_returns = bands[_co_name("1m_plus", "return_count")]
     assert top_returns.value == pytest.approx(
         CO_2022_TOTAL_RETURNS
+        * float(totals[(co_fips, "return_count")].metadata["uprating_factor"])
         * 15_610
         / sum(returns for returns, _ in CO_2023.values()),
         rel=1e-12,
@@ -1211,9 +1306,9 @@ def test_pinned_feed_state_top_tail_agrees_with_table_1_1(pinned_feed_registry) 
     the states, the aged $500k-$1M and $1M+ bands come to 97%-100% of SOI
     Table 1.1's TY2023 classes aged to 2024 the same way. Table 1.1 also
     counts returns filed from other areas and Puerto Rico, which no state
-    holds (1.2%-1.7% of these classes in the raw HT2 files), and the states'
-    TY2022 totals grew like the nation's to TY2023 (AGI x1.0305 in HT2 and in
-    Table 1.1; returns +0.19%), so the expected ratio is 0.98-0.99."""
+    holds (1.2%-1.7% of these classes in the raw HT2 files), and each state
+    total is its HT2 share of Table 1.1's TY2023 total (microcosm#1243), so
+    the expected ratio is 0.98-0.99."""
     facts, registry = pinned_feed_registry
     bands = _band_specs(registry)
     table_1_1: dict[tuple[str, float, float], float] = {}

@@ -1836,10 +1836,13 @@ class _SoiHt2NationalControlRule:
 #:   differ by 2.36x because they count different populations (see
 #:   ``_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS``).
 #:
-#: The gap between an HT2 row and its control is therefore vintage. HT2 is
-#: TY2022 while the controls are TY2023, and aging the HT2 levels on the CBO
-#: AGI series cannot reproduce each column's own TY2022-TY2023 change:
-#: taxable Social Security grew 15.0% and taxable IRA distributions 0.1%.
+#: The gap between an aged HT2 US row and its control is therefore vintage
+#: times that processing-year shortfall, not a concept difference. HT2 is
+#: TY2022 while the controls are TY2023, and HT2 amounts age 2022->2023 by
+#: realized AGI growth (wages by realized wage growth), which cannot reproduce
+#: each column's own change: taxable Social Security grew 15.0% and taxable
+#: IRA distributions 0.1%. As shares of the control, the state rows carry
+#: neither component.
 #:
 #: The feed carries the Table 1.4 itemized-deduction and taxable-income totals
 #: only in Table 1.2, which prints the same TY2023 cells ($690.845B and
