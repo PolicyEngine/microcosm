@@ -24,6 +24,9 @@ from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     resolve_acs_pums_earnings_universe,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_e01000_reconciliation import (
     PUF_SCHEDULE_D_JOINT_COLUMNS,
     puf_capital_gains_joint_metrics,
@@ -56,6 +59,15 @@ from microcosm.frame.schema import EntitySchema
 
 QRF: Any | None = None
 
+#: Person columns whose *values* are ``person_id``s rather than payload.
+#: The support clone renumbers ``person_id``, so these move with it; 0 is the
+#: "no such person" sentinel and is left alone. Source identities
+#: (``source_person_id`` and friends) are deliberately not here — several
+#: operators key clone-stable draws on them precisely because they do not move.
+US_PERSON_REFERENCE_ID_COLUMNS: tuple[str, ...] = (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+)
+
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES",
@@ -73,6 +85,7 @@ __all__ = [
     "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
+    "US_PERSON_REFERENCE_ID_COLUMNS",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -1881,6 +1894,8 @@ def finalize_us_puf_tax_detail_predictions(
     retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
     placement, and sparsification happen only here, after every target has
     drawn; later targets therefore always condition on raw predecessor draws.
+    CPS Social Security reporters retain their source components after
+    placement; only nonreporters receive the PUF Social Security imputation.
 
     The module tail-bound configuration is validated against the canonical
     production surface and applies whenever a configured target is present.
@@ -2134,6 +2149,11 @@ def finalize_us_puf_tax_detail_predictions(
                 person_clone_index=person_clone_index,
                 tax_unit_clone_index=tax_unit_clone_index,
             )
+    _preserve_cps_reported_social_security(
+        tables["person"],
+        source_person=frame.table("person"),
+        requested_components=person_outputs,
+    )
     return Frame(
         tables,
         frame.schema,
@@ -2153,6 +2173,7 @@ def _clone_entity_table(
     id_multiplier: int,
 ) -> pd.DataFrame:
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     source_id = support_source_id_column(entity)
     channel_column = support_channel_column(entity)
     clone_index_column = support_clone_index_column(entity)
@@ -2166,6 +2187,12 @@ def _clone_entity_table(
         clone[clone_index_column] = clone_index
         for column in id_columns:
             clone[column] = _remap_ids(
+                clone[column].to_numpy(),
+                clone_index=clone_index,
+                id_multiplier=id_multiplier,
+            )
+        for column in reference_columns:
+            clone[column] = _remap_person_reference_ids(
                 clone[column].to_numpy(),
                 clone_index=clone_index,
                 id_multiplier=id_multiplier,
@@ -2192,6 +2219,7 @@ def _clone_preassembled_entity_table(
     """Clone one preassembled entity table while preserving source provenance."""
 
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     primary_id = schema.entity_id_column(entity)
 
@@ -2200,6 +2228,12 @@ def _clone_preassembled_entity_table(
     detail[clone_index_column] = PUF_TAX_DETAIL_CLONE_INDEX
     for column in id_columns:
         detail[column] = _remap_ids(
+            detail[column].to_numpy(),
+            clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+            id_multiplier=id_multiplier,
+        )
+    for column in reference_columns:
+        detail[column] = _remap_person_reference_ids(
             detail[column].to_numpy(),
             clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
             id_multiplier=id_multiplier,
@@ -2255,6 +2289,53 @@ def _entity_id_columns(schema: EntitySchema, entity: str) -> tuple[str, ...]:
             *(schema.membership_column(group) for group in schema.group_entities),
         )
     return (schema.entity_id_column(entity),)
+
+
+def _person_reference_columns(
+    table: pd.DataFrame, *, schema: EntitySchema, entity: str
+) -> tuple[str, ...]:
+    """Non-structural person columns whose values are ``person_id``s.
+
+    The clone renumbers ``person_id``, so a column that *names* a person has
+    to move with it or it silently points into the other support arm. These
+    are the only such columns on the US person table
+    (:data:`US_PERSON_REFERENCE_ID_COLUMNS`); ``source_person_id`` and its
+    siblings are deliberately excluded — a source identity is the
+    clone-stable key several operators draw on.
+    """
+
+    if entity != schema.person_entity:
+        return ()
+    return tuple(
+        column for column in US_PERSON_REFERENCE_ID_COLUMNS if column in table.columns
+    )
+
+
+def _remap_person_reference_ids(
+    values: Sequence[Any],
+    *,
+    clone_index: int,
+    id_multiplier: int,
+) -> np.ndarray:
+    """Shift a person-referencing column, leaving the 0 sentinel alone.
+
+    ``0`` means "no such person" on these columns, so it must not be shifted
+    into ``clone_index * id_multiplier`` — a valid-looking id naming a
+    stranger. A missing value (a row, such as a preassembled PUF tax-detail
+    person, that never had a parent pointer to resolve) is that same
+    "unknown" and is written as ``0``.
+    """
+
+    known = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0)
+    shifted = _remap_ids(
+        known.to_numpy(),
+        clone_index=clone_index,
+        id_multiplier=id_multiplier,
+    )
+    original = _validated_integral_ids(
+        known.to_numpy(), label="PUF support person references"
+    )
+    return np.where(original == 0, 0, shifted).astype(np.int64)
 
 
 def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:
@@ -4083,6 +4164,66 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
         totals=calibrated_totals,
         nonnegative=False,
     )
+
+
+def _preserve_cps_reported_social_security(
+    person: pd.DataFrame,
+    *,
+    source_person: pd.DataFrame,
+    requested_components: Sequence[str],
+) -> None:
+    """Keep CPS reporters' person-level benefits on the PUF support arm (#1178).
+
+    ``SS_VAL > 0`` is the explicit source-receipt rule. The upstream
+    CPS-carried producer splits that reported amount into the four engine
+    leaves. Restore those components exactly after all PUF placement, even
+    when a PUF draw is larger: the donor observes tax-unit gross benefits
+    (E02400), not this host person's benefit or its receipt status. Taxable
+    Social Security is calculated by the engine from the resulting inputs;
+    it is not a persisted PUF tax-unit output that needs reconciliation.
+
+    Nonreporters keep the existing PUF imputation, allowing donor support for
+    survey underreporting. A frame without SS_VAL supplies no explicit CPS
+    receipt evidence and keeps that same imputation. The ASEC arm is never
+    selected. This changes finalized inputs, not the raw QRF predecessor
+    draws used to condition subsequent targets. Invalid reporter source
+    components fail explicitly rather than restoring an erased benefit.
+    """
+
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components or "SS_VAL" not in source_person:
+        return
+    reporters = puf_tax_detail_clone_mask(source_person, entity="person") & (
+        pd.to_numeric(source_person["SS_VAL"], errors="coerce").fillna(0.0) > 0.0
+    )
+    if not reporters.any():
+        return
+    source_components = (
+        source_person.loc[reporters]
+        .reindex(columns=list(components))
+        .apply(pd.to_numeric, errors="coerce")
+        .to_numpy(dtype=np.float64)
+    )
+    reported = pd.to_numeric(source_person.loc[reporters, "SS_VAL"]).to_numpy(
+        dtype=np.float64
+    )
+    source_totals = source_components.sum(axis=1)
+    valid = (
+        np.isfinite(source_components).all(axis=1)
+        & (source_components >= 0.0).all(axis=1)
+        & (source_totals >= reported)
+    )
+    if not valid.all():
+        raise ValueError(
+            "CPS-reported Social Security preservation requires nonnegative "
+            "source components covering SS_VAL; "
+            f"{int((~valid).sum())} PUF reporter row(s) violate the source contract."
+        )
+    person.loc[reporters, list(components)] = source_components
 
 
 def _reconcile_puf_social_security_components(

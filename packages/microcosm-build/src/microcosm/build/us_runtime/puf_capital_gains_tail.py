@@ -27,6 +27,7 @@ from microcosm.build.us_runtime.puf_interest_components import (
 from microcosm.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    US_PERSON_REFERENCE_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.support_provenance import (
     PUF_TAX_DETAIL_CLONE_INDEX,
@@ -1592,6 +1593,23 @@ def _assign_tail_donors(
     return result
 
 
+def _shift_person_references(person: pd.DataFrame, id_multiplier: int) -> None:
+    """Shift parent-id columns with ``person_id`` in place, keeping ``0``.
+
+    A parent id names a ``person_id``, so a clone that shifts ``person_id``
+    must shift it too or the clone's child names the source arm's parent;
+    ``0`` means "unknown" and must not become a valid-looking id
+    (microcosm#884).
+    """
+
+    for reference in US_PERSON_REFERENCE_ID_COLUMNS:
+        if reference in person.columns:
+            values = person[reference].to_numpy(dtype=np.int64)
+            person[reference] = np.where(
+                values == 0, 0, values + int(id_multiplier)
+            ).astype(np.int64)
+
+
 def _clone_and_transfer(
     frame: Frame,
     assignments: pd.DataFrame,
@@ -1662,6 +1680,7 @@ def _clone_and_transfer(
                 clone[membership] = (
                     clone[membership].to_numpy(dtype=np.int64) + id_multiplier
                 )
+            _shift_person_references(clone, id_multiplier)
         clone[clone_index] = 2
         combined = pd.concat([table, clone], ignore_index=True)
         if combined[primary].duplicated().any():

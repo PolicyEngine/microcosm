@@ -2,7 +2,7 @@
 to the NEED shape at the DESNZ level (microcosm#890 F, chronicle#270).
 
 The LCFS diary and the consumption QRF carry energy as pounds. Four published
-facts turn that into a base-year (FY2024-25) frame under one declared
+facts turn that into a base-year (calendar 2024) frame under one declared
 operation, ``price_domestic_energy``:
 
 * price: the DESNZ Quarterly Energy Prices average variable unit cost
@@ -12,15 +12,16 @@ operation, ``price_domestic_energy``:
   max(spend - fixed cost, 0) / unit cost for connected households
   (electricity: every household; gas: connected households), and back;
 * connection: the published gas-connected share by region, gas meters over
-  electricity meters from the DESNZ subnational statistics; households the
-  diary marked with a trace of gas are disconnected lowest drawn gas first
-  until the region's design-weighted share is the published one;
+  electricity meters from the DESNZ subnational statistics; gas-positive
+  households are disconnected in an identity-keyed uniform order until the
+  region's prior-weighted share is the published one, so every group of
+  households loses the same expected share of its connected mass;
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
   summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's design-weighted total is the published one.
+  the raked kWh so the frame's prior-weighted total is the published one.
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
@@ -42,6 +43,7 @@ import pandas as pd
 
 from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 PRICE_DOMESTIC_ENERGY_KIND = "price_domestic_energy"
@@ -62,6 +64,12 @@ GAS_CONNECTED_POSITIVE_SPEND = "positive_gas_spend"
 GAS_CONNECTED_PUBLISHED_METER_SHARE = "published_meter_share"
 CONNECTION_RULE_METER_RATIO = "gas_meters_over_electricity_meters"
 DISCONNECT_LOWEST_DRAWN_GAS_FIRST = "lowest_drawn_gas_first"
+DISCONNECT_IDENTITY_UNIFORM_ORDER = "identity_uniform_order"
+DISCONNECT_RULES = (
+    DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
+    DISCONNECT_IDENTITY_UNIFORM_ORDER,
+)
+GAS_DISCONNECTION_SALT = "lcfs_consumption:gas_disconnection"
 QEP_UNIT_COST_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.qep.domestic_electricity_variable_unit_cost",
     GAS_FUEL: "desnz.qep.domestic_gas_variable_unit_cost",
@@ -198,6 +206,16 @@ def fiscal_year_quarters(fiscal_start: str) -> tuple[str, ...]:
         f"{start.year}-10-01",
         f"{start.year + 1}-01-01",
     )
+
+
+def period_quarters(period_type: str, period_value: int) -> tuple[str, ...]:
+    """The four quarterly coverage start dates of a calendar or fiscal year."""
+
+    if period_type == "calendar_year":
+        return tuple(f"{int(period_value)}-{month:02d}-01" for month in (1, 4, 7, 10))
+    if period_type == "fiscal_year":
+        return fiscal_year_quarters(f"{int(period_value)}-04-01")
+    raise ValueError("period_type must be calendar_year or fiscal_year.")
 
 
 def _one_row(rows: Sequence[Mapping[str, Any]], *, what: str) -> Mapping[str, Any]:
@@ -508,34 +526,52 @@ def impose_gas_connection(
     weights: Sequence[float],
     shares: Mapping[str, float | None],
     disconnect_rule: str = DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
+    identity: Sequence[object] | None = None,
+    seed: int = 0,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The gas-connected mask after imposing each region's published share.
 
     A greedy weight-fitting walk, not a fitted threshold. Within a region
-    whose design-weighted share of gas-positive households exceeds the
-    published share, gas-positive households are walked in ascending order of
-    drawn gas kWh (a trace of diary gas is the likeliest false connection):
-    a household is disconnected when its weight fits inside the remaining
-    excess, skipped (it stays connected) when it would overshoot, and after
-    the walk the skipped household nearest the remainder is disconnected if
-    that brings the share nearer the published one. The achieved share
-    therefore sits within a fraction of one household weight of the published
-    share; ``rows_skipped_for_weight`` counts the households the walk passed
-    over. A region below its published share keeps every gas-positive
-    household (the draw cannot create connections) and the shortfall is
-    receipted. Regions with no published share (``None``, the stage's
-    declared ``connection_fallback_regions``) keep the positive-gas rule.
+    whose prior-weighted share of gas-positive households exceeds the
+    published share, gas-positive households are walked in the declared
+    order. ``lowest_drawn_gas_first`` walks ascending drawn gas kWh, which
+    concentrates the disconnections on whichever households draw the least
+    gas. ``identity_uniform_order`` walks ascending identity-keyed uniforms
+    (``stable_identity_uniforms(identity, seed, GAS_DISCONNECTION_SALT)``),
+    so each gas-positive household is equally likely to go and every group
+    of households (dwelling type, income band, support channel) loses the
+    same expected share of its connected mass; the drawn connection pattern
+    keeps its composition and only its level moves to the published share.
+    Along the walk a household is disconnected when its weight fits inside
+    the remaining excess, skipped (it stays connected) when it would
+    overshoot, and after the walk the skipped household nearest the remainder
+    is disconnected if that brings the share nearer the published one. The
+    achieved share therefore sits within a fraction of one household weight
+    of the published share; ``rows_skipped_for_weight`` counts the households
+    the walk passed over. A region below its published share keeps every
+    gas-positive household (the draw cannot create connections) and the
+    shortfall is receipted. Regions with no published share (``None``, the
+    stage's declared ``connection_fallback_regions``) keep the positive-gas
+    rule.
     """
 
-    if disconnect_rule != DISCONNECT_LOWEST_DRAWN_GAS_FIRST:
-        raise ValueError(
-            f"disconnect_rule must be {DISCONNECT_LOWEST_DRAWN_GAS_FIRST!r}."
-        )
+    if disconnect_rule not in DISCONNECT_RULES:
+        raise ValueError(f"disconnect_rule must be one of {DISCONNECT_RULES!r}.")
     gas = np.asarray(gas_kwh, dtype=float)
     regions = np.asarray(frs_region).astype(str)
     weight = np.asarray(weights, dtype=float)
     if not (len(gas) == len(regions) == len(weight)):
         raise ValueError("gas_kwh, frs_region and weights must align.")
+    if disconnect_rule == DISCONNECT_IDENTITY_UNIFORM_ORDER:
+        if identity is None or len(identity) != len(gas):
+            raise ValueError(
+                f"{DISCONNECT_IDENTITY_UNIFORM_ORDER!r} needs one identity per row."
+            )
+        walk_key = stable_identity_uniforms(
+            np.asarray(identity), seed=seed, salt=GAS_DISCONNECTION_SALT
+        )
+    else:
+        walk_key = gas
     connected = gas > 0
     by_region: dict[str, dict[str, Any]] = {}
     for region in sorted(set(regions)):
@@ -565,7 +601,7 @@ def impose_gas_connection(
             )
             by_region[region] = entry
             continue
-        order = positive[np.argsort(gas[positive], kind="stable")]
+        order = positive[np.argsort(walk_key[positive], kind="stable")]
         excess = (before - target) * total
         remaining = excess
         drop: list[int] = []
@@ -603,6 +639,11 @@ def impose_gas_connection(
     total_weight = float(weight.sum())
     receipt = {
         "disconnect_rule": disconnect_rule,
+        **(
+            {"seed": int(seed), "salt": GAS_DISCONNECTION_SALT}
+            if disconnect_rule == DISCONNECT_IDENTITY_UNIFORM_ORDER
+            else {}
+        ),
         "share_before": float(weight[gas > 0].sum()) / total_weight
         if total_weight > 0
         else 0.0,
@@ -618,7 +659,12 @@ def impose_gas_connection(
 def published_energy_level(
     parameters: Mapping[str, Any],
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Fiscal-year domestic consumption per fuel (kWh) from the Energy Trends rows."""
+    """Domestic consumption per fuel (kWh) over the declared year.
+
+    The four Energy Trends quarters of the declared calendar or fiscal year
+    are summed; the stage declares calendar 2024, the base year of every LCFS
+    spend column (microcosm#1113).
+    """
 
     resource = str(parameters.get("level_resource") or "")
     if resource != UK_DESNZ_DOMESTIC_ENERGY_RESOURCE:
@@ -626,8 +672,9 @@ def published_energy_level(
             f"level_resource must be {UK_DESNZ_DOMESTIC_ENERGY_RESOURCE!r}, "
             f"not {resource!r}."
         )
-    fiscal_start = str(parameters["level_fiscal_start"])
-    quarters = fiscal_year_quarters(fiscal_start)
+    period_type = str(parameters.get("level_period_type") or "")
+    period_value = int(parameters["level_period_value"])
+    quarters = period_quarters(period_type, period_value)
     temperature = str(parameters.get("level_temperature_adjustment") or "")
     if temperature != "actual_temperature":
         raise ValueError(
@@ -676,7 +723,8 @@ def published_energy_level(
         }
     receipt = {
         "resource": resource,
-        "fiscal_start": fiscal_start,
+        "period_type": period_type,
+        "period_value": period_value,
         "quarters": list(quarters),
         "temperature_adjustment": temperature,
         "geography_ids": sorted(geographies),
@@ -1028,7 +1076,7 @@ def _rake_fit(
     weights: np.ndarray,
     level_factor: Mapping[str, float],
 ) -> dict[str, Any]:
-    """Per margin: the design-weighted cell means after the rake against NEED x level.
+    """Per margin: the prior-weighted cell means after the rake against NEED x level.
 
     Electricity is averaged over every row of a cell, gas over its connected
     rows, the populations the rake itself used. Each cell records the NEED
@@ -1036,7 +1084,7 @@ def _rake_fit(
     the ``target`` the levelled frame is held to. The stage-time
     ``energy_rake`` health check reads the maximum absolute relative
     deviation per margin and fuel from this block (microcosm#890: NEED is
-    checked where the rake acts, at design weights, not on the calibrated
+    checked where the rake acts, at prior weights, not on the calibrated
     frame).
     """
 
