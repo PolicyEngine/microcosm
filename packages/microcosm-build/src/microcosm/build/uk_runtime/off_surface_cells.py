@@ -23,6 +23,12 @@ Only a leg whose bound cells a control moves needs this, so the rows are
 built from a first reconciliation pass that names those legs. An absent cell
 in such a leg with no whole tier to imply it from is refused: its neighbours
 would take its share unseen.
+
+An implied row is bounded. It is what the leg's bound cells do not hold, so
+an undercount anywhere in the leg would pass into it and through every gate
+that counts it. Its share of the leg may be at most
+``UK_IMPLIED_SHARE_MAX_RATIO`` times its areas' share of the leg's census
+households; past that it is refused.
 """
 
 from __future__ import annotations
@@ -37,6 +43,13 @@ _LOCAL_GRAINS = tuple(_FRAME_GRAIN_BY_LEVEL.values())
 
 LegKey = tuple[str, str, str]
 
+#: An implied row's share of its leg, over its areas' share of the leg's
+#: census households. On the 942a1fa feed Torbay and the Isles of Scilly are
+#: implied at 0.32 (higher rate taxpayers) to 0.89 (employees) of their
+#: household share, and one North West constituency's self-employment income
+#: at 0.37 of its own.
+UK_IMPLIED_SHARE_MAX_RATIO = 1.5
+
 
 def uk_signed_cells_off_the_surface(
     membership: Mapping[str, Any],
@@ -48,9 +61,19 @@ def uk_signed_cells_off_the_surface(
     A cell deferred under a small-cell rule (``rule_ids``) is left out: the
     rule's cells join the frame through ``uk_small_cell_deferred_cells``.
     ``value`` is the published value of a deferred cell, and ``None`` where
-    the publisher carries no fact for the area.
+    the publisher carries no fact for the area. ``area_has_bound_cells`` says
+    whether the membership binds any cell, of any target, for the area at
+    that level: a whole run then carries the area, so a run whose ladder
+    lacks it is a narrowed one.
     """
 
+    bound_areas = {
+        (str(level), str(candidate["geography_id"]))
+        for target in membership.get("targets", {}).values()
+        for level, payload in target["geography_levels"].items()
+        for candidate in payload["candidates"]
+        if candidate.get("status") == "active"
+    }
     cells = []
     for target_id, target in sorted(membership.get("targets", {}).items()):
         for level, payload in sorted(target["geography_levels"].items()):
@@ -68,6 +91,11 @@ def uk_signed_cells_off_the_surface(
                         "geography_id": str(candidate["geography_id"]),
                         "value": None if value is None else float(value),
                         "reason_id": None if reason_id is None else str(reason_id),
+                        "area_has_bound_cells": (
+                            str(level),
+                            str(candidate["geography_id"]),
+                        )
+                        in bound_areas,
                     }
                 )
     return tuple(cells)
@@ -80,6 +108,8 @@ def uk_off_surface_frame_rows(
     leg_of_area: Callable[[str], str],
     controlled_legs: set[LegKey] | frozenset[LegKey],
     frame_only_rows: Sequence[Mapping[str, Any]] = (),
+    share_reference: Mapping[tuple[str, str], float] | None = None,
+    max_implied_share_ratio: float = UK_IMPLIED_SHARE_MAX_RATIO,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Frame rows for the off-surface cells of the controlled legs.
 
@@ -90,6 +120,9 @@ def uk_off_surface_frame_rows(
     a first reconciliation pass moved. ``frame_only_rows`` are the rows the
     frame already holds for cells that are not bound (the small-cell rule's):
     they count in their leg's total when a tier is read to imply another.
+    ``share_reference`` gives each area's census households by (grain, area):
+    it bounds an implied row's share of its leg. A surface that binds no
+    census households passes none, and the receipt says the row is unbounded.
 
     Each returned row carries ``value`` at the frame's scale and
     ``published_value`` at the publisher's, so a source-agreement test can
@@ -147,21 +180,29 @@ def uk_off_surface_frame_rows(
     def total(key: LegKey) -> float:
         return bound[key][0] + added.get(key, (0.0, 0.0))[0]
 
+    def in_play(key: LegKey) -> bool:
+        # A control moves the leg at this tier, or at the other local tier,
+        # where this tier's leg total is the parent or the child.
+        target_id, grain, leg = key
+        return any((target_id, tier, leg) in controlled_legs for tier in _LOCAL_GRAINS)
+
     deferred_receipt: list[dict[str, Any]] = []
     for key in sorted(with_value):
-        if key not in controlled_legs:
-            continue
         target_id, grain, leg = key
         factor = moved(key)
-        published_total = 0.0
-        for cell in sorted(with_value[key], key=lambda c: str(c["geography_id"])):
-            published = float(cell["value"])
-            rows.append(_frame_row(grain, cell["geography_id"], target_id))
-            rows[-1].update(value=published * factor, published_value=published)
-            published_total += published
+        cells = sorted(with_value[key], key=lambda c: str(c["geography_id"]))
+        published_total = math.fsum(float(cell["value"]) for cell in cells)
+        # Every leg's total counts its deferred cells, so a leg no control
+        # moves still reads whole when the two tiers' ratio is taken.
         totals = added.setdefault(key, [0.0, 0.0])
         totals[0] += published_total * factor
         totals[1] += published_total
+        if not in_play(key):
+            continue
+        for cell in cells:
+            published = float(cell["value"])
+            rows.append(_frame_row(grain, cell["geography_id"], target_id))
+            rows[-1].update(value=published * factor, published_value=published)
         deferred_receipt.append(
             {
                 "target_id": target_id,
@@ -220,6 +261,14 @@ def uk_off_surface_frame_rows(
             entry["status"] = "not_positive"
             continue
         entry["status"] = "added"
+        entry.update(
+            _implied_share_bound(
+                entry,
+                share_reference,
+                leg_of_area=leg_of_area,
+                max_ratio=max_implied_share_ratio,
+            )
+        )
         rows.append(_frame_row(grain, areas[0], target_id))
         rows[-1].update(value=implied, published_value=implied / moved(key))
     if unresolved:
@@ -234,6 +283,57 @@ def uk_off_surface_frame_rows(
         "deferred_with_value": deferred_receipt,
         "implied_absent": implied_receipt,
         "rows_added": len(rows),
+    }
+
+
+def _implied_share_bound(
+    entry: Mapping[str, Any],
+    share_reference: Mapping[tuple[str, str], float] | None,
+    *,
+    leg_of_area: Callable[[str], str],
+    max_ratio: float,
+) -> dict[str, Any]:
+    """Refuse an implied row that holds more of its leg than its areas could.
+
+    The reference is the leg's census households at the row's grain. With no
+    reference in the leg (a surface that binds no census households) the row
+    cannot be bounded, and the receipt says so.
+    """
+
+    grain, leg = str(entry["grain"]), str(entry["leg"])
+    leg_values = {
+        area: float(value)
+        for (reference_grain, area), value in (share_reference or {}).items()
+        if reference_grain == grain and leg_of_area(area) == leg
+    }
+    if not leg_values:
+        return {
+            "household_share": None,
+            "share_bound": "unbounded: the surface binds no census households here",
+        }
+    missing = sorted(area for area in entry["areas"] if area not in leg_values)
+    if missing:
+        raise ValueError(
+            f"UK local surface cannot bound the implied {entry['target_id']} "
+            f"cell(s) of {entry['areas']} ({grain}, leg {leg}): {missing} carry "
+            "no census households to set their share against (microcosm#1123)."
+        )
+    household_share = math.fsum(leg_values[area] for area in entry["areas"]) / (
+        math.fsum(leg_values.values())
+    )
+    share = float(entry["share_of_leg"])
+    if share > max_ratio * household_share:
+        raise ValueError(
+            f"UK local surface implies {entry['target_id']} for {entry['areas']} "
+            f"({grain}, leg {leg}) at {share:.4f} of the leg, more than "
+            f"{max_ratio:g} times their {household_share:.4f} of the leg's "
+            "census households: the leg's bound cells are short of its control "
+            "by more than the absent areas can explain (microcosm#1123)."
+        )
+    return {
+        "household_share": household_share,
+        "share_ratio": share / household_share,
+        "share_bound": f"at most {max_ratio:g} times the household share",
     }
 
 

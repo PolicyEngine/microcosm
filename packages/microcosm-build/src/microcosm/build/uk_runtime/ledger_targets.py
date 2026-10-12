@@ -2576,10 +2576,17 @@ def uk_local_target_surface(
         bound_rows = []
         controlled_legs: set[tuple[str, str, str]] = set()
         frame_only_rows = []
+        #: Census households by (grain, area): what an implied cell's share
+        #: of its leg is bounded against.
+        households: dict[tuple[str, str], float] = {}
         for position, row in enumerate(reconciliation_rows):
             if row["grain"] not in level_to_area_type.values():
                 continue
             target_id = str(row["target_id"]).removeprefix("contract:")
+            if target_id == UK_CENSUS_HOUSEHOLDS_TARGET_ID:
+                households[(str(row["grain"]), str(row["geography_id"]))] = float(
+                    row["value"]
+                )
             if row["_output_position"] is None:
                 frame_only_rows.append({**row, "target_id": target_id})
                 continue
@@ -2598,24 +2605,36 @@ def uk_local_target_surface(
                 )
         placed_cells = []
         for cell in off_surface_cells:
-            # As for the leg licences: under the committed crosswalk an area
-            # that cannot be placed is a register defect and refuses. Under a
-            # run's own ladder it is an area the run does not carry: it is
-            # left out and named in the receipt.
+            # Under the committed crosswalk an area that cannot be placed is
+            # a register defect and refuses. Under a run's own ladder it is
+            # left out and named in the receipt only when the membership
+            # binds some cell for it: a whole run then binds that cell, and
+            # the frame refuses a bound cell its ladder cannot place, so a
+            # run that reaches this point is a narrowed one (a sample or a
+            # fixture). An area the membership binds nothing for has no such
+            # guard: left out, its share would land on its neighbours again.
+            area = str(cell["geography_id"])
             try:
-                leg_of_area(str(cell["geography_id"]))
+                leg_of_area(area)
             except ValueError:
-                if area_region_codes is None:
+                if area_region_codes is None or not cell.get("area_has_bound_cells"):
                     raise
-                areas_outside_the_ladder.add(str(cell["geography_id"]))
+                areas_outside_the_ladder.add(area)
                 continue
             placed_cells.append(cell)
+            if (
+                str(cell["target_id"]) == UK_CENSUS_HOUSEHOLDS_TARGET_ID
+                and cell.get("value") is not None
+            ):
+                grain = level_to_area_type.get(str(cell["geography_level"]))
+                households.setdefault((str(grain), area), float(cell["value"]))
         off_surface_rows, off_surface_receipt = uk_off_surface_frame_rows(
             bound_rows,
             placed_cells,
             leg_of_area=leg_of_area,
             controlled_legs=controlled_legs,
             frame_only_rows=frame_only_rows,
+            share_reference=households or None,
         )
         if off_surface_rows:
             reconciliation_rows.extend(off_surface_rows)

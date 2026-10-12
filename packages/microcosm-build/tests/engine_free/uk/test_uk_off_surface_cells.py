@@ -10,6 +10,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     uk_off_surface_cells,
 )
 from microcosm.build.uk_runtime.off_surface_cells import (
+    UK_IMPLIED_SHARE_MAX_RATIO,
     uk_off_surface_frame_rows,
     uk_signed_cells_off_the_surface,
 )
@@ -32,13 +33,20 @@ def _bound(grain: str, area: str, value: float, published: float | None = None):
     }
 
 
-def _off(level: str, area: str, value: float | None, target_id: str = _TARGET):
+def _off(
+    level: str,
+    area: str,
+    value: float | None,
+    target_id: str = _TARGET,
+    area_has_bound_cells: bool = True,
+):
     return {
         "target_id": target_id,
         "geography_level": level,
         "geography_id": area,
         "value": value,
         "reason_id": "test",
+        "area_has_bound_cells": area_has_bound_cells,
     }
 
 
@@ -116,6 +124,84 @@ def test_a_leg_short_at_either_tier_is_not_read_as_whole():
         "C-x": pytest.approx(50.0),
     }
     assert {entry["whole_legs"] for entry in receipt["implied_absent"]} == {1}
+
+
+def _short_leg(households: dict[tuple[str, str], float] | None, **kwargs):
+    # Leg A is whole at a ratio of one. Leg C's authorities hold 150 of the
+    # 200 its constituencies hold, so the absent authority is implied at 50,
+    # a quarter of the leg.
+    return uk_off_surface_frame_rows(
+        [*_both_tiers("A", 100.0, 100.0), *_both_tiers("C", 200.0, 150.0)],
+        [_off("local_authority", "C-x", None)],
+        leg_of_area=_leg_of_area,
+        controlled_legs={(_TARGET, "la", "C")},
+        share_reference=households,
+        **kwargs,
+    )
+
+
+def test_an_implied_cell_is_bounded_by_its_areas_share_of_the_legs_households():
+    # The absent authority holds 20% of the leg's households: a quarter of
+    # the leg's employees is 1.25 times that, inside the bound.
+    households = {("la", "C-la"): 800.0, ("la", "C-x"): 200.0, ("la", "A-la"): 500.0}
+    rows, receipt = _short_leg(households)
+    (entry,) = receipt["implied_absent"]
+    assert entry["household_share"] == pytest.approx(0.2)
+    assert entry["share_ratio"] == pytest.approx(1.25)
+    assert UK_IMPLIED_SHARE_MAX_RATIO == 1.5
+    assert len(rows) == 1
+    # With 10% of the households, a quarter of the leg is an undercount of
+    # the bound cells, not the absent authority: refused.
+    households[("la", "C-la")] = 1_800.0
+    with pytest.raises(ValueError, match="more than 1.5 times their 0.1000"):
+        _short_leg(households)
+
+
+def test_an_implied_cell_with_no_households_to_set_it_against_is_refused():
+    households = {("la", "C-la"): 800.0, ("la", "A-la"): 500.0}
+    with pytest.raises(ValueError, match=r"\['C-x'\] carry no census households"):
+        _short_leg(households)
+
+
+def test_a_surface_with_no_census_households_says_the_row_is_unbounded():
+    for households in (None, {("la", "A-la"): 500.0}):
+        rows, receipt = _short_leg(households)
+        (entry,) = receipt["implied_absent"]
+        assert entry["household_share"] is None
+        assert entry["share_bound"].startswith("unbounded")
+        assert len(rows) == 1
+
+
+def test_a_deferred_cell_counts_in_a_leg_no_control_moves_when_tiers_are_compared():
+    # Leg A's authorities hold 90 with a further 10 deferred. No control moves
+    # leg A, so the deferred cell adds no row there, but leg A still reads
+    # whole (ratio one) when leg C's absent authority is implied.
+    rows, receipt = uk_off_surface_frame_rows(
+        [*_both_tiers("A", 100.0, 90.0), *_both_tiers("C", 200.0, 150.0)],
+        [_off("local_authority", "A-s", 10.0), _off("local_authority", "C-x", None)],
+        leg_of_area=_leg_of_area,
+        controlled_legs={(_TARGET, "la", "C")},
+    )
+    (row,) = rows
+    assert (row["geography_id"], row["value"]) == ("C-x", pytest.approx(50.0))
+    assert receipt["deferred_with_value"] == []
+
+
+def test_a_deferred_cell_joins_where_a_control_moves_the_other_tier_of_its_leg():
+    # A control moves leg A's authorities, whose parent is the constituency
+    # total: the constituency tier's deferred cell must be in that total.
+    rows, _ = uk_off_surface_frame_rows(
+        _both_tiers("A", 100.0, 100.0),
+        [_off("constituency", "A-s", 10.0)],
+        leg_of_area=_leg_of_area,
+        controlled_legs={(_TARGET, "la", "A")},
+    )
+    (row,) = rows
+    assert (row["grain"], row["geography_id"], row["value"]) == (
+        "constituency",
+        "A-s",
+        10.0,
+    )
 
 
 def test_cells_of_a_leg_no_control_moves_stay_off_the_frame():
@@ -217,6 +303,16 @@ def test_the_membership_cells_off_the_surface_leave_out_the_rules_own():
         ("E2", 9000.0, "support_floor"),
         ("E3", None, "coverage_absent"),
     ]
+    # The membership binds no cell for either area at this level.
+    assert not any(cell["area_has_bound_cells"] for cell in cells)
+
+
+def test_every_committed_off_surface_area_is_one_a_whole_run_binds():
+    # The ladder rule leans on this: a run whose ladder lacks such an area is
+    # refused on the area's bound cells before any off-surface cell is read.
+    cells = uk_off_surface_cells(load_uk_local_target_reference_membership())
+    assert cells
+    assert all(cell["area_has_bound_cells"] for cell in cells)
 
 
 def test_the_committed_membership_signs_torbay_off_the_hmrc_surface():
@@ -335,3 +431,16 @@ def test_an_off_surface_area_the_runs_ladder_does_not_carry_is_left_out():
     # Under the committed crosswalk an area that cannot be placed is a defect.
     with pytest.raises(ValueError, match="E06999999.*local-area crosswalk"):
         _uc_surface(cells)
+    # An area the membership binds nothing for has no bound cell to refuse a
+    # ladder that lacks it, so the off-surface cell itself refuses.
+    unguarded = [
+        _off(
+            "local_authority",
+            "E06999999",
+            5.0,
+            target_id=target,
+            area_has_bound_cells=False,
+        )
+    ]
+    with pytest.raises(ValueError, match="E06999999.*run's ladder membership"):
+        _uc_surface(unguarded, area_region_codes={"E06000001": "E12000001"})

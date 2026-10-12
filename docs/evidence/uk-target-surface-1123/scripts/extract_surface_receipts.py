@@ -199,6 +199,11 @@ def main(argv: list[str]) -> int:
         (out_dir / name).write_text(
             json.dumps(payload, indent=1, sort_keys=True) + "\n", encoding="utf-8"
         )
+    # What the before receipt's working tree laid over the commit it names,
+    # so the overlay can be read in the tree and checked against its digest.
+    overlay = (before.get("code_modifications") or {}).get("diff")
+    if overlay:
+        (out_dir / "before-overlay.diff").write_text(overlay, encoding="utf-8")
     return 0
 
 
