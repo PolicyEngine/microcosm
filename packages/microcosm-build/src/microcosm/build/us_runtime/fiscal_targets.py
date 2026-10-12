@@ -55,6 +55,7 @@ __all__ = [
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
+    "US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -877,6 +878,74 @@ US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
 # every vintage.
 US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
 
+# Reviewed source-column concept exclusions (microcosm#1038). Each entry is an
+# IRS column that a Chronicle package publishes under a measure id whose
+# concept the column does not carry, so no fact read from that column
+# compiles, whatever its package, geography or vintage, and a package
+# corrected to read the right column passes untouched. The key is (measure_id,
+# layout.source_column_id) because the IRS column is the definition. The
+# congressional-district documentation guide (22incddocguide.docx) defines:
+#
+# - N18425/A18425 as "State and local income taxes" (Schedule A line 5a) and
+#   N18460/A18460 as "Limited state and local taxes" (line 5e). salt_deduction,
+#   like the Historic Table 2 rows of these measure ids, is the limited line 5e
+#   deduction.
+# - N85530/A85530 as "Additional Medicare tax" (Form 8959 line 24) and
+#   N85770/A85770 as "Total premium tax credit" (Form 8962 line 24; the guide
+#   prints "8926:24"). N85770/A85770 is what the Historic Table 2 rows of
+#   these measure ids read and what assigned_aca_ptc measures. The amount was
+#   dropped before by a hard-coded congressional-district check; the returns
+#   row compiled as premium-tax-credit recipients. A package corrected to read
+#   N85770/A85770 compiles as assigned_aca_ptc targets with no further gate,
+#   which is intended: those columns are the premium tax credit.
+#
+# Chronicle's congressional_district_2022 package reads these four columns
+# under the limited_state_local_taxes_* and premium_tax_credit_* measure ids;
+# the 46 other measures it shares with a Historic Table 2 package read the
+# same column there. Of the six it has alone, interest_paid_deduction_* reads
+# N19300/A19300, "Mortgage interest paid" (Schedule A line 8a), while
+# interest_deduction is the line 10 total (lines 8a-8c plus investment
+# interest on line 9; 8a is 85.6% of it in the TY2022 US row). That is a
+# component of the measure's concept, not another concept, so it is not
+# listed here: like the line 7 capital-gains rows, it needs a share-or-drop
+# decision of its own, which also binds the state_cd surface's itemized
+# bridge.
+# A congressional-district fact of a listed measure that carries no
+# layout.source_column_id refuses the compile, so a feed schema change cannot
+# silently lift the exclusion.
+US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS: dict[tuple[str, str], str] = {
+    ("limited_state_local_taxes_returns", "N18425"): (
+        "N18425 counts returns with state and local income taxes (Schedule A "
+        "line 5a), not returns with the limited state and local tax deduction "
+        "(line 5e, N18460). Chronicle's congressional_district_2022 package "
+        "reads it under this measure id: TY2022 US 10,842,580 returns against "
+        "14,777,040 for N18460 in the same file and 14,968,720 in Historic "
+        "Table 2."
+    ),
+    ("limited_state_local_taxes_amount", "A18425"): (
+        "A18425 is state and local income taxes before the $10,000 limit "
+        "(Schedule A line 5a), not the limited deduction (line 5e, A18460) "
+        "salt_deduction measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US $250.4B against "
+        "$121.2B for A18460 in the same file, so on the full surface the "
+        "congressional-district rows summed to 1.98x the national Historic "
+        "Table 2 target."
+    ),
+    ("premium_tax_credit_returns", "N85530"): (
+        "N85530 counts returns with additional Medicare tax (Form 8959 line 24), "
+        "not returns with the premium tax credit (Form 8962 line 24, N85770) "
+        "assigned_aca_ptc measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US 6,848,330 returns "
+        "against 7,713,000 for N85770 in the same file."
+    ),
+    ("premium_tax_credit_amount", "A85530"): (
+        "A85530 is additional Medicare tax (Form 8959 line 24), not the premium "
+        "tax credit (Form 8962 line 24, A85770). Chronicle's "
+        "congressional_district_2022 package reads it under this measure id: "
+        "TY2022 US $14.2B against $53.1B for A85770 in the same file."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class SimpleTaxExpenditureReform:
@@ -1114,6 +1183,9 @@ def us_fiscal_target_exclusion_receipt(
       vintage included (dropped).
     - ``m_chip_state_chip_enrollment``: CMS CHIP enrollment facts for an
       ``_M_CHIP_STATE_FIPS`` state, at every period (dropped).
+    - ``source_column_concept_exclusion``: SOI facts read from an IRS column
+      that ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` lists for their
+      measure id, at every vintage (dropped).
     - ``allowlisted_vintage_bypass``: facts latest-vintage selection activates
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
@@ -1132,6 +1204,7 @@ def us_fiscal_target_exclusion_receipt(
         )
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
+    source_column: set[str] = set()
     m_chip: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
@@ -1141,6 +1214,8 @@ def us_fiscal_target_exclusion_receipt(
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
             reviewed.add(source_record_id)
+        elif _is_source_column_concept_exclusion(fact):
+            source_column.add(source_record_id)
         elif _source_name(fact) == "cms_medicaid":
             reference = _reference_from_ledger_fact(fact, target_period=target_period)
             if reference is not None and _is_m_chip_state_chip_enrollment(
@@ -1167,6 +1242,22 @@ def us_fiscal_target_exclusion_receipt(
                 "scope": "every vintage of each entry",
                 "entries": sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS),
                 "source_record_ids": sorted(all_vintage),
+            },
+            "source_column_concept_exclusion": {
+                "action": "dropped",
+                "scope": "SOI facts read from a listed column under a listed "
+                "measure id, every vintage",
+                "entries": [
+                    {
+                        "measure_id": measure_id,
+                        "source_column_id": source_column_id,
+                        "reason": reason,
+                    }
+                    for (measure_id, source_column_id), reason in sorted(
+                        US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items()
+                    )
+                ],
+                "source_record_ids": sorted(source_column),
             },
             "m_chip_state_chip_enrollment": {
                 "action": "dropped",
@@ -2916,6 +3007,38 @@ def _period_free_source_record_id(source_record_id: str) -> str:
     return _normalized_record_set_id(source_record_id)
 
 
+class MissingSoiSourceColumnError(ValueError):
+    """A congressional-district fact of a listed measure names no IRS column."""
+
+
+def _is_source_column_concept_exclusion(fact: object) -> bool:
+    """Whether an SOI fact reads a column its measure id does not mean.
+
+    A congressional-district fact of a measure the register lists must name
+    its column: without one the exclusion could not tell a mislabeled column
+    from a corrected one, so the compile refuses instead of guessing.
+    """
+    if _source_name(fact) != "irs_soi":
+        return False
+    measure_id = _measure_id(fact)
+    if measure_id not in {
+        measure for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+    }:
+        return False
+    column = _str_at(fact, "layout", "source_column_id")
+    if not column:
+        # Any congressional-district package, whatever its boundary vintage.
+        if ".congressional_district_" in _str_at(fact, "layout", "record_set_id"):
+            raise MissingSoiSourceColumnError(
+                f"{_source_record_id(fact)} is a congressional-district "
+                f"{measure_id} fact with no layout.source_column_id, so "
+                "US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS cannot tell which "
+                "IRS column it reads (microcosm#1038)."
+            )
+        return False
+    return (measure_id, column) in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+
+
 def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:
     return _period_free_source_record_id(source_record_id) in (
         _period_free_source_record_ids(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
@@ -2948,18 +3071,6 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
 def _is_soi_congressional_district_record_set(fact: object) -> bool:
     record_set_id = _str_at(fact, "layout", "record_set_id")
     return ".congressional_district_2022." in record_set_id
-
-
-def _is_soi_cd_premium_tax_credit_amount_conflict(
-    fact: object, *, measure_id: str
-) -> bool:
-    # The SOI CD A85530 amount is not the same gross annual PTC control used by
-    # assigned_aca_ptc. Keep Historic Table 2 national/state PTC amount controls
-    # until Ledger has an explicit CD reconciliation for this concept.
-    return (
-        measure_id == "premium_tax_credit_amount"
-        and _is_soi_congressional_district_record_set(fact)
-    )
 
 
 def _is_period_token(value: str) -> bool:
@@ -3028,6 +3139,8 @@ def _reference_from_ledger_fact(
         return None
     if _is_all_vintage_support_exclusion(source_record_id):
         return None
+    if _is_source_column_concept_exclusion(fact):
+        return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
         return _soi_reference_from_fact(
@@ -3084,8 +3197,6 @@ def _soi_reference_from_fact(
         measure_id == "tax_filer_individual_count"
         and geography_level != "congressional_district"
     ):
-        return None
-    if _is_soi_cd_premium_tax_credit_amount_conflict(fact, measure_id=measure_id):
         return None
     variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
     is_count = False

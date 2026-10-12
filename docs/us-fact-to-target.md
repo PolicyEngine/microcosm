@@ -204,6 +204,19 @@ should calibrate, add its id to `US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`
 with a reason. `us_source_coverage.json`'s `fiscal_target_exclusion_receipt`
 lists the ids each rule dropped or allowed in a release.
 
+A fact whose package reads the wrong IRS column for its measure id is a
+different defect: every fact read from that column is wrong, at every
+geography and vintage, while the same measure read from the right column is
+fine. `US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS` is keyed by (measure id,
+`layout.source_column_id`) for these, so a package corrected to read the
+right column passes untouched; its receipt rule is
+`source_column_concept_exclusion` (microcosm#1038). Check the column against
+the IRS documentation guide before adding an entry, and list a column there
+only when it carries another concept. A column that is a component or a
+superset of the measure's concept (the district file's line 8a mortgage
+interest under `interest_paid_deduction_*`, its line 7 capital gains) needs a
+share-or-drop decision instead.
+
 ## 5. Add a reform-coverage probe
 
 Probes are **generated data**: author them in
