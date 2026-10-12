@@ -119,20 +119,19 @@ _MODEL_MEASURES = MappingProxyType(
         "part_d": f"{_PART_D_SURCHARGE}, for persons with {_ENROLLED}",
     }
 )
-#: Every income-related premium is withheld when no enrollee pays one.
 _NO_PAYERS_REASON = (
-    "No weighted Medicare enrollee pays an income-related premium, so the "
-    "Trustees comparisons are withheld rather than reported as -100%. The "
-    "premium for a year rests on modified adjusted gross income from two years "
-    "earlier. policyengine-us 2.2.1 computes that income from the earlier "
-    "year's inputs, which a release H5 carrying only the release year's inputs "
-    "does not supply; PolicyEngine/policyengine-us#10106 adds a fallback to "
-    "the earliest input year."
+    "No weighted Medicare enrollee pays an income-related premium, so no "
+    "Trustees comparison is reported. The premium for a year rests on "
+    "modified adjusted gross income from two years earlier. On "
+    "policyengine-us 2.2.1 this outcome is expected for a release H5 that "
+    "carries only the release year's inputs, because that engine computes the "
+    "income from the earlier year's inputs; PolicyEngine/policyengine-us#10106 "
+    "adds a fallback to the earliest input year."
 )
 _NO_ENROLLEES_REASON = (
-    "No weighted person is enrolled in Medicare, so the Trustees comparisons "
-    "are withheld."
+    "No weighted person is enrolled in Medicare, so no Trustees comparison is reported."
 )
+_NO_PART_PAYERS = "No weighted enrollee pays this Part's income-related premium."
 _GATES = (
     f"{_ENROLLED} covers Part A and/or Part B, so the Part B measure also "
     "counts any Part A-only enrollee the engine charges. The Part D measure is "
@@ -174,6 +173,7 @@ def _part_row(
     *,
     compare: bool,
 ) -> dict[str, Any]:
+    """One Part's totals; comparisons need ``compare`` and a weighted payer."""
     payers = amounts > 0
     weighted_payers = float(weights[payers].sum())
     weighted_premiums = float((weights * amounts).sum())
@@ -209,7 +209,9 @@ def _part_row(
             ),
         }
     )
-    if compare:
+    if compare and not weighted_payers > 0:
+        row["comparison_withheld"] = _NO_PART_PAYERS
+    elif compare:
         row["payers_relative_difference"] = _relative_difference(
             weighted_payers, benchmark.beneficiaries_affected
         )
@@ -244,7 +246,8 @@ def medicare_irmaa_holdout_payload(
     The status is ``available`` when some weighted enrollee pays. With no
     weighted enrollee (``no_medicare_enrollees``) or no weighted payer in
     either Part (``no_payers``), the model totals are still reported but the
-    Trustees comparisons are withheld and a reason is given.
+    Trustees comparisons are withheld and a reason is given. A Part with no
+    weighted payer never reports a comparison, whatever the status.
     """
     enrolled_values = np.asarray(enrolled)
     part_b_gross, part_b_base, part_d_surcharge, weights = (

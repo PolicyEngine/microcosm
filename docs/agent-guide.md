@@ -235,10 +235,12 @@ base premium is defined for every eligible person. Part D is
 Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
 gates it on Part D enrollment. IRMAA rests on income from two years before
 the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
-single-year release H5 has none, so a 2024 release reports `status: no_payers`
-and withholds the comparisons until the engine includes
-PolicyEngine/policyengine-us#10106. It is held out the same way: no
-calibration row, no release refusal.
+single-year release H5 has none, so a 2024 release on that engine reports
+`status: no_payers` (the batched scorer gives exactly that on the certified
+`populace-us-2024-spm-20260915` file) until the engine includes
+PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
+a Trustees comparison. It is held out the same way: no calibration row, no
+release refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release

@@ -376,14 +376,39 @@ def test_non_enrollees_never_reach_either_measure(people, data):
 
 @settings(max_examples=200, deadline=None)
 @given(_people())
-def test_comparisons_are_reported_exactly_when_some_enrollee_pays(people):
+def test_comparisons_are_reported_exactly_when_that_part_has_a_payer(people):
+    """A Part compares with the Trustees only when one of its weighted
+    enrollees pays; no Part is ever reported at -100%."""
     enrolled, gross, base, part_d, weights = people
     payload = _payload(*people)
-    payers = (gross - base > 0) | (part_d > 0)
-    pays = bool(weights[enrolled & payers].sum() > 0)
-    assert (payload["status"] == "available") == pays
+    part_payers = {"part_b": gross - base > 0, "part_d": part_d > 0}
+    pays = {
+        part: bool(weights[enrolled & payers].sum() > 0)
+        for part, payers in part_payers.items()
+    }
+    assert (payload["status"] == "available") == any(pays.values())
     for row in payload["parts"]:
-        assert (row["payers_relative_difference"] is not None) == pays
+        assert (row["payers_relative_difference"] is not None) == pays[row["part"]]
+        if row["payers_relative_difference"] is not None:
+            # A positive weighted payer count; a vanishing weight can still
+            # round model / benchmark - 1 to exactly -1.
+            assert row["payers_relative_difference"] >= -1
+            assert row["weighted_payers"] > 0
+
+
+def test_a_part_without_payers_withholds_only_its_own_comparison():
+    """Part D all zero (pe-us#10115 with no Part D take-up input yet)."""
+    payload = _payload(
+        [True, True], [_BASE + _PART_B_TIER_1, _BASE], [_BASE, _BASE], [0, 0], [2, 3]
+    )
+    part_b, part_d = payload["parts"]
+    assert payload["status"] == "available"
+    assert part_b["payers_relative_difference"] == pytest.approx(2 / 4_800_000 - 1)
+    assert "comparison_withheld" not in part_b
+    assert part_d["weighted_payers"] == 0
+    assert part_d["payers_relative_difference"] is None
+    assert part_d["aggregate_premiums_relative_difference"] is None
+    assert part_d["comparison_withheld"].startswith("No weighted enrollee")
 
 
 # ---------------------------------------------------------------------------
@@ -426,10 +451,10 @@ def test_only_the_release_tool_imports_the_holdout():
     pattern = re.compile(r"medicare_irmaa_holdout|MEDICARE_IRMAA_TRUSTEES_2026")
     module = "medicare_irmaa_holdout.py"
     readers = sorted(
-        str(path.relative_to(root))
+        path.relative_to(root).as_posix()
         for directory in ("packages", "tools")
         for path in (root / directory).rglob("*.py")
-        if "/tests/" not in str(path)
+        if "tests" not in path.relative_to(root).parts
         and path.name != module
         and pattern.search(path.read_text(encoding="utf-8"))
     )
