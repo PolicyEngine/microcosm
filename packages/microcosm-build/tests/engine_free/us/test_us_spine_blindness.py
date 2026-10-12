@@ -276,6 +276,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
+        # Reviewed held-out Medicare IRMAA diagnostic; no population treatment.
+        "medicare_irmaa_holdout.py",
         "misc_itemized.py",
         "nonzero_shares.py",
         "operator_boundary.py",  # Raw-stage validator; no population treatment.

@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "53ffaa88fd29525604d4a3653e94c312906939ed05fce067d5dc04eece0683e0",
+  "fingerprint": "65d315d1db7eef52f7d2be5930f0ed74aeac8396a7344ca971dcc0dc43c105ba",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -37,7 +37,7 @@
     "staging_repo": "policyengine/populace-nz-staging"
   },
   "resource_hashes": {
-    "as_area_crosswalk.json": "cfb76c99898204598b0609e5462b2fba9d081872a13ac5dd973cb406bb6f7469",
+    "as_area_crosswalk.json": "2c296c9204efc37e8e4798d5ca23945e5b025830277a02ebad642725762f4783",
     "as_rate_bridge.json": "5eea897159508fb71820f22cd8ccf4993075a750462bd97312d9e89ab01cba15",
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",

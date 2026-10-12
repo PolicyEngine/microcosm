@@ -574,6 +574,12 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
             "obr.average_earnings",
             target.obr.average_earnings / source.obr.average_earnings,
         ),
+        # Restricted residential finance costs move with mortgage interest,
+        # the index the engine gives the variable (microcosm#1106).
+        "property_finance_costs": (
+            "obr.mortgage_interest",
+            target.obr.mortgage_interest / source.obr.mortgage_interest,
+        ),
     }
     expected["property_income"] = expected["dividend_income"]
     expected["miscellaneous_income"] = expected["dividend_income"]
