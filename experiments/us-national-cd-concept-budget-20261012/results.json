@@ -1,0 +1,190 @@
+{
+ "district_groups": {
+  "after": {
+   "max_size": 52,
+   "n_groups": 3125,
+   "n_singletons": 665,
+   "singletons_by_state": {
+    "02": 95,
+    "10": 95,
+    "11": 95,
+    "38": 95,
+    "46": 95,
+    "50": 95,
+    "56": 95
+   }
+  },
+  "before": {
+   "max_size": 1,
+   "n_groups": 24340,
+   "n_singletons": 24340,
+   "singletons_by_state": {
+    "01": 385,
+    "02": 95,
+    "04": 495,
+    "05": 220,
+    "06": 2860,
+    "08": 440,
+    "09": 275,
+    "10": 95,
+    "11": 95,
+    "12": 1540,
+    "13": 770,
+    "15": 110,
+    "16": 110,
+    "17": 935,
+    "18": 495,
+    "19": 220,
+    "20": 220,
+    "21": 330,
+    "22": 330,
+    "23": 110,
+    "24": 440,
+    "25": 495,
+    "26": 715,
+    "27": 440,
+    "28": 220,
+    "29": 440,
+    "30": 190,
+    "31": 165,
+    "32": 220,
+    "33": 110,
+    "34": 660,
+    "35": 165,
+    "36": 1430,
+    "37": 770,
+    "38": 95,
+    "39": 825,
+    "40": 275,
+    "41": 330,
+    "42": 935,
+    "44": 110,
+    "45": 385,
+    "46": 95,
+    "47": 495,
+    "48": 2090,
+    "49": 220,
+    "50": 95,
+    "51": 605,
+    "53": 550,
+    "54": 110,
+    "55": 440,
+    "56": 95
+   }
+  }
+ },
+ "equal_share_by_level": {
+  "congressional_district": 0.732052,
+  "country": 0.015038,
+  "state": 0.25291
+ },
+ "loss_share_by_basis_and_level": {
+  "after": {
+   "amount/congressional_district": 0.05841,
+   "amount/country": 0.118577,
+   "amount/state": 0.323013,
+   "count/congressional_district": 0.051817,
+   "count/country": 0.083119,
+   "count/state": 0.365064
+  },
+  "before": {
+   "amount/congressional_district": 0.230295,
+   "amount/country": 0.072422,
+   "amount/state": 0.197283,
+   "count/congressional_district": 0.225582,
+   "count/country": 0.050893,
+   "count/state": 0.223525
+  }
+ },
+ "loss_share_by_family": {
+  "after": {
+   "bea": 0.004965,
+   "cbo": 0.010422,
+   "census_population": 0.078596,
+   "cms_aca": 0.007224,
+   "cms_medicaid": 0.019106,
+   "cms_medicare": 0.000371,
+   "federal_reserve": 0.01294,
+   "hhs_acf_liheap": 0.000337,
+   "hhs_acf_tanf": 0.000378,
+   "irs_soi": 0.845417,
+   "jct": 0.00148,
+   "ssa": 0.007922,
+   "state_income_tax": 0.003987,
+   "usda_snap": 0.006855
+  },
+  "before": {
+   "bea": 0.003033,
+   "cbo": 0.006365,
+   "census_population": 0.048123,
+   "cms_aca": 0.004423,
+   "cms_medicaid": 0.011698,
+   "cms_medicare": 0.000227,
+   "federal_reserve": 0.007903,
+   "hhs_acf_liheap": 0.000206,
+   "hhs_acf_tanf": 0.000231,
+   "irs_soi": 0.905415,
+   "jct": 0.000904,
+   "ssa": 0.004843,
+   "state_income_tax": 0.002435,
+   "usda_snap": 0.004194
+  }
+ },
+ "loss_share_by_level": {
+  "after": {
+   "congressional_district": 0.110227,
+   "country": 0.201696,
+   "state": 0.688077
+  },
+  "before": {
+   "congressional_district": 0.455878,
+   "country": 0.123315,
+   "state": 0.420808
+  }
+ },
+ "n_district_concept_identities": 3125,
+ "n_district_rows": 24340,
+ "n_targets": 33249,
+ "provenance": {
+  "age_targets": true,
+  "chronicle_source_commit": "51aa40fd28e2ca81937752515e773d123fecfb71",
+  "commit": "51a2637268633f53120acd812d0d156c79f1f7f5",
+  "feed_facts_sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac",
+  "target_period": 2024,
+  "tracked_tree_clean": false
+ },
+ "single_district_states": [
+  "02",
+  "10",
+  "11",
+  "38",
+  "46",
+  "50",
+  "56"
+ ],
+ "weight_ratio_after_over_before": {
+  "district_rows": {
+   "max": 1.63731,
+   "median": 0.157444,
+   "min": 0.033041
+  },
+  "non_district_rows_by_basis": {
+   "amount": [
+    1.637310193
+   ],
+   "count": [
+    1.63321409
+   ]
+  }
+ },
+ "weights": {
+  "after": {
+   "max": 430.2508584469752,
+   "min": 3.302856698839226e-05
+  },
+  "before": {
+   "max": 262.77907519665797,
+   "min": 2.0172455482387436e-05
+  }
+ }
+}

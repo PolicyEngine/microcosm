@@ -33,11 +33,13 @@ Row mappings:
   target metadata: ``measure_mode`` and ``source_measure_id`` for the basis,
   and ``ledger_geography_level``, ``state_fips``, the filter and the other
   semantic metadata for the concept key. It is the national release's
-  mapping, moved here unchanged. Its district key does read two labels the
-  ledger compiler stamps on every row, ``ledger_fact_label`` and
-  ``ledger_layout_groupby_value_label``, which name the district, so each
-  compiled district row is its own group under it (measured in
-  ``experiments/us-acs-local-target-loss-weights-20261004/``).
+  mapping. Its district key ignores the metadata that names a row's place,
+  record or label (:data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS`), so
+  the districts of one concept in one state share one budget, and
+  :func:`validate_district_concept_groups` refuses a surface where they do
+  not. Until 2026-10-12 the key read the compiler's per-row labels
+  (:data:`LEDGER_PER_ROW_LABEL_METADATA`), which made every compiled district
+  row its own group (``experiments/us-national-cd-concept-budget-20261012/``).
 - :data:`US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING` classifies every row of the
   ACS local-area surface explicitly and refuses any row it cannot classify:
   a row must be a ledger-compiled row (any family; on the surface, SNAP,
@@ -47,12 +49,12 @@ Row mappings:
   population rows (``pop_state_*``, ``pop_cd_*``), which carry no ledger
   metadata, are counts, as the national release's Census population targets
   are. Each state's ``pop_cd_*`` rows share one concept budget. District SOI
-  rows take the national district key without the metadata that names the
-  district (:data:`ACS_LOCAL_PER_DISTRICT_METADATA`), so the districts of one
-  concept in one state share one budget. :func:`validate_acs_local_concept_groups`
-  refuses a surface whose district rows of one concept in one state land in
-  more than one group, or whose ``state_cd`` reconciliation blocks are not
-  exactly one group each.
+  rows take the national district key, also without the ``state_cd``
+  rebase's per-district stamp (:data:`ACS_LOCAL_PER_DISTRICT_METADATA`), so
+  the districts of one concept in one state share one budget.
+  :func:`validate_acs_local_concept_groups` refuses a surface whose district
+  rows of one concept in one state land in more than one group, or whose
+  ``state_cd`` reconciliation blocks are not exactly one group each.
 """
 
 from __future__ import annotations
@@ -71,13 +73,29 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
     "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
-#: Metadata that identifies a target's place, record or reconciliation rather
-#: than its concept. The concept-budget key of a congressional-district target
-#: ignores it, so that the districts of one concept in one state share one
-#: key. It does not list the compiler's per-row labels (see the module
-#: docstring and :data:`ACS_LOCAL_PER_DISTRICT_METADATA`).
+#: Human-readable labels the ledger compiler (``ledger_targets.py``) stamps on
+#: a compiled row. They name the row, not its concept: a district row's
+#: ``ledger_fact_label`` and ``ledger_layout_groupby_value_label`` name its
+#: district ("WV congressional district 1"), and ``diagnostic_target_label``
+#: repeats the fact label when the fact's period is the target's. The compiler
+#: began stamping them on 2026-09-05 (efa6052c9), after the concept budget
+#: (#195) listed its exclusions, so until they were listed below every
+#: compiled district row was its own concept group.
+LEDGER_PER_ROW_LABEL_METADATA = frozenset(
+    {
+        "diagnostic_target_label",
+        "ledger_fact_label",
+        "ledger_layout_groupby_value_label",
+    }
+)
+#: Metadata that identifies a target's place, record, label or reconciliation
+#: rather than its concept. The concept-budget key of a congressional-district
+#: target ignores it, so that the districts of one concept in one state share
+#: one key; :func:`validate_district_concept_groups` refuses a surface where
+#: they do not.
 US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS = frozenset(
     {
+        *LEDGER_PER_ROW_LABEL_METADATA,
         "congressional_district_geoid",
         "geography_scope",
         "hierarchy_child_ids",
@@ -295,11 +313,133 @@ def _ledger_concept_budget_key(
     )
 
 
-#: The national release's mapping: the ledger compiler's metadata, as is.
+#: The metadata that tells two district SOI concepts of one state apart: the
+#: measure, its source file, its AGI band, filing status, return universe and
+#: domain, and every ledger filter. Rows equal on all of these (and on family,
+#: entity, period, filter and state) are the districts of one concept.
+DISTRICT_CONCEPT_IDENTITY_KEYS = (
+    "source_measure_id",
+    "ledger_layout_record_set_spec_id",
+    "measure_mode",
+    "agi_lower_bound",
+    "agi_upper_bound",
+    "filing_status",
+    "taxable_only",
+    "itemized_only",
+    "ledger_domain",
+    "soi_return_universe",
+)
+
+
+def district_concept_identity(spec) -> tuple:
+    """What makes a district ledger row the concept it is, without the place.
+
+    Independent of the concept key, so the validator can check the key
+    against it: every district row of one identity must share one key.
+    """
+
+    metadata = spec.metadata
+    return (
+        spec.family,
+        spec.entity,
+        spec.period,
+        spec.filter or "",
+        str(metadata.get("state_fips")),
+        *(str(metadata.get(key, "")) for key in DISTRICT_CONCEPT_IDENTITY_KEYS),
+        tuple(
+            sorted(
+                (key, value)
+                for key, value in metadata.items()
+                if key.startswith("ledger_filter_")
+            )
+        ),
+    )
+
+
+def _key_metadata(key: Hashable) -> dict[object, object]:
+    """The metadata a ledger district key reads (its last element), else {}."""
+
+    if isinstance(key, tuple) and key and isinstance(key[-1], tuple):
+        try:
+            return dict(key[-1])
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+def validate_district_concept_groups(
+    specs: Sequence[Any],
+    bases: Sequence[str],
+    concept_budget_keys: Sequence[Hashable],
+) -> None:
+    """Refuse a grouping that splits or spreads a district ledger concept.
+
+    For every ledger row at congressional-district geography:
+
+    - it must carry ``state_fips``, which the key reads; without it, the
+      districts of one concept in different states would share one budget;
+    - the district rows of one concept in one state
+      (:func:`district_concept_identity`) must share one concept group: a
+      per-row metadata key reaching the key splits them into one group per
+      district, as the compiler's labels did until 2026-10-12;
+    - each district group must lie in one state.
+
+    Rows at other geography levels are each their own group and are not
+    checked.
+    """
+
+    del bases
+    examples_of_identity: dict[tuple, dict[Hashable, Any]] = {}
+    states_of_group: dict[Hashable, set[str]] = {}
+    for spec, key in zip(specs, concept_budget_keys, strict=True):
+        metadata = spec.metadata
+        if metadata.get("ledger_geography_level") != CONGRESSIONAL_DISTRICT:
+            continue
+        if not metadata.get("state_fips"):
+            raise ValueError(
+                f"{spec.name}: a district row without state_fips would share a "
+                "concept budget across states."
+            )
+        states_of_group.setdefault(key, set()).add(str(metadata["state_fips"]))
+        examples_of_identity.setdefault(district_concept_identity(spec), {}).setdefault(
+            key, spec
+        )
+    scattered = [
+        (identity, examples)
+        for identity, examples in examples_of_identity.items()
+        if len(examples) > 1
+    ]
+    if scattered:
+        identity, examples = scattered[0]
+        first, second = list(examples)[:2]
+        first_metadata, second_metadata = _key_metadata(first), _key_metadata(second)
+        differing = sorted(
+            str(name)
+            for name in set(first_metadata) | set(second_metadata)
+            if first_metadata.get(name) != second_metadata.get(name)
+        )
+        raise ValueError(
+            f"{len(scattered)} district concept(s) land in more than one concept "
+            f"group, e.g. {identity[:6]} in {len(examples)} groups; a per-district "
+            f"metadata key is reaching the concept key (differing: {differing})."
+        )
+    spread = [states for states in states_of_group.values() if len(states) > 1]
+    if spread:
+        raise ValueError(
+            f"{len(spread)} district concept group(s) span states, e.g. "
+            f"{sorted(spread[0])}."
+        )
+
+
+#: The national release's mapping: the ledger compiler's metadata, with the
+#: district guard. v2 (2026-10-12) stopped reading the compiler's per-row
+#: labels and added the guard; v1 made every compiled district row its own
+#: concept group.
 US_FISCAL_TARGET_LOSS_ROW_MAPPING = TargetLossRowMapping(
-    mapping_id="us_fiscal_ledger_metadata.v1",
+    mapping_id="us_fiscal_ledger_metadata.v2",
     value_basis=fiscal_target_value_basis,
     concept_budget_key=fiscal_target_concept_budget_key,
+    validate=validate_district_concept_groups,
 )
 
 
@@ -312,29 +452,20 @@ ACS_LOCAL_POPULATION_PREFIXES: Mapping[str, tuple[str, int]] = {
     STATE: ("pop_state_", 2),
     CONGRESSIONAL_DISTRICT: ("pop_cd_", 4),
 }
-#: Per-row metadata that differs between the districts of one concept in one
-#: state, so the ACS local concept key must not read it:
+#: Per-row metadata that only the ACS local surface carries and that differs
+#: between the districts of one concept in one state, so the ACS local concept
+#: key must not read it either:
 #:
-#: - ``ledger_fact_label`` and ``ledger_layout_groupby_value_label``: the
-#:   human-readable labels the ledger compiler (``ledger_targets.py``) stamps
-#:   on every row, which name the district ("WV congressional district 1").
-#:   :data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS` does not list them,
-#:   so under the national mapping every compiled district row is its own
-#:   group; the national mapping is kept as it is here.
 #: - ``state_cd_cd_file_value``: the district file's own value of the row,
 #:   which the ``state_cd`` rebase (``tools/us_acs_local_cd_surface.py``)
 #:   stamps before rescaling it. The rebase's block-level stamps (parent,
 #:   basis, factor, file state sum) are equal across a block and may stay.
 #:
+#: The compiler's per-row labels (:data:`LEDGER_PER_ROW_LABEL_METADATA`) are
+#: national exclusions, which the ACS local key inherits.
 #: :func:`validate_acs_local_concept_groups` refuses a surface where any other
 #: per-district key splits a reconciliation block.
-ACS_LOCAL_PER_DISTRICT_METADATA = frozenset(
-    {
-        "ledger_fact_label",
-        "ledger_layout_groupby_value_label",
-        "state_cd_cd_file_value",
-    }
-)
+ACS_LOCAL_PER_DISTRICT_METADATA = frozenset({"state_cd_cd_file_value"})
 US_ACS_LOCAL_CONCEPT_METADATA_EXCLUSIONS = (
     US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS | ACS_LOCAL_PER_DISTRICT_METADATA
 )
@@ -468,49 +599,6 @@ def acs_local_target_concept_budget_key(spec) -> tuple[object, ...]:
     )
 
 
-#: The metadata that tells two district SOI concepts of one state apart: the
-#: measure, its source file, its AGI band, filing status, return universe and
-#: domain, and every ledger filter. Rows equal on all of these (and on family,
-#: entity, period, filter and state) are the districts of one concept.
-DISTRICT_CONCEPT_IDENTITY_KEYS = (
-    "source_measure_id",
-    "ledger_layout_record_set_spec_id",
-    "measure_mode",
-    "agi_lower_bound",
-    "agi_upper_bound",
-    "filing_status",
-    "taxable_only",
-    "itemized_only",
-    "ledger_domain",
-    "soi_return_universe",
-)
-
-
-def district_concept_identity(spec) -> tuple:
-    """What makes a district ledger row the concept it is, without the place.
-
-    Independent of the concept key, so the validator can check the key
-    against it: every district row of one identity must share one key.
-    """
-
-    metadata = spec.metadata
-    return (
-        spec.family,
-        spec.entity,
-        spec.period,
-        spec.filter or "",
-        str(metadata.get("state_fips")),
-        *(str(metadata.get(key, "")) for key in DISTRICT_CONCEPT_IDENTITY_KEYS),
-        tuple(
-            sorted(
-                (key, value)
-                for key, value in metadata.items()
-                if key.startswith("ledger_filter_")
-            )
-        ),
-    )
-
-
 def validate_acs_local_concept_groups(
     specs: Sequence[Any],
     bases: Sequence[str],
@@ -518,21 +606,20 @@ def validate_acs_local_concept_groups(
 ) -> None:
     """Refuse an ACS local grouping that is not the promised one.
 
-    - The district ledger rows of one concept in one state
-      (:func:`district_concept_identity`) must share one concept group: a
-      per-district metadata key reaching the key would split them into one
-      group per district, whatever the SOI mode.
+    - The district ledger rows must pass :func:`validate_district_concept_groups`:
+      the rows of one concept in one state share one concept group, whatever
+      the SOI mode, and no district group spans states.
     - Each ``state_cd`` reconciliation block (the district rows sharing one
       ``state_cd_parent_target_name``) must be exactly one concept group, and
       no group may hold two blocks.
-    - Each district group must lie in one state.
+    - Each district group, ladder population rows included, must lie in one
+      state.
     """
 
-    del bases
+    validate_district_concept_groups(specs, bases, concept_budget_keys)
     group_of_parent: dict[str, set[Hashable]] = {}
     parent_of_group: dict[Hashable, set[str]] = {}
     states_of_group: dict[Hashable, set[str]] = {}
-    groups_of_identity: dict[tuple, set[Hashable]] = {}
     for spec, key in zip(specs, concept_budget_keys, strict=True):
         population = acs_local_population_geography(spec)
         if population is not None:
@@ -544,23 +631,10 @@ def validate_acs_local_concept_groups(
         if metadata.get("ledger_geography_level") != CONGRESSIONAL_DISTRICT:
             continue
         states_of_group.setdefault(key, set()).add(str(metadata.get("state_fips")))
-        groups_of_identity.setdefault(district_concept_identity(spec), set()).add(key)
         parent = metadata.get("state_cd_parent_target_name")
         if parent:
             group_of_parent.setdefault(str(parent), set()).add(key)
             parent_of_group.setdefault(key, set()).add(str(parent))
-    scattered = [
-        (identity, keys)
-        for identity, keys in groups_of_identity.items()
-        if len(keys) > 1
-    ]
-    if scattered:
-        identity, keys = scattered[0]
-        raise ValueError(
-            f"{len(scattered)} district concept(s) land in more than one concept "
-            f"group, e.g. {identity[:6]} in {len(keys)} groups; a per-district "
-            "metadata key is reaching the concept key."
-        )
     split = {parent: keys for parent, keys in group_of_parent.items() if len(keys) > 1}
     if split:
         parent, keys = next(iter(sorted(split.items())))

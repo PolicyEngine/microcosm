@@ -1,0 +1,32 @@
+{
+ "release_20260923": {
+  "n": 4459,
+  "bit_identical": true,
+  "new_sha256": "ba36f887407181dc6641596b4a200e6b18017cd815d7806ac4f523da3204f1d1",
+  "recorded_sha256": "ba36f887407181dc6641596b4a200e6b18017cd815d7806ac4f523da3204f1d1"
+ },
+ "state": {
+  "n": 4867,
+  "district_ledger_rows": 0,
+  "district_rows_with_diagnostic_label": 0,
+  "bit_identical": true
+ },
+ "totals": {
+  "n": 1247,
+  "district_ledger_rows": 454,
+  "district_rows_with_diagnostic_label": 0,
+  "bit_identical": true
+ },
+ "full": {
+  "n": 31961,
+  "district_ledger_rows": 24340,
+  "district_rows_with_diagnostic_label": 0,
+  "bit_identical": true
+ },
+ "state_cd": {
+  "n": 26912,
+  "district_ledger_rows": 21743,
+  "district_rows_with_diagnostic_label": 0,
+  "bit_identical": true
+ }
+}
