@@ -673,11 +673,18 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
 
     record_ids = [f"irs_soi.ty2023.r{i}" for i in range(5)]
     years = st.integers(2015, 2026)
-    # A few fixed vintages make same-package shares common; the free draw
-    # keeps any package, stamp and data year in play.
+    # A few fixed vintages make same-package shares and near misses common;
+    # the free draw keeps any package, stamp and data year in play.
     vintages = st.one_of(
+        # The last three each differ from the first in exactly one of
+        # package, stamp and data year.
         st.sampled_from(
-            [("pkg_a", 2023, 2022), ("pkg_a", 2024, 2022), ("pkg_b", 2023, 2022)]
+            [
+                ("pkg_a", 2023, 2022),
+                ("pkg_a", 2024, 2022),
+                ("pkg_b", 2023, 2022),
+                ("pkg_a", 2023, 2020),
+            ]
         ),
         st.tuples(st.sampled_from(["pkg_a", "pkg_b"]), years).flatmap(
             lambda pair: st.tuples(
