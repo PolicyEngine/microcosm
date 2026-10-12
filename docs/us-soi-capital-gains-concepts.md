@@ -116,5 +116,11 @@ crosswalk, then narrowed to `national_state`:
 - The state return counts are back at the Build P values; California's
   1,566,996.66 equals the July scorecard's.
 
+On the 2026-10-04 `51aa40f` re-pin (#940), whose capital-gains cells are
+identical, the same 60 values move by the same factor and the same 60 amount
+specs gain only the concept keys: 33,250 compiled, 6,102 on
+`national_state`, which goes from `e1f9906bf0e0` to `882f4764a248` (full
+`f5bd921d6b21` to `f09571684885`).
+
 `test_pinned_feed_no_soi_state_family_sums_past_its_national_target` holds
 the invariant across all 63 SOI state families on the surface.

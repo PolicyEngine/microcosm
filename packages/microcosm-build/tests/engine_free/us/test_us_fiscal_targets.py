@@ -895,7 +895,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    PENDING_1036_NS, 32 CHIP rows none of them for an M-CHIP state, no
+    882f4764a248, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. microcosm#1035 moved it from
     e1f9906bf0e0 at the same counts by choosing the capital-gains control by
     concept and period, which returns the 51 Historic Table 2 state return
@@ -911,7 +911,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "PENDING_1036_NS"
+    assert surface.version == "882f4764a248"
     chip = [
         spec
         for spec in surface.specs

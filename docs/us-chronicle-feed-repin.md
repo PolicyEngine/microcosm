@@ -210,7 +210,10 @@ Table 1.4 ty2023. It took over the returns control and raised the 51 Historic
 Table 2 state return counts from 12,289,836 to 29,599,604. The control is now
 chosen by concept and period alone
 ([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)). The
-counts are unchanged and `national_state` is `65e4dde11c83`.
+counts are unchanged and `national_state` is `65e4dde11c83` on this feed. On
+the 2026-10-04 `51aa40f` re-pin, whose capital-gains cells are identical, the
+same 60 return counts move and `national_state` goes from `e1f9906bf0e0` to
+`882f4764a248` at 6,102 targets.
 
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
