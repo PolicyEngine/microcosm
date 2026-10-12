@@ -451,6 +451,84 @@ def test_apply_admits_a_share_of_a_restamped_total_of_the_same_package() -> None
     assert again.specs == (corrected,)
 
 
+def test_an_admitted_share_ages_exactly_as_its_truthfully_stamped_twin() -> None:
+    """Differential: one congressional-district share compiled from the
+    package stamped ty2023 (then corrected) and from the package stamped
+    truthfully at 2022 (nothing to correct) ages to the same value, from the
+    control's 2023 period on the direct CBO 2024/2023 ratio, and passes the
+    period contract. Starting it at the data year instead chains the Table 1.4
+    TY2022-to-TY2023 change onto a level that already carries it."""
+    from microcosm.build.us_runtime.target_aging import (
+        age_us_dollar_targets,
+        find_period_contract_violations,
+    )
+    from test_support.microcosm_build.us_fiscal_targets import (
+        _cbo_income_source_projection_fact,
+        _dynamic_ledger_fact,
+    )
+
+    aging_facts = (
+        _cbo_income_source_projection_fact(2023, "net_capital_gain", value=981.4e9),
+        _cbo_income_source_projection_fact(2024, "net_capital_gain", value=1290.9e9),
+        *(
+            _dynamic_ledger_fact(
+                source_record_id=f"irs_soi.ty{year}.table_1_4.all.net_capital_gains_amount",
+                source_name="irs_soi",
+                measure_id="net_capital_gains_amount",
+                value=value,
+                period_value=year,
+                layout_record_set_id=f"irs_soi.ty{year}.table_1_4",
+            )
+            for year, value in ((2022, 1_400.0e9), (2023, 1_065.2e9))
+        ),
+    )
+    dollars = {"measure_mode": "sum", "source_measure_id": "net_capital_gains_amount"}
+    stamped = _cd_share_spec(**dollars)
+    truthful_set = "irs_soi.ty2022.congressional_district_2022.all_returns"
+    truthful = _cd_share_spec(
+        **dollars,
+        ledger_source_record_id=f"{truthful_set}.nj_total.net_capital_gains_amount",
+        ledger_fact_period="2022",
+        source_period="2022",
+        uprating_from_period="2022",
+        soi_share_total_source_record_id=f"{truthful_set}.us.net_capital_gains_amount",
+    )
+
+    def aged(spec, corrections):
+        registry = apply_source_vintage_corrections(
+            TargetRegistry([spec], country="us"), corrections
+        )
+        registry = age_us_dollar_targets(registry, aging_facts, target_period=2024)
+        assert not find_period_contract_violations(registry, target_period=2024)
+        (result,) = registry.specs
+        return result
+
+    from_stamp = aged(stamped, _CD_CORRECTIONS)
+    from_truth = aged(truthful, {})
+    ratio = 1290.9e9 / 981.4e9
+    for spec in (from_stamp, from_truth):
+        assert spec.metadata["source_period"] == "2023"
+        assert spec.metadata["aging_factor_source"] == (
+            "cbo.revenue_projection.ty2024.income_by_source.net_capital_gain."
+            "projected_amount"
+        )
+        assert float(spec.metadata["aging_factor"]) == pytest.approx(ratio, rel=1e-12)
+    assert (
+        from_stamp.value
+        == from_truth.value
+        == pytest.approx(38_463_637_000.0 * ratio, rel=1e-12)
+    )
+
+    wrong = aged(
+        dataclasses.replace(
+            truthful,
+            metadata={**truthful.metadata, "uprating_to_period": "2022"},
+        ),
+        {},
+    )
+    assert wrong.value / from_truth.value == pytest.approx(1_065.2 / 1_400.0, rel=1e-12)
+
+
 @pytest.mark.parametrize(
     ("overrides", "corrections"),
     [
