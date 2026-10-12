@@ -119,9 +119,23 @@ the same factor as its rows, for example `census_population` 4.8% → 7.9% and
   - two identities differ in metadata the key still reads;
   - a non-district row's key reads no metadata.
 
-  The label is also absent from every district row of the pinned national
-  compile, which the ACS local surfaces start from. The ACS local tests pass
-  unchanged.
+  Measured, not only argued: `acs_local_unchanged.py` compares the ACS local
+  weights from the pre-change module (51a263726) and from this one, bit for
+  bit, and finds them identical on:
+  - the 09-23 release registry, 4,459 targets (its digest is still the
+    recorded `ba36f887…`);
+  - each `--soi-mode` surface of the pinned feed, with the 09-23 ladder
+    population rows:
+
+    | Surface | Targets | District ledger rows |
+    |---|---:|---:|
+    | `state` | 4,867 | 0 |
+    | `totals` | 1,247 | 454 |
+    | `full` | 31,961 | 24,340 |
+    | `state_cd` | 26,912 | 21,743 |
+
+  No district row on those surfaces carries `diagnostic_target_label`
+  (`acs_local_unchanged.json`). The ACS local tests pass unchanged.
 - **Target values, the compiled surface, and any published release.** This
   changes only the objective of future `--target-surface full` calibrations.
 
@@ -147,7 +161,12 @@ From the repository root, with the pinned feed at
 
 ```bash
 uv run python experiments/us-national-cd-concept-budget-20261012/national_cd_concept_budget.py
+uv run python experiments/us-national-cd-concept-budget-20261012/acs_local_unchanged.py \
+    experiments/us-national-cd-concept-budget-20261012/acs_local_unchanged.json
 ```
+
+The second also needs the 09-23 registry that
+`experiments/us-acs-local-target-loss-weights-20261004/distribution.py` reads.
 
 The script refuses a feed whose sha256 is not the pin. Where the feed is on
 disk, `test_pinned_feed_district_rows_form_one_budget_per_concept_per_state`
