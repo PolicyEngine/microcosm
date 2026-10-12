@@ -912,6 +912,16 @@ def build_vintages() -> dict[str, Any]:
             },
         },
         {
+            "id": "scf_2025",
+            "kind": "survey_period_ref",
+            "authority_ref": {
+                "kind": "source_stage_artifact",
+                "stage": "scf_wealth",
+                "artifact_index": 3,
+                "field": "vintage",
+            },
+        },
+        {
             "id": "sipp_2023",
             "kind": "survey_period_ref",
             "authority_ref": {
@@ -958,6 +968,7 @@ def build_vintages() -> dict[str, Any]:
         "puma_2020": {"cd_119", "census_2020"},
         "release_us_2024": {"target_2024"},
         "scf_2022": {"target_2024"},
+        "scf_2025": {"target_2024"},
         "sipp_2023": {"target_2024"},
         "target_2024": {
             "acs_2022",
@@ -969,6 +980,7 @@ def build_vintages() -> dict[str, Any]:
             "policyengine_us_surface",
             "release_us_2024",
             "scf_2022",
+            "scf_2025",
             "sipp_2023",
             "tax_2015",
         },

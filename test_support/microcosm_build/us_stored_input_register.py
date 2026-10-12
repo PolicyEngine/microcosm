@@ -31,6 +31,9 @@ from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.operator_boundary import _ACS_NATIVE_INPUT_CONTRACTS
+from microcosm.build.us_runtime.scf_education_debt import (
+    US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.support_provenance import (
     spine_source_id_column,
     support_channel_column,
