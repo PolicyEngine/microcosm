@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "7c7064be95a241a4757246ff9de728ad75c2501c162ae2232214c39414cba61d",
+  "fingerprint": "a1a8179e64c1953cc5a7ebcc1bf63d700801b70394dfa79dddc74fea5405d32c",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -38,18 +38,19 @@
   },
   "resource_hashes": {
     "as_area_crosswalk.json": "cfb76c99898204598b0609e5462b2fba9d081872a13ac5dd973cb406bb6f7469",
-    "as_rate_bridge.json": "5eea897159508fb71820f22cd8ccf4993075a750462bd97312d9e89ab01cba15",
+    "as_rate_bridge.json": "2dad25ba1ed46f37b2ca4fb75f0d99d6e8d36a46b40233ca51fce762e3655d0d",
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
     "benefit_unit_rule.json": "b4ed95161177668964ffcc39556c14600e2e08bda350be9ea5f52e83cc3afd41",
-    "country_package.json": "6c4c1d19a0666958a4dc1079e5363084a347e817fc0c9cca59eada45bdc18873",
+    "country_package.json": "d1059312ee47721961978394aa3a754d55fbc8e6c2802ddc755b4a1dcfee920d",
     "currency_bridge.json": "aa6a4b286a6a1a015088f32ac013148553422c3d45eeef7d7a15af08388857ca",
     "export_contract.json": "2c7414fefe395c4f5822643dcd3bb3544ebb2040259aa007b828a99bd01ae210",
-    "gates.json": "18a78dde49b6b979bf46039fa1d779bf30362b853514739e66bd669c2aaebeba",
+    "gates.json": "13e5ea49330571f30ac65cfb286908448df685a6d81e39c1d7d38824678eb7cf",
     "geography_spine.json": "353821844d85d2622c328b4986dd9e3a8075c13498b9f56d349c4578edf7495a",
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
+    "reporting_classifiers.json": "1de71e406021c5f22dcdf40a14bb5509fb21b5ebcf261c8397329007299e2e2f",
     "scenarios.json": "30f96f3063773d77e3c70119c8f5d99d3528eca87428903da00ca071ab34cfaf",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "25ef74ecbc00c3f2ecca2d30ddd5e46a582657863c217da33ee9a396569d2cf2",
@@ -79,6 +80,7 @@
     "holdout_references.json",
     "precal_references.json",
     "release_contract.json",
+    "reporting_classifiers.json",
     "scenarios.json",
     "source_stages.json",
     "target_references.json"
