@@ -109,10 +109,11 @@ def constant_binding(source: str, name: str) -> object | None:
     Only a single top-level ``name = <constant>`` counts, and only when no other
     statically visible binding of ``name`` exists: no other assignment,
     augmented or annotated assignment, ``del``, ``global``/``nonlocal``, import
-    alias, wildcard import (which may supply it), parameter, loop or ``with``
-    target, ``except ... as``, ``match`` capture, walrus, or function or class
-    of that name. Dynamic rebinding (``globals()``, ``exec``, ``setattr`` on the
-    module) is not detected.
+    alias, wildcard import (which may supply it), parameter, type parameter,
+    loop or ``with`` target, ``except ... as``, ``match`` capture, walrus, or
+    function or class of that name. Only these binding forms are checked;
+    dynamic rebinding (``globals()``, ``exec``, ``setattr`` on the module) is
+    not detected.
     """
 
     tree = ast.parse(source)
@@ -130,6 +131,10 @@ def constant_binding(source: str, name: str) -> object | None:
                 and (node.asname or node.name.split(".")[0]) in (name, "*")
             )
             or (isinstance(node, ast.arg) and node.arg == name)
+            or (
+                isinstance(node, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple)
+                and node.name == name
+            )
             or (isinstance(node, ast.ExceptHandler) and node.name == name)
             or (isinstance(node, ast.MatchAs | ast.MatchStar) and node.name == name)
             or (isinstance(node, ast.MatchMapping) and node.rest == name)

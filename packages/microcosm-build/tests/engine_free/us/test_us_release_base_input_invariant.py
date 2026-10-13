@@ -481,3 +481,11 @@ def test_replay_refuses_a_period_it_does_not_replay(prelude: str, body: str) -> 
 
     with pytest.raises(UnmodeledReleaseCallError, match="does not bind PERIOD"):
         release_stage("childcare", calls)
+
+
+@pytest.mark.parametrize("parameter", ["PERIOD", "*PERIOD", "**PERIOD"])
+def test_period_check_sees_type_parameters(parameter: str) -> None:
+    # Inside _main, a type parameter named PERIOD shadows the module's.
+    source = f"PERIOD = {PERIOD}\ndef _main[{parameter}]():\n    return PERIOD\n"
+
+    assert constant_binding(source, "PERIOD") is None
