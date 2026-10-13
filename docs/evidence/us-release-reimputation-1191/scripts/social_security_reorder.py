@@ -62,6 +62,7 @@ def main() -> None:
     receipt: dict[str, object] = {
         "base_h5": Path(base_path).name,
         "base_h5_sha256": sha256(base_path),
+        "diagnostics": diagnostics_path.name,
         "diagnostics_sha256": sha256(diagnostics_path),
         "factors": dict(zip(columns, factors.tolist())),
         "groups": {},

@@ -82,15 +82,23 @@ class StageCall:
 
     ``path`` holds the conditions that must hold for the call to run, one per
     enclosing ``if`` (negated for an ``else`` branch), as source text.
+    ``statement`` is the source of the statement holding the call. ``plain``
+    is true when that statement is an assignment whose value is the call
+    itself and nothing but ``if`` statements encloses it, so ``path`` is its
+    whole execution condition. ``context`` names any other construct around
+    the call (a loop, ``try``, ``with``, a conditional expression, a nested
+    function, ...).
     """
 
     name: str
     lineno: int
     path: tuple[str, ...]
+    statement: str
+    plain: bool
+    context: tuple[str, ...]
     pool_absent_only: bool
     on_base_h5_path: bool | None
-    constant_keywords: tuple[tuple[str, object], ...]
-    other_keywords: tuple[str, ...]
+    node: ast.Call
 
 
 def _call_name(node: ast.Call) -> str | None:
@@ -166,6 +174,30 @@ _POOL_PRESENT = {"pool_frame": False}
 _BASE_H5_PATH = {"pool_frame": True, "args.base_h5": False}
 
 
+# Constructs whose bodies run conditionally, repeatedly or later in ways the
+# ``if``-path model does not describe.
+_OPAQUE = (
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.Try,
+    ast.TryStar,
+    ast.With,
+    ast.AsyncWith,
+    ast.Match,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+    ast.IfExp,
+    ast.BoolOp,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
+
 def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
     """Every stage call in ``_main``, in source order, with its path condition.
 
@@ -184,13 +216,20 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
     )
     calls: list[StageCall] = []
 
-    def visit(node: ast.AST, path: tuple[tuple[ast.expr, bool], ...]) -> None:
+    def visit(
+        node: ast.AST,
+        path: tuple[tuple[ast.expr, bool], ...],
+        statement: ast.stmt | None,
+        context: tuple[str, ...],
+    ) -> None:
+        if isinstance(node, ast.stmt):
+            statement = node
         if isinstance(node, ast.If):
-            visit(node.test, path)
+            visit(node.test, path, statement, context)
             for child in node.body:
-                visit(child, (*path, (node.test, True)))
+                visit(child, (*path, (node.test, True)), None, context)
             for child in node.orelse:
-                visit(child, (*path, (node.test, False)))
+                visit(child, (*path, (node.test, False)), None, context)
             return
         if isinstance(node, ast.Call):
             name = _call_name(node)
@@ -216,24 +255,27 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
                             else f"not ({ast.unparse(test)})"
                             for test, branch in path
                         ),
+                        statement=ast.unparse(statement) if statement else "",
+                        plain=(
+                            not context
+                            and isinstance(statement, ast.Assign)
+                            and statement.value is node
+                        ),
+                        context=context,
                         pool_absent_only=holds(_POOL_PRESENT) is False,
                         on_base_h5_path=holds(_BASE_H5_PATH),
-                        constant_keywords=tuple(
-                            (keyword.arg, keyword.value.value)
-                            for keyword in node.keywords
-                            if isinstance(keyword.value, ast.Constant)
-                        ),
-                        other_keywords=tuple(
-                            keyword.arg
-                            for keyword in node.keywords
-                            if not isinstance(keyword.value, ast.Constant)
-                        ),
+                        node=node,
                     )
                 )
+        inner = (
+            (*context, type(node).__name__)
+            if node is not main and isinstance(node, _OPAQUE)
+            else context
+        )
         for child in ast.iter_child_nodes(node):
-            visit(child, path)
+            visit(child, path, statement, inner)
 
-    visit(main, ())
+    visit(main, (), None, ())
     return tuple(sorted(calls, key=lambda call: call.lineno))
 
 
@@ -271,11 +313,13 @@ def release_stage(
     path today.
 
     Returns the identity when ``_main`` no longer calls the stage or its path
-    condition is false on the ``--base-h5`` path. Constant keyword arguments
-    are passed through; ``seed`` and ``time_period`` take the test's values.
-    Raises ``UnmodeledReleaseCallError`` for anything else: a path this model
-    cannot decide, more than one call, or another non-constant argument.
-    ``calls`` defaults to the release builder's calls.
+    condition is false on the ``--base-h5`` path. Otherwise the call must be a
+    plain ``x = stage(x, seed=args.seed, time_period=PERIOD, ...)`` statement
+    under ``if`` guards only, with every other keyword a constant; constant
+    keywords are passed through and the seed and period take the test's
+    values. Raises ``UnmodeledReleaseCallError`` for anything else, including
+    a guard this model cannot decide or more than one call. ``calls`` defaults
+    to the release builder's calls.
     """
 
     function = STAGES[stage][2]
@@ -290,6 +334,11 @@ def release_stage(
             "call the invariant tests should replay."
         )
     call = matches[0]
+    if not call.plain:
+        raise UnmodeledReleaseCallError(
+            f"_main's call to {function.__name__} is not a plain assignment "
+            f"under if-guards only ({call.statement!r}; context {call.context})."
+        )
     if call.on_base_h5_path is None:
         raise UnmodeledReleaseCallError(
             f"_main's guard for {function.__name__} ({' and '.join(call.path)}) "
@@ -297,18 +346,53 @@ def release_stage(
         )
     if call.on_base_h5_path is False:
         return lambda frame: frame
-    unknown = sorted(set(call.other_keywords) - {"seed", "time_period"})
-    if unknown:
+    keywords = _replay_keywords(call, function.__name__)
+    return lambda frame: function(frame, **keywords)
+
+
+def _replay_keywords(call: StageCall, name: str) -> dict[str, object]:
+    """Keyword arguments for replaying ``call`` on one frame, or refuse.
+
+    The call must read ``x = stage(x, seed=args.seed, time_period=PERIOD, ...)``
+    with every other keyword a constant: one positional argument, the frame it
+    assigns back to, and the build's seed and period.
+    """
+
+    statement = ast.parse(call.statement).body[0]
+    node = call.node
+    target = statement.targets[0] if len(statement.targets) == 1 else None
+    if not (
+        isinstance(target, ast.Name)
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == target.id
+    ):
         raise UnmodeledReleaseCallError(
-            f"_main passes {function.__name__} non-constant keyword(s) "
-            f"{unknown}; the invariant tests do not know how to supply them."
+            f"_main's call to {name} does not pass the frame it assigns back to "
+            f"as its only positional argument ({call.statement!r})."
         )
-    keywords = {
-        key: value
-        for key, value in call.constant_keywords
-        if key not in {"seed", "time_period"}
-    }
-    return lambda frame: function(frame, seed=SEED, time_period=PERIOD, **keywords)
+    keywords: dict[str, object] = {}
+    expected = {"seed": "args.seed", "time_period": "PERIOD"}
+    for keyword in node.keywords:
+        if keyword.arg in expected:
+            if ast.unparse(keyword.value) != expected[keyword.arg]:
+                raise UnmodeledReleaseCallError(
+                    f"_main passes {name} {keyword.arg}="
+                    f"{ast.unparse(keyword.value)}; the tests replay "
+                    f"{expected[keyword.arg]}."
+                )
+        elif keyword.arg is not None and isinstance(keyword.value, ast.Constant):
+            keywords[keyword.arg] = keyword.value.value
+        else:
+            raise UnmodeledReleaseCallError(
+                f"_main passes {name} a non-constant argument "
+                f"({ast.unparse(keyword)}); the tests do not know how to supply it."
+            )
+    if set(expected) - {keyword.arg for keyword in node.keywords}:
+        raise UnmodeledReleaseCallError(
+            f"_main's call to {name} omits seed or time_period."
+        )
+    return {"seed": SEED, "time_period": PERIOD, **keywords}
 
 
 def load_release_tool():

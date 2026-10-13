@@ -285,6 +285,7 @@ def replay(args: argparse.Namespace) -> None:
         previous = np.load(args.compare_outputs)
         assert np.array_equal(previous["person_id"], slim["person_id"].to_numpy())
         receipt["compared_with"] = Path(args.compare_outputs).name
+        receipt["compared_with_sha256"] = sha256(Path(args.compare_outputs))
         receipt["rows_differing_from_compared"] = {
             column: int((replayed_columns[column] != previous[column]).sum())
             for column in OUTPUTS

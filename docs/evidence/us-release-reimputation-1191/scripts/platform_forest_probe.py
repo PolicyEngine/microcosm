@@ -170,6 +170,35 @@ def summarize_divergences(found: list[dict]) -> dict[str, object]:
     return summary
 
 
+def authenticate_forest(event: dict, arrays) -> None:
+    """Refuse a forest whose fingerprints and node arrays do not agree.
+
+    Every per-tree list must have one entry per tree, the node arrays must be
+    present with matching offsets, and each tree's structure digest must be
+    recomputable from its stored ``feature``, ``children_left`` and
+    ``children_right`` arrays.
+    """
+
+    trees = event["trees"]
+    for key in ("node_counts", "structure_sha256", "threshold_sha256", "value_sha256"):
+        if len(event[key]) != trees:
+            raise SystemExit(f"Forest {event['index']}: {key} has the wrong length.")
+    index = event["index"]
+    for name in ("offsets", *NODE_ARRAYS):
+        if f"forest_{index}_{name}" not in arrays:
+            raise SystemExit(f"Forest {index}: node array {name!r} is missing.")
+    offsets = arrays[f"forest_{index}_offsets"]
+    if len(offsets) != trees + 1 or list(np.diff(offsets)) != event["node_counts"]:
+        raise SystemExit(f"Forest {index}: node offsets disagree with node counts.")
+    for tree in range(trees):
+        nodes = tree_arrays(arrays, index, tree)
+        if (
+            digest(nodes["feature"], nodes["children_left"], nodes["children_right"])
+            != event["structure_sha256"][tree]
+        ):
+            raise SystemExit(f"Forest {index}, tree {tree}: arrays and digest differ.")
+
+
 def tree_arrays(arrays, index: int, tree: int) -> dict[str, np.ndarray]:
     offsets = arrays[f"forest_{index}_offsets"]
     lo, hi = int(offsets[tree]), int(offsets[tree + 1])
@@ -355,12 +384,17 @@ def compare(args: argparse.Namespace) -> None:
     if left.get("input_sha256") != right.get("input_sha256"):
         raise SystemExit("The two probes read different inputs.")
     for a, b in zip(left["events"], right["events"]):
-        if a["step"] == "forest" and (
+        if a["step"] != "forest":
+            continue
+        if (
             a["columns"] != b["columns"]
             or a["trees"] != b["trees"]
             or a["index"] != b["index"]
+            or a["seed"] != b["seed"]
         ):
-            raise SystemExit("A forest differs in identity or tree count.")
+            raise SystemExit("A forest differs in identity, seed or tree count.")
+        for event, arrays in ((a, left_arrays), (b, right_arrays)):
+            authenticate_forest(event, arrays)
     report: dict[str, object] = {
         "inputs": {
             name: {"file": path.name, "sha256": file_sha256(path)}

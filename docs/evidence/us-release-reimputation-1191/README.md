@@ -18,19 +18,21 @@ and `test_us_release_base_input_properties.py`.
 
 The builds' environments come from their run records
 (`build_environment.base_0fb05b67.release_417d23ae.json`, each field tied to
-the sha256 of the record it came from). The base: the Modal receipt's runner
-is CPython 3.14.2 on `Linux-4.19.0-gvisor-x86_64-with-glibc2.36` with uv.lock
-`52e3d128…`, and the stage run context records the builder as CPython 3.14.2
-(GCC 12.2.0) with numpy 2.4.6, pandas 3.0.3, scikit-learn 1.8.0 and
-quantile-forest 1.4.2. The release: its build manifest records Python 3.14.7,
-numpy 2.4.6 and pandas 3.0.3 at the same commit, unmodified; the release
-command's interpreter is a venv on `cpython-3.14+freethreaded-macos-aarch64`
-3.14.7 that holds scikit-learn 1.8.0 and quantile-forest 1.4.2 (read on
-2026-10-13); and the run log opens with the free-threaded interpreter's
-warning that it enabled the GIL to load quantile-forest. The release's `pool_frame is None` stage calls are the
-same at `4b57d15a287c` and at main `7639ef8b0`, and the four stage modules,
-`microcosm-fit`, `source_runtime.py` and `us/source_stages.json` have no diff
-between the two.
+the sha256 of the file it came from). The base, at build time: the Modal
+receipt's runner is CPython 3.14.2 on `Linux-4.19.0-gvisor-x86_64-with-glibc2.36`
+with uv.lock `52e3d128…`, and the stage run context records the builder as
+CPython 3.14.2 (GCC 12.2.0) with numpy 2.4.6, pandas 3.0.3, scikit-learn 1.8.0
+and quantile-forest 1.4.2. The release, at build time: its build manifest
+records Python 3.14.7, numpy 2.4.6 and pandas 3.0.3 at the same commit,
+unmodified; its command names the Route A worktree's venv interpreter; and its
+run log opens with the warning a free-threaded interpreter prints when it
+enables the GIL to load quantile-forest. Observed later (2026-10-13), that venv
+is CPython 3.14.7 free-threaded for macOS arm64 with scikit-learn 1.8.0 and
+quantile-forest 1.4.2; the release's manifest does not record those two
+packages. The release's `pool_frame is None` stage calls are the
+same at `4b57d15a287c` and at main `ed199a624` (2026-10-13), and the four
+stage modules, `microcosm-fit`, `source_runtime.py` and `us/source_stages.json`
+have no diff between the two.
 
 ## Result
 
@@ -72,7 +74,9 @@ the release's value repairs rescale the four Social Security component leaves
 and `non_sch_d_capital_gains` by constant factors, calibration changes the
 household weights, and the release-only other-health-insurance stage replaces
 `health_insurance_premiums_without_medicare_part_b` on 225,373 PUF persons
-(its module docstring: it "replaces only the PUF support channel").
+(its module docstring: it "replaces only the PUF support channel"). In the
+base, every PUF-half person stores its ASEC twin's premium, which equals ASEC
+`PHIP_VAL` (`premium_carry_check.base_0fb05b67.json`).
 
 **Why** (`replay.*.json`). The replay imports the release builder from the
 commit that built the release, loads the base with the builder's
@@ -184,7 +188,9 @@ PUF persons draw no deferral in either pass: 77,713 hold a nonzero traditional
 401(k) in the base, and 26,478 of those changed (34%); 3,964 more went from
 zero to positive. The stage zeroes 401(k) draws for PUF persons without wages,
 and a gate classifier draws the zero-or-positive sign. Relative to the base,
-the release flips that sign for 8,006 persons; the platform alone flips none.
+the stored traditional 401(k) amount moves between zero and positive for 8,006
+persons in the release, and for none in the macOS replay of the unchanged
+inputs.
 Each row's quantile uniforms come from a seeded stream whose consumption
 depends only on the number of PUF rows and each target's sign regime, which
 the training rows fix, so both passes give a row the same uniforms. On one
@@ -232,7 +238,9 @@ release's platform.
 | `scripts/base_release_column_diff.py` | Every common column of every entity, base against release, by channel and clone, with direction; ids must be unique, unmatched rows are counted, integers are compared without conversion | `receipts/column_diff.base_0fb05b67.release_417d23ae.json` |
 | `scripts/replay_release_reimputation.py`, `scripts/run_replays.sh` | The four stages replayed under the variants above, each output compared with both files | `receipts/replay.{release_order,isolated,attribution}.json` |
 | `scripts/social_security_reorder.py` | How the release's Social Security factors reorder the summed predictor | `receipts/social_security_reorder.base_0fb05b67.json` |
+| `scripts/build_environment_record.py` | The base's and the release's build environments from their run records, separating build-time records from later observations of the release's venv | `receipts/build_environment.base_0fb05b67.release_417d23ae.json` |
 | `scripts/base_stage_record_check.py` | The five leaves' weighted totals recomputed from the base H5 against the totals the base stage recorded | `receipts/base_stage_record_check.base_0fb05b67.json` |
+| `scripts/premium_carry_check.py` | Whether the base's PUF-half premium is its ASEC twin's value | `receipts/premium_carry_check.base_0fb05b67.json` |
 | `scripts/second_pass_effect.py` | Weighted base and release totals on the same rows, by channel and clone | `receipts/second_pass_effect.base_0fb05b67.release_417d23ae.json` |
 | `scripts/engine_second_pass_effect.py` | policyengine-us run on the release with and without the base's five leaves | `receipts/engine_second_pass_effect.base_0fb05b67.release_417d23ae.json` |
 | `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed), checks it against the full table, replays it on any platform, optionally with a weight factor or a thread limit, and compares two platforms | `receipts/platform_replay*.json`, `receipts/platform_export_check.retirement.macos_arm64.json`, `receipts/platform_outputs.linux_amd64_vs_macos_arm64.json` |
@@ -259,7 +267,8 @@ $RA/.venv/bin/python $S/platform_stage_input.py replay --input input.pkl --out r
 $RA/.venv/bin/python $S/platform_stage_input.py verify-export --builder-root $RA --base-h5 BASE.h5 --outputs macos.npz --out out.json
 ```
 
-Each replay group and the engine run hold 12 to 20 GB; run them one at a time.
+Each replay group and the engine run load the full base frame; run them one at
+a time.
 
 The linux/amd64 replay runs in a work directory `W` holding `input.pkl`, the
 scripts above, `scripts/platform/*`, and `src/` (`git archive 4b57d15a287c`):

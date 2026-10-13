@@ -56,26 +56,72 @@ from test_support.microcosm_build.us_release_base_input import (
     release_stage_calls,
 )
 
-# Stage calls ``_main`` makes only when it has no validated pool frame, in
-# source order, with the constant keyword arguments it passes.
-_EXPECTED_POOL_ABSENT_CALLS = (
-    ("with_us_weeks_unemployed", {}),
-    ("_with_base_population_mass_repair", {}),
-    ("with_us_qbi_input_reconciliation", {}),
-    ("with_us_childcare_inputs", {"allow_existing_without_source": True}),
-    ("with_us_energy_subsidy_input", {"allow_existing_without_source": True}),
-    ("with_us_retirement_contribution_inputs", {}),
-    ("with_us_immigration_inputs", {}),
-    ("with_us_take_up_inputs", {}),
-    ("with_us_hours_worked_inputs", {}),
-    ("with_us_relationship_inputs", {}),
-    ("with_us_spm_independence_role", {}),
-    ("with_us_medicare_take_up_input", {}),
-    ("with_us_retirement_distribution_inputs", {}),
-    ("with_us_eligibility_inputs", {}),
-    ("with_us_education_inputs", {}),
-    ("with_us_pregnancy_inputs", {}),
-    ("with_us_wic_claim_input", {}),
+# Stage-call statements ``_main`` runs only when it has no validated pool
+# frame, in source order, exactly as ``ast.unparse`` prints them. Any change to
+# a call, its arguments or its target has to be classified here.
+_EXPECTED_POOL_ABSENT_STATEMENTS = (
+    (
+        "base_frame = with_us_weeks_unemployed(base_frame, seed=args.seed"
+        ", time_period=PERIOD, asec_2023_source=weeks_unemployed_source)"
+    ),
+    "base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)",
+    "base_frame = with_us_qbi_input_reconciliation(base_frame)",
+    (
+        "base_frame = with_us_childcare_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD, allow_existing_without_source=True)"
+    ),
+    (
+        "base_frame = with_us_energy_subsidy_input(base_frame, seed=args.seed"
+        ", time_period=PERIOD, allow_existing_without_source=True)"
+    ),
+    (
+        "base_frame = with_us_retirement_contribution_inputs(base_frame"
+        ", seed=args.seed, time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_immigration_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_take_up_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_hours_worked_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_relationship_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_spm_independence_role(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_medicare_take_up_input(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_retirement_distribution_inputs(base_frame"
+        ", seed=args.seed, time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_eligibility_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_education_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_pregnancy_inputs(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
+    (
+        "base_frame = with_us_wic_claim_input(base_frame, seed=args.seed"
+        ", time_period=PERIOD)"
+    ),
 )
 # The three of those the base builder does not call.
 _NOT_BASE_STAGES = frozenset(
@@ -119,11 +165,26 @@ def test_social_security_repair_changes_the_order_of_the_shared_predictor(
             before[column].to_numpy(dtype=np.float64) * factor,
             rtol=1e-12,
         )
-    # A tree splits on a predictor's order. One common factor would keep the
-    # order of the summed predictor; these unequal factors change it here.
-    columns = list(ROUTE_A_SS_FACTORS)
-    summed_before = before[columns].sum(axis=1).to_numpy()
-    summed_after = after[columns].sum(axis=1).to_numpy()
+    # A tree splits on a predictor's order. Mathematically one common factor
+    # would keep the order of the summed predictor; these unequal factors
+    # change it here. The sum is built as the stages build it.
+    columns = [
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
+    ]
+
+    def summed(table) -> np.ndarray:
+        return np.sum(
+            np.column_stack(
+                [table[column].to_numpy(dtype=np.float64) for column in columns]
+            ),
+            axis=1,
+        )
+
+    summed_before = summed(before)
+    summed_after = summed(after)
     positive = summed_before > 0
     assert not np.array_equal(
         np.argsort(summed_before[positive], kind="stable"),
@@ -171,21 +232,23 @@ def test_release_calls_to_base_stages_are_pinned() -> None:
     base_calls = base_builder_call_names()
     pool_absent = [call for call in calls if call.pool_absent_only]
 
-    assert [(call.name, dict(call.constant_keywords)) for call in pool_absent] == [
-        (name, keywords) for name, keywords in _EXPECTED_POOL_ABSENT_CALLS
-    ]
-    # Each runs under exactly ``pool_frame is None``, so on the --base-h5 path;
-    # a changed guard has to be classified here.
+    assert tuple(call.statement for call in pool_absent) == (
+        _EXPECTED_POOL_ABSENT_STATEMENTS
+    )
+    # Each is a plain statement under exactly ``pool_frame is None``, so it
+    # runs on the --base-h5 path; a changed guard has to be classified here.
+    assert all(call.plain for call in pool_absent)
     assert {call.path for call in pool_absent} == {("pool_frame is None",)}
     assert {call.on_base_h5_path for call in pool_absent} == {True}
     assert {
         call.name for call in pool_absent if call.name not in base_calls
     } == _NOT_BASE_STAGES
-    # No base stage is re-run outside the pool-absent branches.
+    # No base stage is called outside the pool-absent branches or inside a
+    # construct the path model does not describe.
     assert [
-        call.name
+        call.statement
         for call in calls
-        if not call.pool_absent_only and call.name in base_calls
+        if call.name in base_calls and not (call.pool_absent_only and call.plain)
     ] == []
     # The three stages replayed above are called once each.
     for _, _, function in STAGES.values():
@@ -250,12 +313,11 @@ def test_stage_call_reader_evaluates_guards() -> None:
     assert calls["with_us_lambda"].path == (
         "pool_frame is None and args.base_h5 is None",
     )
-    assert dict(calls["with_us_alpha"].constant_keywords) == {
-        "flag": True,
-        "time_period": 2024,
-    }
-    assert calls["with_us_alpha"].other_keywords == ("seed",)
-    assert dict(calls["with_us_delta"].constant_keywords) == {"mode": "consume"}
+    assert calls["with_us_alpha"].plain
+    assert calls["with_us_delta"].plain
+    assert calls["with_us_alpha"].statement == (
+        "frame = with_us_alpha(frame, seed=args.seed, flag=True, time_period=2024)"
+    )
 
 
 def _calls_for(body: str):
@@ -284,3 +346,52 @@ def test_replay_follows_the_release_guard() -> None:
     extra_argument = _calls_for("    if pool_frame is None:\n" + call + ", mode=m)\n")
     with pytest.raises(UnmodeledReleaseCallError, match="non-constant"):
         release_stage("childcare", extra_argument)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        # A conditional expression hides a guard from the if-path model.
+        (
+            "    if pool_frame is None:\n"
+            "        frame = {name}(frame, seed=args.seed, time_period=PERIOD)"
+            " if args.base_h5 is None else frame\n",
+            "not a plain assignment",
+        ),
+        # A loop, try or with block runs its body conditionally or repeatedly.
+        (
+            "    for _ in range(1):\n"
+            "        frame = {name}(frame, seed=args.seed, time_period=PERIOD)\n",
+            "not a plain assignment",
+        ),
+        (
+            "    try:\n"
+            "        frame = {name}(frame, seed=args.seed, time_period=PERIOD)\n"
+            "    except ValueError:\n"
+            "        pass\n",
+            "not a plain assignment",
+        ),
+        # A changed input or seed.
+        (
+            "    if pool_frame is None:\n"
+            "        frame = {name}(strip(frame), seed=args.seed, time_period=PERIOD)\n",
+            "only positional argument",
+        ),
+        (
+            "    if pool_frame is None:\n"
+            "        frame = {name}(frame, seed=args.seed + 1, time_period=PERIOD)\n",
+            "seed=args.seed \\+ 1",
+        ),
+        (
+            "    if pool_frame is None:\n"
+            "        frame = {name}(frame, seed=args.seed, time_period=PERIOD, **extra)\n",
+            "non-constant",
+        ),
+    ],
+)
+def test_replay_refuses_calls_it_cannot_model(body: str, message: str) -> None:
+    name = STAGES["childcare"][2].__name__
+    calls = _calls_for(body.format(name=name))
+
+    with pytest.raises(UnmodeledReleaseCallError, match=message):
+        release_stage("childcare", calls)

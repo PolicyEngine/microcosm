@@ -8,10 +8,12 @@ from and to the artifact it describes:
 - base: the Modal receipt's runner (Python, platform, uv.lock hash), the stage
   run context's builder identity (Python, dependency versions, thread
   environment) and the final-export stage's output sha256;
-- release: the build manifest's runtime, code and dataset sha256, the
-  interpreter named in the release command, that interpreter's venv
-  (``pyvenv.cfg`` and installed versions of the numerical packages, read now),
-  and the first line of the release run log.
+- release, at build time: the build manifest's runtime, code and dataset
+  sha256, the interpreter named in the release command, and the first line of
+  the release run log;
+- release, observed when this record is made: that interpreter's venv
+  (``pyvenv.cfg`` and the installed numerical packages' ``METADATA``, each
+  hashed). The venv can change after a build, so these are later observations.
 
 Usage:
     python build_environment_record.py RUN_DIR RELEASE_ID OUT_JSON
@@ -68,18 +70,35 @@ def main() -> None:
     config = json.loads(config_path.read_text())
     interpreter = Path(config["argv"][0])
     venv = interpreter.parent.parent
+    pyvenv_path = venv / "pyvenv.cfg"
     pyvenv = dict(
         line.split(" = ", 1)
-        for line in (venv / "pyvenv.cfg").read_text().splitlines()
+        for line in pyvenv_path.read_text().splitlines()
         if " = " in line
     )
-    site = next(venv.glob("lib/python*/site-packages"))
+    sites = sorted(venv.glob("lib/python*/site-packages"))
+    if len(sites) != 1:
+        raise SystemExit(
+            f"Expected one site-packages under {venv.name}, found {len(sites)}."
+        )
     installed = {}
     for package in PACKAGES:
-        found = sorted(site.glob(f"{package}-*.dist-info"))
-        installed[package] = (
-            found[0].name.removesuffix(".dist-info").split("-")[1] if found else None
+        found = sorted(sites[0].glob(f"{package}-*.dist-info"))
+        if len(found) != 1:
+            raise SystemExit(
+                f"Expected one {package} installation, found {len(found)}."
+            )
+        metadata_path = found[0] / "METADATA"
+        fields = dict(
+            line.split(": ", 1)
+            for line in metadata_path.read_text().splitlines()
+            if line.startswith(("Name: ", "Version: "))
         )
+        installed[package] = {
+            "name": fields["Name"],
+            "version": fields["Version"],
+            "metadata_sha256": sha256(metadata_path),
+        }
     with log_path.open() as handle:
         first_log_line = handle.readline().strip()
     release = {
@@ -89,16 +108,27 @@ def main() -> None:
             source(log_path, run_dir),
         ],
         "output_sha256": manifest["dataset"]["sha256"],
-        "manifest_runtime": manifest["runtime"],
-        "manifest_code": manifest["code"],
-        "command_interpreter": f"{venv.parent.name}/{venv.name}/bin/{interpreter.name}",
-        "venv_pyvenv_cfg": {
-            "home": Path(pyvenv["home"]).parent.name,
-            "version_info": pyvenv.get("version_info"),
-            "implementation": pyvenv.get("implementation"),
+        "build_time": {
+            "manifest_runtime": manifest["runtime"],
+            "manifest_code": manifest["code"],
+            "command_interpreter": (
+                f"{venv.parent.name}/{venv.name}/bin/{interpreter.name}"
+            ),
+            "run_log_first_line": first_log_line,
         },
-        "venv_installed_versions_read_now": installed,
-        "run_log_first_line": first_log_line,
+        "observed_later": {
+            "note": (
+                "Read from the venv the release command names, when this "
+                "record was made; the venv may have changed since the build."
+            ),
+            "pyvenv_cfg": {
+                "sha256": sha256(pyvenv_path),
+                "home": Path(pyvenv["home"]).parent.name,
+                "version_info": pyvenv.get("version_info"),
+                "implementation": pyvenv.get("implementation"),
+            },
+            "installed_packages": installed,
+        },
     }
     out = {
         "read_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

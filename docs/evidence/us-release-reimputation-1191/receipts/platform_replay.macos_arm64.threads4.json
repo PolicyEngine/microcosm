@@ -122,6 +122,7 @@
   }
  },
  "compared_with": "outputs.macos_arm64.npz",
+ "compared_with_sha256": "ec2c4533087060dbfafd6cca524ab489a67b07782bc70a574685de8cbfc76f6b",
  "input": "retirement_stage_input.pkl",
  "input_attrs": {
   "base_h5": "base_populace_us_2024_puf_support.h5",
@@ -142,8 +143,8 @@
   "quantile_forest": "1.4.2",
   "sklearn": "1.8.0",
   "thread_environment": {
-   "OMP_NUM_THREADS": null,
-   "OPENBLAS_NUM_THREADS": null,
+   "OMP_NUM_THREADS": "4",
+   "OPENBLAS_NUM_THREADS": "4",
    "POPULACE_FIT_N_JOBS": "4",
    "POPULACE_FIT_PREDICT_WORKERS": "4",
    "PYTHONHASHSEED": "0"
@@ -156,7 +157,7 @@
   "traditional_401k_contributions_desired": 0,
   "traditional_ira_contributions_desired": 0
  },
- "seconds": 8.3,
+ "seconds": 5.0,
  "seed": 0,
  "threads": 4,
  "weight_factor": 1.0
