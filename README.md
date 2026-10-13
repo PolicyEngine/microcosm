@@ -46,6 +46,11 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
+UK build completion automatically exports Orrery execution graphs, attempts
+immutable publication before Hugging Face artifact staging, and preserves
+durable retry jobs and receipt snapshots. See
+[graph publication](docs/orrery-publication.md) for configuration and retry.
+
 Supported US and UK build commands always start the local telemetry emitter
 service. It reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events

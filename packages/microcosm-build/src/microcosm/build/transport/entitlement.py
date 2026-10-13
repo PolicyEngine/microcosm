@@ -252,6 +252,45 @@ def _same_declaration(mine, theirs):
     return mine == theirs
 
 
+_CELL_CONTRACT_KEYS = (
+    "minimum_cell_ess",
+    "maximum_contribution_cv",
+    "maximum_single_donor_dollar_share",
+    "target_minimum_cell_ess",
+    "target_maximum_single_donor_dollar_share",
+    "required_cells",
+    "required_scenarios",
+    "aggregation_column",
+    "required_weight_kind",
+    "required_weight_entity",
+)
+
+
+def _require_cell_contract_shape(gate, parameters):
+    """Refuse a malformed support contract with a named error.
+
+    Every key the contract is read for must be present, and the cell and
+    scenario lists must hold non-empty strings, before thresholds are read or
+    lists are compared as sets.
+    """
+    missing = [key for key in _CELL_CONTRACT_KEYS if key not in parameters]
+    if missing:
+        raise ValueError(
+            f"The cell-support contract {gate.get('id')!r} omits {missing}."
+        )
+    for key in ("required_cells", "required_scenarios"):
+        values = parameters[key]
+        if (
+            not isinstance(values, list | tuple)
+            or not values
+            or not all(isinstance(value, str) and value for value in values)
+        ):
+            raise ValueError(
+                f"The cell-support contract {gate.get('id')!r} declares {key}="
+                f"{values!r}; it must be a non-empty list of non-empty strings."
+            )
+
+
 def _cell_contract(spec):
     resources = spec.get("resources", {})
     if not any(name in resources for name in ("gates", "gates.json")):
@@ -268,7 +307,8 @@ def _cell_contract(spec):
             "An entitlement graph needs exactly one cell-support contract."
         )
     gate = matches[0]
-    parameters = _mapping(gate["parameters"], "cell-support parameters")
+    parameters = _mapping(gate.get("parameters"), "cell-support parameters")
+    _require_cell_contract_shape(gate, parameters)
     thresholds = {
         name: parameters[name]
         for name in (

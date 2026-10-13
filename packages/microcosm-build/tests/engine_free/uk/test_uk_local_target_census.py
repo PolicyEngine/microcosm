@@ -202,10 +202,14 @@ def test_council_tax_source_and_fence_pin_measured_coverage() -> None:
     wales = sources["welshgov_council_tax_dwellings_la"]
     assert wales["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
     assert "a1 minus h7 minus h8 on the 2025-26 row" in wales["notes"]
-    assert "all 198 cells bind, band I included" in wales["notes"]
+    assert "all 198 cells compile, band I included" in wales["notes"]
     scotland = sources["scotgov_ctaxbase_chargeable_dwellings_la"]
     assert scotland["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
-    assert "255 cells bind and Shetland band H is signed deferred" in scotland["notes"]
+    assert (
+        "255 cells compile and bind unless a signed small-cell rule"
+        in (scotland["notes"])
+    )
+    assert "Shetland band H is signed deferred" in scotland["notes"]
     families = {row["family"]: row for row in census["families"]}
     assert families["council_tax"]["sources"] == [
         "mhclg_council_taxbase_la",

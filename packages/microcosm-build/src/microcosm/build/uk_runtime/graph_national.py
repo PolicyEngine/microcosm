@@ -455,6 +455,8 @@ class _NationalKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        from .target_compile_modules import uk_target_compile_modules
+
         implementation = source_hash(
             type(self),
             sys.modules[__name__],
@@ -463,6 +465,7 @@ class _NationalKernel(KernelBase):
             ledger_targets,
             national_calibration,
             national_doctrine,
+            *uk_target_compile_modules(),
         )
         return hashlib.sha256(
             canonical_json(
