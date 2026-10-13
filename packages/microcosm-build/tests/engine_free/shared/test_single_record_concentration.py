@@ -293,12 +293,13 @@ class TestExamples:
     def test_the_1251_line_32_draw(self) -> None:
         """One weight-644.7 tax unit draws $218.9M: $141B, 21.7% of the column.
 
-        The other 14,597 carriers are spread so the top 100 hold about 0.39,
-        near the rebuild's 0.399 and well under the gate's 0.75: the gate
-        passes, and the single-record share is what shows the draw.
+        The other 14,597 carriers are spread so the top 100 hold about 0.45,
+        as in the rebuild at initial weights (0.449) and well under the gate's
+        0.75: the gate passes, and the single-record share is what shows the
+        draw.
         """
         rng = np.random.default_rng(1251)
-        body_values = rng.lognormal(mean=10.0, sigma=1.6, size=14_597)
+        body_values = rng.lognormal(mean=10.0, sigma=1.8, size=14_597)
         body_weights = rng.uniform(100.0, 900.0, size=14_597)
         draw_mass = 218.9e6 * 644.7
         # Scale the body so the draw is 21.7% of the column's mass.
@@ -318,7 +319,7 @@ class TestExamples:
         assert result["top_1_share"] == pytest.approx(0.217, abs=1e-9)
         assert result["top_1_weight"] == 644.7
         assert result["top_k_share"] == gate.details["top_share"]["partnership_income"]
-        assert 0.35 < result["top_k_share"] < 0.45
+        assert 0.40 < result["top_k_share"] < 0.50
         assert result["top_1_share"] < result["top_k_share"] < 0.75
 
     def test_a_signed_column_is_measured_on_absolute_mass(self) -> None:

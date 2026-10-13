@@ -3360,8 +3360,9 @@ def single_record_concentration(
     asks whether the ``top_k`` records together carry too much of a column, so
     one record can carry a fifth of it and pass. In the microcosm#1251 rebuild
     one tax unit of weight 644.7 drew a $218.9M Schedule E line-32 value and
-    carried 21.7% of ``partnership_income`` at initial weights, while the
-    column's top-100 share was 0.399 against the 0.75 threshold.
+    carried 21.7% of the column's weighted absolute mass at initial weights,
+    while the top 100 tax units carried 44.9%, under the 0.75 threshold. At
+    the certified Route A final weights the two shares were 4.4% and 39.9%.
 
     Reporting only: this returns measurements, with no verdict and no
     threshold. After microcosm#1259's draw bound, the worst single-draw share
