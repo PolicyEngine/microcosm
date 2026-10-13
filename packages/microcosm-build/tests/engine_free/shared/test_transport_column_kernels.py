@@ -8,6 +8,7 @@ every receipt, rule, rate and target here is a toy modelling choice.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from unittest import mock
 
@@ -91,6 +92,7 @@ from test_support.microcosm_build.transport_population import (
     write_population_sources,
 )
 from test_support.microcosm_frame.concept_frames import concept_frames
+from test_support.paths import paths_for
 
 PROPERTY = settings(max_examples=35, deadline=None, database=None)
 GRAPH_PROPERTY = settings(
@@ -425,8 +427,9 @@ def _assert_column(result, frame, entity, column, expected):
 
 
 @PROPERTY
+@pytest.mark.parametrize("cited_spec", [False, True])
 @given(tables=concept_frames(max_households=3, max_members=4))
-def test_unit_attributes_equal_g4_and_keep_ids_and_order(tables):
+def test_unit_attributes_equal_g4_and_keep_ids_and_order(tables, cited_spec):
     frame = _generated_frame(tables)
     family = frame.table("family")
     person = frame.person
@@ -445,8 +448,20 @@ def test_unit_attributes_equal_g4_and_keep_ids_and_order(tables):
         for column in expected
         if column != "family_id"
     ) + (Owned("household", "n_family_units", "int64"),)
+    params = _rule_params()
+    if cited_spec:
+        path = (
+            paths_for("microcosm-build").package
+            / "src/microcosm/build/nz/benefit_unit_rule.json"
+        )
+        document = json.loads(path.read_text(encoding="utf-8"))
+        params = {
+            **params,
+            "unit_rule": canonical_text(document),
+            "unit_rule_sha256": digest(document),
+        }
     result = TRANSPORT_UNIT_ATTRIBUTES.run(
-        _context(TRANSPORT_UNIT_ATTRIBUTES, frame, _rule_params(), outputs)
+        _context(TRANSPORT_UNIT_ATTRIBUTES, frame, params, outputs)
     )
     for output in outputs[:-1]:
         _assert_column(result, frame, "family", output.column, expected[output.column])

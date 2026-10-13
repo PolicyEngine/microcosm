@@ -1611,11 +1611,11 @@ class TestDeclaredResources:
         assert bridge["source"]["url"].startswith("https://www.irs.gov/")
         assert bridge["source"]["column"] == str(bridge["rate_year"])
 
-    def test_benefit_unit_rule_refuses_to_guess_the_dependent_child_age(self) -> None:
+    def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")
         assert rule["entity"] == "family" and rule["engine_entity"] == "Family"
-        assert rule["dependent_child"]["age_limit_years"] is None
-        assert rule["dependent_child"]["candidate_basis"].startswith("UNVERIFIED")
+        assert rule["dependent_child"]["age_limit_years"] == 18
+        assert "UNVERIFIED" not in json.dumps(rule)
         assert set(rule["membership_columns"]) == {
             "family_id",
             "family_household_id",

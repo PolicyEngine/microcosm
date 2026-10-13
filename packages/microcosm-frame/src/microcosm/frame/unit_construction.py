@@ -18,18 +18,18 @@ country's RuleSpec where the RuleSpec encodes them and otherwise from the
 country's spec data, with their citations. Given the rule:
 
 1. A person is a *candidate child* when their age is at most the rule's
-   ``max_age``, they have no co-resident partner, no co-resident person names
-   them as a parent, and, when the rule declares a financial-independence
-   test, they do not meet it. A partnered person and a parent are never
-   dependent children, which keeps partners together and parents with their
-   own children.
+   ``max_age``, they have no co-resident partner, and they do not meet the
+   declared parent-independence or financial-independence test. The parent
+   test can declare a minimum age: younger parents remain candidates and
+   their children follow them into their caregiver's unit.
 2. A candidate child with a co-resident parent is a *dependent child* of
    that parent's unit. A candidate child with none who is not the household's
    reference person is placed by the rule's ``unparented_child`` policy: in
    the unit that contains the household's reference person (the caregiver
    the pointers can name), in a unit of their own, or refused. A reference
-   person is never their own caregiver, so a candidate child who is the
-   reference person and has no co-resident parent heads their own unit.
+   person is never their own caregiver. Earlier declarations let a candidate
+   reference person without a parent head a unit; a strict reference rule
+   keeps them dependent and refuses placement with any dependent reference.
 3. Every person who is not a dependent child heads a unit with their
    co-resident partner, if any. These are the units' adults: every unit has
    one or two.
@@ -66,6 +66,7 @@ conversion rather than wrapped to a negative id.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Mapping
@@ -96,6 +97,7 @@ __all__ = [
     "SplitParentsPolicy",
     "UnparentedChildPlacement",
     "benefit_unit_attributes",
+    "benefit_unit_diagnostics",
     "benefit_unit_membership",
     "benefit_unit_roles",
     "build_benefit_units",
@@ -120,8 +122,11 @@ _ID_COLUMNS = {
 class UnparentedChildPlacement(StrEnum):
     """Where a candidate child with no co-resident parent goes.
 
-    A candidate child who is the household's reference person heads their
-    own unit whatever the placement: they cannot be their own caregiver.
+    A reference person is never their own caregiver. Under earlier rules a
+    candidate child who is the household's reference person heads their own
+    unit whatever the placement; a strict reference rule
+    (``refuse_dependent_reference_person``) keeps them dependent and refuses
+    a parentless child whose reference person is a dependent child.
     """
 
     #: Into the unit that contains the household's reference person.
@@ -179,10 +184,14 @@ class DependentChildRule:
         max_age: The oldest age, in completed years, a dependent child can be.
         financial_independence: The test that takes a candidate out of
             dependency, or ``None`` when the rule declares none.
+        parent_independence_min_age: Parents at or above this age anchor
+            units; younger parents can remain dependent. ``None`` makes
+            every parent independent, preserving earlier declarations.
     """
 
     max_age: int
     financial_independence: FinancialIndependenceTest | None
+    parent_independence_min_age: int | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.max_age, bool) or not isinstance(self.max_age, int):
@@ -196,6 +205,13 @@ class DependentChildRule:
             raise ValueError(
                 "A financial-independence age above max_age can never apply."
             )
+        minimum = self.parent_independence_min_age
+        if minimum is not None and (
+            isinstance(minimum, bool)
+            or not isinstance(minimum, int)
+            or not 0 <= minimum <= self.max_age
+        ):
+            raise ValueError("A parent-independence age must lie on [0, max_age].")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -212,6 +228,8 @@ class BenefitUnitRule:
             goes.
         split_parents: What happens to a child whose co-resident parents are
             in different units.
+        refuse_dependent_reference_person: Refuse parentless child placement
+            with a reference person who is dependent, including themselves.
         provenance: Where each value comes from (statute, RuleSpec rule or
             spec data, with citations). Carried verbatim for review; it does
             not change any unit.
@@ -222,6 +240,7 @@ class BenefitUnitRule:
     unparented_child: UnparentedChildPlacement
     split_parents: SplitParentsPolicy
     provenance: Mapping[str, str]
+    refuse_dependent_reference_person: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.entity, str) or not _ENTITY_NAME.match(self.entity):
@@ -242,6 +261,8 @@ class BenefitUnitRule:
         ):
             raise ValueError("A unit rule's provenance maps text to non-empty text.")
         object.__setattr__(self, "provenance", dict(self.provenance))
+        if not isinstance(self.refuse_dependent_reference_person, bool):
+            raise ValueError("Dependent-reference refusal must be a boolean.")
 
     def __hash__(self) -> int:
         return hash(
@@ -250,6 +271,7 @@ class BenefitUnitRule:
                 self.dependent_child,
                 self.unparented_child,
                 self.split_parents,
+                self.refuse_dependent_reference_person,
                 tuple(sorted(self.provenance.items())),
             )
         )
@@ -287,6 +309,7 @@ class BenefitUnitRule:
             "entity": self.entity,
             "dependent_child": {
                 "max_age": self.dependent_child.max_age,
+                "parent_independence_min_age": self.dependent_child.parent_independence_min_age,
                 "financial_independence": None
                 if test is None
                 else {
@@ -296,6 +319,7 @@ class BenefitUnitRule:
             },
             "unparented_child": self.unparented_child.value,
             "split_parents": self.split_parents.value,
+            "refuse_dependent_reference_person": self.refuse_dependent_reference_person,
             "provenance": dict(self.provenance),
         }
 
@@ -319,6 +343,7 @@ class BenefitUnitRule:
                     "split_parents",
                     "provenance",
                 ),
+                optional=("refuse_dependent_reference_person",),
             )
             if fields.pop("format") != BENEFIT_UNIT_RULE_FORMAT:
                 raise ValueError(
@@ -329,6 +354,7 @@ class BenefitUnitRule:
                 fields["dependent_child"],
                 "dependent child rule",
                 required=("max_age", "financial_independence"),
+                optional=("parent_independence_min_age",),
             )
             raw_test = child["financial_independence"]
             test = None
@@ -340,7 +366,9 @@ class BenefitUnitRule:
                 )
                 test = FinancialIndependenceTest(**test_fields)
             fields["dependent_child"] = DependentChildRule(
-                max_age=child["max_age"], financial_independence=test
+                max_age=child["max_age"],
+                financial_independence=test,
+                parent_independence_min_age=child.get("parent_independence_min_age"),
             )
             for name in ("entity", "unparented_child", "split_parents"):
                 if not isinstance(fields[name], str):
@@ -350,6 +378,58 @@ class BenefitUnitRule:
                     "A benefit unit rule's 'provenance' must be an object."
                 )
             return cls(**fields)
+
+    @classmethod
+    def from_spec(cls, data: Mapping[str, object]) -> BenefitUnitRule:
+        """Read a serialized rule or a country spec's cited unit declaration.
+
+        The country declaration uses an exclusive age limit and retains its
+        citations and disclosures alongside the executable policy fields.
+        """
+        with _parsing("benefit unit spec"):
+            if not isinstance(data, Mapping):
+                raise ValueError("A benefit unit spec must be an object.")
+            if "format" in data:
+                return cls.from_dict(data)
+            child = data["dependent_child"]
+            limit = child["age_limit_years"]
+            if isinstance(limit, bool) or not isinstance(limit, int):
+                raise ValueError("A dependent-child age limit must be an integer.")
+            if child["age_limit_inclusive"] is not False:
+                raise ValueError("A country spec must declare an exclusive age limit.")
+            if child["partnered_person_is_dependent_child"] is not False:
+                raise ValueError("Unit construction requires partners to be adults.")
+            raw_test = child.get("financial_independence")
+            test = None
+            if raw_test is not None:
+                if raw_test["hours_concept"] != "fact:person.usual_weekly_hours":
+                    raise ValueError(
+                        "Unsupported financial-independence hours concept."
+                    )
+                test = FinancialIndependenceTest(
+                    min_age=raw_test["min_age"],
+                    min_usual_weekly_hours=raw_test["min_usual_weekly_hours"],
+                )
+            placement = data["child_without_coresident_parent"]
+            central = placement["central"]
+            if central == "household_reference_person_unit":
+                central = UnparentedChildPlacement.REFERENCE_PERSON_UNIT
+            return cls(
+                entity=data["entity"],
+                dependent_child=DependentChildRule(
+                    max_age=limit - 1,
+                    financial_independence=test,
+                    parent_independence_min_age=child["parent_independence_min_age"],
+                ),
+                unparented_child=central,
+                split_parents=data["split_parents"],
+                refuse_dependent_reference_person=placement[
+                    "refuse_dependent_reference_person"
+                ],
+                provenance={
+                    "spec": json.dumps(dict(data), sort_keys=True, ensure_ascii=False)
+                },
+            )
 
 
 def build_benefit_units(
@@ -529,6 +609,46 @@ def benefit_unit_attributes(
     )
 
 
+def benefit_unit_diagnostics(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    family: pd.DataFrame,
+    membership: pd.Series,
+    rule: BenefitUnitRule,
+) -> dict[str, int]:
+    """Unweighted counts of the unit rule's observed placement branches.
+
+    Employment counts persons excluded by the hours limb who otherwise
+    qualify as candidate children. Parent counts partition parents under the
+    child age limit at the declared parent-independence age. Co-parent counts
+    distinct households; reference placements count dependent children.
+    """
+    rows = _Pointers.read(person, household, rule)
+    dependent = (
+        benefit_unit_roles(person, family, membership, rule).to_numpy()
+        == UnitRole.DEPENDENT_CHILD.value
+    )
+    minimum = rule.dependent_child.parent_independence_min_age
+    young_parent = _parents(rows) & (rows.age <= rule.dependent_child.max_age)
+    independent_parent = young_parent & ~dependent
+    if minimum is not None:
+        independent_parent &= rows.age >= minimum
+    both = dependent & (rows.parent_1 >= 0) & (rows.parent_2 >= 0)
+    first, second = rows.parent_1[both], rows.parent_2[both]
+    nonpartners = rows.partner[first] != second
+    return {
+        "hours_independent_children": int(
+            (_candidate_children(rows, rule) & _hours_independent(rows, rule)).sum()
+        ),
+        "independent_teen_parents": int(independent_parent.sum()),
+        "dependent_teen_parents": int((young_parent & dependent).sum()),
+        "non_partnered_coparent_households": int(
+            len(np.unique(rows.household_ids[both][nonpartners]))
+        ),
+        "children_with_reference_person": int((dependent & (rows.parent_1 < 0)).sum()),
+    }
+
+
 def units_per_household(
     household: pd.DataFrame, family: pd.DataFrame, rule: BenefitUnitRule
 ) -> pd.Series:
@@ -647,27 +767,47 @@ class _Pointers:
         )
 
 
+def _parents(rows: _Pointers) -> np.ndarray:
+    """Persons named as a parent by a co-resident person."""
+    named = np.concatenate(
+        [rows.parent_1[rows.parent_1 >= 0], rows.parent_2[rows.parent_2 >= 0]]
+    )
+    return np.bincount(named, minlength=len(rows.ids)) > 0
+
+
+def _candidate_children(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
+    """Age, partnership and parenthood limbs before the employment test."""
+    child_rule = rule.dependent_child
+    minimum = child_rule.parent_independence_min_age
+    independent_parent = _parents(rows)
+    if minimum is not None:
+        independent_parent &= rows.age >= minimum
+    return (rows.age <= child_rule.max_age) & (rows.partner < 0) & ~independent_parent
+
+
+def _hours_independent(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
+    test = rule.dependent_child.financial_independence
+    if test is None:
+        return np.zeros(len(rows.ids), dtype=bool)
+    assert rows.hours is not None
+    return (rows.age >= test.min_age) & (rows.hours >= test.min_usual_weekly_hours)
+
+
 def _dependents(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
     """Which persons are dependent children under ``rule``."""
 
     n = len(rows.ids)
-    named = np.concatenate(
-        [rows.parent_1[rows.parent_1 >= 0], rows.parent_2[rows.parent_2 >= 0]]
-    )
-    is_parent = np.bincount(named, minlength=n) > 0
-    child_rule = rule.dependent_child
-    candidate = (rows.age <= child_rule.max_age) & (rows.partner < 0) & ~is_parent
-    test = child_rule.financial_independence
-    if test is not None:
-        assert rows.hours is not None
-        candidate &= ~(
-            (rows.age >= test.min_age) & (rows.hours >= test.min_usual_weekly_hours)
-        )
+    candidate = _candidate_children(rows, rule)
+    candidate &= ~_hours_independent(rows, rule)
     has_parent = rows.parent_1 >= 0
     is_reference = rows.reference == np.arange(n)
-    # A candidate with no co-resident parent who is the reference person
-    # heads their own unit; every other unparented candidate needs placing.
-    unparented = candidate & ~has_parent & ~is_reference
+    # Earlier rules let a parentless reference candidate anchor a unit.
+    # A strict reference rule keeps them dependent and refuses self-placement.
+    unparented = (
+        candidate
+        & ~has_parent
+        & (~is_reference | rule.refuse_dependent_reference_person)
+    )
     placement = rule.unparented_child
     if placement is UnparentedChildPlacement.REFUSE and unparented.any():
         raise ValueError(
@@ -704,8 +844,27 @@ def _heads(rows: _Pointers, dependent: np.ndarray, rule: BenefitUnitRule) -> np.
     )
     head[adult] = np.where(mine_first, own, other)[adult]
 
-    # A parent is never a candidate child, so every parent's head is known.
+    # A younger parent can be dependent: resolve caregiver chains until they
+    # reach an adult's unit, so that parent's child joins the same unit.
     with_parent = dependent & (rows.parent_1 >= 0)
+    unparented = dependent & ~with_parent
+    if (
+        rule.refuse_dependent_reference_person
+        and dependent[rows.reference[unparented]].any()
+    ):
+        raise ValueError(
+            "The unit rule refuses a parentless child whose reference person "
+            "is a dependent child."
+        )
+    caregiver = np.where(with_parent, rows.parent_1, rows.reference)
+    pending = dependent.copy()
+    while pending.any():
+        resolved = pending & (head[caregiver] >= 0)
+        if not resolved.any():
+            raise ValueError("Dependent caregiver pointers do not reach an adult.")
+        head[resolved] = head[caregiver[resolved]]
+        pending[resolved] = False
+
     first = head[rows.parent_1[with_parent]]
     second_rows = rows.parent_2[with_parent]
     second = np.where(second_rows >= 0, head[np.maximum(second_rows, 0)], first)
@@ -715,13 +874,6 @@ def _heads(rows: _Pointers, dependent: np.ndarray, rule: BenefitUnitRule) -> np.
             f"{int(split.sum())} dependent child(ren) have co-resident parents "
             "in different units; the unit rule refuses the ambiguity."
         )
-    head[with_parent] = first
-
-    # Unparented dependent children join the unit of the household's
-    # reference person, who is an adult or a dependent child with a parent,
-    # so their head is already known.
-    unparented = dependent & (rows.parent_1 < 0)
-    head[unparented] = head[rows.reference[unparented]]
     if (head < 0).any():  # pragma: no cover - construction guarantees it
         raise AssertionError("A person was left without a benefit unit.")
     return head
