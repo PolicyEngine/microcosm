@@ -95,13 +95,19 @@
     }
   },
   "settled_date": "2026-10-12",
-  "settlement_basis": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md, item B8, version 2",
+  "settlement_basis": "docs/nz-benefit-unit-rule.md (the NZ hub's G8 method note B8, settled 2026-10-12)",
   "statutory_source": {
     "title": "Social Security Act 2018",
     "schedule": 2,
     "as_at": "2026-04-01",
     "read_date": "2026-10-12",
-    "pco_xml": "/Users/maxghenis/TheAxiomFoundation/axiom-corpus/data/corpus/sources/nz/statute/2026-06-16-rulespec-nz-pco/act/public/2018/0032/wholeof.xml",
+    "pco_xml": {
+      "corpus_repo": "TheAxiomFoundation/axiom-corpus",
+      "corpus_release": "nz-rulespec-2026-07-25",
+      "corpus_release_content_sha256": "fec362b985739f27910f0e950fc03e298528a42cdff6f694b19c9ed0850c8405",
+      "path": "data/corpus/sources/nz/statute/2026-06-16-rulespec-nz-pco/act/public/2018/0032/wholeof.xml",
+      "sha256": "ce02ac722a75a0cee6a8f55a29a80aed46b122e106b162e0940110480d4b16c0"
+    },
     "definitions": {
       "child": "LMS6902",
       "dependent_child": "LMS7234",
@@ -114,7 +120,8 @@
   "teen_parent": {
     "at_or_above_parent_independence_min_age": "A person below age_limit_years with a co-resident child of their own forms their own unit with that child once at or above parent_independence_min_age.",
     "below_parent_independence_min_age": "A younger parent remains dependent under the other declared tests in their own parent's unit; their child joins that same unit. If the younger parent has no co-resident parent, the declared reference-person placement applies.",
-    "basis": "Settled by the NZ hub on 2026-10-12, G8 method addendum B8. Young Parent Payment is a main benefit; Schedule 2 financially independent (DLM6784504, limb d) excludes its recipient from child. Unit construction infers the older teen-parent exclusion from the co-resident parent pointer before the receipt layer runs; receipt is not observed or assigned by this rule."
+    "basis": "Settled by the NZ hub on 2026-10-12, G8 method addendum B8. Young Parent Payment is a main benefit; Schedule 2 financially independent (DLM6784504, limb d) excludes its recipient from child. Unit construction infers the older teen-parent exclusion from the co-resident parent pointer before the receipt layer runs; receipt is not observed or assigned by this rule.",
+    "placement_of_the_child": "These branches decide whether the teen parent is a dependent child. When the child's two co-resident parents end up in separate units, the child follows the declared parent-1 placement (split_parents)."
   },
   "split_parents": "first_parent_unit",
   "non_partnered_coparents": {
