@@ -305,7 +305,9 @@ sibling's band verdict compares the two files' levels, its median re-aged by
 the same constant. Re-aging like the bridged row stands in for the sibling's
 own aging only when both age on one series, as every registered bridge does
 (counts unaged, amounts on the CBO AGI series); a pair on different series
-refuses. Reading the share as compiled would lift nothing: on the pinned
+refuses. The series comes from target aging's own rule, not the aging
+receipt, which is a no-op (`source_equals_build`) for a share landed at the
+build year. Reading the share as compiled would lift nothing: on the pinned
 feed the bridged charitable and interest-paid amounts would fall 9.07%, QBI
 amounts 5.63% and the bridged counts 2.65%. A property test checks that
 national-share district rows move no `state_cd` value, drop, verdict or

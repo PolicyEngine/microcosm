@@ -257,15 +257,20 @@ interest) and #1040 (capital gains) use for other district families:
   value this pass removes, so it is dropped. That is the district rule of
   #1229 and #1040. The HT2 pass keeps HT2 rows as levels in the same case.
   Neither case occurs on the pinned feed.
-- **One denominator.** Two different district US values for one key refuse
-  the compile; equal twins name the smaller record id, so feed order never
-  picks the denominator.
-- **Reviewed columns only.** A district fact of a registered measure whose
-  control is eligible must read the register's `source_column`. Otherwise
-  the compile refuses (`UnreviewedSoiNationalControlColumnError`), as it
-  does for a missing column. The check runs before the crosswalk, which
-  merges source districts into one fact with a single contributor's layout.
-  The district package's SALT and PTC measures read the wrong columns
+- **One denominator.** Each package divides by its own US row: the key
+  carries the record set, so another district file at the same stamp (a
+  different data year or boundary vintage) never supplies it. Two different
+  US values for one key refuse the compile; equal twins name the smaller
+  record id, so feed order never picks the denominator.
+- **Reviewed columns only.** Every source fact of a rebased row, and its US
+  row, must read the register's `source_column`. Otherwise the compile
+  refuses (`UnreviewedSoiNationalControlColumnError`), as it does for a
+  missing column. The columns are read as the feed carries them, before the
+  crosswalk merges source districts into one fact with a single
+  contributor's layout, and each merged district is traced back to its
+  contributors. Rows that keep their levels, and facts that compile to no
+  target (a stale AGI slice, a superseded vintage), are not checked. The
+  district package's SALT and PTC measures read the wrong columns
   (microcosm#1038), so a re-pin could do the same here.
 - **The stamp cancels.** Row and US row carry the same stamp, so stamping the
   file truthfully at 2022 gives the same values
