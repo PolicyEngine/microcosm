@@ -12688,7 +12688,7 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         release_dir,
         failures=[],
         details=STORED_INPUT_GATE_DETAILS,
-        telemetry=builder._TerminalBatchTelemetry(None, []),
+        telemetry=builder._TerminalBatchProgress(None, []),
     )
     reference = {
         "path": "/runtime/forensics/populace_us_2024.h5",

@@ -7293,7 +7293,7 @@ def _record_stored_inputs_gate_evidence(
     *,
     failures: Sequence[str],
     details: Mapping[str, object],
-    telemetry: _TerminalBatchTelemetry,
+    telemetry: _TerminalBatchProgress,
 ) -> dict[str, object]:
     """Write the stored-input gate's verdict as release evidence (microcosm#1034).
 

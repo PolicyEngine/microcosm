@@ -28,7 +28,6 @@ from microcosm.data.contract import (
     required_release_files,
     stored_input_evidence_manifest_block,
 )
-from microcosm.data.stored_inputs import register_sha256
 from microcosm.data.release import (
     LATEST_EVIDENCE_POINTER_PATH,
     LATEST_POINTER_PATH,
@@ -42,6 +41,7 @@ from microcosm.data.release import (
     line_pointer_payload,
     publish_release,
 )
+from microcosm.data.stored_inputs import register_sha256
 
 
 @pytest.fixture(autouse=True)
@@ -797,106 +797,6 @@ def annual_release(release_dir, artifact_root):
     return add_annual_extension(release_dir, artifact_root)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Evidence-tier publishing (microcosm#506)
 # ---------------------------------------------------------------------------
@@ -960,32 +860,6 @@ def evidence_release_dir(release_dir: Path) -> Path:
     return directory
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     manifest_path = release_dir / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -999,22 +873,6 @@ def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     manifest_path.write_text(json.dumps(manifest))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _uk_hub(tmp_path: Path) -> FakeHub:
     hub = FakeHub("policyengine/populace-uk-private")
     hub._download_dir = tmp_path / "uk-hub-cache"
@@ -1023,5 +881,6 @@ def _uk_hub(tmp_path: Path) -> FakeHub:
     )
     hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
     return hub
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]
