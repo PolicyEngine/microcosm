@@ -1994,28 +1994,25 @@ def floor_negative_donor_consumption(
     """Raise negative diary consumption on the donor to ``floor`` (microcosm#1063 c9).
 
     An LCFS diary spend nets refunds against purchases, so a handful of donor
-    rows carry a negative annual total (250 release rows inherited a minimum
-    of -14,165 in ``housing_water_and_electricity_consumption`` on the
-    2026-09-30 build, because the support clip takes its floor from the
-    donor's realised range). The release surface declares these columns
-    non-negative, so the donor is floored before the imputation, the clip
-    ranges and the rake see it. The receipt records, per consumption column,
-    the rows raised and the (negative) mass they carried; columns without a
-    negative row are listed with zeros so the receipt names the whole surface.
+    rows carry a negative annual total, and hundreds of release rows inherited
+    negative ``housing_water_and_electricity_consumption`` on the 2026-09-30
+    build, because the support clip takes its floor from the donor's realised
+    range. The release surface declares these columns non-negative, so the
+    donor is floored before the imputation, the clip ranges and the rake see
+    it. The receipt counts, per consumption column, the rows raised; columns
+    without a negative row are listed with zeros so the receipt names the
+    whole surface. It records no donor value and no statistic of the raised
+    rows, which are few: a stage receipt is UKDS output (CD171 §5.2.1).
     """
 
     floored = donor.copy()
-    columns: dict[str, dict[str, float | int]] = {}
+    columns: dict[str, dict[str, int]] = {}
     for column in CONSUMPTION_VARIABLE_RENAMES.values():
         if column not in floored.columns:
             raise ValueError(f"LCFS donor is missing consumption column {column!r}.")
         values = _numeric(floored[column]).to_numpy(dtype=float)
         negative = np.isfinite(values) & (values < floor)
-        columns[column] = {
-            "rows_raised": int(negative.sum()),
-            "negative_mass": float(values[negative].sum()),
-            "minimum_before": float(np.nanmin(values)) if values.size else 0.0,
-        }
+        columns[column] = {"rows_raised": int(negative.sum())}
         if negative.any():
             floored[column] = np.where(negative, floor, values)
     receipt = {

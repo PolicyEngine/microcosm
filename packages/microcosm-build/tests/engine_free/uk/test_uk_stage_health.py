@@ -722,8 +722,6 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
                 "columns": {
                     "housing_water_and_electricity_consumption": {
                         "rows_raised": 250,
-                        "negative_mass": -1.0e6,
-                        "minimum_before": -14_165.0,
                     }
                 },
                 **floor_changes,
@@ -766,7 +764,7 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
     below = evidence()
     below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
         "donor_min"
-    ] = -14_165.0
+    ] = -50.0
     assert any("below the donor floor" in f for f in gate(below).failures)
     # Without a declared floor (the WAS clip gate) the receipt is not required.
     undeclared = {**parameters}

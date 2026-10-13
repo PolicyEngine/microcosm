@@ -154,7 +154,7 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
 
     columns = list(CONSUMPTION_VARIABLE_RENAMES.values())
     donor = pd.DataFrame({column: [10.0, 20.0, 30.0] for column in columns})
-    donor.loc[1, "housing_water_and_electricity_consumption"] = -14_165.0
+    donor.loc[1, "housing_water_and_electricity_consumption"] = -50.0
     donor.loc[2, "housing_water_and_electricity_consumption"] = -1.0
 
     floored, receipt = floor_negative_donor_consumption(donor)
@@ -171,15 +171,10 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
     assert receipt["rows_raised"] == 2
     assert receipt["remaining_negative_rows"] == 0
     housing = receipt["columns"]["housing_water_and_electricity_consumption"]
-    assert housing == {
-        "rows_raised": 2,
-        "negative_mass": -14_166.0,
-        "minimum_before": -14_165.0,
-    }
+    # Counts only: no donor value or statistic of the raised rows.
+    assert housing == {"rows_raised": 2}
     assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
-        "rows_raised": 0,
-        "negative_mass": 0.0,
-        "minimum_before": 10.0,
+        "rows_raised": 0
     }
     with pytest.raises(ValueError, match="missing consumption column"):
         floor_negative_donor_consumption(donor.drop(columns=[columns[0]]))
