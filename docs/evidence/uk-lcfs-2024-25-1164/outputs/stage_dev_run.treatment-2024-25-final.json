@@ -1,10 +1,10 @@
 {
  "after_stage": {
-  "consumption_total": 1045376621128.6969,
-  "electricity_share_of_energy": 0.6062225023997618,
+  "consumption_total": 1045552376165.9531,
+  "electricity_share_of_energy": 0.6061932121473513,
   "flagged_share": 0.7387585373705857,
   "fuel_buying_share": 0.7387585373705857,
-  "gas_connected_share": 0.8372394014923216,
+  "gas_connected_share": 0.8374818681121833,
   "housing_below_energy_share": 0.0,
   "prepayment_share": 0.11468756199642659,
   "totals": {
@@ -13,14 +13,14 @@
    "clothing_and_footwear_consumption": 30100826336.907154,
    "communication_consumption": 25461381431.18329,
    "diesel_spending": 10730728355.958878,
-   "domestic_energy_consumption": 48757326889.07313,
+   "domestic_energy_consumption": 48755793678.17947,
    "education_consumption": 20315780031.679955,
-   "electricity_consumption": 29557788717.017105,
+   "electricity_consumption": 29555431180.569138,
    "food_and_non_alcoholic_beverages_consumption": 113778415570.16794,
-   "gas_consumption": 19199538172.056007,
+   "gas_consumption": 19200362497.61038,
    "health_consumption": 23471635339.33322,
    "household_furnishings_consumption": 80207924946.20306,
-   "housing_water_and_electricity_consumption": 179331593756.42783,
+   "housing_water_and_electricity_consumption": 179507348793.68274,
    "miscellaneous_consumption": 97390621546.49597,
    "petrol_spending": 26125503337.339878,
    "recreation_consumption": 182977084020.09222,
@@ -303,63 +303,63 @@
    "capped_share_of_total": 0.0,
    "ceiling_kwh": 50000.0,
    "feasible": true,
-   "frame_kwh_after": 91741500000.00002,
+   "frame_kwh_after": 91741500000.00034,
    "households_above_after": 0,
    "households_at_ceiling": 0,
    "households_capped": 0,
    "rounds": 0
   },
   "gas_kwh": {
-   "capped_share_of_total": 0.004574304429084067,
+   "capped_share_of_total": 0.025956143292612047,
    "ceiling_kwh": 73200.0,
    "feasible": true,
-   "frame_kwh_after": 252344850000.00006,
+   "frame_kwh_after": 252344850000.00104,
    "households_above_after": 0,
-   "households_at_ceiling": 200,
-   "households_capped": 200,
+   "households_at_ceiling": 800,
+   "households_capped": 800,
    "rounds": 2
   }
  },
  "energy_rake_fit": {
   "accommodation": {
    "max_abs_relative_deviation": {
-    "electricity_kwh": 0.005791983557774993,
-    "gas_kwh": 0.01312983760838382
+    "electricity_kwh": 0.0057900922036915325,
+    "gas_kwh": 0.014019190892228584
    }
   },
   "income": {
    "max_abs_relative_deviation": {
-    "electricity_kwh": 0.023969922723226733,
-    "gas_kwh": 0.02706082825020817
+    "electricity_kwh": 0.023967846130077852,
+    "gas_kwh": 0.026258238075317575
    }
   },
   "region": {
    "max_abs_relative_deviation": {
-    "electricity_kwh": 1.1102230246251565e-15,
-    "gas_kwh": 6.21605056343455e-05
+    "electricity_kwh": 6.661338147750939e-16,
+    "gas_kwh": 0.0010897779273535413
    }
   },
   "tenure": {
    "max_abs_relative_deviation": {
-    "electricity_kwh": 0.005081308110434057,
-    "gas_kwh": 0.008200688177957494
+    "electricity_kwh": 0.0050807087321267375,
+    "gas_kwh": 0.007138306482669776
    }
   }
  },
  "energy_rake_level_factor": {
-  "electricity_kwh": 0.9467149907741556,
-  "gas_kwh": 0.9222118885234617
+  "electricity_kwh": 0.9471763113862893,
+  "gas_kwh": 0.920935583304599
  },
  "energy_rake_sweep_residuals": {
   "electricity_kwh": [
-   0.023970395596292327,
-   0.023970157100172695,
-   0.023969922723226733
+   0.02396823178516949,
+   0.023968037379838658,
+   0.023967846130078074
   ],
   "gas_kwh": [
-   0.02661615883645696,
-   0.0266160842221691,
-   0.026616011023476993
+   0.025654775148925335,
+   0.02565465837192038,
+   0.025654543900641258
   ]
  },
  "fit_weight_records": [
@@ -387,77 +387,77 @@
   "uk_lcfs_2024_25_consumption:gas_payer",
   "uk_lcfs_2024_25_consumption:gas_payer_amount"
  ],
- "gas_connected_share": 0.8372394014923227,
+ "gas_connected_share": 0.8374818681121837,
  "gas_connection_by_region": {
   "EAST_MIDLANDS": {
-   "share_after": 0.8891157736554303,
-   "share_before": 0.7975878177050624,
+   "share_after": 0.8891157881192162,
+   "share_before": 0.8010139618788401,
    "shortfall": 0.0,
    "target_share": 0.8891158084900874
   },
   "EAST_OF_ENGLAND": {
-   "share_after": 0.8018874180703067,
-   "share_before": 0.794564619558256,
+   "share_after": 0.8018874224538028,
+   "share_before": 0.7845281378892857,
    "shortfall": 0.0,
    "target_share": 0.8018874193241844
   },
   "LONDON": {
-   "share_after": 0.8041541114715443,
-   "share_before": 0.7516092564135212,
+   "share_after": 0.8041541116720367,
+   "share_before": 0.7487681485158412,
    "shortfall": 0.0,
    "target_share": 0.8041541132854663
   },
   "NORTHERN_IRELAND": {
-   "share_after": 0.6613186919507825,
-   "share_before": 0.6613186919507825,
+   "share_after": 0.67055856320633,
+   "share_before": 0.67055856320633,
    "shortfall": null,
    "target_share": null
   },
   "NORTH_EAST": {
-   "share_after": 0.9303930174138028,
-   "share_before": 0.8229490548765911,
+   "share_after": 0.930393052858988,
+   "share_before": 0.8118370399819987,
    "shortfall": 0.0,
    "target_share": 0.9303930784003535
   },
   "NORTH_WEST": {
-   "share_after": 0.9040460439538275,
-   "share_before": 0.8185268146696464,
+   "share_after": 0.904046060791721,
+   "share_before": 0.8115652160753365,
    "shortfall": 0.0,
    "target_share": 0.9040460612685285
   },
   "SCOTLAND": {
-   "share_after": 0.7769809639805955,
-   "share_before": 0.7947113949903073,
+   "share_after": 0.7769809577739705,
+   "share_before": 0.7944365386140556,
    "shortfall": 0.0,
    "target_share": 0.7769809559625813
   },
   "SOUTH_EAST": {
-   "share_after": 0.8493612009836956,
-   "share_before": 0.7960287282662797,
+   "share_after": 0.8493612030750669,
+   "share_before": 0.7939835021248363,
    "shortfall": 0.0,
    "target_share": 0.8493612022533906
   },
   "SOUTH_WEST": {
-   "share_after": 0.7589181812821756,
-   "share_before": 0.7808034255667464,
+   "share_after": 0.7589181770973074,
+   "share_before": 0.7944732097726324,
    "shortfall": 0.0,
    "target_share": 0.7589181811055906
   },
   "WALES": {
-   "share_after": 0.8146243785272607,
-   "share_before": 0.8066240617236314,
+   "share_after": 0.8146243543549404,
+   "share_before": 0.8076859882673174,
    "shortfall": 0.0,
    "target_share": 0.814624355033046
   },
   "WEST_MIDLANDS": {
-   "share_after": 0.8754171493738895,
-   "share_before": 0.8392720086110269,
+   "share_after": 0.8754171107440727,
+   "share_before": 0.8180104273991462,
    "shortfall": 0.0,
    "target_share": 0.8754171166707564
   },
   "YORKSHIRE": {
-   "share_after": 0.9015565822002164,
-   "share_before": 0.8195418414475049,
+   "share_after": 0.9015565806235525,
+   "share_before": 0.8298952701534408,
    "shortfall": 0.0,
    "target_share": 0.9015565907315992
   }
@@ -579,9 +579,9 @@
      "survey_scope": 76041000000.0
     },
     "housing_water_and_electricity_consumption": {
-     "capture": 1.0947937398136054,
+     "capture": 1.0958666991873383,
      "coicop": "04",
-     "frame": 179331593756.42783,
+     "frame": 179507348793.68274,
      "out_of_scope": {
       "04.2": 291755000000.0
      },
@@ -633,21 +633,31 @@
    "period_value": 2024,
    "resource": "ons_household_expenditure_facts.json",
    "total": {
-    "capture_domestic": 0.7832642794044964,
-    "capture_national": 0.7750373819911333,
-    "frame": 1045376621128.6965,
+    "capture_domestic": 0.783395966530289,
+    "capture_national": 0.7751676859611979,
+    "frame": 1045552376165.9514,
     "out_of_scope": 350579000000.0,
     "published_domestic": 1685220000000.0,
     "published_national": 1699387000000.0
    }
   },
   "donor_energy_split": {
-   "electricity": 30368646026.05737,
-   "electricity_share_of_electricity_and_gas": 0.592056773196131,
+   "account_identity_shares": {
+    "electricity": 0.98,
+    "gas": 0.98
+   },
+   "clipping_over_fuel_light_and_power": 0.0018852453462878166,
+   "electricity": 30131830726.809464,
+   "electricity_share_of_electricity_and_gas": 0.5922395246299414,
    "fuel_light_and_power": 53722059448.49831,
-   "gas": 20924823453.42637,
+   "gas": 20745946715.750145,
    "other_fuels": 3168125727.5366106,
-   "parts_over_fuel_light_and_power": 1.0137659606894076
+   "parts_over_fuel_light_and_power": 1.006028133041109,
+   "share_of_donors_whose_unclipped_parts_differ_from_p537": {
+    "by_over_50p_a_week": 0.009898514649730246,
+    "by_over_a_penny_a_week": 0.08030733712916076
+   },
+   "unclipped_over_fuel_light_and_power": 1.0041428876948213
   },
   "donor_floor": {
    "columns": {
@@ -799,21 +809,21 @@
      ],
      "maximum_total": "donor_support",
      "rows_below_components": 0,
-     "rows_floored": 3800,
+     "rows_floored": 3400,
      "rows_held_at_maximum": "<10",
      "uprating_residue": {
       "parent_factor": 0.9915715495235123,
       "part_factors": {
        "domestic_energy_consumption": 1.0
       },
-      "weighted_residue_gbp": -460661453.4419016
+      "weighted_residue_gbp": -458192039.0435179
      },
-     "weighted_components": 48757326889.07313,
-     "weighted_drawn_subtracts": 54655533033.85731,
+     "weighted_components": 48755793678.17947,
+     "weighted_drawn_subtracts": 54362547460.14213,
      "weighted_drawn_total": 183238333271.172,
-     "weighted_floored_mass": 1994691263.462904,
-     "weighted_remainder": 130577491500.7777,
-     "weighted_total": 179331593756.42783
+     "weighted_floored_mass": 1875828646.5334868,
+     "weighted_remainder": 130751614457.56345,
+     "weighted_total": 179507348793.68274
     },
     "transport_consumption": {
      "components": [
@@ -939,7 +949,7 @@
    "seed": 0
   }
  },
- "seconds": 100.9,
+ "seconds": 234.6,
  "spine": "uk_frs_spine_2024_25.h5",
  "support_clip": {
   "columns": {
