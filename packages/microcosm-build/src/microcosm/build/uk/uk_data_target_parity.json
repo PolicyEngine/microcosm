@@ -328,6 +328,21 @@
     },
     {
       "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.hmrc.higher_rate_taxpayers.count",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+        "policyengine_uk_data.targets.sources.local_income"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.higher_rate_taxpayers.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.hmrc.self_employment_income.amount",
       "covers": [
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",

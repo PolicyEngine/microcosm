@@ -62,9 +62,10 @@ def check_env(
     else:
         try:
             raw = base64.b64decode(key.strip(), validate=True)
-            if len(raw) < 32:
+            if len(raw) != 32:
                 failures.append(
-                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; need ≥ 32."
+                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
+                    "battery signs only with exactly 32."
                 )
         except Exception:
             failures.append(f"{SIGNING_KEY_ENV} is not valid base64.")
@@ -224,6 +225,31 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     for name in ("spine", "ladder"):
         if manifest.get("identity", {}).get(name, {}).get("pin_verified") is not True:
             failures.append(f"identity.{name}.pin_verified is not true.")
+    # The release line assigns geography with the identity-keyed atomic law
+    # on the registered supports (microcosm#932): the manifest's binding must
+    # say so, and its support pins must be the sources.yaml rows, not merely
+    # the digests the operator pinned.
+    assignment = (manifest.get("geography") or {}).get("assignment") or {}
+    if assignment.get("assignment") != "atomic":
+        failures.append(
+            f"geography.assignment.assignment is {assignment.get('assignment')!r}, "
+            "not 'atomic'."
+        )
+    else:
+        from microcosm.build.uk_runtime import country_adapter
+
+        register = country_adapter.uk_atomic_support_register()
+        support_pins = assignment.get("support_pins") or {}
+        for system, expected in register.items():
+            pin = support_pins.get(system) or {}
+            if (
+                pin.get("sha256") != expected["sha256"]
+                or pin.get("size_bytes") != expected["size_bytes"]
+            ):
+                failures.append(
+                    f"geography.assignment.support_pins.{system} is not the "
+                    "registered support (sources.yaml)."
+                )
     dataset = manifest.get("outputs", {}).get("dataset", {})
     h5_path = Path(str(dataset.get("path", "")))
     if not h5_path.is_absolute():

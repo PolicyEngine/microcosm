@@ -1,0 +1,31 @@
+{
+ "cells": {
+  "old": 39158,
+  "new": 40178,
+  "shared": 39158,
+  "value_changes": [],
+  "value_change_count": 0,
+  "only_old_by_family": {},
+  "only_new_by_record_set_prefix": {
+   "irs_soi.ty2023.historic_table_2.state_agi": 1020
+  },
+  "field_changes": {},
+  "field_change_examples": {}
+ },
+ "targets": {
+  "old_count": 33148,
+  "new_count": 33250,
+  "old_state_bands": 306,
+  "new_state_bands": 408,
+  "core_removed": [],
+  "core_removed_count": 0,
+  "core_added": [],
+  "core_added_count": 0,
+  "core_value_change_count": 0,
+  "core_value_changes": [],
+  "core_metadata_changes": {},
+  "core_metadata_change_examples": {},
+  "old_version": "b809fb2d69db",
+  "new_version": "fc776a2b6eb7"
+ }
+}

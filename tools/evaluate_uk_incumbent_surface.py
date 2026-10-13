@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import collections
 import hashlib
-import importlib.util
 import json
 import sys
 import tempfile
@@ -29,6 +28,7 @@ import pandas as pd
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.full_measure import resolve_uk_full_measures
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     GSS_REGION_CODES,
     classify_local_rows,
@@ -54,17 +54,6 @@ from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.data.contract import uk_incumbent_surface_assessment
-
-
-def _driver():
-    spec = importlib.util.spec_from_file_location(
-        "build_uk_rowwise_candidate",
-        Path(__file__).resolve().with_name("build_uk_rowwise_candidate.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
 
 
 def _parse_args(argv):
@@ -101,9 +90,33 @@ def _check_candidate_chronicle_identity(
             )
 
 
+def _area_code_columns(household: pd.DataFrame) -> dict[str, str]:
+    """The area-code column per ladder name, on either naming.
+
+    Artifacts written since microcosm#1114 carry the consumers' names
+    (``constituency_code_oa``, ``la_code_oa``, ``region_code_oa``); earlier
+    graph exports carry the ladder names. Refuses a table with neither.
+    """
+
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
+    resolved = {}
+    for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        if export in household.columns:
+            resolved[ladder] = export
+        elif ladder in household.columns:
+            resolved[ladder] = ladder
+        else:
+            raise RuntimeError(
+                f"candidate household table carries neither {export!r} nor {ladder!r}."
+            )
+    return resolved
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
-    driver = _driver()
     artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -206,7 +219,7 @@ def main(argv=None) -> int:
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)
     with tempfile.TemporaryDirectory(prefix="uk-incumbent-eval-") as scratch:
         prepared_frame, _restore, national_rows, local_metrics, resolution = (
-            driver._resolve_candidate_engine_surface(
+            resolve_uk_full_measures(
                 frame,
                 resolver_registry,
                 period=period,
@@ -263,10 +276,12 @@ def main(argv=None) -> int:
     household = frame.table("household")
     person = frame.table("person")
     hh_index = pd.Index(household["household_id"].to_numpy())
-    assigned_region = household["region_code"].astype(str).map(GSS_REGION_CODES)
+    area_code_columns = _area_code_columns(household)
+    region_column = area_code_columns["region_code"]
+    assigned_region = household[region_column].astype(str).map(GSS_REGION_CODES)
     if assigned_region.isna().any():
         unknown = sorted(
-            household["region_code"].astype(str)[assigned_region.isna()].unique()
+            household[region_column].astype(str)[assigned_region.isna()].unique()
         )
         raise RuntimeError(f"unknown region codes on the household table: {unknown}")
     region_agree = (
@@ -299,8 +314,9 @@ def main(argv=None) -> int:
     rollup_receipt = {
         "rows": int(rollup_mask.sum()),
         "region_source": (
-            "household.region_code (assigned area) mapped through GSS_REGION_CODES"
+            f"household.{region_column} (assigned area) mapped through GSS_REGION_CODES"
         ),
+        "area_code_columns": dict(area_code_columns),
         "frs_region_agreement_share": float(region_agree.mean()),
         "frs_region_agreement_weighted": float(
             weights[region_agree].sum() / weights.sum()
@@ -312,7 +328,10 @@ def main(argv=None) -> int:
 
     print("evaluating the local surface ...", file=sys.stderr, flush=True)
     household = frame.table("household")
-    area_cols = {"constituency": "constituency_code", "la": "local_authority_code"}
+    area_cols = {
+        "constituency": area_code_columns["constituency_code"],
+        "la": area_code_columns["local_authority_code"],
+    }
     local_est: dict[tuple[str, str, str], float] = {}
     for grain, metrics in local_metrics.items():
         codes = household[area_cols[grain]].astype(str).to_numpy()

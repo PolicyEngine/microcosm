@@ -37,8 +37,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: The acceptance files, as a git pathspec. Flat by repo convention.
-SUITE_GLOB = "packages/microcosm-graph/tests/test_acceptance_*.py"
+#: The acceptance files across their directory-defined execution environments.
+SUITE_ROOT = Path("packages/microcosm-graph/tests")
+SUITE_PATTERN = "test_acceptance_*.py"
 
 #: The charter these markers are scored against.
 CHARTER = "docs/graph-acceptance.md"
@@ -498,16 +499,20 @@ def charter_ids(text: str) -> tuple[str, ...]:
 def suite_files() -> tuple[str, ...]:
     """Tracked acceptance files, plus any not yet added to the index."""
     result = subprocess.run(
-        ["git", "ls-files", "--", SUITE_GLOB],
+        ["git", "ls-files", "--", str(SUITE_ROOT)],
         cwd=ROOT,
         check=True,
         text=True,
         stdout=subprocess.PIPE,
     )
-    tracked = {line for line in result.stdout.splitlines() if line}
+    tracked = {
+        line
+        for line in result.stdout.splitlines()
+        if line and fnmatch.fnmatch(Path(line).name, SUITE_PATTERN)
+    }
     on_disk = {
         str(path.relative_to(ROOT))
-        for path in sorted((ROOT / SUITE_GLOB).parent.glob(Path(SUITE_GLOB).name))
+        for path in sorted((ROOT / SUITE_ROOT).rglob(SUITE_PATTERN))
     }
     return tuple(sorted(tracked | on_disk))
 
@@ -533,7 +538,7 @@ def baseline_suite_files(ref: str) -> tuple[str, ...]:
             "--name-only",
             ref,
             "--",
-            str(Path(SUITE_GLOB).parent),
+            str(SUITE_ROOT),
         ],
         cwd=ROOT,
         text=True,
@@ -542,12 +547,11 @@ def baseline_suite_files(ref: str) -> tuple[str, ...]:
     )
     if result.returncode != 0:
         return ()
-    pattern = Path(SUITE_GLOB).name
     return tuple(
         sorted(
             line
             for line in result.stdout.splitlines()
-            if line and fnmatch.fnmatch(Path(line).name, pattern)
+            if line and fnmatch.fnmatch(Path(line).name, SUITE_PATTERN)
         )
     )
 
