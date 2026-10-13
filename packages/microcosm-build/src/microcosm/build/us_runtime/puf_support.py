@@ -2169,6 +2169,7 @@ def finalize_us_puf_tax_detail_predictions(
                 puf_role_only=preserve_nulls,
             )
 
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     person_puf_mask = puf_tax_detail_clone_mask(
         tables["person"],
         entity="person",
@@ -2265,6 +2266,36 @@ def finalize_us_puf_tax_detail_predictions(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _require_signed_subset_outputs_after_their_basis(
+    person_outputs: Sequence[str],
+) -> None:
+    """Refuse a placement order that would split a subset by a stale basis.
+
+    A signed-subset output is placed by its basis columns as the person table
+    holds them when its turn comes, so each basis column it is imputed with
+    must be placed first. Without one in the same pass, the placement would
+    read whatever the frame carried before the imputation.
+    """
+
+    position = {column: index for index, column in enumerate(person_outputs)}
+    for column in person_outputs:
+        if column not in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS:
+            continue
+        basis = _PERSON_OUTPUT_DISTRIBUTION_BASIS[column]
+        imputed_basis = [name for name in basis if name in position]
+        if not imputed_basis:
+            raise ValueError(
+                f"PUF output {column!r} is a subset of {list(basis)!r}; impute "
+                "at least one of them in the same pass."
+            )
+        late = [name for name in imputed_basis if position[name] > position[column]]
+        if late:
+            raise ValueError(
+                f"PUF output {column!r} is placed by {late!r}, which must come "
+                "before it in the person outputs."
+            )
 
 
 def _zero_passive_partnership_s_corp_without_line_32(
@@ -3957,14 +3988,18 @@ def _write_person_tax_unit_totals(
     has none, it follows ``fallback_basis_columns`` (clipped at zero), and
     otherwise the unit's first person takes the total. With
     ``fallback_basis_is_signed_superset`` the output is a subset of the basis
-    columns' signed sum: the fallback weight is the magnitude of each person's
-    own signed sum, and a unit whose people all have a zero sum gets nothing,
-    because a subset of a zero total is zero.
+    columns' signed sum: it ignores the column's current values, the weight is
+    the magnitude of each person's own signed sum, and a unit whose people all
+    have a zero sum gets nothing, because a subset of a zero total is zero.
     """
 
     row_ids = person.loc[mask, "person_tax_unit_id"]
     current = pd.to_numeric(person.loc[mask, column], errors="coerce").fillna(0.0)
     basis = current.clip(lower=0.0) if nonnegative else current
+    if fallback_basis_is_signed_superset:
+        # A subset always follows its superset, never values the column
+        # already held.
+        basis = pd.Series(0.0, index=current.index)
     basis_sum = basis.groupby(row_ids, sort=False).transform("sum")
     target = row_ids.map(totals).fillna(0.0).to_numpy(dtype=np.float64)
     first = row_ids.groupby(row_ids, sort=False).cumcount() == 0

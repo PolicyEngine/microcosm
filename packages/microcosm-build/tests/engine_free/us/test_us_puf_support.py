@@ -1685,6 +1685,106 @@ def test_passive_placement_follows_signed_line_32_magnitudes() -> None:
     np.testing.assert_allclose(placed.iloc[4:6], [0.0, 0.0])
 
 
+def test_passive_placement_ignores_values_the_column_already_holds() -> None:
+    """A stale passive column never steers the split away from line 32."""
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [1, 1],
+            "partnership_income": [0.0, -100.0],
+            "s_corp_income": [0.0, 0.0],
+            "passive_partnership_s_corp_income": [500.0, -200.0],
+        }
+    )
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="passive_partnership_s_corp_income",
+        totals=pd.Series({1: 30.0}),
+        nonnegative=False,
+        fallback_basis_columns=("partnership_income", "s_corp_income"),
+        fallback_basis_is_signed_superset=True,
+    )
+
+    np.testing.assert_allclose(person["passive_partnership_s_corp_income"], [0.0, 30.0])
+
+
+@pytest.mark.parametrize(
+    ("person_outputs", "message"),
+    [
+        (
+            (
+                "partnership_income",
+                "passive_partnership_s_corp_income",
+                "s_corp_income",
+            ),
+            "must come before it",
+        ),
+        (("passive_partnership_s_corp_income",), "same pass"),
+    ],
+)
+def test_passive_placement_refuses_a_stale_line_32_basis(
+    person_outputs: tuple[str, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        puf_support_module._require_signed_subset_outputs_after_their_basis(
+            person_outputs
+        )
+
+    # The production order passes.
+    puf_support_module._require_signed_subset_outputs_after_their_basis(
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+
+
+def test_finalize_refuses_passive_placed_before_its_line_32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draws = pd.DataFrame(
+        {
+            "partnership_income": [6_000.0, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 0.0],
+            "s_corp_income": [0.0, 0.0],
+        }
+    )
+
+    class FixedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FixedQRF":
+            return self
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return draws.set_axis(features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FixedQRF)
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0],
+            **{column: draws[column].to_numpy() for column in draws},
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="must come before it"):
+        impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=("puf_predictor_filing_status_code",),
+            person_outputs=tuple(draws.columns),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+        )
+
+
 def test_passive_placement_refuses_without_any_line_32_column() -> None:
     person = pd.DataFrame({"person_tax_unit_id": [1, 1]})
 

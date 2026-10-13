@@ -36,7 +36,7 @@ def test_batched_engines_partition_release_and_order_their_work(
 ) -> None:
     """(b) no construction sees more than the batch size and every pass
     partitions the pool; (c) one engine alive at a time; (d) the SPM selection
-    on every construction; (e) one reform system per reform, 41 for the
+    on every construction; (e) one reform system per reform, 42 for the
     shipped smoke; (f) one baseline pass per plan; (g) ascending periods."""
     frame = _nested_frame()
     household_ids = frame.table("household")["household_id"].tolist()
