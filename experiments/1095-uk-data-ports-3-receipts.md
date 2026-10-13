@@ -64,8 +64,9 @@ earlier retirements of stale deferrals.
 ## Where the plan changed during implementation
 
 - **D5, the allowance.** The plan asked for the carer's fostering allowance (ALLOW3) as well, if the
-  counts supported it. FRS 2024-25 records 13 children under 16 as looked after, and ALLOW3 covers
-  fewer than 10 of them. So the rule reads the relationship code alone: foster child (5) toward an
+  counts supported it. FRS 2024-25 records few children under 16 as looked after (10–29 child
+  records, in fewer than 10 households), and ALLOW3 covers fewer still. So the rule reads the
+  relationship code alone: foster child (5) toward an
   adult in the child's own benefit unit, or foster parent (9) from that adult toward the child.
 - **D2, Max's scaffolding.** The plan reused Max's test scaffolding
   (`test_support/microcosm_build/uk_take_up_population.py`). It is not on main, so D2 uses none of it.
@@ -94,7 +95,9 @@ earlier retirements of stale deferrals.
 
 Each arm built the spine from its commit in the measurement tree and calibrated it on the national
 role, with local staging only and Chronicle feed 825406f (rebuilt with the original's manifest). The
-control is main `d50220d1f`. Figures are aggregates; cells under 10 records are suppressed.
+control is main `d50220d1f`. Figures are aggregates; cells under 10 records are suppressed. A count
+of survey records or units behind a small group is given as a band (`<10`, `10–29` or `30+`), and a
+group that rests on fewer than 10 survey households gets no weighted figure.
 `uk_weight_ratio` holds the largest support-family weight over the positive median against its June
 fence. That statistic is a per-record extreme, so this file gives the gate's verdict and not its value.
 
@@ -111,15 +114,15 @@ every unit.
     people (control 1.84m) and 2.49m SPI-channel people (control 1.73m).
   - D1, the SPI channel: 1.67m weighted SPI-channel people are flagged gainfully self-employed with no
     self-employment income. This led to the D1 ruling.
-  - D5: 22k FRS-channel children are looked after at the arm's calibrated weights; the SPI channel
-    holds fewer than 10 records.
+  - D5: the flag is set on 10–29 FRS-channel child records, in fewer than 10 survey households, so
+    no weighted figure is given. The SPI channel holds fewer than 10 records.
   - D6: residential CGT gains move from £5.906bn to £5.898bn in the FRS channel and from £6.842bn to
     £6.858bn in the SPI channel.
 - **D2, on #1121's head-r3 export.** The new population and the old differ by fewer than 10 benefit
   units. Against the engine's age half of `is_uc_eligible`, two named classes remain: reg 8 claimants
-  aged 16-17 (32 units, 18k weighted), whom the engine includes, and mixed-age couples on the Pension
-  Credit route (67 units, 39k), whom it excludes. Disagreement with the engine falls by fewer than 10
-  units, to 99.
+  aged 16-17, whom the engine includes, and mixed-age couples on the Pension Credit route, whom it
+  excludes. Both are small (each 30+ rows on that export, which counts household copies), so no
+  weighted figure is given. Disagreement with the engine falls by fewer than 10 units.
 - **D3, on #1121's head-r3 export, before recalibration.** The property shares add £1,247bn of UC
   capital over 5.18m benefit units, and £427bn of Pension Credit capital over 1.18m. Counted for every
   unit, UC falls £2.78bn (3.7%) and about 329k units lose paid UC; about 157k weighted UC reporters
@@ -128,9 +131,10 @@ every unit.
 - **Arm 2 (built as `ae9795d7c`: D2, D3 for every unit, D4).** Loss 0.00708, 98.4% within 10%, ESS 4,875.
   All 7 gates and input mass pass. Design UC falls to £50.65bn and design Pension
   Credit to £4.26bn; both calibrate to target.
-  - On the arm's spine, 90 FRS-channel rows that report UC go above £16,000 through property alone.
-    70 of them are in households with no property income, and 45 are in households with two or more
-    benefit units, where the engine's proxy shares property over every claimant or partner.
+  - On the arm's spine, 30+ FRS-channel rows that report UC go above £16,000 through property alone.
+    About three quarters of them are in households with no property income, and half are in
+    households with two or more benefit units, where the engine's proxy shares property over every
+    claimant or partner.
   - D4: newly entitled units are flagged at a share of 0.3695 against the 0.37 rate.
   - The arm pipeline leaves two gates this PR changes to the release-cut certifier, so they were run
     on the arm's exported file with their own evaluators (`scripts/certifier_gates_check.py`).
@@ -181,19 +185,19 @@ the fix touches no calibration code.
   - D1, at calibrated weights in 2025: the minimum income floor applies to 1.63m FRS-channel people
     (control 1.84m) and 1.24m SPI-channel people (control 1.73m). 1.58m SPI-channel people are flagged,
     against 3.35m when the flag followed the donor's status.
-  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and
+  - D3, the stage's receipt: 30+ FRS-channel benefit units that report UC keep their receipt, and
     most of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
-    reporter units are affected. 12 FRS-channel reporter units hold financial capital above £16,000 as
-    surveyed.
+    reporter units are affected. 10–29 FRS-channel reporter units hold financial capital above
+    £16,000 as surveyed.
   - D4: newly entitled units are flagged at a share of 0.3695 against the 0.37 rate.
-  - D5: 18k FRS-channel children are looked after at calibrated weights.
+  - D5: no weighted figure is given (fewer than 10 survey households).
   - On the exported file, `uk_uc_capital_coherence` passes with the reporter rule, and
     `uk_take_up_signal` passes: `would_claim_uc` sits at 0.560 against 0.55, over 55,763 units.
 
 ## Review round 1 (2026-10-11)
 
 An adversarial review of the head `cf42d8a7a` is on the PR. Each claim was checked against the code,
-policyengine-uk 2.122.2 and the data. This section records what changed and the new measurement. Where
+policyengine-uk 2.122.2 (the lock at that time; 2.123.0 since the rebase below) and the data. This section records what changed and the new measurement. Where
 it differs from the sections above, this section is the current one.
 
 ### What changed
@@ -256,10 +260,10 @@ changes the evidence reader and its tests only; spine and calibration come from 
   - Design UC is £51.70bn (control £52.69bn) and design Pension Credit £4.21bn (control £4.39bn).
   - D1, at calibrated weights in 2025: the minimum income floor applies to 1.62m FRS-channel people
     (control 1.86m) and 1.24m SPI-channel people (control 1.73m).
-  - D5: 20k FRS-channel children are looked after at calibrated weights.
+  - D5: no weighted figure is given (fewer than 10 survey households).
   - D6: residential CGT gains are £5.99bn in the FRS channel (control £5.98bn) and £6.78bn in the SPI
     channel (control £6.80bn).
-  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and
+  - D3, the stage's receipt: 30+ FRS-channel benefit units that report UC keep their receipt, and
     most of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
     reporter units are affected.
   - D4: newly entitled units are flagged at a share of 0.3699 against the 0.37 rate.
@@ -302,7 +306,7 @@ tree). "Before" is the review-round-1 head.
 - **The spine, at design weights.** UC property is £931bn across 3.21m benefit units (£1,032bn across
   4.21m before). Pension Credit property on units with a member at qualifying age is £285bn across
   0.97m units (£338bn across 1.02m before).
-- **The stage's receipt.** 29 FRS-channel benefit units that report UC keep their receipt (51
+- **The stage's receipt.** 10–29 FRS-channel benefit units that report UC keep their receipt (30+
   before), and most of them would have gone above £16,000. The redraw trains on 4,104 units (4,029
   before; 4,191 on main).
 - **The calibration.** Loss 0.00685 (before 0.00691; control 0.00702), 98.5% of 1,168 targets within
@@ -407,8 +411,8 @@ list; none changes a stage or a target.
   - The largest error among the fitted cells is 15.9% (control 16.5%).
   - Design UC is £51.90bn (control £52.69bn) and design Pension Credit £4.24bn (control £4.39bn).
   - The stage receipts are those of the head before the rebase: 1,255k units entitled to Guarantee
-    Credit, 4,104 training units in the reporter redraw, and 29 FRS-channel benefit units that report
-    UC keeping their receipt.
+    Credit, 4,104 training units in the reporter redraw, and 10–29 FRS-channel benefit units that
+    report UC keeping their receipt.
   - D3, the spine at design weights: UC property is £931bn across 3.21m benefit units, and Pension
     Credit property on units with a member at qualifying age is £286bn across 0.97m units.
   - D3, at calibrated weights in 2025: 1.53m benefit units are over the UC capital limit through
@@ -478,3 +482,14 @@ as for #1100 and #1121.
   other property carried to the frame so that recorded capital nets them.
 - The low UC awards below the top band, which the unbound band hides.
 - The weight year, and the renewals of the measure exclusions that expire from 15 October.
+- **D3 for Universal Credit after the survey year, at the next engine bump.** policyengine-uk 2.123.0
+  holds `uc_reported_capital` flat in its dataset projection, while `pension_credit_reported_capital`
+  and the household property columns project by GDP per head. So in 2025 and later the same property
+  counts at a lower value for Universal Credit than for Pension Credit. policyengine-uk 2.124.0
+  projects `uc_reported_capital` too (pe-uk#2201). The D3 figures at 2025, such as the units over the
+  UC capital limit through property, will move at that bump. 2.124.0 also adds
+  `benunit_reported_capital`; D3 records two different figures (land counts for Pension Credit only,
+  and UC reporters keep their receipt), so the spine keeps writing both columns.
+- **uk-data#547, not covered.** No child aged 9 to 11 months reaches the working-parent childcare
+  entitlement. María ruled on 2026-10-09 that the fix belongs in policyengine-uk, whose childcare
+  test should read age in months. No issue is filed for it yet.
