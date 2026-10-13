@@ -1,0 +1,1135 @@
+{
+ "after_stage": {
+  "consumption_total": 1045227539575.9542,
+  "electricity_share_of_energy": 0.6080625844376202,
+  "flagged_share": 0.7387585373705857,
+  "fuel_buying_share": 0.7387585373705857,
+  "gas_connected_share": 0.7917512379581629,
+  "housing_below_energy_share": 0.0,
+  "prepayment_share": 0.11468756199642659,
+  "totals": {
+   "alcohol_and_tobacco_consumption": 19725716958.837265,
+   "bus_fare_spending": 4138894760.516058,
+   "clothing_and_footwear_consumption": 30100826336.907154,
+   "communication_consumption": 25461381431.18329,
+   "diesel_spending": 10730728355.958878,
+   "domestic_energy_consumption": 48609780429.68104,
+   "education_consumption": 20315780031.679955,
+   "electricity_consumption": 29557788717.017105,
+   "food_and_non_alcoholic_beverages_consumption": 113778415570.16794,
+   "gas_consumption": 19051991712.663914,
+   "health_consumption": 23471635339.33322,
+   "household_furnishings_consumption": 80207924946.20306,
+   "housing_water_and_electricity_consumption": 179183610949.65082,
+   "miscellaneous_consumption": 97390621546.49597,
+   "petrol_spending": 26125503337.339878,
+   "recreation_consumption": 182977084020.09222,
+   "restaurants_and_hotels_consumption": 85449495379.0182,
+   "transport_consumption": 187165047066.3841
+  },
+  "transport_below_fuel_share": 0.0
+ },
+ "before_spine": {
+  "consumption_total": 979251861478.8147,
+  "electricity_share_of_energy": 0.6051975630849866,
+  "flagged_share": 0.7388273964634949,
+  "fuel_buying_share": 0.48548454625404175,
+  "gas_connected_share": 0.8454401727449707,
+  "housing_below_energy_share": 0.02748311702928674,
+  "totals": {
+   "alcohol_and_tobacco_consumption": 21999647085.504356,
+   "bus_fare_spending": 4240953377.564503,
+   "clothing_and_footwear_consumption": 32270934680.289448,
+   "communication_consumption": 23673977865.62893,
+   "diesel_spending": 9168042761.392813,
+   "domestic_energy_consumption": 47945985388.89564,
+   "education_consumption": 3541518908.0004005,
+   "electricity_consumption": 29016793517.068016,
+   "food_and_non_alcoholic_beverages_consumption": 110005359407.79727,
+   "gas_consumption": 18929191871.827667,
+   "health_consumption": 19611882547.43068,
+   "household_furnishings_consumption": 96244686239.60025,
+   "housing_water_and_electricity_consumption": 180528355017.61514,
+   "miscellaneous_consumption": 84114252418.83496,
+   "petrol_spending": 17665280175.308243,
+   "recreation_consumption": 141992075027.903,
+   "restaurants_and_hotels_consumption": 84168675311.34286,
+   "transport_consumption": 181100496968.8662
+  },
+  "transport_below_fuel_share": 0.018445345568255462
+ },
+ "donor_uprating": {
+  "columns": {
+   "alcohol_and_tobacco_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "bus_fare_spending": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "clothing_and_footwear_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "communication_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "diesel_spending": {
+    "basis": "vendored_litre_proxy",
+    "engine_audit": {
+     "after": 1.38733,
+     "applied": "outturn",
+     "before": 1.38733,
+     "engine_ratio": 1.0,
+     "outturn_over_engine": 1.0,
+     "parameter_path": "gov.economic_assumptions.indices.obr.diesel_spending_litre_proxy"
+    },
+    "factor": 1.0,
+    "formula": "price_ratio * litres_ratio / population_ratio",
+    "litres": {
+     "fy2024": 28293387325.1369,
+     "ratio": 1.0
+    },
+    "litres_concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+    "population": {
+     "2024": 69281437.0,
+     "ratio": 1.0
+    },
+    "population_concept": "ons.mid_year_population_estimate",
+    "price": {
+     "2024": 148.32888483333338,
+     "ratio": 1.0
+    },
+    "price_concept": "desnz.road_fuel.annual_ulsd_pump_price",
+    "resource": "road_fuel_anchors.json"
+   },
+   "education_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "employment_income": {
+    "after": 1.54521,
+    "basis": "engine_parameter",
+    "before": 1.54521,
+    "factor": 1.0,
+    "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+   },
+   "food_and_non_alcoholic_beverages_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "hbai_household_net_income": {
+    "after": 1.54521,
+    "basis": "engine_parameter",
+    "before": 1.54521,
+    "factor": 1.0,
+    "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+   },
+   "health_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "household_furnishings_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "household_gross_income": {
+    "after": 1.54521,
+    "basis": "engine_parameter",
+    "before": 1.54521,
+    "factor": 1.0,
+    "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+   },
+   "housing_water_and_electricity_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "miscellaneous_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "petrol_spending": {
+    "basis": "vendored_litre_proxy",
+    "engine_audit": {
+     "after": 1.37799,
+     "applied": "outturn",
+     "before": 1.37799,
+     "engine_ratio": 1.0,
+     "outturn_over_engine": 1.0,
+     "parameter_path": "gov.economic_assumptions.indices.obr.petrol_spending_litre_proxy"
+    },
+    "factor": 1.0,
+    "formula": "price_ratio * litres_ratio / population_ratio",
+    "litres": {
+     "fy2024": 18033709745.3447,
+     "ratio": 1.0
+    },
+    "litres_concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+    "population": {
+     "2024": 69281437.0,
+     "ratio": 1.0
+    },
+    "population_concept": "ons.mid_year_population_estimate",
+    "price": {
+     "2024": 141.47766540670264,
+     "ratio": 1.0
+    },
+    "price_concept": "desnz.road_fuel.annual_ulsp_pump_price",
+    "resource": "road_fuel_anchors.json"
+   },
+   "private_pension_income": {
+    "after": 1.1611,
+    "basis": "engine_parameter",
+    "before": 1.1611,
+    "factor": 1.0,
+    "parameter_path": "gov.economic_assumptions.indices.obr.private_pension_index"
+   },
+   "recreation_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "restaurants_and_hotels_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   },
+   "self_employment_income": {
+    "after": 1.05136,
+    "basis": "engine_parameter",
+    "before": 1.05136,
+    "factor": 1.0,
+    "parameter_path": "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
+   },
+   "transport_consumption": {
+    "after": 1.55763,
+    "base": 1.5708700000000002,
+    "basis": "engine_parameter",
+    "before": 1.55763,
+    "factor": 0.9915715495235123,
+    "following": 1.61059,
+    "from_window": "fiscal_year",
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+   }
+  },
+  "exempt": [
+   "electricity_consumption",
+   "gas_consumption",
+   "domestic_energy_consumption"
+  ],
+  "fiscal_year_bridge": {
+   "next_year_weight": 0.25,
+   "start_year_weight": 0.75
+  },
+  "from_period": 2024,
+  "instant": "january_first",
+  "operation": "uprate_donor_columns",
+  "to_period": 2024
+ },
+ "energy_rake_ceiling": {
+  "electricity_kwh": {
+   "capped_share_of_total": 0.0,
+   "ceiling_kwh": 50000.0,
+   "feasible": true,
+   "frame_kwh_after": 91741500000.00002,
+   "households_above_after": 0,
+   "households_at_ceiling": 0,
+   "households_capped": 0,
+   "rounds": 0
+  },
+  "gas_kwh": {
+   "capped_share_of_total": 0.0034722706369820205,
+   "ceiling_kwh": 73200.0,
+   "feasible": true,
+   "frame_kwh_after": 252344850000.0,
+   "households_above_after": 0,
+   "households_at_ceiling": 300,
+   "households_capped": 300,
+   "rounds": 2
+  }
+ },
+ "energy_rake_fit": {
+  "accommodation": {
+   "max_abs_relative_deviation": {
+    "electricity_kwh": 0.005791983557774993,
+    "gas_kwh": 0.013074442189477287
+   }
+  },
+  "income": {
+   "max_abs_relative_deviation": {
+    "electricity_kwh": 0.023969922723226733,
+    "gas_kwh": 0.02883016890073753
+   }
+  },
+  "region": {
+   "max_abs_relative_deviation": {
+    "electricity_kwh": 1.1102230246251565e-15,
+    "gas_kwh": 0.00011611415296375327
+   }
+  },
+  "tenure": {
+   "max_abs_relative_deviation": {
+    "electricity_kwh": 0.005081308110434057,
+    "gas_kwh": 0.010278317795224368
+   }
+  }
+ },
+ "energy_rake_level_factor": {
+  "electricity_kwh": 0.9467149907741556,
+  "gas_kwh": 0.9756912775720039
+ },
+ "energy_rake_sweep_residuals": {
+  "electricity_kwh": [
+   0.023970395596292327,
+   0.023970157100172695,
+   0.023969922723226733
+  ],
+  "gas_kwh": [
+   0.028242360936051925,
+   0.028242268010616134,
+   0.0282421766665526
+  ]
+ },
+ "fit_weight_records": [
+  "uk_lcfs_2024_25_consumption:food_and_non_alcoholic_beverages_consumption",
+  "uk_lcfs_2024_25_consumption:alcohol_and_tobacco_consumption",
+  "uk_lcfs_2024_25_consumption:clothing_and_footwear_consumption",
+  "uk_lcfs_2024_25_consumption:housing_water_and_electricity_consumption",
+  "uk_lcfs_2024_25_consumption:household_furnishings_consumption",
+  "uk_lcfs_2024_25_consumption:health_consumption",
+  "uk_lcfs_2024_25_consumption:transport_consumption",
+  "uk_lcfs_2024_25_consumption:communication_consumption",
+  "uk_lcfs_2024_25_consumption:recreation_consumption",
+  "uk_lcfs_2024_25_consumption:education_consumption",
+  "uk_lcfs_2024_25_consumption:restaurants_and_hotels_consumption",
+  "uk_lcfs_2024_25_consumption:miscellaneous_consumption",
+  "uk_lcfs_2024_25_consumption:petrol_spending",
+  "uk_lcfs_2024_25_consumption:diesel_spending",
+  "uk_lcfs_2024_25_consumption:bus_fare_spending",
+  "uk_lcfs_2024_25_consumption:domestic_energy_consumption",
+  "uk_lcfs_2024_25_consumption:electricity_consumption",
+  "uk_lcfs_2024_25_consumption:gas_consumption",
+  "uk_lcfs_2024_25_consumption:road_fuel_total",
+  "uk_lcfs_2024_25_consumption:petrol_share_of_road_fuel",
+  "uk_lcfs_2024_25_consumption:uses_energy_prepayment_meter"
+ ],
+ "gas_connected_share": 0.7917512379581639,
+ "gas_connection_by_region": {
+  "EAST_MIDLANDS": {
+   "share_after": 0.7975878177050624,
+   "share_before": 0.7975878177050624,
+   "shortfall": 0.09152799078502505,
+   "target_share": 0.8891158084900874
+  },
+  "EAST_OF_ENGLAND": {
+   "share_after": 0.794564619558256,
+   "share_before": 0.794564619558256,
+   "shortfall": 0.007322799765928423,
+   "target_share": 0.8018874193241844
+  },
+  "LONDON": {
+   "share_after": 0.7516092564135212,
+   "share_before": 0.7516092564135212,
+   "shortfall": 0.0525448568719451,
+   "target_share": 0.8041541132854663
+  },
+  "NORTHERN_IRELAND": {
+   "share_after": 0.6613186919507825,
+   "share_before": 0.6613186919507825,
+   "shortfall": null,
+   "target_share": null
+  },
+  "NORTH_EAST": {
+   "share_after": 0.8229490548765911,
+   "share_before": 0.8229490548765911,
+   "shortfall": 0.10744402352376237,
+   "target_share": 0.9303930784003535
+  },
+  "NORTH_WEST": {
+   "share_after": 0.8185268146696464,
+   "share_before": 0.8185268146696464,
+   "shortfall": 0.0855192465988821,
+   "target_share": 0.9040460612685285
+  },
+  "SCOTLAND": {
+   "share_after": 0.7769809639805955,
+   "share_before": 0.7947113949903073,
+   "shortfall": 0.0,
+   "target_share": 0.7769809559625813
+  },
+  "SOUTH_EAST": {
+   "share_after": 0.7960287282662797,
+   "share_before": 0.7960287282662797,
+   "shortfall": 0.05333247398711094,
+   "target_share": 0.8493612022533906
+  },
+  "SOUTH_WEST": {
+   "share_after": 0.7589181812821756,
+   "share_before": 0.7808034255667464,
+   "shortfall": 0.0,
+   "target_share": 0.7589181811055906
+  },
+  "WALES": {
+   "share_after": 0.8066240617236314,
+   "share_before": 0.8066240617236314,
+   "shortfall": 0.008000293309414541,
+   "target_share": 0.814624355033046
+  },
+  "WEST_MIDLANDS": {
+   "share_after": 0.8392720086110269,
+   "share_before": 0.8392720086110269,
+   "shortfall": 0.03614510805972948,
+   "target_share": 0.8754171166707564
+  },
+  "YORKSHIRE": {
+   "share_after": 0.8195418414475049,
+   "share_before": 0.8195418414475049,
+   "shortfall": 0.08201474928409436,
+   "target_share": 0.9015565907315992
+  }
+ },
+ "gates": {
+  "uk_stage_lcfs_consumption_basis": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_bus_pricing": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_energy_rake": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_recomposed_totals": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_incidence": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_level": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "households": 64000,
+ "need_income_bands": {
+  "band_income": "HBAI net income plus the HBAI deductions",
+  "shares": {
+   "": "<10 households",
+   "gbp100_000_gbp149_999": 0.08075214181116755,
+   "gbp150_000_or_more": 0.05514723296904074,
+   "gbp15_000_gbp19_999": 0.06333700824511133,
+   "gbp20_000_gbp29_999": 0.15062388990929523,
+   "gbp30_000_gbp39_999": 0.14144195325757833,
+   "gbp40_000_gbp49_999": 0.11489386874256884,
+   "gbp50_000_gbp59_999": 0.0989513056445772,
+   "gbp60_000_gbp69_999": 0.0777702944160535,
+   "gbp70_000_gbp99_999": 0.1392165541960266,
+   "less_than_gbp15_000": 0.07782410434965405
+  }
+ },
+ "receipts": {
+  "division_capture": {
+   "concept": "ons.household_final_consumption_expenditure",
+   "divisions": {
+    "alcohol_and_tobacco_consumption": {
+     "capture": 0.41021746368667117,
+     "coicop": "02",
+     "frame": 19725716958.83727,
+     "out_of_scope": {
+      "02.3": 3030000000.0
+     },
+     "published_domestic": 51116000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_02.expenditure",
+     "survey_scope": 48086000000.0
+    },
+    "clothing_and_footwear_consumption": {
+     "capture": 0.3813610330280901,
+     "coicop": "03",
+     "frame": 30100826336.90715,
+     "out_of_scope": {},
+     "published_domestic": 78930000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_03.expenditure",
+     "survey_scope": 78930000000.0
+    },
+    "communication_consumption": {
+     "capture": 0.8025652145369043,
+     "coicop": "08",
+     "frame": 25461381431.18329,
+     "out_of_scope": {},
+     "published_domestic": 31725000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_08.expenditure",
+     "survey_scope": 31725000000.0
+    },
+    "education_consumption": {
+     "capture": 0.4798927583427022,
+     "coicop": "10",
+     "frame": 20315780031.679955,
+     "out_of_scope": {},
+     "published_domestic": 42334000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_10.expenditure",
+     "survey_scope": 42334000000.0
+    },
+    "food_and_non_alcoholic_beverages_consumption": {
+     "capture": 0.8002195434800535,
+     "coicop": "01",
+     "frame": 113778415570.16794,
+     "out_of_scope": {},
+     "published_domestic": 142184000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_01.expenditure",
+     "survey_scope": 142184000000.0
+    },
+    "health_consumption": {
+     "capture": 0.7078938184797545,
+     "coicop": "06",
+     "frame": 23471635339.33322,
+     "out_of_scope": {},
+     "published_domestic": 33157000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_06.expenditure",
+     "survey_scope": 33157000000.0
+    },
+    "household_furnishings_consumption": {
+     "capture": 1.0547983975250597,
+     "coicop": "05",
+     "frame": 80207924946.20306,
+     "out_of_scope": {},
+     "published_domestic": 76041000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_05.expenditure",
+     "survey_scope": 76041000000.0
+    },
+    "housing_water_and_electricity_consumption": {
+     "capture": 1.0938903259361847,
+     "coicop": "04",
+     "frame": 179183610949.65082,
+     "out_of_scope": {
+      "04.2": 291755000000.0
+     },
+     "published_domestic": 455559000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_04.expenditure",
+     "survey_scope": 163804000000.0
+    },
+    "miscellaneous_consumption": {
+     "capture": 0.6234595835509633,
+     "coicop": "12",
+     "frame": 97390621546.49597,
+     "out_of_scope": {
+      "12.6.1": 55794000000.0
+     },
+     "published_domestic": 212004000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_12.expenditure",
+     "survey_scope": 156210000000.0
+    },
+    "recreation_consumption": {
+     "capture": 1.115305888212192,
+     "coicop": "09",
+     "frame": 182977084020.09222,
+     "out_of_scope": {},
+     "published_domestic": 164060000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_09.expenditure",
+     "survey_scope": 164060000000.0
+    },
+    "restaurants_and_hotels_consumption": {
+     "capture": 0.46795999659922355,
+     "coicop": "11",
+     "frame": 85449495379.01822,
+     "out_of_scope": {},
+     "published_domestic": 182600000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_11.expenditure",
+     "survey_scope": 182600000000.0
+    },
+    "transport_consumption": {
+     "capture": 0.8684749991479935,
+     "coicop": "07",
+     "frame": 187165047066.3841,
+     "out_of_scope": {},
+     "published_domestic": 215510000000.0,
+     "source_record_id": "ons.consumer_trends.expanded_0cn.cy2024.published.coicop_07.expenditure",
+     "survey_scope": 215510000000.0
+    }
+   },
+   "gated": false,
+   "period_type": "calendar_year",
+   "period_value": 2024,
+   "resource": "ons_household_expenditure_facts.json",
+   "total": {
+    "capture_domestic": 0.7831525777912962,
+    "capture_national": 0.7749268536188645,
+    "frame": 1045227539575.9534,
+    "out_of_scope": 350579000000.0,
+    "published_domestic": 1685220000000.0,
+    "published_national": 1699387000000.0
+   }
+  },
+  "donor_energy_split": {
+   "electricity": 30368646026.05737,
+   "electricity_share_of_electricity_and_gas": 0.592056773196131,
+   "fuel_light_and_power": 53722059448.49831,
+   "gas": 20924823453.42637,
+   "other_fuels": 3168125727.5366106,
+   "parts_over_fuel_light_and_power": 1.0137659606894076
+  },
+  "donor_floor": {
+   "columns": {
+    "alcohol_and_tobacco_consumption": {
+     "rows_raised": 0
+    },
+    "bus_fare_spending": {
+     "rows_raised": 0
+    },
+    "clothing_and_footwear_consumption": {
+     "rows_raised": 0
+    },
+    "communication_consumption": {
+     "rows_raised": 0
+    },
+    "diesel_spending": {
+     "rows_raised": 0
+    },
+    "domestic_energy_consumption": {
+     "rows_raised": 0
+    },
+    "education_consumption": {
+     "rows_raised": 0
+    },
+    "food_and_non_alcoholic_beverages_consumption": {
+     "rows_raised": 0
+    },
+    "health_consumption": {
+     "rows_raised": 0
+    },
+    "household_furnishings_consumption": {
+     "rows_raised": 0
+    },
+    "housing_water_and_electricity_consumption": {
+     "rows_raised": "<10"
+    },
+    "miscellaneous_consumption": {
+     "rows_raised": 0
+    },
+    "petrol_spending": {
+     "rows_raised": 0
+    },
+    "recreation_consumption": {
+     "rows_raised": 0
+    },
+    "restaurants_and_hotels_consumption": {
+     "rows_raised": 0
+    },
+    "transport_consumption": {
+     "rows_raised": 0
+    }
+   },
+   "floor": 0.0,
+   "remaining_negative_rows": 0,
+   "rows_raised": "<10"
+  },
+  "fuel_litres_audit": {
+   "cars_litres_benchmark_total": 28730744215.85034,
+   "cars_share_resource": "desnz_road_fuel_by_vehicle.json",
+   "fiscal_start": "2024-04-01",
+   "frame_litres_total": 25700583823.31124,
+   "frame_over_cars_benchmark": 0.8945324781782922,
+   "frame_over_obr_uniform_cars_benchmark": 0.9515735518884852,
+   "fuels": {
+    "diesel_spending": {
+     "cars_litres_benchmark": 11096514466.449377,
+     "desnz_cars_share": 0.3921946262189264,
+     "desnz_ktoe_by_vehicle": {
+      "buses_and_coaches": 880.649432681561,
+      "cars": 9571.883358666924,
+      "hgv": 6902.162844500974,
+      "lgv": 7051.256712217175
+     },
+     "frame_litres": 7234415850.976183,
+     "frame_over_cars_benchmark": 0.6519538971313598,
+     "hmrc_concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+     "hmrc_litres_all_road_users": 28293387325.1369,
+     "price_concept": "desnz.road_fuel.annual_ulsd_pump_price",
+     "price_pence_per_litre": 148.32888483333338,
+     "weighted_spend_gbp": 10730728355.958878
+    },
+    "petrol_spending": {
+     "cars_litres_benchmark": 17634229749.400963,
+     "desnz_cars_share": 0.9778481520671664,
+     "desnz_ktoe_by_vehicle": {
+      "cars": 14605.695206681678,
+      "lgv": 138.67363921583953,
+      "motorcycles": 192.19893899352886
+     },
+     "frame_litres": 18466167972.335056,
+     "frame_over_cars_benchmark": 1.0471774630792907,
+     "hmrc_concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+     "hmrc_litres_all_road_users": 18033709745.3447,
+     "price_concept": "desnz.road_fuel.annual_ulsp_pump_price",
+     "price_pence_per_litre": 141.47766540670264,
+     "weighted_spend_gbp": 26125503337.339874
+    }
+   },
+   "gated": false,
+   "obr_fuel_duty_receipts": {
+    "cars_gbp": 14400000000.0,
+    "cars_share": 0.582995951417004,
+    "total_gbp": 24700000000.0
+   },
+   "per_fuel_ratio_basis": "desnz cars share of each fuel's road use",
+   "period_value": 2024,
+   "resource": "road_fuel_anchors.json"
+  },
+  "has_fuel_consumption": {
+   "donor": {
+    "households": 5000,
+    "positive_fuel_share": 0.5366650401734357,
+    "positive_fuel_share_among_vehicle_households": 0.6742881334468092,
+    "with_vehicles_share": 0.7787565029322662
+   },
+   "ice_share": {
+    "geography_id": "K03000001",
+    "licensed_cars": 32914842.0,
+    "period_value": 2024,
+    "rate": 0.9615210670007166,
+    "resource": "licensed_cars_fuel_type.json",
+    "rule": "one_minus_zero_emission_share",
+    "source_record_ids": [
+     "dft.veh1103a.cars.cy2024.cars.cars_all",
+     "dft.veh1103a.cars.cy2024.cars.cars_battery_electric",
+     "dft.veh1103a.cars.cy2024.cars.cars_fuel_cell_electric"
+    ],
+    "zero_emission_licensed_cars": {
+     "battery_electric": 1266421.0,
+     "fuel_cell_electric": 107.0
+    }
+   },
+   "recipient": {
+    "flagged_share": 0.7387585373705857,
+    "households": 64000,
+    "with_vehicles_share": 0.7692223605824358
+   }
+  },
+  "recomposed_totals": {
+   "operation": "recompose_from_remainder",
+   "parents": {
+    "housing_water_and_electricity_consumption": {
+     "components": [
+      "electricity_consumption",
+      "gas_consumption"
+     ],
+     "drawn_subtracts": [
+      "domestic_energy_consumption"
+     ],
+     "maximum_total": "donor_support",
+     "rows_below_components": 0,
+     "rows_floored": 3800,
+     "rows_held_at_maximum": "<10",
+     "uprating_residue": {
+      "parent_factor": 0.9915715495235123,
+      "part_factors": {
+       "domestic_energy_consumption": 1.0
+      },
+      "weighted_residue_gbp": -460661453.4419016
+     },
+     "weighted_components": 48609780429.68104,
+     "weighted_drawn_subtracts": 54655533033.85731,
+     "weighted_drawn_total": 183238333271.172,
+     "weighted_floored_mass": 1994691263.462904,
+     "weighted_remainder": 130577491500.7777,
+     "weighted_total": 179183610949.65082
+    },
+    "transport_consumption": {
+     "components": [
+      "petrol_spending",
+      "diesel_spending",
+      "bus_fare_spending"
+     ],
+     "drawn_subtracts": [
+      "petrol_spending",
+      "diesel_spending",
+      "bus_fare_spending"
+     ],
+     "maximum_total": "donor_support",
+     "rows_below_components": 0,
+     "rows_floored": 3800,
+     "rows_held_at_maximum": "<10",
+     "uprating_residue": {
+      "parent_factor": 0.9915715495235123,
+      "part_factors": {
+       "bus_fare_spending": 0.9915715495235123,
+       "diesel_spending": 1.0,
+       "petrol_spending": 1.0
+      },
+      "weighted_residue_gbp": -238618151.01789546
+     },
+     "weighted_components": 40995126453.81467,
+     "weighted_drawn_subtracts": 32484639307.972466,
+     "weighted_drawn_total": 177731837191.62283,
+     "weighted_floored_mass": 924351416.6415172,
+     "weighted_remainder": 146171549300.29163,
+     "weighted_total": 187165047066.3841
+    }
+   },
+   "uncarried": {
+    "classes": [
+     {
+      "coicop": "04.5.3",
+      "concept": "ons.household_expenditure.liquid_fuels",
+      "source_record_id": "ons.consumer_trends.04cn_04_5_3.cy2024.coicop_04_5_3.expenditure",
+      "value": 1195000000.0
+     },
+     {
+      "coicop": "04.5.4",
+      "concept": "ons.household_expenditure.solid_fuels",
+      "source_record_id": "ons.consumer_trends.04cn_04_5_4.cy2024.coicop_04_5_4.expenditure",
+      "value": 352000000.0
+     }
+    ],
+    "period_value": 2024,
+    "resource": "ons_household_expenditure_facts.json",
+    "total": 1547000000.0
+   }
+  },
+  "road_fuel_incidence": {
+   "columns": [
+    "petrol_spending",
+    "diesel_spending"
+   ],
+   "flagged_households": 48500,
+   "flagged_zero_after": 0,
+   "flagged_zero_before": 16500,
+   "flagged_zero_share_before": 0.34462102483659185,
+   "mean_flagged_after": 1796.5197130802717,
+   "mean_positive_before": 1894.846390269661,
+   "mean_redrawn": 1609.5281127907626,
+   "n_estimators": 100,
+   "operation": "redraw_zero_road_fuel",
+   "redrawn_petrol_share": 0.7266783746572908,
+   "regimes": {
+    "petrol_share_of_road_fuel": "zero_inflated_positive",
+    "road_fuel_total": "positive_only"
+   },
+   "rule": "positive_total_then_petrol_share",
+   "salt": "lcfs_positive_road_fuel",
+   "seed": 0,
+   "training_rows": 2800,
+   "unflagged_with_fuel": 0,
+   "weighted_total_after": 38452047227.59032,
+   "weighted_total_before": 26579939840.414024
+  },
+  "road_fuel_level": {
+   "coicop": "07.2.2",
+   "columns": [
+    "petrol_spending",
+    "diesel_spending"
+   ],
+   "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+   "factor": 0.9584985547103321,
+   "frame_after": 36856231693.298775,
+   "frame_before": 38452047227.59032,
+   "level": 36856231693.29875,
+   "operation": "level_road_fuel",
+   "other_fuels_codes": [
+    "c72213"
+   ],
+   "other_fuels_rule": "lcfs_donor_other_fuels_share",
+   "other_fuels_share": 0.004558225704287709,
+   "period_type": "calendar_year",
+   "period_value": 2024,
+   "petrol_share_of_level": 0.708849009707361,
+   "published": 37025000000.0,
+   "resource": "ons_household_expenditure_facts.json",
+   "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2024.coicop_07_2_2.expenditure"
+  },
+  "uses_energy_prepayment_meter": {
+   "codes": [
+    "b1751",
+    "b1701",
+    "b233",
+    "c45114",
+    "c45214"
+   ],
+   "donor_share": 0.11037175257743388,
+   "n_estimators": 100,
+   "operation": "impute_prepayment_meter",
+   "output": "uses_energy_prepayment_meter",
+   "recipient_households_great_britain": 2964834.2197709475,
+   "recipient_share": 0.1146875619964265,
+   "recipient_share_great_britain": 0.10509085070681873,
+   "regime": "zero_inflated_positive",
+   "rule": "key_or_meter_payment_positive",
+   "salt": "lcfs_prepayment_meter",
+   "seed": 0
+  }
+ },
+ "seconds": 84.9,
+ "spine": "uk_frs_spine_2024_25.h5",
+ "support_clip": {
+  "columns": {
+   "alcohol_and_tobacco_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "bus_fare_spending": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "clothing_and_footwear_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "communication_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "diesel_spending": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "domestic_energy_consumption": {
+    "exempt": "<10",
+    "rows_considered": 64000
+   },
+   "education_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "electricity_consumption": {
+    "exempt": "<10",
+    "rows_considered": 64000
+   },
+   "food_and_non_alcoholic_beverages_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "gas_consumption": {
+    "exempt": "<10",
+    "rows_considered": 64000
+   },
+   "health_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "household_furnishings_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "housing_water_and_electricity_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "miscellaneous_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "petrol_spending": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "recreation_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "restaurants_and_hotels_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   },
+   "transport_consumption": {
+    "clipped_high_rows": 0,
+    "clipped_low_rows": 0,
+    "rows_considered": 64000
+   }
+  }
+ },
+ "terminal_support": {
+  "alcohol_and_tobacco_consumption": {
+   "bound": [
+    0.0,
+    20000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "clothing_and_footwear_consumption": {
+   "bound": [
+    0.0,
+    100000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "communication_consumption": {
+   "bound": [
+    0.0,
+    30000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "education_consumption": {
+   "bound": [
+    0.0,
+    200000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "food_and_non_alcoholic_beverages_consumption": {
+   "bound": [
+    0.0,
+    30000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "health_consumption": {
+   "bound": [
+    0.0,
+    90000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "household_furnishings_consumption": {
+   "bound": [
+    0.0,
+    300000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "housing_water_and_electricity_consumption": {
+   "bound": [
+    0.0,
+    80000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "miscellaneous_consumption": {
+   "bound": [
+    0.0,
+    200000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "recreation_consumption": {
+   "bound": [
+    0.0,
+    200000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "restaurants_and_hotels_consumption": {
+   "bound": [
+    0.0,
+    60000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  },
+  "transport_consumption": {
+   "bound": [
+    0.0,
+    200000
+   ],
+   "households_above": 0,
+   "households_below": 0
+  }
+ },
+ "tree_lcfs_tabs": [
+  "dvhh_uk_anon_v3_2024.tab",
+  "dvper_uk_anon_2024.tab"
+ ]
+}

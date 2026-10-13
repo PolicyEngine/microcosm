@@ -1,0 +1,33 @@
+{
+ "issue": "PolicyEngine/microcosm#1164",
+ "measured": {
+  "stage_runs_spine": {
+   "name": "uk_frs_spine_2024_25.h5 (K25 spine of 2026-10-10, policyengine-uk 2.122.2, before #1145's property_components stage)",
+   "sha256": "828ef253c8e9a1631ced7c99602bbafdadc271dbc109412c94fdc0690fc6fee9",
+   "households": "about 64,000"
+  },
+  "engine": "policyengine-uk 2.123.0 on policyengine-core 3.32.19"
+ },
+ "stage_run_trees": {
+  "stage_dev_run.control-2023-24-final.json": "#1145's head (63943a76b), the branch base, on LCFS 2023-24 (SN 9468)",
+  "stage_dev_run.treatment-2024-25-final.json": "this branch, on LCFS 2024-25 (SN 9603, 2nd edition)",
+  "nts_lcfs_chain_run.control.json": "#1145's head: nts_bus_travel then lcfs_consumption",
+  "nts_lcfs_chain_run.treatment.json": "this branch: nts_bus_travel then lcfs_consumption"
+ },
+ "not_committed": [
+  "household dumps (*.households.parquet): unit records",
+  "the diagnostic runs behind the band and ceiling decisions: their aggregates are in README.md",
+  "exact donor extremes, remainder minima, the donor-floor negative mass and counts under ten (see scripts/sanitize_outputs.py)"
+ ],
+ "files_sha256": {
+  "README.md": "99be1255d0c25d812620a77a058f8235e43aa65bfe82e75bb38a36475536cb38",
+  "outputs/nts_lcfs_chain_run.control.json": "a1e4120eb5657b56a8568c59a28d10f4456a4e493f6075d4ed23b0e42a446765",
+  "outputs/nts_lcfs_chain_run.treatment.json": "91b5b57d8af621b54bf0d4c17b72ca266d29304fbcba577761c0835d523879db",
+  "outputs/stage_dev_run.control-2023-24-final.json": "e547284ee48727bff862e115daa551f6e922dd76607a34a8f447c7ee32bf1067",
+  "outputs/stage_dev_run.treatment-2024-25-final.json": "a8cb835866e8a59e3d3880cbbe510a28d1a1ecfa9cbb8a096a53fc930ba278e4",
+  "scripts/nts_lcfs_chain_run.py": "7cf93989e17dbce174f49f1a179561b4492f5cf1e1c519e46ac20a048651843b",
+  "scripts/run_stage_dev_at.sh": "78e5e9d51b454e1a857d609f286c9dbe08a1aa574e4d0fa2feb385595aa2a20d",
+  "scripts/sanitize_outputs.py": "8b59c72ffa04496d427c4195017efa54d73dd78371de1430a0154f3b6ca9001a",
+  "scripts/stage_dev_run.py": "6fc708dfafc917a94160274be82bc917f01074f053063f3ebe135df9dc8eac3f"
+ }
+}
