@@ -403,7 +403,9 @@ def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
 # carries it. The bound caps each raw amount draw at the positive mass, per
 # unit of slice weight, of the donor's top slice of the recipient's own share
 # (and floors losses from the bottom slice), so no record carries more mass
-# than the most extreme slice of the population it could stand for. It limits
+# than the most extreme slice of the population it could stand for. One
+# exception: a snapped output is bounded by the larger of that cap and its
+# smallest positive donor value, so the bound never erases a carrier. It limits
 # a record to its slice; it does not remove concentration the slice itself
 # has, and the mass it clips from passthrough columns is dropped. It is an
 # interim censor at the finalize seam, like the quantile map above: tail

@@ -338,7 +338,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "6feff01e7b35a1846e81663d6aca8ae7c34d25d24d8b1bcf259ff87731c9d655",
+            "spec_sha256": "fb7990d69e72cc1d333e7589e744e43eea7e938e16e99447819b3a4d1a96c4c8",
         },
     }
 
