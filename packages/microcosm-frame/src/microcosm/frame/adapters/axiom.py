@@ -1149,7 +1149,7 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
                 f"RuleSpec root {path} changed while it was being hashed: "
                 f"{relative.decode('utf-8')} was listed and then removed. Hash "
                 "the tree once nothing is writing to it. If the root is a git "
-                "checkout, a git process still working in it does this (its "
+                "checkout, a git process still working in it can do this (its "
                 "background maintenance holds a lock file under .git); wait "
                 "for it to finish, or reference a git archive export instead."
             ) from exc

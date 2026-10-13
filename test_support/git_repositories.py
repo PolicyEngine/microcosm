@@ -32,7 +32,10 @@ NO_BACKGROUND_MAINTENANCE: tuple[str, ...] = (
 
 #: The same settings as ``GIT_CONFIG_COUNT`` environment variables, for git
 #: that the code under test runs from ``os.environ``, where no ``-c`` option
-#: reaches it. They replace any ``GIT_CONFIG_*`` entries already set.
+#: reaches it. They override any ``GIT_CONFIG_COUNT`` entries already in the
+#: environment; a ``GIT_CONFIG_PARAMETERS`` there (an outer ``git -c``) still
+#: applies, after them. Code that strips git's repository-local variables
+#: (``git rev-parse --local-env-vars``) drops them.
 NO_BACKGROUND_MAINTENANCE_ENV: Mapping[str, str] = MappingProxyType(
     {
         "GIT_CONFIG_COUNT": str(len(NO_BACKGROUND_MAINTENANCE) // 2),

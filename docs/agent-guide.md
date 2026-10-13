@@ -152,13 +152,16 @@ Move fixtures and helper functions shared by those files to
 instead of deriving them from a test module's `__file__`. Keep fixture data in
 the package's root `tests/fixtures/` or `tests/golden/` directory.
 
-A test that commits to a throwaway git repository passes
-`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE` to that `git commit`
-(`["git", *NO_BACKGROUND_MAINTENANCE, ...]`; a shared helper may pass it to
-every command). When the code under test runs the git (a fetch, say), the test
-sets `NO_BACKGROUND_MAINTENANCE_ENV` in the environment instead. Without them,
-`git commit` and `git fetch` can leave a detached maintenance process that
-removes `.git/objects/maintenance.lock` after the command has returned, and a
+A test that commits to or fetches into a throwaway git repository keeps git's
+background maintenance out of it with the settings in
+`test_support.git_repositories`: `["git", *NO_BACKGROUND_MAINTENANCE, ...]` for
+git the test runs, or `NO_BACKGROUND_MAINTENANCE_ENV` in the environment for
+git the code under test runs (a fetch, say). A helper whose environment
+already carries the variables needs no options. Code that strips git's
+repository-local variables (`git rev-parse --local-env-vars`, as the Axiom
+checkout check does) drops the variables. Without these settings, `git commit`
+and `git fetch` can leave a detached maintenance process that removes the
+repository's `objects/maintenance.lock` after the command has returned, and a
 test that lists or hashes `.git` then fails now and then.
 
 `tools/ci_test_plan.py` recursively enumerates and validates this layout. Run

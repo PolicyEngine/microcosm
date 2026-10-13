@@ -797,6 +797,8 @@ def test_the_branch_check_starts_no_git_maintenance(
 
 
 def test_the_maintenance_variables_set_what_the_options_set(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
     base = {
         key: value
         for key, value in _GIT_ENV.items()
