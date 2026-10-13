@@ -67,10 +67,21 @@ def load_uk_local_chronicle_pin() -> dict[str, Any]:
     return dict(_LEDGER_FACT_FEED_PIN)
 
 
-#: Historical target periods compiled beside the calibration year so the
-#: terminal surface and the certifier can compare against them; skipped, not
-#: fatal, when the pinned feed no longer carries their facts.
-_VALIDATION_PERIODS: frozenset[int] = frozenset({2023, 2025})
+#: Target periods compiled beside the calibration year so the terminal
+#: surface and the certifier can compare against them; skipped, not fatal,
+#: when the pinned feed no longer carries their facts. The 2023 production
+#: surface left this set with its gate (María's ruling of 2026-10-13): no
+#: build reads a 2023 target.
+#:
+#: While this set is the calibration year alone, the full build compiles one
+#: period and is fail-closed there, so its unsupported report at the gated
+#: period is always empty and the "recorded, not fatal" path below does not
+#: fire. The release-cut producer (tools/certify_uk_release_cut.py) compiles
+#: the same period without refusing, hands the report to the parity gates and
+#: reuses the registry as the calibration reference. So the two producers
+#: treat an unresolved calibration-year reference differently: this one
+#: refuses the build, that one leaves the verdict to the gates.
+_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 _LOCAL_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 
 
@@ -153,6 +164,11 @@ def load_uk_full_target_inputs(
     # recorded below instead of blocking the build.
     national_registries = {}
     local_registries = {}
+    # The compile's full report for every period, beside the registries: the
+    # compile-parity gates classify a fixture row whose reference did not
+    # resolve as ledger_absent, and need the report to do it.
+    national_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
+    local_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
     unsupported_validation: dict[str, dict[int, tuple[str, ...]]] = {
         "national": {},
         "local": {},
@@ -177,6 +193,7 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         national_registries[period] = compilation.registry
+        national_unsupported[period] = tuple(compilation.unsupported)
     for period in local_periods:
         compilation = compile_uk_local_target_registry(
             artifact.facts, target_period=period, crosswalk=crosswalk
@@ -191,6 +208,7 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         local_registries[period] = compilation.registry
+        local_unsupported[period] = tuple(compilation.unsupported)
     # microcosm#1123: reconcile the compiled national register across its own
     # grains before the exclusions, so a control's excluded members still
     # count, and the register the solve binds (and the frozen scoring register
@@ -280,6 +298,8 @@ def load_uk_full_target_inputs(
         },
         "uk_ledger_compiled_registries": national_registries,
         "uk_ledger_compiled_local_registries": local_registries,
+        "uk_ledger_compile_unsupported": national_unsupported,
+        "uk_ledger_compile_local_unsupported": local_unsupported,
     }
 
 

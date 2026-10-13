@@ -119,8 +119,9 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["band_edge_registry"] is national
     assert result["national_registry"] is approved
     assert result["local_registry"] is local
+    # The calibration year (2024 here) and the one validation period, 2025.
+    # The 2023 production surface left the set with its gate.
     assert calls == [
-        ("national", 2023),
         ("national", 2024),
         ("national", 2025),
         ("local", 2024),
@@ -129,7 +130,7 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["register_completeness"]["compiled_reference_count"] == 2
     assert result["register_completeness"]["approved_reference_count"] == 1
     assert result["register_completeness"]["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert result["register_completeness"]["validation_periods_unsupported"] == {
@@ -338,7 +339,7 @@ def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
             registry=prepared[0], unsupported=({"target": "missing"},)
         ),
     )
-    # 2023 is a validation period and is skipped; the calibration year is not.
+    # 2025 is a validation period and is skipped; the calibration year is not.
     with pytest.raises(ValueError, match="failed to compile for 2024"):
         _load()
 
@@ -351,27 +352,36 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
 
     def compile_national(facts, *, target_period):
         calls.append(("national", target_period))
-        if target_period == 2023:
+        if target_period == 2025:
             return SimpleNamespace(
                 registry=partial,
                 unsupported=(
-                    {"name": "obr.income_tax", "period": 2023, "reason": "no fact"},
+                    {"name": "obr.income_tax", "period": 2025, "reason": "no fact"},
                 ),
             )
         return SimpleNamespace(registry=national, unsupported=())
 
     monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
     result = _load()
-    # The partial 2023 registry stays available to the parity gates, as the
+    # The partial 2025 registry stays available to the parity gates, as the
     # release-cut producer keeps it; the missing references are recorded.
-    assert set(result["uk_ledger_compiled_registries"]) == {2023, 2024, 2025}
-    assert result["uk_ledger_compiled_registries"][2023] is partial
+    assert set(result["uk_ledger_compiled_registries"]) == {2024, 2025}
+    assert result["uk_ledger_compiled_registries"][2025] is partial
+    # The compile's report travels beside each registry, one entry for every
+    # compiled period, so the parity gates can classify the missing row.
+    assert result["uk_ledger_compile_unsupported"] == {
+        2024: (),
+        2025: ({"name": "obr.income_tax", "period": 2025, "reason": "no fact"},),
+    }
+    assert set(result["uk_ledger_compile_local_unsupported"]) == set(
+        result["uk_ledger_compiled_local_registries"]
+    )
     completeness = result["register_completeness"]
     assert completeness["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert completeness["validation_periods_unsupported"] == {
-        "national": {"2023": ["obr.income_tax"]},
+        "national": {"2025": ["obr.income_tax"]},
         "local": {},
     }

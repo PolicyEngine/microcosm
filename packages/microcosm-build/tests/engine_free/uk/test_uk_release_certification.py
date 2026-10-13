@@ -495,6 +495,33 @@ def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypa
         compose_uk_release_certification(**green_certification_inputs)
 
 
+def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_report(
+    tmp_path: Path,
+):
+    # The compile-parity gates read an unresolved reference as ledger_absent
+    # only from the compile's own report, so a period that was compiled must
+    # bring its report, empty or not.
+    with pytest.raises(ValueError, match=r"national compile reported no .*\['2025'\]"):
+        run_uk_release_cut_battery(
+            object(),
+            report_path=tmp_path / "release_cut_gates.json",
+            release_id="uk-757-first-certified-cut",
+            diagnostics_sha256="a" * 64,
+            coverage_engine=object(),
+            build_stage_names=("frs_spine",),
+            ledger_registries={2025: object()},
+            local_ledger_registries={2025: object()},
+            ledger_unsupported={},
+            local_ledger_unsupported={2025: ()},
+            parity_evidence=object(),
+            fit_weight_records=None,
+            input_mass_reference={},
+            exclusions_evaluated_on=date(2026, 8, 27),
+            gate_registry=_stub_registry(),
+            spine_frame=object(),
+        )
+
+
 def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         release_certification,
@@ -509,8 +536,10 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         diagnostics_sha256="a" * 64,
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
-        ledger_registries={2023: object(), 2025: object()},
+        ledger_registries={2025: object()},
         local_ledger_registries={2025: object()},
+        ledger_unsupported={2025: ()},
+        local_ledger_unsupported={2025: ()},
         parity_evidence=object(),
         fit_weight_records=None,
         input_mass_reference={},

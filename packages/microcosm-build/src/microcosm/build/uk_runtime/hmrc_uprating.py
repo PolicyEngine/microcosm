@@ -402,9 +402,9 @@ def _identity_aligned(
 ) -> Any:
     """A fact that opens in the calibration year binds as published, receipted.
 
-    The production-2023 parity surface compiles the same references at their
-    own period; the declared index then reads as an identity, so the row stays
-    on the surface with its factor written rather than dropping out.
+    A compile at the fact's own period (a tool or a test at an earlier target
+    period) reads the declared index as an identity, so the row stays on the
+    surface with its factor written rather than dropping out.
     """
 
     metadata = {
@@ -828,8 +828,8 @@ def align_hmrc_amount_by_recipient_growth_and_rate(
         rate_factor = float(rate_spec.metadata["uprating_factor"])
         factor = count_factor * rate_factor
         count_basis = str(count_spec.metadata["uprating_index_basis"])
-        # A fact compiled at its own year (the production-2023 parity surface)
-        # reads both halves as identities, which write the instants only.
+        # A fact compiled at its own year reads both halves as identities,
+        # which write the instants only.
         rate_receipt = {
             f"uprating_rate_{key}": str(rate_spec.metadata[f"uprating_index_{key}"])
             for key in ("from_instant", "to_instant", "from_value", "to_value")

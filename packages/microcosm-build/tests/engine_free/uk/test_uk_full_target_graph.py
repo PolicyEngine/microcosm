@@ -181,3 +181,73 @@ def test_stored_surface_round_trip_restores_the_hierarchy():
     assert restored["hierarchy"][0] == hierarchy
     assert restored["hierarchy"][1] is None
     assert restored["value"].tolist() == [1.5, 2.0]
+
+
+def test_the_compiles_unsupported_report_crosses_the_surface_to_the_parity_gate(
+    target_inputs, toy_ladder, monkeypatch
+):
+    """The full-build path of the report, end to end: the target-compilation
+    payload writes it beside the compiled registries, the full gate kernel's
+    evidence reads it back with integer period keys, and the parity gate then
+    reads the unresolved reference as ledger_absent."""
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime import battery_bindings, graph_terminal
+
+    national = target_inputs["national"]
+    missing, *resolved = national.specs
+    unresolved = {"name": missing.name, "period": 2026, "reason": "no fact"}
+    # The compile resolved every reference but one, and reported that one.
+    inputs = {
+        **target_inputs["inputs"],
+        "uk_ledger_compiled_registries": {2026: TargetRegistry(resolved, country="uk")},
+        "uk_ledger_compile_unsupported": {2026: (unresolved,)},
+    }
+    _, ladder_path = toy_ladder
+
+    payload = graph_targets.compile_uk_full_target_surface(inputs, ladder_path)
+
+    # The surface crosses the node boundary as JSON, with string period keys.
+    stored = json.dumps(payload)
+    assert json.loads(stored)["uk_ledger_compile_unsupported"] == {"2026": [unresolved]}
+    assert json.loads(stored)["uk_ledger_compile_local_unsupported"] == {"2026": []}
+    evidence = graph_terminal._source_gate_evidence(
+        SimpleNamespace(
+            artifacts={"surface": SimpleNamespace(payload=stored)},
+            params={"spine_stage_names": ("frs_spine",), "review_date": "2026-09-10"},
+        ),
+        engine=None,
+    )
+    assert evidence["uk_ledger_compile_unsupported"] == {2026: (unresolved,)}
+    assert evidence["uk_ledger_compile_local_unsupported"] == {2026: ()}
+
+    # The fixture still carries the row, signed as ledger_absent.
+    monkeypatch.setattr(
+        battery_bindings,
+        "_load_ledger_compile_parity_fixture",
+        lambda resource: national,
+    )
+    parameters = {
+        "fixture_resource": "synthetic.json",
+        "target_period": 2026,
+        "signed_differences": (
+            {
+                "fixture_value": missing.value,
+                "kind": "ledger_absent",
+                "name": missing.name,
+                "period": missing.period,
+                "reason": "reviewed: the pinned feed no longer resolves it",
+            },
+        ),
+    }
+    context = EvidenceContext(artifacts=evidence)
+    result = battery_bindings._evaluate_ledger_compile_parity(context, parameters)
+    assert result.passed, result.failures
+    assert result.details["unsupported_reference_count"] == 1
+    # Without the report on the surface, the same signed row changes kind.
+    dropped = {**evidence, "uk_ledger_compile_unsupported": {2026: ()}}
+    refused = battery_bindings._evaluate_ledger_compile_parity(
+        EvidenceContext(artifacts=dropped), parameters
+    )
+    assert not refused.passed
+    assert "changed kind" in refused.failures[0]

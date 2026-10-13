@@ -442,13 +442,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "75ec46b57d350ba65aad808e09ab4c90d02d86f50a4fdf2ce10e5058d220e52b"
+    "bb727d8c8af98b9d3376d5e8eabb2eaeb708a2dd26379cbc3599af38f29a03c4"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "eef1dd46db8f32c5c1bd7ae508475b72b0987df3ba4a68d273a7f86631371f76"
+    "a34f6782a2f2f2da7126d2e3a59881745130ff4d73733b8bd4c38eb425549061"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fb8b643927d6fddb046234488ad140d7505c4bf6d46fae5280d461d3eedea246"
+    "7fffef7f4f2aaeb25a42c06f94388416858ac8d6305d64f0c59d8bc840333872"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -484,10 +484,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight"),
-    "uk_ledger_compile_parity_production_2023": (
-        "ledger_compile_parity",
-        "preflight",
-    ),
     "uk_ledger_compile_parity_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -596,7 +592,6 @@ _UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
 _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
     {
         "uk_release_family_build_stages",
-        "uk_ledger_compile_parity_production_2023",
         "uk_ledger_compile_parity_incumbent_2025",
         "uk_ledger_compile_parity_local_incumbent_2025",
         "uk_target_surface_local_default_2025",
@@ -873,7 +868,6 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
-            "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
             "uk_uc_capital_coherence",
             "uk_uc_deduction_combination_enum_domain",
@@ -908,10 +902,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "6e55a4c1c28d0e0edeaf84ed0ca98b748cce697ef5bd471737ce7cccaee93083"
+            "9b99952cec1a04d81ccad45838f6b5d3e493a142ce39c51e7c184efb31d087bb"
         ),
         "policy_sha256": (
-            "d5bbcf2a3b07984691b77e89d3ca5d7967221e90fb4b8c7e4ad0ac94a76aeb3b"
+            "bd9a569e80f666eda0fb1346908c8408b331e89be7f57b081cdf1504a0b15af5"
         ),
     },
 }

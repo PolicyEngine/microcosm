@@ -238,17 +238,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "ledger_compile_parity_production_2023_signed_differences.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "national_staging_build_record.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "parity_fixture_production_2023.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

@@ -137,10 +137,9 @@ UK_SPINE_GATE_SCOPE = (
 UK_NATIONAL_GATE_SCOPE = (
     "uk_release_input_coverage_manifest_current",
     "uk_release_family_build_stages",
-    "uk_ledger_compile_parity_production_2023",
     "uk_ledger_compile_parity_incumbent_2025",
     # The local-surface compile gates live with the same owner as the national
-    # parity pair: the release-cut certification producer
+    # parity gate: the release-cut certification producer
     # (tools/certify_uk_release_cut.py) compiles and supplies both registry
     # artifacts — never the seam.
     "uk_ledger_compile_parity_local_incumbent_2025",

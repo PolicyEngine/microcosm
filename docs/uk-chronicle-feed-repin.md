@@ -156,3 +156,8 @@ the periods their stages were built on (UK and regional population 2023 and 2024
 to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
 population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
 rounding of seventeen earlier values (eleven receipts and six journeys).
+
+The comparison with the 2023 production surface is retired (microcosm#1257, María's ruling of
+2026-10-13). Two compile-parity receipts remain, both at the 2025 calibration period: the national
+one against the frozen incumbent registry, and the local one. Earlier entries above that name three
+receipts describe the state at their time.

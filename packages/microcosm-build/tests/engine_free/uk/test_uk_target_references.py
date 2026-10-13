@@ -1508,29 +1508,14 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
         _add_signed_rationale_notes(report, fixture_resource=spec.fixture_resource)
         expected = _load_uk_resource(spec.output_resource)
         assert report == expected
-        if spec.target_period == 2023:
-            inherited_uc = [
-                r
-                for r in report["differences"]
-                if r["name"]
-                in {
-                    "dwp.uc.households",
-                    "dwp.uc.households_couple_no_children",
-                    "dwp.uc.households_couple_with_children",
-                    "dwp.uc.households_single_no_children",
-                    "dwp.uc.households_single_with_children",
-                }
-            ]
-            assert len(inherited_uc) == 5
-            assert all(
-                "frozen 2023 production" in r["reason"]
-                and "2025 source windows" in r["reason"]
-                for r in inherited_uc
-            )
         gate = ledger_compile_parity_gate(
             compilation.registry,
             _load_ledger_compile_parity_fixture(spec.fixture_resource),
             signed_differences=expected["differences"],
+            # As the release-cut producer calls it: a reference the feed no
+            # longer resolves is signed as ledger_absent, and the gate tells
+            # it from a fixture-only row by the compile's own report.
+            unsupported=compilation.unsupported,
         )
         assert gate.passed, gate.failures
 
