@@ -1,6 +1,12 @@
 """Tests split from packages/microcosm-build/tests/test_us_puf_support.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from microcosm.build.us_runtime.puf_support import (
+    _zero_passive_partnership_s_corp_without_line_32,
+)
 from test_support.microcosm_build.us_puf_support import *
 
 
@@ -1287,21 +1293,35 @@ def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
 def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
     None
 ):
+    """Raw Schedule E Part II fields derive each entity's share of line 32.
+
+    Partnership: (g) E25940 + (j) E25980 - (f) E25920 - (h) E25960 - (i) E26110.
+    S corporation: E26170 + E26190 - E26160 - E26180 - E26100. The passive
+    subset is (g) - (f) of both (microcosm#1239).
+    """
+
     donor = puf_tax_unit_donor_from_arrays(
         {
             "tax_unit_id": [10, 20],
             "household_weight": [100.0, 200.0],
             "filing_status": [b"SINGLE", b"JOINT"],
             "person_tax_unit_id": [10, 20],
+            "E25940": [30.0, 0.0],
+            "E25920": [0.0, 15.0],
             "E25980": [50.0, 70.0],
             "E25960": [5.0, 10.0],
+            "E26110": [1.0, 0.0],
+            "E26170": [0.0, 25.0],
+            "E26160": [4.0, 0.0],
             "E26190": [80.0, 110.0],
             "E26180": [20.0, 30.0],
+            "E26100": [0.0, 2.0],
             "E17500": [1_000.0, 2_000.0],
         },
         person_outputs=(
             "partnership_income",
             "s_corp_income",
+            "passive_partnership_s_corp_income",
             "partnership_self_employment_net_earnings",
             "health_insurance_premiums_without_medicare_part_b",
             "other_medical_expenses",
@@ -1310,8 +1330,9 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
         tax_unit_outputs=(),
     )
 
-    assert donor["partnership_income"].tolist() == [45.0, 60.0]
-    assert donor["s_corp_income"].tolist() == [60.0, 80.0]
+    assert donor["partnership_income"].tolist() == [74.0, 45.0]
+    assert donor["s_corp_income"].tolist() == [56.0, 103.0]
+    assert donor["passive_partnership_s_corp_income"].tolist() == [26.0, 10.0]
     assert donor["partnership_self_employment_net_earnings"].tolist() == [25.0, 40.0]
     assert donor["health_insurance_premiums_without_medicare_part_b"].tolist() == [
         453.0,
@@ -1385,28 +1406,223 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
     assert "interest_deduction" not in donor
 
 
-def test_puf_tax_unit_donor_carries_processed_partnership_s_corp_as_leaves() -> None:
+_PROCESSED_PARTNERSHIP_ARRAYS = {
+    "tax_unit_id": [10, 20],
+    "household_weight": [100.0, 200.0],
+    "filing_status": [b"SINGLE", b"JOINT"],
+    "person_tax_unit_id": [10, 20],
+    # The archived nonpassive-only sum; it is not Schedule E line 32.
+    "partnership_s_corp_income": [1_000.0, 2_000.0],
+    "partnership_se_income": [100.0, 200.0],
+}
+_PARTNERSHIP_OUTPUTS = (
+    "partnership_income",
+    "s_corp_income",
+    "passive_partnership_s_corp_income",
+    "partnership_self_employment_net_earnings",
+)
+
+
+def test_puf_tax_unit_donor_carries_source_year_line_32_on_processed_arrays() -> None:
     donor = puf_tax_unit_donor_from_arrays(
-        {
-            "tax_unit_id": [10, 20],
-            "household_weight": [100.0, 200.0],
-            "filing_status": [b"SINGLE", b"JOINT"],
-            "person_tax_unit_id": [10, 20],
-            "partnership_s_corp_income": [1_000.0, 2_000.0],
-            "partnership_se_income": [100.0, 200.0],
+        _PROCESSED_PARTNERSHIP_ARRAYS,
+        schedule_e_partnership_s_corp={
+            "partnership_income": [1_250.0, -300.0],
+            "passive_partnership_s_corp_income": [400.0, 0.0],
         },
-        person_outputs=(
-            "partnership_income",
-            "s_corp_income",
-            "partnership_self_employment_net_earnings",
-        ),
+        person_outputs=_PARTNERSHIP_OUTPUTS,
         tax_unit_outputs=(),
     )
 
-    assert donor["partnership_income"].tolist() == [1_000.0, 2_000.0]
+    assert donor["partnership_income"].tolist() == [1_250.0, -300.0]
+    assert donor["passive_partnership_s_corp_income"].tolist() == [400.0, 0.0]
     assert donor["s_corp_income"].tolist() == [0.0, 0.0]
     assert donor["partnership_self_employment_net_earnings"].tolist() == [100.0, 200.0]
     assert "tax_unit_partnership_s_corp_income" not in donor
+
+
+def test_processed_nonpassive_column_never_stands_for_line_32() -> None:
+    """Without the source-year supplement the processed donor fails closed."""
+
+    with pytest.raises(ValueError, match="cannot derive requested output"):
+        puf_tax_unit_donor_from_arrays(
+            _PROCESSED_PARTNERSHIP_ARRAYS,
+            person_outputs=_PARTNERSHIP_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("supplement", "message"),
+    [
+        ({"partnership_income": [1.0, 2.0]}, "must carry exactly"),
+        (
+            {
+                "partnership_income": [1.0, 2.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+                "rental_income": [0.0, 0.0],
+            },
+            "must carry exactly",
+        ),
+        (
+            {
+                "partnership_income": [1.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            "align one-for-one",
+        ),
+        (
+            {
+                "partnership_income": [1.0, np.nan],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            "must be finite",
+        ),
+    ],
+)
+def test_schedule_e_supplement_is_validated(
+    supplement: dict[str, list[float]], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        puf_tax_unit_donor_from_arrays(
+            _PROCESSED_PARTNERSHIP_ARRAYS,
+            schedule_e_partnership_s_corp=supplement,
+            person_outputs=_PARTNERSHIP_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+def test_schedule_e_supplement_refuses_a_second_source() -> None:
+    arrays = {
+        **_PROCESSED_PARTNERSHIP_ARRAYS,
+        "partnership_income": [5.0, 6.0],
+    }
+    with pytest.raises(ValueError, match="second source"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            schedule_e_partnership_s_corp={
+                "partnership_income": [1.0, 2.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            person_outputs=_PARTNERSHIP_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.sampled_from([0.0, 0.0, 0.0, -5_000.0, 120.0, 9_000.0]),
+            st.floats(-1e6, 1e6, allow_nan=False),
+        ),
+        min_size=1,
+        max_size=40,
+    )
+)
+def test_passive_draw_is_zero_wherever_the_unit_drew_no_line_32(
+    draws: list[tuple[float, float]],
+) -> None:
+    """Coherence on the frame: no passive amount without line-32 activity.
+
+    Units with a nonzero total keep their passive draw in full, whatever its
+    sign or size relative to the total.
+    """
+
+    predictions = pd.DataFrame(
+        {
+            "partnership_income": [total for total, _ in draws],
+            "s_corp_income": 0.0,
+            "passive_partnership_s_corp_income": [passive for _, passive in draws],
+        }
+    )
+    before = predictions["passive_partnership_s_corp_income"].copy()
+
+    _zero_passive_partnership_s_corp_without_line_32(predictions)
+
+    total = predictions["partnership_income"] + predictions["s_corp_income"]
+    after = predictions["passive_partnership_s_corp_income"]
+    assert (after[total == 0.0] == 0.0).all()
+    pd.testing.assert_series_equal(after[total != 0.0], before[total != 0.0])
+
+
+def test_passive_draw_coherence_requires_the_line_32_total() -> None:
+    predictions = pd.DataFrame({"passive_partnership_s_corp_income": [1.0]})
+
+    with pytest.raises(ValueError, match="line-32 total"):
+        _zero_passive_partnership_s_corp_without_line_32(predictions)
+
+
+def test_finalize_places_passive_with_its_line_32_total(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The passive subset lands on the people who carry the line-32 total."""
+
+    # As in production, s_corp_income rides the chain as an exact-zero leaf,
+    # so the line-32 total sits wholly in partnership_income.
+    draws = pd.DataFrame(
+        {
+            "partnership_income": [6_000.0, 0.0],
+            "s_corp_income": [0.0, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 800.0],
+        }
+    )
+
+    class FixedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FixedQRF":
+            assert outputs == list(draws.columns)
+            return self
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return draws.set_axis(features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FixedQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0],
+            "partnership_income": [6_000.0, 0.0],
+            "s_corp_income": [0.0, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 0.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=("puf_predictor_filing_status_code",),
+        person_outputs=tuple(draws.columns),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    person = imputed.table("person")
+    puf = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    by_unit = puf.groupby("person_tax_unit_id", sort=True)
+    totals = by_unit["partnership_income"].sum()
+    passive = by_unit["passive_partnership_s_corp_income"].sum()
+    # The zero-total unit keeps no passive amount.
+    assert passive.iloc[1] == 0.0
+    assert totals.iloc[1] == 0.0
+    # Within the two-person unit the passive amount follows the line-32 shares.
+    first_unit = puf[puf["person_tax_unit_id"] == totals.index[0]]
+    share_total = first_unit["partnership_income"] / totals.iloc[0]
+    share_passive = first_unit["passive_partnership_s_corp_income"] / passive.iloc[0]
+    np.testing.assert_allclose(share_passive.to_numpy(), share_total.to_numpy())
+    assert passive.iloc[0] > 0.0
 
 
 def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
@@ -1680,6 +1896,15 @@ def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
         0.0,
         2020.0,
     ]
+
+
+def test_passive_partnership_s_corp_income_is_signed_mass_calibrated() -> None:
+    """A sparse two-signed leaf, pinned to the donor's legs like its peers."""
+
+    assert (
+        "passive_partnership_s_corp_income"
+        in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+    )
 
 
 @pytest.mark.parametrize(
