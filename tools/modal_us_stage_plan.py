@@ -132,6 +132,35 @@ _GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.
 #: environment that would carry any other value (``hash_seed_problem``).
 HASH_SEED_ENV = "PYTHONHASHSEED"
 HASH_SEED = "0"
+#: Variables that choose git's repository, work tree, index or object store
+#: over the ``-C`` directory: ``git rev-parse --local-env-vars`` (git 2.55)
+#: without the ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and
+#: ``GIT_CONFIG_COUNT``, which git itself keeps when it runs a command in
+#: another repository. Git exports an absolute ``GIT_DIR`` to the hooks,
+#: ``rebase --exec`` commands and shell aliases it runs in a linked
+#: worktree. A runner started under one would fetch the branch check into
+#: that worktree's repository (a promisor remote and filter in its config,
+#: a ``refs/branch-check/tip`` ref and promisor packs) and would report that
+#: repository's ``HEAD`` as the clone's. :func:`git_environment` drops them
+#: from the runner's own git commands and :func:`tool_environment` from the
+#: tool's.
+GIT_REPOSITORY_ENV = frozenset(
+    {
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG",
+        "GIT_DIR",
+        "GIT_GRAFT_FILE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_SHALLOW_FILE",
+        "GIT_WORK_TREE",
+    }
+)
 
 
 class PlanError(ValueError):
@@ -1334,25 +1363,41 @@ def planned_argv(plan: Plan, work_root: str | None = None) -> list[str]:
     )
 
 
+def git_environment(base: Mapping[str, str]) -> dict[str, str]:
+    """``base`` for a git command that names its repository with ``-C``.
+
+    Without any GIT_REPOSITORY_ENV variable, so the command reaches the
+    directory it names (the pinned clone, the branch check's scratch
+    repository) and no other.
+    """
+
+    return {key: value for key, value in base.items() if key not in GIT_REPOSITORY_ENV}
+
+
 def tool_environment(
     base: Mapping[str, str], plan_env: Mapping[str, str]
 ) -> tuple[dict[str, str], list[str]]:
     """The stage tool's environment, and the names removed from ``base``.
 
     The container's environment without any credential-looking variable
-    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens) and
-    without its ``PYTHONHASHSEED`` (HASH_SEED_ENV: with none, the base's
-    pinned tool gives its stages "0", the value Route A's local base
-    recorded), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and
-    with the plan's allowlisted overrides last. Only names are returned, for
-    the receipt; never values.
+    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens), without
+    its ``PYTHONHASHSEED`` (HASH_SEED_ENV: with none, the base's pinned tool
+    gives its stages "0", the value Route A's local base recorded) and
+    without any GIT_REPOSITORY_ENV variable (the tool records the clone's
+    commit with git), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the
+    Hub, and with the plan's allowlisted overrides last. Only names are
+    returned, for the receipt; never values.
     """
 
     for key in plan_env:
         if not _ENV_KEY.fullmatch(key) or is_credential_env_key(key):
             raise PlanError(f"env {key!r} may not be passed to the tool")
     removed = sorted(
-        key for key in base if is_credential_env_key(key) or key == HASH_SEED_ENV
+        key
+        for key in base
+        if is_credential_env_key(key)
+        or key == HASH_SEED_ENV
+        or key in GIT_REPOSITORY_ENV
     )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}

@@ -131,7 +131,9 @@ def _now() -> str:
 
 def _git(*parts: str) -> str:
     return subprocess.check_output(
-        ["git", "-C", plan_lib.IMAGE_REPO_ROOT, *parts], text=True
+        ["git", "-C", plan_lib.IMAGE_REPO_ROOT, *parts],
+        text=True,
+        env=plan_lib.git_environment(os.environ),
     ).strip()
 
 
@@ -163,8 +165,10 @@ def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
     """
 
     scratch = tempfile.mkdtemp(prefix="branch-check-")
-    # A missing or private repository must fail, not wait for a password.
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    # A missing or private repository must fail, not wait for a password,
+    # and the fetch must land in the scratch repository, not in one an
+    # inherited GIT_DIR names.
+    env = {**plan_lib.git_environment(os.environ), "GIT_TERMINAL_PROMPT": "0"}
     try:
         init, fetch, rev_parse, ancestry = plan_lib.branch_check_argvs(
             plan.repo_url, plan.branch, plan.commit, str(Path(scratch) / "repo.git")
