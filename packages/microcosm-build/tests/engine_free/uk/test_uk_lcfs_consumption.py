@@ -54,7 +54,9 @@ def _household() -> pd.DataFrame:
             b227=[6.0, 0.0, 0.0, 0.0],
             b175=[0.0, 9.0, 0.0, 0.0],
             b178=[0.0, 1.0, 0.0, 0.0],
+            b489=[0.0, 8.0, 0.0, 0.0],
             b170=[0.0, 5.0, 0.0, 0.0],
+            b490=[0.0, 5.0, 0.0, 0.0],
             b1751=[0.0, 0.0, 7.0, 0.0],
             b017=[0.0, 0.0, 3.0, 0.0],
             b233=[0.0, 0.0, 0.0, 10.0],
@@ -187,8 +189,9 @@ def test_stage_declares_the_unmapped_code_refusal() -> None:
 
 def test_energy_split_sums_each_fuels_labelled_parts() -> None:
     # microcosm#1164: b226 is the gas component of a combined bill and b227 the
-    # electricity one; b175 less b178 is the electricity account, b170 less b173
-    # the gas account; b1751 the electricity prepayment meter.
+    # electricity one; b489 is the electricity account less its rebate (b175
+    # less b178), b490 the gas one (b170 less b173); b1751 the electricity
+    # prepayment meter.
     split = derive_energy_from_lcfs(_household())
 
     electricity = split["electricity_consumption"].to_numpy()
@@ -215,10 +218,58 @@ def test_energy_split_shares_an_unsplit_payment_by_the_households_own_split() ->
     assert split.loc[0, "gas_consumption"] == pytest.approx(5.0)
 
 
+def test_energy_split_gives_a_combined_payment_both_fuels() -> None:
+    # Vahid's review of microcosm#1260: a combined key/meter payment means the
+    # household pays for both fuels, so a diary top-up coded to electricity
+    # alone does not make the whole payment electricity; the unsplit payment
+    # takes the dual-fuel mean share, not the household's own share of 1.
+    household = _household()
+    household.loc[3, "c45114"] = 1.0
+
+    split = derive_energy_from_lcfs(household)
+
+    mean_share = np.mean([6.0 / 10.0, 8.0 / 13.0])
+    assert split.loc[3, "electricity_consumption"] == pytest.approx(
+        1.0 + 10.0 * mean_share
+    )
+    assert split.loc[3, "gas_consumption"] == pytest.approx(10.0 * (1.0 - mean_share))
+
+
+def test_energy_split_nets_the_combined_bill_rebate() -> None:
+    # b174 is the combined gas-and-electricity rebate (Volume F Part 2 row 286):
+    # an unsplit combined bill of 10 with a rebate of 2 leaves 8 to share.
+    household = _household()
+    household.loc[0, ["b231", "b226", "b227", "b174"]] = [10.0, 0.0, 0.0, 2.0]
+
+    split = derive_energy_from_lcfs(household)
+
+    total = split.loc[0, "electricity_consumption"] + split.loc[0, "gas_consumption"]
+    assert total == pytest.approx(8.0)
+
+
+def test_energy_split_refuses_an_account_that_is_not_payment_less_rebate() -> None:
+    # The donor must show b489 = b175 - b178 for nearly every account payer:
+    # a rebate stored with the other sign, or a moved label, breaks it.
+    household = _household()
+    household.loc[1, "b489"] = 10.0  # b175 + b178, not b175 - b178
+
+    with pytest.raises(ValueError, match="electricity account less rebate"):
+        derive_energy_from_lcfs(household)
+
+
+def test_energy_split_refuses_a_donor_with_no_dual_fuel_household() -> None:
+    household = _household()
+    household.loc[1, ["b170", "b490"]] = [0.0, 0.0]
+    household.loc[0, "b226"] = 0.0
+
+    with pytest.raises(ValueError, match="pays for both electricity and gas"):
+        derive_energy_from_lcfs(household)
+
+
 def test_energy_split_reads_negative_payments_as_zero() -> None:
     household = _household()
     # A refund larger than the account, and a negative meter payment.
-    household.loc[1, ["b175", "b178"]] = [2.0, 5.0]
+    household.loc[1, ["b175", "b178", "b489"]] = [2.0, 5.0, -3.0]
     household.loc[2, "b1751"] = -4.0
 
     split = derive_energy_from_lcfs(household)
@@ -251,6 +302,82 @@ def test_donor_records_its_fuel_light_and_power_split() -> None:
     )
     # The labelled parts reach the whole of p537 on this donor.
     assert receipt["parts_over_fuel_light_and_power"] == pytest.approx(1.0)
+    assert receipt["clipping_over_fuel_light_and_power"] == pytest.approx(0.0)
+    assert receipt["unclipped_over_fuel_light_and_power"] == pytest.approx(1.0)
+    assert receipt["share_of_donors_whose_unclipped_parts_differ_from_p537"] == {
+        "by_over_a_penny_a_week": 0.0,
+        "by_over_50p_a_week": 0.0,
+    }
+    assert receipt["account_identity_shares"] == {"electricity": 1.0, "gas": 1.0}
+
+
+def test_split_receipt_separates_refunds_read_as_zero_from_other_gaps() -> None:
+    # Vahid's review of microcosm#1260: how much of the parts' excess over p537
+    # is refunds read as zero, and how many donors differ from p537 otherwise.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ENERGY_SPLIT_RECEIPT,
+    )
+
+    household = _household()
+    household.loc[2, "b1751"] = -4.0  # a meter refund, read as zero
+    household.loc[0, "p537"] = 10.3  # p537 30p a week above the parts
+
+    receipt = clean_lcfs_consumption_table(_person(), household).attrs[
+        UK_LCFS_ENERGY_SPLIT_RECEIPT
+    ]
+
+    weights = np.array([1.5, 2.0, 2.5, 3.0]) * 1_000 * (365.25 / 7)
+    p537 = np.array([10.3, 13.0, 10.0, 10.0])
+    unclipped = np.array([10.0, 13.0, -4.0 + 3.0, 10.0])
+    assert receipt["clipping_over_fuel_light_and_power"] == pytest.approx(
+        float(weights[2] * 4.0 / (weights @ p537))
+    )
+    assert receipt["unclipped_over_fuel_light_and_power"] == pytest.approx(
+        float(weights @ unclipped / (weights @ p537))
+    )
+    # Two donors differ: a small cell, so no share.
+    assert receipt["share_of_donors_whose_unclipped_parts_differ_from_p537"] == {
+        "by_over_a_penny_a_week": "<10",
+        "by_over_50p_a_week": "<10",
+    }
+
+
+def test_split_receipt_shares_differing_donors_by_threshold() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        donor_energy_split_receipt,
+    )
+
+    household = pd.concat([_household()] * 5, ignore_index=True)
+    household.loc[:11, "p537"] += 1.0  # twelve donors a pound a week off
+    household.loc[12:13, "p537"] += 0.2  # two only 20p off
+    split = derive_energy_from_lcfs(household)
+    split["household_weight"] = split["cal_weight_annual"]
+
+    receipt = donor_energy_split_receipt(split)
+
+    weight = household["cal_weight_annual"].to_numpy()
+    assert receipt["share_of_donors_whose_unclipped_parts_differ_from_p537"] == {
+        "by_over_a_penny_a_week": pytest.approx(weight[:14].sum() / weight.sum()),
+        "by_over_50p_a_week": pytest.approx(weight[:12].sum() / weight.sum()),
+    }
+
+
+def test_split_receipt_floors_the_account_identity_shares() -> None:
+    # An exact unweighted share gives back its counts: the receipt floors it.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ACCOUNT_IDENTITY_RECEIPT,
+    )
+
+    household = pd.concat([_household()] * 40, ignore_index=True)
+    # One electricity account payer in forty whose b489 is not b175 - b178.
+    household.loc[1, "b489"] = 9.0
+
+    split = derive_energy_from_lcfs(household)
+
+    assert split.attrs[UK_LCFS_ACCOUNT_IDENTITY_RECEIPT] == {
+        "electricity": 0.97,
+        "gas": 1.0,
+    }
 
 
 def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() -> None:
@@ -854,7 +981,9 @@ def _synthetic_lcfs_donor(
         _energy_codes(
             n,
             b175=20.0 + rows % 15,
+            b489=20.0 + rows % 15,
             b170=np.where(rows % 6 == 0, 0.0, 10.0 + rows % 9),
+            b490=np.where(rows % 6 == 0, 0.0, 10.0 + rows % 9),
             b226=household["b226"],
             b017=np.where(rows % 20 == 3, 5.0, 0.0),
         )

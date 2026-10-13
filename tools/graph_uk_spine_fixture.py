@@ -860,7 +860,9 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     combined = rows.astype(int) % 3 == 0
     prepay = rows.astype(int) % 6 == 1
     household["b175"] = np.where(combined | prepay, 0.0, 8.0 + rows % 5)
+    household["b489"] = household["b175"]
     household["b170"] = np.where(combined | prepay, 0.0, 4.0 + rows % 4)
+    household["b490"] = household["b170"]
     household["b231"] = np.where(combined, 10.0 + rows % 3, 0.0)
     household["b226"] = np.where(combined, 4.0, 0.0)
     household["b227"] = np.where(combined, 6.0 + rows % 3, 0.0)
