@@ -858,9 +858,30 @@
         "threshold": 0.0,
         "capital_column": "uc_reported_capital",
         "carrier_column": "frs_benunit_capital",
-        "sentinel": -1.0
+        "sentinel": -1.0,
+        "property_shares": {
+          "uc_reported_capital": {
+            "sources": [
+              "other_residential_property_value",
+              "non_residential_property_value"
+            ],
+            "owners": "household_reference_person_unit",
+            "valuation": 0.9,
+            "units_reporting_universal_credit": "no_share"
+          },
+          "pension_credit_reported_capital": {
+            "sources": [
+              "owned_land",
+              "other_residential_property_value",
+              "non_residential_property_value"
+            ],
+            "owners": "household_reference_person_unit",
+            "valuation": 0.9
+          }
+        },
+        "sum_tolerance": 0.01
       },
-      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. The reported-capital engine carrier is bounded below by its named -1 unavailable sentinel, may use that sentinel only where the FRS carrier is unavailable, and otherwise remains the exact same source value."
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. Both recorded capitals, uc_reported_capital and pension_credit_reported_capital, are bounded below by the named -1 unavailable sentinel and may use it only where the FRS carrier frs_benunit_capital is unavailable. Otherwise each equals the carrier plus the household property the unit holds, re-derived here with the stage's own rule (microcosm#1095): the household reference person's benefit unit holds the household's property at 90% of its value, market value less 10% for the costs of sale, and no other unit holds any. UC counts other residential and non-residential property, and a unit that reports Universal Credit keeps its receipt and carries none; Pension Credit counts those and owned land. The sum may differ by GBP 0.01 plus one float32 step of the expected value, so a float32 round-trip of the export does not fail it."
     },
     {
       "id": "uk_support",
@@ -1015,6 +1036,8 @@
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
           "person.uc_is_in_startup_period",
+          "person.uc_is_in_gainful_self_employment",
+          "person.is_looked_after_by_local_authority",
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",

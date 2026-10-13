@@ -1457,6 +1457,69 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
         }
 
 
+def test_the_package_stage_output_meets_the_publisher_gate_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1034): the gate the package
+    stage writes, keyed and staged by the contract's own constants, passes
+    the publisher's US local-area stored-input requirement against the
+    release manifest and build manifest written alongside it, and the same
+    output with the gate dropped is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    # The built-with record reads installed metadata; the engine-free lane has
+    # no policyengine-us, so pin it to the stand-in engine's version.
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_STORED_INPUTS_EVIDENCE_KEY == contract.US_STORED_INPUTS_EVIDENCE_KEY
+    )
+    assert (
+        module.US_LOCAL_AREA_STORED_INPUTS_STAGE
+        == contract.US_LOCAL_AREA_STORED_INPUTS_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+    assert release_manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "2.2.1",
+    }
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert failures == []
+
+    del gate_summary["gates"][contract.US_STORED_INPUTS_EVIDENCE_KEY]
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert len(failures) == 1
+    assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
 def _write_lane_h5(path: Path, **person_columns) -> None:
     """The plausible-hours frame, written by the lane's own writer: the shared
     nullable writer, which adds the ``_populace_staging_metadata`` series."""

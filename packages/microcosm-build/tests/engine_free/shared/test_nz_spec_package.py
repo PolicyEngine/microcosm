@@ -166,12 +166,12 @@ def rulespec_commit_mentions(value: object) -> set[str]:
     - a string (a value or a mapping key) that contains "rulespec" in any
       case, wherever in the string the run sits;
     - any key or value, at any depth, below a key that contains "rulespec"
-      or in a rulespec record (a mapping whose ``repository`` contains
+      or in a rulespec record (its ``repository`` or ``source_repo`` contains
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
-      unless the key's mapping is a foreign record (its ``repository`` lacks
-      "rulespec") and neither the key nor an enclosing key contains
-      "rulespec".
+      unless the key's mapping is a foreign record (its repository
+      attribution lacks "rulespec") and neither the key nor an enclosing
+      key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
     keys still count below a rulespec key. Integers count where hex strings
@@ -183,9 +183,15 @@ def rulespec_commit_mentions(value: object) -> set[str]:
 
     def visit(node: object, *, rulespec_context: bool, commit_value: bool) -> None:
         if isinstance(node, Mapping):
-            repository = node.get("repository")
-            named = isinstance(repository, str)
-            rulespec_record = named and "rulespec" in repository.lower()
+            repositories = [
+                repository
+                for field in ("repository", "source_repo")
+                if isinstance(repository := node.get(field), str)
+            ]
+            named = bool(repositories)
+            rulespec_record = any(
+                "rulespec" in repository.lower() for repository in repositories
+            )
             foreign = named and not rulespec_record
             if rulespec_record:
                 commit_value = True
@@ -559,6 +565,20 @@ def _fresh_hold_out_and_plant(
     )
 
 
+def test_chronicle_feed_is_a_loaded_legacy_json_resource() -> None:
+    spec = load_country_spec("nz")
+    row = next(row for row in spec.resource_rows if row.path == "chronicle_feed.json")
+
+    assert row.kind == "legacy_json"
+    assert row.schema_id == "legacy_json"
+    assert (
+        spec.resource_hashes[row.path]
+        == hashlib.sha256((NZ_ROOT / row.path).read_bytes()).hexdigest()
+    )
+    assert _load(row.path)["country"] == spec.country
+    assert _load(row.path)["scope"] == "nz_calibration"
+
+
 class TestReferenceSets:
     @pytest.mark.parametrize("reference_set", sorted(REFERENCE_FILES))
     def test_each_set_is_a_self_identifying_nz_reference_resource(
@@ -774,10 +794,24 @@ class TestRulespecPin:
         assert rulespec_commit_mentions({"wrapper": [record]}) == {commit}
 
     @settings(max_examples=200, deadline=None)
-    @given(commit=_HEX40_TEXT)
-    def test_scanner_ignores_commits_of_other_repositories(self, commit: str) -> None:
-        other = {"repository": "TheAxiomFoundation/axiom-oracles", "commit": commit}
+    @given(
+        commit=_HEX40_TEXT,
+        repository_field=st.sampled_from(("repository", "source_repo")),
+        repository_name=st.sampled_from(
+            ("TheAxiomFoundation/axiom-oracles", "PolicyEngine/chronicle")
+        ),
+        commit_field=st.sampled_from(("commit", "source_commit")),
+    )
+    def test_scanner_ignores_commits_of_other_repositories(
+        self,
+        commit: str,
+        repository_field: str,
+        repository_name: str,
+        commit_field: str,
+    ) -> None:
+        other = {repository_field: repository_name, commit_field: commit}
         assert rulespec_commit_mentions(other) == set()
+        assert rulespec_commit_mentions({"rulespec": other}) == {commit}
 
     @settings(max_examples=200, deadline=None)
     @given(
@@ -921,13 +955,14 @@ class TestRulespecPin:
         commit=_HEX40_TEXT,
         length=st.integers(7, 40),
         repository=st.sampled_from(_RULESPEC_REPOSITORIES),
+        repository_field=st.sampled_from(("repository", "source_repo")),
         key=st.sampled_from(["commit", "revision", "sha", "ref", "head", "pinned"]),
     )
     def test_every_hex_value_of_a_rulespec_record_is_a_mention(
-        self, commit: str, length: int, repository: str, key: str
+        self, commit: str, length: int, repository: str, repository_field: str, key: str
     ) -> None:
         short = commit[:length]
-        record = {"repository": repository, key: short}
+        record = {repository_field: repository, key: short}
         assert rulespec_commit_mentions({"source": record}) == {short}
         assert rulespec_commit_mentions({"rulespec": {key: short}}) == {short}
         # A value straight under a rulespec key, as a string or in a list.

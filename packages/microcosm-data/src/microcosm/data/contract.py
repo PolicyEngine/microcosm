@@ -49,6 +49,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
+from microcosm.data.stored_inputs import is_model_named
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -76,12 +77,18 @@ __all__ = [
     "PUBLISHER_CLAIM_BASIS",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
+    "US_FISCAL_STORED_INPUTS_STAGE",
+    "US_LOCAL_AREA_STORED_INPUTS_STAGE",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
+    "US_STORED_INPUTS_EVIDENCE_FILE",
+    "US_STORED_INPUTS_EVIDENCE_KEY",
+    "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
     "line_for_release_id",
     "release_dataset_role",
     "required_release_files",
+    "stored_input_evidence_manifest_block",
     "validate_evidence_release_dir",
     "validate_release_dir",
 ]
@@ -165,6 +172,25 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
     "transfer_coverage",
     "donor_release",
 )
+
+#: The stored-input verdict (microcosm#1026) as release evidence
+#: (microcosm#1034). Each US seam that checks a release's stored columns against
+#: the policyengine-us it records as built-with binds the verdict under this
+#: key: the ACS local-area package stage as a ``gate_summary.json`` gate, the
+#: fiscal-refresh tool as a gate-evidence file plus a manifest block. The
+#: publisher requires it of every US calibration release, so a release packaged
+#: by a tool without the check, or with its record deleted, cannot validate.
+US_STORED_INPUTS_EVIDENCE_KEY = "stored_inputs"
+#: The fiscal-refresh gate-evidence file: a ``release_manifest.json`` artifact
+#: under :data:`US_STORED_INPUTS_EVIDENCE_KEY`, whose status the manifests'
+#: ``gate_evidence`` block records as ``bound``.
+US_STORED_INPUTS_EVIDENCE_FILE = "stored_inputs.json"
+US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION = 1
+#: Where each seam checks: the fiscal-refresh tool grades the export frame
+#: before the H5 is written (and the written H5 after), the ACS local-area tool
+#: grades the calibrated H5 when it packages the release.
+US_FISCAL_STORED_INPUTS_STAGE = "export frame"
+US_LOCAL_AREA_STORED_INPUTS_STAGE = "package"
 
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
@@ -416,13 +442,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "1d6e112daf3125733c57003d97d1f2d7b96929d248a00b8868d58e182572af6a"
+    "75ec46b57d350ba65aad808e09ab4c90d02d86f50a4fdf2ce10e5058d220e52b"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d8db3502536ab016beede21b7cab29db67ad8ec0eca1d634aaabcca03a9b3810"
+    "eef1dd46db8f32c5c1bd7ae508475b72b0987df3ba4a68d273a7f86631371f76"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f8d7dfff9664fcf9b2919ab15ac918ee2222545c03f42ae4ba5e7ac53d0179f0"
+    "fb8b643927d6fddb046234488ad140d7505c4bf6d46fae5280d461d3eedea246"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -882,10 +908,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "b1d9f2478256f4e011e96484e39fa8dcbdc6425bb64b8ee38d8997035518a10c"
+            "6e55a4c1c28d0e0edeaf84ed0ca98b748cce697ef5bd471737ce7cccaee93083"
         ),
         "policy_sha256": (
-            "33e4a58e75c11989c937089416f9d9e42c274bcbda15427d2f1b093c2d1102f1"
+            "d5bbcf2a3b07984691b77e89d3ca5d7967221e90fb4b8c7e4ad0ac94a76aeb3b"
         ),
     },
 }
@@ -4548,7 +4574,9 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     passed, the per-target diagnostics are complete and consistent, the
     source coverage carries the local provenance chain, a
     reviewed-limitations register exists, the manifest claims no default
-    slot, and every artifact is pinned to the immutable release id.
+    slot, and every artifact is pinned to the immutable release id. A US
+    release must also declare the stored-input gate, bound to its built-with
+    engine and its microdata bytes (microcosm#1034).
     """
 
     failures: list[str] = []
@@ -4568,6 +4596,7 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
+    build_manifest: Mapping | None = None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
@@ -4584,6 +4613,16 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         gate_summary = _load_json(gate_path, failures)
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
+            # The shared gate check above reads only the gates a summary
+            # lists; the US lane must list this one (microcosm#1034). UK
+            # local-k and dense releases have no stored-input seam.
+            if release_id.startswith("populace-us-"):
+                _check_us_local_area_stored_inputs_gate(
+                    gate_summary,
+                    release_manifest=release_manifest,
+                    build_manifest=build_manifest,
+                    failures=failures,
+                )
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     if diagnostics_path.is_file():
@@ -5147,6 +5186,486 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
             )
 
 
+def _built_with_us_engine_label(
+    release_manifest: Mapping | None, failures: list[str]
+) -> str | None:
+    """``"policyengine-us <version>"`` for the manifest's built-with model.
+
+    That is the label :func:`microcosm.data.stored_inputs.installed_us_engine`
+    gives the engine a seam graded against, and every seam records its
+    built-with model from the same installed distribution. ``None``, with a
+    failure line, when the manifest does not record a policyengine-us version.
+    """
+
+    build = (
+        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
+    )
+    model = (
+        build.get("built_with_model_package") if isinstance(build, Mapping) else None
+    )
+    version = model.get("version") if isinstance(model, Mapping) else None
+    if (
+        not isinstance(model, Mapping)
+        or model.get("name") != "policyengine-us"
+        or not isinstance(version, str)
+        or not version
+        or version in {"unknown", "not-installed"}
+    ):
+        failures.append(
+            "release_manifest.json must record build.built_with_model_package "
+            "as policyengine-us with a resolved version: the stored-input "
+            "verdict is certified against that engine (microcosm#1026)."
+        )
+        return None
+    return f"policyengine-us {version}"
+
+
+def _is_sorted_model_named_list(value: object) -> bool:
+    """A list of distinct model-named column names in sorted order."""
+
+    return (
+        isinstance(value, list)
+        and all(isinstance(column, str) and is_model_named(column) for column in value)
+        and value == sorted(set(value))
+    )
+
+
+def _check_stored_input_verdict(
+    verdict: Mapping,
+    *,
+    owner: str,
+    engine_label: str | None,
+    failures: list[str],
+) -> None:
+    """The fields every seam's stored-input verdict records, checked engine-free.
+
+    The engine a verdict names must be the built-with engine (``engine_label``;
+    ``None`` when the manifest does not record one, already a failure). The
+    register digest must be a sha256, and the registered non-variable columns
+    the release stores must be a sorted list of distinct model-named names,
+    the form :func:`microcosm.data.stored_inputs.require_h5_stored_inputs`
+    writes. Nothing here imports an engine or reads the H5.
+    """
+
+    engine = verdict.get("engine")
+    if engine_label is not None and engine != engine_label:
+        failures.append(
+            f"{owner} graded the release against {engine!r}, not its built-with "
+            f"engine {engine_label!r}: the verdict certifies nothing about the "
+            "engine the release records (microcosm#1026)."
+        )
+    register = verdict.get("register_sha256")
+    if not isinstance(register, str) or not _SHA256_RE.fullmatch(register):
+        failures.append(
+            f"{owner} 'register_sha256' must be a 64-character lowercase sha256."
+        )
+    if not _is_sorted_model_named_list(verdict.get("registered_non_variables")):
+        failures.append(
+            f"{owner} 'registered_non_variables' must be a sorted list of "
+            "distinct model-named column names."
+        )
+
+
+def _check_us_local_area_stored_inputs_gate(
+    gate_summary: Mapping,
+    *,
+    release_manifest: Mapping | None,
+    build_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Require the ACS package stage's stored-input gate, bound to the release.
+
+    microcosm#1034: :func:`_check_local_area_gates` reads only the gates a
+    summary lists, so a US local-area release packaged by a tool without the
+    stored-input check (microcosm#1026), or with the gate deleted, validated
+    anyway. The gate must be present and green (``passed`` is checked there),
+    record no failures, say it was checked when the release was packaged, name
+    the built-with engine, and certify the bytes the manifest pins as its one
+    microdata artifact; ``build_manifest.json`` must carry the same entry.
+    Engine-free: the check reads JSON only.
+
+    No published release is exempt. The four US local-area releases on the Hub
+    predate the gate. Nothing re-validates a published release automatically,
+    and a local-area release cannot be an annual-projection base, so only a
+    fresh publish of a local directory runs this; re-publishing one of them
+    means re-packaging it, which runs the check. One of them
+    (``populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z``) stores
+    two columns the check refuses.
+    """
+
+    key = US_STORED_INPUTS_EVIDENCE_KEY
+    gates = gate_summary.get("gates")
+    gate = gates.get(key) if isinstance(gates, Mapping) else None
+    if not isinstance(gate, Mapping):
+        failures.append(
+            f"gate_summary.json must carry the {key!r} gate for a US "
+            "non-default local-area release (microcosm#1026, #1034): package "
+            "it with tools/build_us_acs_local_release.py --stage package, which "
+            "checks the calibrated H5's stored columns against the "
+            "policyengine-us the release records as built-with."
+        )
+        return
+    owner = f"gate_summary.json gate {key!r}"
+    if gate.get("failures") != []:
+        failures.append(f"{owner} must record an empty 'failures' list.")
+    stage = gate.get("checked_at_stage")
+    if stage != US_LOCAL_AREA_STORED_INPUTS_STAGE:
+        failures.append(
+            f"{owner} must be checked_at_stage "
+            f"{US_LOCAL_AREA_STORED_INPUTS_STAGE!r} (the bytes the release "
+            f"ships), got {stage!r}."
+        )
+    _check_stored_input_verdict(
+        gate,
+        owner=owner,
+        engine_label=_built_with_us_engine_label(release_manifest, failures),
+        failures=failures,
+    )
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    microdata = [
+        entry
+        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    ]
+    # More or fewer than one microdata artifact is already a manifest failure.
+    if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
+        "sha256"
+    ):
+        failures.append(
+            f"{owner} certifies artifact_sha256 {gate.get('artifact_sha256')!r}, "
+            "not the release's microdata artifact "
+            f"({microdata[0].get('sha256')!r})."
+        )
+    if isinstance(build_manifest, Mapping):
+        build_gates = build_manifest.get("gates")
+        recorded = build_gates.get(key) if isinstance(build_gates, Mapping) else None
+        if recorded != gate:
+            failures.append(
+                f"build_manifest.json gates.{key} must equal the "
+                f"gate_summary.json {key!r} gate; the package stage writes "
+                "both from one entry."
+            )
+
+
+def stored_input_evidence_manifest_block(
+    payload: Mapping, *, dataset_sha256: str
+) -> dict[str, object]:
+    """The manifests' ``stored_inputs`` block for a fiscal-refresh release.
+
+    ``payload`` is the gate-evidence file
+    (:data:`US_STORED_INPUTS_EVIDENCE_FILE`) the fiscal-refresh tool writes
+    when its stored-input gate has run. The block names the file, the stage,
+    the verdict and the details the gate recorded, and binds them to
+    ``dataset_sha256``, the H5 the manifests pin. The tool writes the
+    manifests only after the post-write check found that the written H5 earns
+    the verdict the gate reached, so the block is the verdict on those bytes.
+    The tool builds both manifests' blocks with this function and the
+    publisher recomputes it from the shipped file, so the three agree or the
+    release is refused.
+
+    Raises:
+        KeyError, TypeError, ValueError: ``payload`` is not a stored-input
+            evidence payload; the publisher reports the file's shape first.
+    """
+
+    gate = payload[US_STORED_INPUTS_EVIDENCE_KEY]
+    # The details first, so none of them can stand in for the four fields the
+    # block itself asserts.
+    return {
+        **dict(gate["details"]),
+        "evidence": US_STORED_INPUTS_EVIDENCE_FILE,
+        "checked_at_stage": payload["checked_at_stage"],
+        "passed": gate["passed"],
+        "dataset_sha256": dataset_sha256,
+    }
+
+
+def _stored_input_evidence_payload_failures(
+    payload: Mapping,
+    *,
+    engine_label: str | None,
+    evidence_tier: bool,
+) -> list[str]:
+    """Why a fiscal-refresh stored-input evidence file is not a valid verdict.
+
+    Read by the certified and evidence contracts alike. The file must be the
+    schema the tool writes, enforced, from the export-frame stage, and its
+    verdict must be internally consistent: ``passed`` exactly when it records
+    no failure line; when the gate evaluated, one line per refused column in
+    column order, each quoting its column, the refused and registered columns
+    sorted, distinct, model-named and disjoint, and the stored-column count at
+    least their total; when it could not evaluate, one line and the reason.
+    The verdict names the built-with engine (:func:`_check_stored_input_verdict`).
+    A certified release must have evaluated and refused nothing; an evidence
+    release may carry refusals, which :func:`_check_us_stored_input_evidence`
+    binds to ``known_failures``.
+    """
+
+    owner = f"{US_STORED_INPUTS_EVIDENCE_FILE} stored_inputs"
+    failures: list[str] = []
+    schema_version = payload.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION
+    ):
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} schema_version must be "
+            f"{US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION}, got {schema_version!r}."
+        )
+    if payload.get("enforced") is not True:
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} must record enforced: true; the "
+            "stored-input gate has no waiver."
+        )
+    stage = payload.get("checked_at_stage")
+    if stage != US_FISCAL_STORED_INPUTS_STAGE:
+        failures.append(
+            f"{US_STORED_INPUTS_EVIDENCE_FILE} must be checked_at_stage "
+            f"{US_FISCAL_STORED_INPUTS_STAGE!r}, got {stage!r}."
+        )
+    gate = payload.get(US_STORED_INPUTS_EVIDENCE_KEY)
+    details = gate.get("details") if isinstance(gate, Mapping) else None
+    lines = gate.get("failures") if isinstance(gate, Mapping) else None
+    if (
+        not isinstance(gate, Mapping)
+        or not isinstance(details, Mapping)
+        or not isinstance(lines, list)
+        or not all(isinstance(line, str) and line for line in lines)
+        or not isinstance(gate.get("passed"), bool)
+    ):
+        failures.append(
+            f"{owner} must be an object with a boolean 'passed', a 'failures' "
+            "list of non-empty strings and a 'details' object."
+        )
+        return failures
+    if gate["passed"] != (lines == []):
+        failures.append(
+            f"{owner} 'passed' must be true exactly when it records no failure line."
+        )
+    evaluated = details.get("evaluated")
+    if evaluated is True:
+        _check_stored_input_verdict(
+            details,
+            owner=f"{owner}.details",
+            engine_label=engine_label,
+            failures=failures,
+        )
+        refused = details.get("refused")
+        registered = details.get("registered_non_variables")
+        if not _is_sorted_model_named_list(refused):
+            failures.append(
+                f"{owner}.details 'refused' must be a sorted list of distinct "
+                "model-named column names."
+            )
+        elif _is_sorted_model_named_list(registered):
+            if set(refused) & set(registered):
+                failures.append(
+                    f"{owner}.details lists "
+                    f"{sorted(set(refused) & set(registered))} as both refused "
+                    "and registered; a registered column is never refused."
+                )
+            stored = details.get("stored_columns")
+            if type(stored) is not int or stored < len(refused) + len(registered):
+                failures.append(
+                    f"{owner}.details 'stored_columns' must be an integer at "
+                    "least the number of refused and registered columns, got "
+                    f"{stored!r}."
+                )
+            if len(lines) != len(refused) or any(
+                f"stored column '{column}'" not in line
+                for column, line in zip(refused, lines, strict=True)
+            ):
+                failures.append(
+                    f"{owner} must record one failure line per refused column, "
+                    "in column order, each quoting its column."
+                )
+        if not evidence_tier and (refused != [] or lines != []):
+            failures.append(
+                f"{owner} refused {refused!r}: a certified release stores no "
+                "model-named column its built-with engine lacks "
+                "(microcosm#1026). Rename each to the live input, stop storing "
+                "it, or add a reviewed register entry, and rebuild."
+            )
+    elif evaluated is False:
+        error = details.get("error")
+        if len(lines) != 1 or not isinstance(error, str) or not error:
+            failures.append(
+                f"{owner} could not evaluate, so it must record exactly one "
+                "failure line and a non-empty 'error'."
+            )
+        if not evidence_tier:
+            failures.append(
+                f"{owner} never evaluated ({error!r}); a certified release's "
+                "stored columns must have been checked against its built-with "
+                "engine."
+            )
+    else:
+        failures.append(f"{owner}.details 'evaluated' must be a boolean.")
+    return failures
+
+
+def _check_us_stored_input_evidence(
+    release_dir: Path,
+    *,
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    failures: list[str],
+    evidence_tier: bool,
+) -> None:
+    """Require a US national release to bind its stored-input verdict.
+
+    microcosm#1034: the fiscal-refresh tool's stored-input gate
+    (microcosm#1026) once recorded its verdict only in run telemetry, so a
+    release built by a tool without the gate, or on a branch without it,
+    validated the same as one built with it. Every US national calibration
+    release (both tiers) must now carry:
+
+    - the gate-evidence file :data:`US_STORED_INPUTS_EVIDENCE_FILE`, bound as
+      the ``release_manifest.json`` artifact :data:`US_STORED_INPUTS_EVIDENCE_KEY`
+      (kind ``diagnostics``) and present in the release directory with those
+      bytes, its status ``bound`` in both manifests' ``gate_evidence`` block
+      (which must agree);
+    - a valid verdict in it (:func:`_stored_input_evidence_payload_failures`)
+      against the built-with engine, which must also be the policyengine-us
+      ``build_manifest.json`` records as its runtime;
+    - the same ``stored_inputs`` block in ``build_manifest.json`` and
+      ``release_manifest.json``'s ``build`` section, equal to
+      :func:`stored_input_evidence_manifest_block` of the file for the H5
+      ``build_manifest.json`` pins;
+    - at the evidence tier, every failure line the file records carried
+      verbatim in ``known_failures``.
+
+    Engine-free: JSON and one file hash. No published release is exempt: none
+    of the US national calibration releases on the Hub carries gate evidence
+    (it was first bound on 2026-09-24). Nothing re-validates a published
+    release automatically. The paths that run the contract on one again, a
+    publish retry of its directory or an annual-projection cut on it as a
+    base, are re-certifications, and every published US national base already
+    fails the unchanged calibration-diagnostics schema rule (Build P records
+    schema 5), so re-certifying one means rebuilding it with a tool that runs
+    the gate.
+    """
+
+    key = US_STORED_INPUTS_EVIDENCE_KEY
+    filename = US_STORED_INPUTS_EVIDENCE_FILE
+    missing_hint = (
+        "rebuild with tools/build_us_fiscal_refresh_release.py, whose "
+        "stored-input gate writes and binds it (microcosm#1026, #1034)."
+    )
+    build = (
+        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
+    )
+    statuses: list[object] = []
+    for source, holder in (
+        ("build_manifest.json", build_manifest),
+        ("release_manifest.json build", build),
+    ):
+        if not isinstance(holder, Mapping):
+            continue  # the manifest's own shape failure is already recorded
+        gate_evidence = holder.get("gate_evidence")
+        statuses.append(gate_evidence)
+        status = gate_evidence.get(key) if isinstance(gate_evidence, Mapping) else None
+        if status != "bound":
+            failures.append(
+                f"{source} gate_evidence must record {key!r} as 'bound', got "
+                f"{status!r}; {missing_hint}"
+            )
+    if len(statuses) == 2 and statuses[0] != statuses[1]:
+        failures.append(
+            "build_manifest.json and release_manifest.json build record "
+            "different gate_evidence blocks; the tool writes both from one."
+        )
+
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    artifact = artifacts.get(key) if isinstance(artifacts, Mapping) else None
+    if (
+        not isinstance(artifact, Mapping)
+        or artifact.get("path") != filename
+        or artifact.get("kind") != "diagnostics"
+    ):
+        failures.append(
+            f"release_manifest.json must declare the {key!r} artifact as the "
+            f"diagnostics file {filename!r}; {missing_hint}"
+        )
+        return
+    path = release_dir / filename
+    if not path.is_file():
+        failures.append(
+            f"{filename} is missing from the release directory; the manifest "
+            "binds it as the stored-input verdict."
+        )
+        return
+    if _sha256(path) != artifact.get("sha256"):
+        return  # _check_local_artifact_hashes names the mismatch
+    payload_failures: list[str] = []
+    payload = _load_json(path, payload_failures)
+    failures.extend(payload_failures)
+    if payload is None:
+        return
+    engine_label = _built_with_us_engine_label(release_manifest, failures)
+    runtime = (
+        build_manifest.get("runtime") if isinstance(build_manifest, Mapping) else None
+    )
+    runtime_version = (
+        runtime.get("policyengine-us") if isinstance(runtime, Mapping) else None
+    )
+    if engine_label is not None and engine_label != (
+        f"policyengine-us {runtime_version}"
+    ):
+        failures.append(
+            "build_manifest.json runtime policyengine-us "
+            f"{runtime_version!r} is not the built-with engine "
+            f"{engine_label!r} the stored-input verdict is certified against."
+        )
+    shape_failures = _stored_input_evidence_payload_failures(
+        payload, engine_label=engine_label, evidence_tier=evidence_tier
+    )
+    failures.extend(shape_failures)
+    if shape_failures:
+        return
+    dataset = (
+        build_manifest.get("dataset") if isinstance(build_manifest, Mapping) else None
+    )
+    dataset_sha256 = dataset.get("sha256") if isinstance(dataset, Mapping) else None
+    if isinstance(dataset_sha256, str):
+        expected = stored_input_evidence_manifest_block(
+            payload, dataset_sha256=dataset_sha256
+        )
+        for source, holder in (
+            ("build_manifest.json", build_manifest),
+            ("release_manifest.json build", build),
+        ):
+            if isinstance(holder, Mapping) and holder.get(key) != expected:
+                failures.append(
+                    f"{source} {key!r} block must equal the verdict in {filename} "
+                    "bound to the H5 build_manifest.json pins "
+                    f"(dataset_sha256 {dataset_sha256})."
+                )
+    if evidence_tier and isinstance(release_manifest, Mapping):
+        known_failures = release_manifest.get("known_failures")
+        if isinstance(known_failures, list):
+            _recorded_failure_subset_binding(
+                payload[key]["failures"],
+                recorded_texts=[
+                    entry.get("failure")
+                    for entry in known_failures
+                    if isinstance(entry, Mapping)
+                    and isinstance(entry.get("failure"), str)
+                ],
+                source=f"{filename} stored_inputs.failures",
+                failures=failures,
+                verbatim=True,
+            )
+
+
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -5272,11 +5791,15 @@ def validate_release_dir(
 
     - ``national_default`` (or absent — every pre-role release): the full
       national contract, unchanged — :data:`REQUIRED_RELEASE_FILES`, the
-      US critical-target set, national source-coverage enumeration.
+      US critical-target set, national source-coverage enumeration — and,
+      for a US release, the bound stored-input verdict
+      (:func:`_check_us_stored_input_evidence`, microcosm#1034).
     - ``non_default_local_area``: the local-area contract — gates object
       with every gate passed, per-target diagnostics shape, provenance-chain
       source coverage, a reviewed-limitations register, an empty
-      ``default_datasets`` map, and artifacts pinned to the release id. The
+      ``default_datasets`` map, and artifacts pinned to the release id; a US
+      release must also carry the package stage's stored-input gate
+      (:func:`_check_us_local_area_stored_inputs_gate`). The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
 
@@ -5538,6 +6061,14 @@ def validate_release_dir(
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    if release_id.startswith("populace-us-"):
+        _check_us_stored_input_evidence(
+            release_dir,
+            build_manifest=build_manifest,
+            release_manifest=release_manifest,
+            failures=failures,
+            evidence_tier=False,
+        )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
@@ -5932,6 +6463,14 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    if release_id.startswith("populace-us-"):
+        _check_us_stored_input_evidence(
+            release_dir,
+            build_manifest=build_manifest,
+            release_manifest=release_manifest,
+            failures=failures,
+            evidence_tier=True,
+        )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():

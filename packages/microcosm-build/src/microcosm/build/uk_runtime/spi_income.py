@@ -27,6 +27,10 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_LANDLORD_CARRIER_COLUMN,
+    uc_gainful_self_employment,
+)
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -82,6 +86,20 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
+#: The donor rebase moves each SPI component from the tape's year to the
+#: frame's survey year. Those years are history, so a component moves by the
+#: index its engine variable names (``Variable.uprating``). For every
+#: component but savings interest that is also the index policyengine-uk's
+#: dataset projection applies from the survey year on (``policyengine_uk/data/
+#: uprating_indices.yaml``). Savings interest's own index is ONS household
+#: interest income, x2.27 from 2022 to 2024 as rates rose, where the
+#: projection's GDP per head gives x1.09. The projection's index applies from
+#: the survey year on, where the engine runs it and the SPI band targets follow
+#: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
+#: microcosm#1095). The engine lockstep test holds both statements.
+SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
+    "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+}
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
 # broader indexed benefit inputs do not establish a taxable SPI crosswalk.
@@ -992,6 +1010,8 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
+    person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
+    person = _refresh_landlord_carrier(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1363,6 +1383,10 @@ def _spi_income_uprating_factors(year: int):
             "factor": factor,
             "basis": "model_index" if path else "held_nominal",
         }
+        if variable_name in SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION:
+            columns[column]["dataset_projection_index"] = (
+                SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION[variable_name]
+            )
     return factors, {
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": year,
@@ -2109,6 +2133,61 @@ def _refresh_uc_start_up_period(
         spi_people,
         "uc_is_in_startup_period",
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
+    )
+    return person
+
+
+def _refresh_uc_gainful_self_employment(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Derive a redrawn row's UC gainful self-employment from its drawn incomes.
+
+    A redrawn row keeps the donor's employment status but takes new imputed
+    pay and profit, and the draw does not read the status (uk-data#529,
+    microcosm#840): on such a row the status says nothing about the drawn
+    trade. So the row takes the earnings route of the root's rule alone, a
+    profit above zero and above its pay (uk-data#525, ADM H4034). The main-job
+    route returns when the SPI draw follows employment status.
+    """
+
+    if "uc_is_in_gainful_self_employment" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_gainful_self_employment",
+        uc_gainful_self_employment(
+            np.zeros(len(rows), dtype=bool),
+            pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
+            pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
+        ),
+        default=False,
+    )
+    return person
+
+
+def _refresh_landlord_carrier(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Clear the FRS landlord carrier on a redrawn row.
+
+    The carrier records that the FRS respondent reported rent, at a profit or
+    a loss. A redrawn row takes its property income from an SPI donor that did
+    not read it, so the twin's answer says nothing about the row's letting,
+    and the tape has no letting-loss field to rebuild it from. The CGT stages
+    read the row's drawn ``property_income`` instead (microcosm#1095).
+    """
+
+    if FRS_LANDLORD_CARRIER_COLUMN not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        FRS_LANDLORD_CARRIER_COLUMN,
+        np.zeros(len(rows), dtype=bool),
         default=False,
     )
     return person
