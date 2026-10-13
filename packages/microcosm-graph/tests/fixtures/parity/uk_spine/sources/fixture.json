@@ -2320,6 +2320,39 @@
       "stage": "frs_take_up",
       "survey": "Family Resources Survey 2024-25"
     },
+    "high_value_home_support": {
+      "artifacts": [],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Spine-only, deterministic, mass-conserving support split for the dense graph's post-geography home value map (microcosm#1240). The value node reads every owner clone's home value off its assigned constituency's Land Registry sale distribution at the household's weighted rank among its region's owners, so each seat's homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. No value is assigned and no draw is made here.",
+      "operations": [
+        {
+          "conservation": "exact_total",
+          "copies": 6,
+          "copies_column": "high_value_support_copies",
+          "copy_index_column": "high_value_support_copy_index",
+          "copy_rule": "every selected household becomes copies rows at weight / copies",
+          "declared_factor": 1,
+          "flag_column": "household_is_high_value_support_copy",
+          "id_remapping": "id_multiplier_for_values; copy k takes every entity id + k x multiplier",
+          "kind": "split_top_value_owner_households",
+          "reason": "High-value home support divides every owner household in the top value stratum of its region into light copies at equal weight; every household's mass and the total household mass are conserved.",
+          "stratum_lower": 0.95,
+          "stratum_rule": "within each FRS region, owner households (tenure owned outright or with a mortgage, main_residence_value > 0, positive weight) ordered by main_residence_value ascending then household_id ascending; a household whose weighted mid-rank (cumulative weight before it plus half its own, over the region's owner weight) is at or above stratum_lower is selected",
+          "values": "every column copied unchanged; no draw, no seed, no salt",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_high_value_support_copy",
+        "high_value_support_copies",
+        "high_value_support_copy_index"
+      ],
+      "rewrites": [],
+      "source": "Microcosm structural operator (microcosm#1240 fix 1); no publisher input",
+      "stage": "high_value_home_support",
+      "survey": "Family Resources Survey 2024-25 and SPI synthetic support, after the WAS wealth draw and the regional property uprating"
+    },
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
@@ -4901,7 +4934,7 @@
         "other_residential_property_value",
         "non_residential_property_value"
       ],
-      "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
+      "source": "MHCLG dwellings and the UK House Price Index regional average price averaged over the twelve months of calendar 2024 from the July 2026 full file, the frame's valuation basis, so the engine's annual uprating from 2024 projects the value once (microcosm#1240 fix 5).",
       "stage": "regional_property_uprating",
       "survey": "Public regional property reference"
     },

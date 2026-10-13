@@ -931,6 +931,7 @@ class TestUKCountryPackage:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -951,6 +952,11 @@ class TestUKCountryPackage:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -1019,8 +1025,9 @@ class TestUKCountryPackage:
         # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
-        # microcosm#1106 property_components after the regional uprating.
-        assert len(spec.sources.stages) == 40
+        # microcosm#1106 property_components after the regional uprating;
+        # microcosm#1240 high_value_home_support between them.
+        assert len(spec.sources.stages) == 41
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1061,6 +1068,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -1081,6 +1089,11 @@ class TestExistingPackagesGeneralize:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -1423,6 +1436,7 @@ class TestUKGatesManifest:
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1461,10 +1475,17 @@ class TestUKGatesManifest:
             "uk_local_per_family_fit",
             "uk_local_weight_ratio",
             "uk_local_weight_ess",
+            # microcosm#1240: the two report-only high-value homes gates.
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
         ]
         # PR #870 review: the four local fit/weight gates are release-blocking
-        # like the rest of the battery; nothing in the manifest is diagnostic.
-        diagnostic: set[str] = set()
+        # like the rest of the battery; the only diagnostic entries are the
+        # microcosm#1240 high-value homes benchmarks and support reports.
+        diagnostic: set[str] = {
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
+        }
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
         } == diagnostic
@@ -1535,6 +1556,7 @@ class TestUKGatesManifest:
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1579,6 +1601,7 @@ class TestUKGatesManifest:
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
             "was_lisa_support_bounds.json",
+            "price_paid_property_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15

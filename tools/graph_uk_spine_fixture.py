@@ -84,6 +84,9 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.uk_runtime.high_value_home_support import (
+    UKHighValueHomeSupportStageTransform,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -172,7 +175,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 40
+UK_FIXTURE_STAGE_COUNT = 41
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -1900,6 +1903,9 @@ def _build_implementations(
         ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
+        ),
+        "high_value_home_support": UKHighValueHomeSupportStageTransform(
+            stage=stages["high_value_home_support"]
         ),
         "cgt_support_split": UKCGTSupportSplitStageTransform(
             stage=stages["cgt_support_split"],

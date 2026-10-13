@@ -2493,7 +2493,7 @@ stages:
   notes: 'Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor''s weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner''s keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus.'
 - stage: regional_property_uprating
   survey: Public regional property reference
-  source: MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.
+  source: MHCLG dwellings and the UK House Price Index regional average price averaged over the twelve months of calendar 2024 from the July 2026 full file, the frame's valuation basis, so the engine's annual uprating from 2024 projects the value once (microcosm#1240 fix 5).
   grain: household
   base_candidate:
     filename: populace_uk_2023.h5
@@ -2524,6 +2524,32 @@ stages:
   - other_residential_property_value
   - non_residential_property_value
   notes: Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor is read off the main residence and has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.
+- stage: high_value_home_support
+  survey: Family Resources Survey 2024-25 and SPI synthetic support, after the WAS wealth draw and the regional property uprating
+  source: Microcosm structural operator (microcosm#1240 fix 1); no publisher input
+  grain: household
+  artifacts: []
+  operations:
+  - kind: split_top_value_owner_households
+    stratum_lower: 0.95
+    copies: 6
+    stratum_rule: within each FRS region, owner households (tenure owned outright or with a mortgage, main_residence_value > 0, positive weight) ordered by main_residence_value ascending then household_id ascending; a household whose weighted mid-rank (cumulative weight before it plus half its own, over the region's owner weight) is at or above stratum_lower is selected
+    copy_rule: every selected household becomes copies rows at weight / copies
+    id_remapping: id_multiplier_for_values; copy k takes every entity id + k x multiplier
+    flag_column: household_is_high_value_support_copy
+    copies_column: high_value_support_copies
+    copy_index_column: high_value_support_copy_index
+    values: every column copied unchanged; no draw, no seed, no salt
+    weight_kind_out: importance
+    conservation: exact_total
+    declared_factor: 1.0
+    reason: High-value home support divides every owner household in the top value stratum of its region into light copies at equal weight; every household's mass and the total household mass are conserved.
+  outputs:
+  - household_is_high_value_support_copy
+  - high_value_support_copies
+  - high_value_support_copy_index
+  rewrites: []
+  notes: 'Spine-only, deterministic, mass-conserving support split for the dense graph''s post-geography home value map (microcosm#1240). The value node reads every owner clone''s home value off its assigned constituency''s Land Registry sale distribution at the household''s weighted rank among its region''s owners, so each seat''s homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. No value is assigned and no draw is made here.'
 - stage: property_components
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Property Rental Income Statistics 2026 (tax year 2024-25)
   source: https://www.gov.uk/government/statistics/property-rental-income-statistics

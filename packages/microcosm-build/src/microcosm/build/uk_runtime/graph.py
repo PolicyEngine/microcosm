@@ -49,6 +49,7 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
         "spi_support_channel",
         "spi_income_band_donors",
+        "high_value_home_support",
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_incidence_anchor",
@@ -78,6 +79,9 @@ _STRUCTURAL_MASS = {
     # exactly, and person mass moves with the composition of the copied
     # households, as it does for the support channel.
     "spi_income_band_donors": "declared",
+    # The high-value home support copies whole households at equal weight
+    # (microcosm#1240), so person mass is conserved like the CGT support split.
+    "high_value_home_support": "conserve",
     "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
     # The residential split divides each liable household into arms that are
@@ -89,6 +93,7 @@ _STRUCTURAL_MASS = {
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
     "spi_income_band_donors": "importance",
+    "high_value_home_support": "importance",
     "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
     "cgt_residential_split": "importance",
@@ -380,7 +385,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
-    # The support split copies whole households, so its surface is open.
+    # The support splits copy whole households, so their surfaces are open.
+    "high_value_home_support": None,
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
     # The residential split copies whole households into arms, so its
@@ -935,6 +941,11 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     # The support split writes only its lineage cells: copies carry every
     # other column of their source household unchanged (microcosm#1045).
+    "high_value_home_support": (
+        _Cell("household", "household_is_high_value_support_copy", "bool"),
+        _Cell("household", "high_value_support_copies", "int64"),
+        _Cell("household", "high_value_support_copy_index", "int64"),
+    ),
     "cgt_support_split": (
         _Cell("household", "household_is_cgt_support_copy", "bool"),
         _Cell("household", "cgt_support_copies", "int64"),
