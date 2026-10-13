@@ -895,9 +895,11 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
-    version from f96be9f41781 by binding the Part B premium target to
+    61f5cac06310, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. Reading the restamped W-2 tips
+    amount at TY2020 (microcosm#1030) moved the version from e1f9906bf0e0
+    with the counts unchanged. microcosm#1206 moved it from f96be9f41781 by
+    binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
@@ -908,7 +910,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "e1f9906bf0e0"
+    assert surface.version == "61f5cac06310"
     chip = [
         spec
         for spec in surface.specs
@@ -933,6 +935,182 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+_W2_TIPS_AMOUNT = (
+    "irs_soi.ty{year}.form_w2_social_security_tips.box_7_social_security_tips.amount"
+)
+
+
+def test_pinned_feed_restamp_register_matches_the_feed(pinned_feed_facts) -> None:
+    """Every observation fact the pinned feed stamps later than its artifact's
+    year belongs to a reviewed register entry, with that entry's stamp and
+    data year, and every entry still matches the feed. A re-pin on a
+    Chronicle commit that fixes the stamp (chronicle#117) fails here until
+    the stale entries are deleted."""
+    from collections import Counter
+
+    from microcosm.build.us_runtime.source_vintage import (
+        US_RESTAMPED_SOURCE_PACKAGES,
+        detect_restamped_facts,
+        source_vintage_corrections,
+    )
+
+    detected = detect_restamped_facts(pinned_feed_facts)
+    assert Counter(package_id for _, package_id, _, _ in detected) == {
+        "soi-congressional-district-2022": 26_880,
+        "soi-w2-statistics-2020": 5,
+        "soi-state-2022": 4,
+        "soi-ira-roth-contributions-2022": 2,
+        "soi-ira-traditional-contributions-2022": 2,
+    }
+    assert set(US_RESTAMPED_SOURCE_PACKAGES) == {
+        package_id for _, package_id, _, _ in detected
+    }
+    for fact, package_id, artifact_year, stamped_year in detected:
+        entry = US_RESTAMPED_SOURCE_PACKAGES[package_id]
+        assert artifact_year == entry.data_year
+        assert stamped_year in entry.stamped_periods
+        # Both detection rules agree on every row: the key names the file's
+        # year and the digest is the registered file.
+        assert fact["source"]["raw_r2_key"].split("/")[2:4] == [
+            package_id,
+            str(entry.data_year),
+        ]
+        assert fact["source"]["source_sha256"] == entry.source_sha256
+    assert len(source_vintage_corrections(pinned_feed_facts)) == 26_893
+
+
+def test_pinned_feed_w2_tips_amount_ages_from_tax_year_2020(
+    pinned_feed_facts, pinned_feed_national_state_surface
+) -> None:
+    """The route-A tips target is the ty2023 row, which is the TY2020 cell
+    restamped. It ages from 2020 on the chained SOI wages bridge, so it
+    equals what its honest ty2020 twin would compile to. Aged from the stamp
+    (the direct 2023 CBO ratio) it was $28.28B, 17.5% lower."""
+    from microcosm.build.us_runtime.target_aging import (
+        _cbo_projection_series,
+        _soi_national_chain_series,
+    )
+
+    _, surface, _ = pinned_feed_national_state_surface
+    spec = _aged_spec_by_source_record_id(surface, _W2_TIPS_AMOUNT.format(year=2023))
+    wages = _cbo_projection_series(pinned_feed_facts)["wages_and_salaries"]
+    soi_wages = _soi_national_chain_series(pinned_feed_facts)["wages_and_salaries"]
+    factor = (soi_wages[2023][0] / soi_wages[2020][0]) * (
+        wages[2024][0] / wages[2023][0]
+    )
+    assert spec.metadata["ledger_fact_period"] == "2023"
+    assert spec.metadata["source_period"] == "2020"
+    assert spec.metadata["source_vintage_stamped_period"] == "2023"
+    assert spec.metadata["aging_factor_source"].startswith(
+        "chained:irs_soi.ty2023.table_1_4.all.wages_salaries_amount+"
+    )
+    assert float(spec.metadata["aging_factor"]) == pytest.approx(factor, rel=1e-12)
+    assert spec.value == pytest.approx(26_786_522_000 * factor, rel=1e-12)
+    assert spec.value == pytest.approx(34_287_530_779, abs=1)
+
+
+def test_pinned_feed_corrects_the_translated_congressional_district_specs(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Most corrections land on congressional-district facts that the vintage
+    crosswalk re-keys (``current_cd.*``). Detection runs on the translated
+    facts, so every translated spec carries the correction, and the dollar
+    ones age on the chained bridge from TY2022."""
+    from collections import Counter
+
+    registry, _, _ = pinned_feed_national_state_surface
+    corrected = Counter(
+        (
+            spec.metadata["source_vintage_correction"].split(":")[0],
+            ".current_cd." in spec.metadata["ledger_source_record_id"],
+            spec.metadata["aging_factor_source"].startswith("chained:"),
+        )
+        for spec in registry.specs
+        if "source_vintage_correction" in spec.metadata
+    )
+    assert corrected == {
+        ("soi-congressional-district-2022", True, True): 11_772,
+        ("soi-congressional-district-2022", True, False): 12_208,
+        ("soi-congressional-district-2022", False, True): 1_404,
+        ("soi-congressional-district-2022", False, False): 1_404,
+        ("soi-state-2022", False, False): 2,
+        ("soi-w2-statistics-2020", False, True): 1,
+    }
+    # Every corrected congressional-district spec reads TY2022, except an
+    # aged share (microcosm#1040), whose source_period records where its
+    # aging starts: the control's period.
+    assert all(
+        spec.metadata["source_period"] == "2022"
+        or (
+            "uprating_factor" in spec.metadata
+            and spec.metadata["source_period"] == spec.metadata["uprating_to_period"]
+        )
+        for spec in registry.specs
+        if spec.metadata.get("source_vintage_correction", "").startswith(
+            "soi-congressional-district-2022"
+        )
+    )
+    # The 60 Historic Table 2 capital-gains return counts rebased onto the
+    # congressional-district US row (51 of them on national_state), and no
+    # restamped share: no compile on main rebases a restamped row.
+    assert (
+        sum(
+            "uprating_index_source_vintage_correction" in spec.metadata
+            for spec in registry.specs
+        )
+        == 60
+    )
+    assert not [
+        spec.name
+        for spec in registry.specs
+        if "uprating_from_period_vintage_stamped_period" in spec.metadata
+    ]
+
+
+def test_pinned_feed_rebased_specs_read_restamped_inputs_at_their_data_year(
+    pinned_feed_facts, pinned_feed_national_state_surface
+) -> None:
+    """Every spec rebased onto a restamped control inherits the control's data
+    year, and every restamped spec that was rebased is a share of a restamped
+    total of its own package, stamp and data year: its share is read at the
+    data year while aging still starts at the control's period. On this feed
+    the 60 Historic Table 2 capital-gains return counts rebase onto the
+    congressional-district US row (TY2022 stamped ty2023) and land at 2022;
+    counts never age, so no value moves. The test names no control, so it
+    holds whichever control the capital-gains rebase picks, including a
+    concept rule that never picks the district row (microcosm#1036), and with
+    district rows rebased as shares of that row (microcosm#1040)."""
+    from microcosm.build.us_runtime.source_vintage import source_vintage_corrections
+
+    registry, _, _ = pinned_feed_national_state_surface
+    corrections = source_vintage_corrections(pinned_feed_facts)
+    rebased = [spec for spec in registry.specs if "uprating_factor" in spec.metadata]
+    assert rebased
+    for spec in rebased:
+        metadata = spec.metadata
+        control = corrections.get(metadata.get("uprating_index_source_record_id", ""))
+        if control is None:
+            assert "uprating_index_source_vintage_correction" not in metadata
+        else:
+            assert metadata["uprating_to_period"] == str(control.data_year)
+            assert metadata["uprating_index_source_period"] == str(control.data_year)
+            assert metadata["uprating_index_source_vintage_stamped_period"] == str(
+                control.stamped_year
+            )
+        if "source_vintage_correction" not in metadata:
+            assert "uprating_from_period_vintage_stamped_period" not in metadata
+            continue
+        total = corrections[metadata["soi_share_total_source_record_id"]]
+        assert metadata["source_vintage_correction"] == total.label
+        assert metadata["uprating_from_period"] == str(total.data_year)
+        assert metadata["uprating_from_period_vintage_stamped_period"] == str(
+            total.stamped_year
+        )
+        assert (
+            metadata["uprating_to_period"] == metadata["uprating_index_source_period"]
+        )
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -4594,6 +4772,256 @@ def test_age_targets_chains_w2_tips_through_soi_wages_bridge() -> None:
     assert spec.metadata["aging_factor_source"].startswith("chained:")
     assert "wages_salaries_amount" in spec.metadata["aging_factor_source"]
     assert abs(spec.value - 26_786_522_000 * expected_factor) < 1.0
+
+
+def _w2_tips_chain_facts(*, tips_year: int, raw_r2_key: str | None = None):
+    """Tips amount plus the SOI wages bridge and CBO wages projections."""
+    tips = _dynamic_ledger_fact(
+        source_record_id=_W2_TIPS_AMOUNT.format(year=tips_year),
+        source_name="irs_soi",
+        measure_id="amount",
+        value=26_786_522_000,
+        period_value=tips_year,
+        layout_record_set_id=f"irs_soi.ty{tips_year}.form_w2_social_security_tips",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id="box_7_social_security_tips",
+    )
+    tips["assertion"] = "observation"
+    if raw_r2_key is not None:
+        tips["source"]["raw_r2_key"] = raw_r2_key
+    wages = [
+        _dynamic_ledger_fact(
+            source_record_id=f"irs_soi.ty{year}.table_1_4.all.wages_salaries_amount",
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=value,
+            period_value=year,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=f"irs_soi.ty{year}.table_1_4",
+            groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+            groupby_value_id="all",
+        )
+        for year, value in ((2020, 8_416_495_535_000), (2023, 10_000_000_000_000))
+    ]
+    return [
+        *packaged_reference_facts(),
+        tips,
+        *wages,
+        _cbo_income_source_projection_fact(
+            2023, "wages_and_salaries", value=10_200_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "wages_and_salaries", value=10_700_000_000_000
+        ),
+    ]
+
+
+_W2_RAW_R2_KEY = (
+    "raw/irs_soi/soi-w2-statistics-2020/2020/"
+    "1178d77618cc1d2f873506909eeec660f36e3599854f31337f9dcaec6cfc442f/"
+    "20in04w2all.xlsx"
+)
+
+
+def test_age_targets_reads_a_restamped_w2_tips_amount_at_its_data_year() -> None:
+    # chronicle#117: the feed's ty2023 tips amount is the TY2020 workbook
+    # cell stamped 2023. Its raw key names the 2020 artifact, so it must age
+    # exactly as its honest ty2020 twin does (differential), not from 2023.
+    restamped = compile_us_fiscal_target_registry(
+        _w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY),
+        target_period=2024,
+        age_targets=True,
+    )
+    honest = compile_us_fiscal_target_registry(
+        _w2_tips_chain_facts(tips_year=2020, raw_r2_key=_W2_RAW_R2_KEY),
+        target_period=2024,
+        age_targets=True,
+    )
+    spec = _aged_spec_by_source_record_id(restamped, _W2_TIPS_AMOUNT.format(year=2023))
+    twin = _aged_spec_by_source_record_id(honest, _W2_TIPS_AMOUNT.format(year=2020))
+    assert spec.metadata["source_period"] == "2020"
+    assert spec.metadata["ledger_fact_period"] == "2023"
+    assert spec.metadata["source_vintage_correction"] == (
+        "soi-w2-statistics-2020: stamped 2023, data year 2020"
+    )
+    assert spec.metadata["aging_factor_source"].startswith("chained:")
+    assert spec.metadata["aging_factor"] == twin.metadata["aging_factor"]
+    assert spec.value == twin.value
+    assert "source_vintage_correction" not in twin.metadata
+
+    # Without the raw key there is no evidence of the restamp, and the fact
+    # ages from its stamp on the direct CBO ratio.
+    unkeyed = compile_us_fiscal_target_registry(
+        _w2_tips_chain_facts(tips_year=2023),
+        target_period=2024,
+        age_targets=True,
+    )
+    direct = _aged_spec_by_source_record_id(unkeyed, _W2_TIPS_AMOUNT.format(year=2023))
+    assert direct.metadata["source_period"] == "2023"
+    assert direct.value == pytest.approx(
+        26_786_522_000 * 10_700_000_000_000 / 10_200_000_000_000
+    )
+
+
+def test_restamp_shadow_guard_compares_state_agi_bands_per_state_and_measure() -> None:
+    """State AGI bands keep their period in the selection key and compete as
+    whole vintages per state and measure (microcosm#940), so the guard compares
+    them at that grain: a band vintage restamped 2024 from 2022 data shadows a
+    truthful 2023 vintage of the same state and measure, whatever the bounds.
+    Another state, or an unflagged row with a period-free key, is untouched."""
+    from types import SimpleNamespace
+
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampShadowsNewerVintageError,
+        SourceVintageCorrection,
+    )
+
+    def band(state_fips: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            metadata={
+                fiscal_targets._SOI_STATE_AGI_BAND_REBASE_FLAG: "true",
+                "state_fips": state_fips,
+                "source_measure_id": "return_count",
+            }
+        )
+
+    restamps = {"restamped": SourceVintageCorrection("restamped", "pkg", 2024, 2022)}
+    restamped = (("ca", "500k_plus", "2024"), (1, 202499, "2024"), 1.0, "restamped")
+    truthful = (("ca", "1m_plus", "2023"), (1, 202399, "2023"), 1.0, "truthful")
+    target = (1, 202499, "2024")
+    with pytest.raises(RestampShadowsNewerVintageError, match="truthful"):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            [(*restamped, band("06")), (*truthful, band("06"))],
+            restamps,
+            target_period_key=target,
+        )
+    for other in (band("36"), None):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            [(*restamped, band("06")), (*truthful, other)],
+            restamps,
+            target_period_key=target,
+        )
+
+
+def test_compile_refuses_a_restamp_that_would_outrank_newer_data() -> None:
+    # A truthful TY2021 tips fact would lose latest-vintage selection to the
+    # TY2020 cell stamped 2023; the compile refuses rather than drop it.
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampShadowsNewerVintageError,
+    )
+
+    newer = _dynamic_ledger_fact(
+        source_record_id=_W2_TIPS_AMOUNT.format(year=2021),
+        source_name="irs_soi",
+        measure_id="amount",
+        value=30_000_000_000,
+        period_value=2021,
+        layout_record_set_id="irs_soi.ty2021.form_w2_social_security_tips",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id="box_7_social_security_tips",
+    )
+    facts = [
+        *_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY),
+        newer,
+    ]
+    with pytest.raises(RestampShadowsNewerVintageError, match="ty2021"):
+        compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
+    # A truthful fact at the stamp year itself is shadowed too (the tie-break,
+    # not the data, would decide), and one after the target period is not a
+    # candidate at all.
+    at_stamp = dict(newer, value=31_000_000_000)
+    at_stamp["lineage"] = {
+        "source_record_id": _W2_TIPS_AMOUNT.format(year=2023) + "_truthful"
+    }
+    at_stamp["period"] = {"type": "calendar_year", "value": 2023}
+    for key in ("aggregate_fact_key", "semantic_fact_key", "legacy_fact_key"):
+        at_stamp[key] = str(newer[key]).replace("2021", "2023truthful")
+    with pytest.raises(RestampShadowsNewerVintageError, match="2023"):
+        compile_us_fiscal_target_registry(
+            [
+                *_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY),
+                at_stamp,
+            ],
+            target_period=2024,
+            age_targets=True,
+        )
+    # Selection eligibility applies first: at target 2022 neither the 2023
+    # restamp nor the 2023 truthful fact is a candidate.
+    from microcosm.build.us_runtime.source_vintage import SourceVintageCorrection
+
+    restamp = SourceVintageCorrection("restamped", "pkg", 2023, 2020)
+    candidates = [
+        (("key",), (1, 202399, "2023"), 1.0, "restamped", None),
+        (("key",), (1, 202399, "2023"), 1.0, "truthful", None),
+    ]
+    fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+        candidates,
+        {"restamped": restamp},
+        target_period_key=(1, 202299, "2022"),
+    )
+    with pytest.raises(RestampShadowsNewerVintageError, match="truthful"):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            candidates,
+            {"restamped": restamp},
+            target_period_key=(1, 202499, "2024"),
+        )
+
+    # The honest twin at the data year is not newer data: no refusal.
+    twin = dict(newer, value=26_786_522_000)
+    twin["lineage"] = {"source_record_id": _W2_TIPS_AMOUNT.format(year=2020)}
+    twin["period"] = {"type": "calendar_year", "value": 2020}
+    twin["layout"] = dict(
+        newer["layout"], record_set_id="irs_soi.ty2020.form_w2_social_security_tips"
+    )
+    for key in ("aggregate_fact_key", "semantic_fact_key", "legacy_fact_key"):
+        twin[key] = str(newer[key]).replace("2021", "2020twin")
+    compile_us_fiscal_target_registry(
+        [*_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY), twin],
+        target_period=2024,
+        age_targets=True,
+    )
+
+
+def test_compile_refuses_a_restamp_in_an_aging_index_only_when_aging(
+    monkeypatch,
+) -> None:
+    # No registered restamp sits in the chain today; force one to prove the
+    # compile runs the check before aging, and skips it when not aging.
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampedAgingIndexError,
+        SourceVintageCorrection,
+    )
+
+    chain_id = "irs_soi.ty2023.table_1_4.all.wages_salaries_amount"
+    monkeypatch.setattr(
+        fiscal_targets,
+        "source_vintage_corrections",
+        lambda facts: {
+            chain_id: SourceVintageCorrection(chain_id, "soi-t14-2022", 2023, 2022)
+        },
+    )
+    facts = _w2_tips_chain_facts(tips_year=2020)
+    with pytest.raises(RestampedAgingIndexError, match=chain_id):
+        compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
+    compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        age_targets=False,
+        allow_unaged_dollar_targets=True,
+    )
+
+
+def test_compile_refuses_an_unreviewed_restamp() -> None:
+    from microcosm.build.us_runtime.source_vintage import UnreviewedRestampError
+
+    facts = _w2_tips_chain_facts(
+        tips_year=2023,
+        raw_r2_key=_W2_RAW_R2_KEY.replace(
+            "soi-w2-statistics-2020/2020", "soi-w2-statistics-2021/2021"
+        ),
+    )
+    with pytest.raises(UnreviewedRestampError, match="soi-w2-statistics-2021"):
+        compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
 
 
 def test_ssa_ssi_age_band_counts_bind_as_person_age_indicator_targets() -> None:

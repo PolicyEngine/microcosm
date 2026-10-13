@@ -255,26 +255,33 @@ def _load_repo_tool(name: str):
 
 
 @pytest.fixture(scope="module")
-def pinned_feed_national_state_surface():
-    """Compile the pinned feed as the release does: compile, Medicaid
-    substitutions, then ``--target-surface national_state``."""
+def pinned_feed_facts():
+    """The pinned Chronicle feed's facts, digest-checked against the pin."""
     feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
     if not feed_path.exists():
         pytest.skip(f"pinned feed not present at {feed_path}")
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+
+    return load_ledger_consumer_artifact(
+        feed_path,
+        expected_facts_sha256=load_us_chronicle_feed().facts_sha256,
+        expected_manifest_sha256=None,
+    ).facts
+
+
+@pytest.fixture(scope="module")
+def pinned_feed_national_state_surface(pinned_feed_facts):
+    """Compile the pinned feed as the release does: compile, Medicaid
+    substitutions, then ``--target-surface national_state``."""
     from microcosm.build.us_runtime import (
         apply_us_medicaid_enrollment_substitutions,
         default_congressional_district_vintage_crosswalk_path,
         load_congressional_district_vintage_crosswalk,
     )
-    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
     from microcosm.calibrate import TargetRegistry
 
-    facts = load_ledger_consumer_artifact(
-        feed_path,
-        expected_facts_sha256=load_us_chronicle_feed().facts_sha256,
-        expected_manifest_sha256=None,
-    ).facts
+    facts = pinned_feed_facts
     crosswalk = load_congressional_district_vintage_crosswalk(
         default_congressional_district_vintage_crosswalk_path()
     )
