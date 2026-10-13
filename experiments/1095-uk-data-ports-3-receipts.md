@@ -8,29 +8,41 @@ T1. Each replay regenerated the coverage manifest, the stage digests and the H2 
 commit, and every other change is line-for-line its pre-replay original. Each target commit carries the
 national references and the compile-parity receipts regenerated against Chronicle feed 825406f.
 
+On 2026-10-12 the branch was rebased a fourth time, onto main `977ac983a`, which merged #1167
+(consumption-tax levels), #1188, #1145 (property income, policyengine-uk 2.123.0) and #1198 (the
+target surface, Chronicle feed 942a1fa). This replay used another method. The commits were replayed
+as they were, and one commit, `4dac8a31d`, sets the tree to a merge that was regenerated and tested as
+a whole. So the commits before `4dac8a31d` do not each regenerate on the new base, and the branch
+does not bisect across it. The commit ids in the measurement sections below name the trees that were
+measured at the time.
+
 Commits, in order:
 
-- R0 `232eac6fa`: #1121's head calibration (arm head-r3) recorded in its receipts.
-- D1 `18d1fa560`: `uc_is_in_gainful_self_employment` from the FRS main job and earnings (uk-data#525).
-- D5 `3b41d6156`: `is_looked_after_by_local_authority` from the FRS foster links.
-- D6 `533703ffa`: loss-making landlords stay in the CGT residential signal.
-- D2 `d026554b2`: the UC take-up population on policyengine-uk 2.122.2's age rule (uk-data#486, #524).
-- D3 `6dd8dac18`: property in UC and Pension Credit recorded capital, with UC reporters keeping their
+- R0 `13d46988c`: #1121's head calibration (arm head-r3) recorded in its receipts.
+- D1 `88cebb064`: `uc_is_in_gainful_self_employment` from the FRS main job and earnings (uk-data#525).
+- D5 `867f88a17`: `is_looked_after_by_local_authority` from the FRS foster links.
+- D6 `1b0ed5822`: loss-making landlords stay in the CGT residential signal.
+- D2 `f5f6fcce1`: the UC take-up population on policyengine-uk's age rule (uk-data#486, #524).
+- D3 `80a56b46d`: property in UC and Pension Credit recorded capital, with UC reporters keeping their
   receipt.
-- D4 `c5f358230`: Pension Credit take-up solved over Great Britain, with newly entitled units drawn
+- D4 `cc78eaab1`: Pension Credit take-up solved over Great Britain, with newly entitled units drawn
   (uk-data#510).
-- T5 `d04ab10c7`: SPI savings interest and its band targets at the engine's projection index (uk-data#541).
-- T6 `14ae2c349`: the PIP daily-living caseload rows scoped to England and Wales.
-- T3 `6f4c3bcbf`: `obr.council_tax` on OBR table 4.1 row 15, over Great Britain.
-- T4 `e1ee7f0ca`: `obr.ni` a diagnostic beside the class rows (uk-data#537).
-- T2 `b85d5a4a3`: the salary-sacrifice relief bands by income tax rate class (uk-data#533).
-- T1 `a2e5adbbf`: UC award bands in whole pence (uk-data#530).
-- T6b `e3ac4a5ce`: the two PIP caseload rows held as diagnostics on `obr.pip`.
-- W `a7e5bc56f`: the West Midlands low-band income-tax deferral retired. Review round 1 reverted it.
-- R `cf42d8a7a`: this file.
-- Review round 1 (below): `887d36de4` the stage fixes, `0495c4f33` and `c38e370f6` savings interest and
-  its parity receipts, `2792b21cd` the rate-class check, `78ea6b695` the deferral kept.
-- `cf91835c9`: María's D3 ruling of 2026-10-12, the reference person's unit holds the property at 90%.
+- T5 `b19fdbe6c`: SPI savings interest and its band targets at the engine's projection index (uk-data#541).
+- T6 `cf7ab87fe`: the PIP daily-living caseload rows scoped to England and Wales.
+- T3 `0b3cedbb0`: `obr.council_tax` on OBR table 4.1 row 15, over Great Britain.
+- T4 `849b04711`: `obr.ni` a diagnostic beside the class rows (uk-data#537).
+- T2 `6ea7dcd75`: the salary-sacrifice relief bands by income tax rate class (uk-data#533).
+- T1 `733caba7a`: UC award bands in whole pence (uk-data#530).
+- T6b `d240102df`: the two PIP caseload rows held as diagnostics on `obr.pip`.
+- W `26d0082a3`: the West Midlands low-band income-tax deferral retired. Review round 1 reverted it.
+- R `4f31c6eb7`: this file.
+- Review round 1 (below): `396dde568` the stage fixes, `f3988e792` and `a741745ef` savings interest and
+  its parity receipts, `356f491a4` the rate-class check, `0a5b68995` the deferral kept.
+- `61062bc73`: María's D3 ruling of 2026-10-12, the reference person's unit holds the property at 90%.
+- `4dac8a31d`: the rebased branch reconciled with main `977ac983a` (below).
+- The re-review of 2026-10-12 (below): `c0d4c6740` the rate-class tolerance, `cee4f4ec8` the sentinel
+  tests, `e87e2ce7d` the Pension Credit stage's declared year, `4d9e5ed22` text, `4718cc6f6` a
+  formatting slip of the merge, `30ef5546f` main's pins.
 
 ## María's rulings of 2026-10-10
 
@@ -82,19 +94,19 @@ earlier retirements of stale deferrals.
 
 Each arm built the spine from its commit in the measurement tree and calibrated it on the national
 role, with local staging only and Chronicle feed 825406f (rebuilt with the original's manifest). The
-control is main `d50220d1f`. Figures are aggregates; cells under 10 records are suppressed. The
-family-folded weight ratio is the largest support-family weight over the positive median, against the
-June fence of 1,151.
+control is main `d50220d1f`. Figures are aggregates; cells under 10 records are suppressed.
+`uk_weight_ratio` holds the largest support-family weight over the positive median against its June
+fence. That statistic is a per-record extreme, so this file gives the gate's verdict and not its value.
 
 ### Before the rulings
 
 D1 and D3 were as first built here: SPI rows flagged by the donor's status, and property counted for
 every unit.
 
-- **Control (`d50220d1f`).** Loss 0.00712, 98.3% of 1,167 targets within 10%, ESS 4,874, weight ratio
-  1,059. All 7 calibrated-seam gates and the certifier's input-mass gate pass.
-- **Arm 1 (built as `341a02bd4`: D1, D5, D6).** Loss 0.00701, 98.5% within 10%, ESS 4,846, weight ratio
-  1,129. All 7 gates and input mass pass. Design UC falls from £52.55bn to £51.96bn.
+- **Control (`d50220d1f`).** Loss 0.00712, 98.3% of 1,167 targets within 10%, ESS 4,874. All 7
+  calibrated-seam gates and the certifier's input-mass gate pass.
+- **Arm 1 (built as `341a02bd4`: D1, D5, D6).** Loss 0.00701, 98.5% within 10%, ESS 4,846. All 7
+  gates and input mass pass. Design UC falls from £52.55bn to £51.96bn.
   - D1, at the arm's calibrated weights in 2025: the minimum income floor applies to 1.66m FRS-channel
     people (control 1.84m) and 2.49m SPI-channel people (control 1.73m).
   - D1, the SPI channel: 1.67m weighted SPI-channel people are flagged gainfully self-employed with no
@@ -106,15 +118,15 @@ every unit.
 - **D2, on #1121's head-r3 export.** The new population and the old differ by fewer than 10 benefit
   units. Against the engine's age half of `is_uc_eligible`, two named classes remain: reg 8 claimants
   aged 16-17 (32 units, 18k weighted), whom the engine includes, and mixed-age couples on the Pension
-  Credit route (67 units, 39k), whom it excludes. Disagreement with the engine falls from 103 units to
-  99.
+  Credit route (67 units, 39k), whom it excludes. Disagreement with the engine falls by fewer than 10
+  units, to 99.
 - **D3, on #1121's head-r3 export, before recalibration.** The property shares add £1,247bn of UC
   capital over 5.18m benefit units, and £427bn of Pension Credit capital over 1.18m. Counted for every
   unit, UC falls £2.78bn (3.7%) and about 329k units lose paid UC; about 157k weighted UC reporters
   move above £16,000 on imputed property. With UC reporters keeping their receipt, UC falls £0.80bn,
   and the 179k units that lose UC are all non-reporters. Pension Credit falls £0.18bn either way.
-- **Arm 2 (built as `ae9795d7c`: D2, D3 for every unit, D4).** Loss 0.00708, 98.4% within 10%, ESS 4,875,
-  weight ratio 1,041. All 7 gates and input mass pass. Design UC falls to £50.65bn and design Pension
+- **Arm 2 (built as `ae9795d7c`: D2, D3 for every unit, D4).** Loss 0.00708, 98.4% within 10%, ESS 4,875.
+  All 7 gates and input mass pass. Design UC falls to £50.65bn and design Pension
   Credit to £4.26bn; both calibrate to target.
   - On the arm's spine, 90 FRS-channel rows that report UC go above £16,000 through property alone.
     70 of them are in households with no property income, and 45 are in households with two or more
@@ -126,25 +138,25 @@ every unit.
     export, which has no property shares.
 - **The first head (built as `a42edaa9e`: T5, T6, T3, T4, T2, and T1 with the top band bound).** Loss
   0.00726, 98.2% of 1,174 targets within 10%, ESS 4,822. Two gates fail:
-  - `uk_target_fit`: couples without children have no household in the top UC band, so that row is at
-    −100%;
-  - `uk_weight_ratio`: 1,230 against 1,151.
+  - `uk_target_fit`: couples without children have fewer than 10 households in the top UC band, and
+    that row is far outside the bound;
+  - `uk_weight_ratio`.
 - **Attribution, calibrate-only on that head's spine** (T6 to T1 change no stage):
-  - T5 alone: all 7 gates pass, loss 0.00716, weight ratio 1,061. It moves the top income cells,
+  - T5 alone: all 7 gates pass, loss 0.00716. It moves the top income cells,
     inside the 25% gate: the £500,000–1,000,000 employment-income band from −2.5% to −13.3%, and
     Scotland's £200,000-and-over total income from −8.3% to −15.7%.
-  - T5 and T6: the two PIP rows fit within 0.1%, but the weight ratio is 1,241. They push the
-    heaviest support family, a single FRS household, from 1,061 times the positive median.
-  - Adding T3 and T4: 1,221. `obr.council_tax` moves from −9.8% to −7.3%.
-  - Adding T2: 1,257. The three salary-sacrifice bands fit within 0.1%. Their design values are basic
+  - T5 and T6: the two PIP rows fit within 0.1%, but `uk_weight_ratio` fails with them and passes
+    without them.
+  - Adding T3 and T4: the gate still fails. `obr.council_tax` moves from −9.8% to −7.3%.
+  - Adding T2: it still fails. The three salary-sacrifice bands fit within 0.1%. Their design values are basic
     £1.05bn against £1.6bn, higher £2.94bn against £5.5bn, additional £2.46bn against £1.8bn.
   - Adding T1's top band: `obr.universal_credit` falls from 0.0% to −5.6% (£71.8bn against £76.1bn).
     Unbound, the calibration holds 2.57 times DWP's count of lone parents in the band (224k against
     87k) and 1.99 times for couples with children, £13.1bn of UC. Bound, the band holds £5.5bn
     (`scripts/uc_top_band_check.py`).
   - A measurement-only support floor of 10 holds out 17 bound rows with fewer than 10 source households.
-    `uk_target_fit` then passes and loss is 0.00687, but the weight ratio is 1,247 and the UC total
-    −4.6%.
+    `uk_target_fit` then passes and loss is 0.00687, but `uk_weight_ratio` still fails and the UC
+    total is at −4.6%.
 
 ### The head after the rulings
 
@@ -154,8 +166,8 @@ the fix touches no calibration code.
 
 - **Final head (`a7e5bc56f`).** The spine was built from `0324e9e84`, whose tree differs from the head
   only in compile-parity receipts and W's register entry, and calibrated from the head plus #1188's
-  one commit. Loss 0.00694 (control 0.00712), 98.3% of 1,168 targets within 10%, ESS 4,843, weight
-  ratio 1,067. All 7 calibrated-seam gates pass, and so does the certifier's input-mass gate, with no
+  one commit. Loss 0.00694 (control 0.00712), 98.3% of 1,168 targets within 10%, ESS 4,843. All 7
+  calibrated-seam gates pass, and so does the certifier's input-mass gate, with no
   stale, expired or dormant exclusion.
   - `obr.universal_credit` and `obr.pip` calibrate to 0.0%, and 109 of 112 UC cells are within 10%
     (at most 14.6%). Design UC is £51.78bn and design Pension Credit £4.27bn.
@@ -169,8 +181,8 @@ the fix touches no calibration code.
   - D1, at calibrated weights in 2025: the minimum income floor applies to 1.63m FRS-channel people
     (control 1.84m) and 1.24m SPI-channel people (control 1.73m). 1.58m SPI-channel people are flagged,
     against 3.35m when the flag followed the donor's status.
-  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and 44
-    of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
+  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and
+    most of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
     reporter units are affected. 12 FRS-channel reporter units hold financial capital above £16,000 as
     surveyed.
   - D4: newly entitled units are flagged at a share of 0.3695 against the 0.37 rate.
@@ -222,17 +234,18 @@ The control is now the branch's base, main `7639ef8b0`. Both runs carry #1188's 
 changes the evidence reader and its tests only; spine and calibration come from the same tree.
 
 - **Control (main `7639ef8b0`).** Loss 0.00702, 98.5% of 1,167 targets within 10%, ESS 4,840.
-  `uk_weight_ratio` fails: 1,213 against 1,151. The heaviest support family is one FRS household,
-  at 1,059 on `d50220d1f`. The other six gates pass. The West Midlands cell is at +26.5%,
+  `uk_weight_ratio` fails; it passed on `d50220d1f`. The other six gates pass. The West Midlands
+  cell is at +26.5%,
   `obr.council_tax` at −9.5% and `obr.vat` at +24.1%.
 - **Main at #1087's merge commit (`a469ebe3d`).** The same figures as the control to every digit
-  shown: loss 0.00702, weight ratio 1,213, West Midlands +26.5%. So #1087, BRMA private-rented
-  weights, is the change that took main over the fence, and no later merge moves the calibration.
+  shown: loss 0.00702, the same failing weight ratio, West Midlands +26.5%. So #1087, BRMA
+  private-rented weights, is the change that took main over the fence, and no later merge moves the
+  calibration.
 - **Head (`2792b21cd`, then `78ea6b695` on the same spine).** Loss 0.00691, 98.5% of 1,168 targets
   within 10%, ESS 4,849. Six of the 7 calibrated-seam gates pass, and so does the certifier's
   input-mass gate, with no stale, expired or dormant exclusion.
-  - `uk_weight_ratio` fails: 1,155 against 1,151, the same FRS household. The earlier head passed at
-    1,067 with the T5 error in place.
+  - `uk_weight_ratio` fails, by less than the control does. The earlier head passed with the T5
+    error in place.
   - The West Midlands cell is at +26.9%, above the bound, so `uk_target_fit` failed on W at
     `2792b21cd`. With the deferral restored (`78ea6b695`) the same weights pass it. Across this PR's
     arms the cell ranged from +23.9% to +29.7%.
@@ -246,8 +259,8 @@ changes the evidence reader and its tests only; spine and calibration come from 
   - D5: 20k FRS-channel children are looked after at calibrated weights.
   - D6: residential CGT gains are £5.99bn in the FRS channel (control £5.98bn) and £6.78bn in the SPI
     channel (control £6.80bn).
-  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and 44
-    of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
+  - D3, the stage's receipt: 51 FRS-channel benefit units that report UC keep their receipt, and
+    most of them would have gone above £16,000 with their property share. Fewer than 10 SPI-channel
     reporter units are affected.
   - D4: newly entitled units are flagged at a share of 0.3699 against the 0.37 rate.
   - A blocked run writes no export, so the certifier-owned gates were run on the head's spine at the
@@ -290,13 +303,12 @@ tree). "Before" is the review-round-1 head.
   4.21m before). Pension Credit property on units with a member at qualifying age is £285bn across
   0.97m units (£338bn across 1.02m before).
 - **The stage's receipt.** 29 FRS-channel benefit units that report UC keep their receipt (51
-  before), and 26 of them would have gone above £16,000 (44 before). The redraw trains on 4,104
-  units (4,029 before; 4,191 on main).
+  before), and most of them would have gone above £16,000. The redraw trains on 4,104 units (4,029
+  before; 4,191 on main).
 - **The calibration.** Loss 0.00685 (before 0.00691; control 0.00702), 98.5% of 1,168 targets within
   10% (1,151; before 1,150), ESS 4,809 (before 4,849). Six of the 7 calibrated-seam gates and the
   input-mass gate pass.
-  - `uk_weight_ratio` fails at 1,176 (before 1,155; control 1,213), on the same FRS household. That
-    household's weight fell 2%; the positive median fell 4%.
+  - `uk_weight_ratio` fails, by more than before the ruling and by less than the control.
   - The West Midlands cell is at +25.3% (before +26.9%), under its deferral.
   - Design UC is £51.90bn (before £51.70bn) and design Pension Credit £4.24bn (before £4.21bn);
     both calibrate to target. 108 of 111 UC cells are within 10%, as before.
@@ -307,6 +319,103 @@ tree). "Before" is the review-round-1 head.
     of UC across 216k units (before £0.60bn across 85k).
   - `uk_uc_capital_coherence` passes with the new rule, and `uk_take_up_signal` passes with
     `would_claim_uc` at 0.557 against 0.55.
+
+## The rebase onto main `977ac983a` and the re-review (2026-10-12)
+
+A re-review of `bcbe274b2` is in the PR's comments. It asked for the rebase, a measurement on the new
+base, and five smaller changes.
+
+### What main changed under this branch
+
+- **#1167** adds the consumption-tax facts and four measure exclusions, `obr.vat` among them.
+- **#1145** moves the lock to policyengine-uk 2.123.0, adds the landlord stages, and empties the
+  target-fit register: it retired the West Midlands deferral that this branch had restored.
+- **#1198** reconciles the national register across grains, adds the uprating-holds register, and moves
+  the feed to Chronicle 942a1fa.
+- **#1188** is the evidence-reader fix the earlier arms carried on top. It is on main, so the arms
+  below need nothing on top.
+
+### The merge
+
+- 15 files conflicted. The eight hand-written ones were merged by hand. The seven generated ones were
+  regenerated on the merged tree: the national references and membership, the coverage manifest, the
+  H2 fixture, the gate digests and the two national compile-parity receipts. The local census and
+  the local references regenerate identically to main's.
+- **The merged surface:** 1,279 active references, main's 1,281 less `obr.ni` and the all-rates
+  salary-sacrifice relief, which this branch turns into diagnostics. Against main, 13 rows change
+  their index (savings interest) and one its selector (`obr.council_tax`). The contract has 396
+  targets and the measure register 65 exclusions: main's four new ones, less the three this branch
+  retires.
+- **The salary-sacrifice hold.** #1198's signed hold named `hmrc.salary_sacrifice.it_relief_total`.
+  The row is a diagnostic here, and the compile refuses a hold that matches no held row, so the id
+  leaves the hold. The hold keeps the three rate bands and the employee NICs relief.
+- **W.** The target-fit register is main's, empty. The West Midlands £12,570–15,000 income-tax cell
+  needs no deferral on the new base (below).
+- **The savings-interest index.** The two-leg factor is still 1.192 on policyengine-uk 2.123.0.
+
+### What the re-review changed
+
+- **N3 and N4, D3's reference-person rule.** Two engine tests hold the cases the rule leaves, and
+  the module text says both:
+  - where the reference person is of working age, the property of a pension-age unit in the household
+    is recorded on the reference person's unit, and no Pension Credit assessment counts it. On the
+    head's spine at design weights, 0.04m pension-age benefit units are in such a household, and those
+    households hold £21bn of this property;
+  - a unit on the unavailable sentinel stays on the engine's proxies. Beside a recording unit, the UC
+    proxy leaves it the 10% that unit did not record, and the Pension Credit proxy, which subtracts
+    nothing, assesses a pension-age unit the gross property a second time. Fewer than 10 units are on
+    the sentinel.
+- **N5, T2's tolerance.** The engine computes in float32, whose step is £1 at £10 million. The
+  refusal is now beyond £1 plus four float32 steps at the person's own amounts.
+- **The Pension Credit stage's declared year.** The stage resolves its two declared `survey_year`
+  rules and refuses a frame whose period is another year. The adapter's `dataset_period` argument
+  has a named protocol, `ProjectingRulesEngine`, declared beside the UK adapter.
+- **Main's new pins.** Two of main's checks caught the rebased branch, and `30ef5546f` answers both.
+  The protocol was first added to `microcosm.frame.rules`, which is inside the H1 parity kernels'
+  implementation hash, so it moved a pinned case; `rules.py` is main's again. And `hmrc_uprating`
+  reads the release's survey year for the savings-interest pivot, so `uk_runtime.frs_release` joins
+  the UK target compile modules (microcosm#1123's coverage test).
+- **Text.** The contract's two PIP diagnostic notes, two changelog fragments and this file no longer
+  give the value of the weight-ratio statistic, which is a per-record extreme, or two counts whose
+  difference is under 10.
+- **Kept.** The landlord-carrier refresh still skips a frame without the column, as D1's refresh
+  does: the root stage always writes it and the graph checks its cells. The all-rates relief
+  diagnostic is checked by a feed-gated test, as main's other diagnostics are.
+
+### Measurement on the new base
+
+Both arms were built and calibrated locally on Chronicle 942a1fa with policyengine-uk 2.123.0. The
+control is main `977ac983a`, the branch's base. The head arm ran on the tree of `e87e2ce7d`. The
+commits after it change text, formatting, the place of a typing protocol and the compile-module
+list; none changes a stage or a target.
+
+- **Control (main `977ac983a`).** Loss 0.00611, 98.6% of 1,213 targets within 10% (1,196), ESS 5,195.
+  All 7 calibrated-seam gates pass. So main's `uk_weight_ratio` failure, which the earlier control
+  showed, is gone since #1167, #1145 and #1198.
+- **Head.** Loss 0.00586, 98.8% of 1,214 targets within 10% (1,199), ESS 5,129. All 7
+  calibrated-seam gates pass, and so does the certifier's input-mass gate, with no stale, expired or
+  dormant exclusion.
+  - The West Midlands £12,570–15,000 income-tax cell is at +0.2% (control −0.2%). #1198 reconciles
+    the regional bands with the national ones, so the cell no longer sits near the bound.
+  - `obr.council_tax` is at −7.2% (control −9.7%). `obr.vat` is out of the fit on main since #1167.
+  - 108 of 111 UC cells are within 10% (control 107). `dwp.uc.households_children_2` moves the other
+    way, from −9.7% to −12.4%.
+  - The three salary-sacrifice bands are within 0.1%. `obr.universal_credit` and `obr.pip` are within
+    0.1%.
+  - The £500,000–1,000,000 employment-income band is at −3.4% (control −5.1%), and Scotland's
+    £200,000-and-over total income at −8.1% (control −8.2%).
+  - The largest error among the fitted cells is 15.9% (control 16.5%).
+  - Design UC is £51.90bn (control £52.69bn) and design Pension Credit £4.24bn (control £4.39bn).
+  - The stage receipts are those of the head before the rebase: 1,255k units entitled to Guarantee
+    Credit, 4,104 training units in the reporter redraw, and 29 FRS-channel benefit units that report
+    UC keeping their receipt.
+  - D3, the spine at design weights: UC property is £931bn across 3.21m benefit units, and Pension
+    Credit property on units with a member at qualifying age is £286bn across 0.97m units.
+  - D3, at calibrated weights in 2025: 1.53m benefit units are over the UC capital limit through
+    property, and fewer than 10 of them are not the reference person's. In households with other
+    property, units that are not the reference person's are paid £1.22bn of UC across 219k units.
+  - On the exported file, `uk_uc_capital_coherence` passes, and `uk_take_up_signal` passes with
+    `would_claim_uc` at 0.551 against 0.55, over 55,713 units.
 
 ## Verification
 
@@ -340,6 +449,18 @@ tree). "Before" is the review-round-1 head.
   - the `engine-uk` lane's 41 test files: 179 passed;
   - the commit changes no target, reference or parity file, so the pinned-feed run above stands;
   - `ruff`, `tools/ci_test_plan.py verify` and `tools/graph_acceptance_burndown.py --verify` pass.
+- After the rebase onto main `977ac983a`, head `30ef5546f`:
+  - the `engine-free` lane's 558 test files, with `policyengine_uk` blocked: 16,708 passed and 148
+    skipped, with the same three environmental failures;
+  - the `engine-uk` lane's 43 test files: 191 passed;
+  - against the pinned feed 942a1fa, 59 passed and 2 skipped: the national compile-parity receipts
+    regenerate identically, the committed references regenerate, and the NICs, PIP, salary-sacrifice,
+    State Pension and Winter Fuel diagnostics resolve their exact facts. One test fails, and it fails
+    on main `977ac983a` in the same way: after its receipts compare equal, its gate call reads three
+    2023 land rows as `fixture_only` where the receipt signs them `ledger_absent`. That is main's,
+    from #1198, and CI skips the test;
+  - `ruff` on the 67 changed Python files, `tools/ci_test_plan.py verify` and
+    `tools/graph_acceptance_burndown.py --verify` pass.
 
 ## Signature drafts
 
@@ -356,4 +477,4 @@ as for #1100 and #1121.
 - The WAS property draw: a landlord stratum, a benefit-income predictor, and the mortgages on
   other property carried to the frame so that recorded capital nets them.
 - The low UC awards below the top band, which the unbound band hides.
-- The weight year, and the renewals of the exclusions that expire from 15 October.
+- The weight year, and the renewals of the measure exclusions that expire from 15 October.
