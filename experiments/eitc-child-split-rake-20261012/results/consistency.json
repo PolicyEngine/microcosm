@@ -28,8 +28,8 @@
    "c_bins": {
     "childless": 0.037111438616439396,
     "one": 0.3535039739475475,
-    "two": 0.3757741568699888,
-    "three_plus": 0.23361043056602435
+    "two": 0.37577415686998883,
+    "three_plus": 0.23361043056602432
    },
    "c_total_rows": {
     "childless": 0.037111438616439396,
@@ -87,10 +87,10 @@
    "b_total_rows~cd_ty2022_us_on_full": 1.6092161219743377,
    "b_total_rows~soi_state_full_population_ty2022": 1.620915207952335,
    "b_total_rows~soi_state_full_population_ty2023": 1.1735660939603532,
-   "c_bins~ht2_ty2022_states_on_surface": 0.5542927710683275,
-   "c_bins~cd_ty2022_us_on_full": 0.538169430855737,
-   "c_bins~soi_state_full_population_ty2022": 0.5524549170693057,
-   "c_bins~soi_state_full_population_ty2023": 0.23880516402622065,
+   "c_bins~ht2_ty2022_states_on_surface": 0.5542927710683317,
+   "c_bins~cd_ty2022_us_on_full": 0.5381694308557412,
+   "c_bins~soi_state_full_population_ty2022": 0.5524549170693098,
+   "c_bins~soi_state_full_population_ty2023": 0.23880516402622481,
    "c_total_rows~ht2_ty2022_states_on_surface": 0.554292771068329,
    "c_total_rows~cd_ty2022_us_on_full": 0.5381694308557384,
    "c_total_rows~soi_state_full_population_ty2022": 0.552454917069307,

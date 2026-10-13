@@ -2543,7 +2543,9 @@ def _eitc_agi_uprating_metadata(
 _EITC_CHILD_SPLIT_RAKE = "two_margin_rake"
 #: Largest relative miss of an AGI group's raked bins from its active EITC.
 _EITC_RAKE_TOLERANCE = 1e-12
-_EITC_RAKE_MAX_NEWTON_STEPS = 200
+_EITC_RAKE_MAX_NEWTON_STEPS = 500
+#: Levenberg-Marquardt damping of the Newton system's diagonal, tried in turn.
+_EITC_RAKE_DAMPING = (0.0, 1e-10, 1e-6, 1e-3, 1.0, 1e3)
 _EITC_RAKE_POLISH_SWEEPS = 100
 #: Sides longer than this skip the exact feasibility check (2**n subsets).
 _EITC_RAKE_MAX_CHECKED_SIDE = 16
@@ -2643,6 +2645,16 @@ def _rake_eitc_child_splits(
             spec = specs[index]
             source = sources[(spec.name, str(spec.period))]
             factor = row_factors[split] * column_factors[group]
+            if spec.metadata.get("uprating_index") != agi_index and source.value:
+                # The per-row uprating found no source EITC in this bin's
+                # group: a published row over the group is zero although a
+                # bin inside it is not.
+                bounds = plan.groups[group]
+                raise ValueError(
+                    f"{label}: the published rows over AGI "
+                    f"[{_format_bound(bounds.lower)}, {_format_bound(bounds.upper)}) "
+                    f"sum to zero, but {spec.name} has EITC {source.value!r}."
+                )
             # The per-row uprating's factor, the group's active over source
             # EITC; a group with no EITC in either year fell back to the
             # all-returns total there, and takes zero here.
@@ -2845,9 +2857,13 @@ def _rake_two_margins(
         return row_factors, column_factors
     _require_scalable(reach, row_totals, column_totals, label=label)
 
-    # Work in shares, so that the dual is well scaled.
-    seed_total = sum(seed[i][j] for i in rows for j in reach[i])
-    cells = {(i, j): seed[i][j] / seed_total for i in rows for j in reach[i]}
+    # Work in shares, so that the dual is well scaled; divide by the largest
+    # cell first so that summing cannot overflow.
+    largest = max(seed[i][j] for i in rows for j in reach[i])
+    normalized_total = sum(seed[i][j] / largest for i in rows for j in reach[i])
+    cells = {
+        (i, j): seed[i][j] / largest / normalized_total for i in rows for j in reach[i]
+    }
     row_share = {i: row_totals[i] / grand_total for i in rows}
     column_share = {j: column_totals[j] / grand_total for j in columns}
     # Each connected block of the support has one free scale; pin the dual
@@ -2912,9 +2928,13 @@ def _rake_two_margins(
             row_sums[i] += value
             column_sums[j] += value
         # Scale rows to hold exactly, then check the columns.
-        scale = grand_total / seed_total
         for i in rows:
-            row_factors[i] = scale * math.exp(u[i]) * row_share[i] / row_sums[i]
+            row_factors[i] = (
+                grand_total
+                / normalized_total
+                * (math.exp(u[i]) * row_share[i] / row_sums[i])
+                / largest
+            )
         for j in columns:
             column_factors[j] = math.exp(v[j])
         worst = column_miss()
@@ -2952,34 +2972,48 @@ def _rake_two_margins(
                 continue
             a, b = position[("row", i)], position[("column", j)]
             hessian[a][b] = hessian[b][a] = value
-        step = _solve_linear_system(hessian, [-g for g in gradient])
-        if step is None:
-            break
-        slope = sum(g * d for g, d in zip(gradient, step, strict=True))
         current = objective(u, v)
         current_miss = margin_miss(u, v)
-        length = 1.0
-        while length > 1e-12:
-            trial_u = {i: u[i] + length * step[position[("row", i)]] for i in rows}
-            trial_v = {
-                j: v[j]
-                if j in pinned
-                else v[j] + length * step[position[("column", j)]]
-                for j in columns
-            }
-            trial = objective(trial_u, trial_v)
-            # Armijo on the dual; near the optimum its gains fall below
-            # rounding, so also take a step that shrinks the worst relative
-            # margin miss without raising the dual beyond rounding.
-            if trial <= current + 1e-4 * length * slope or (
-                trial <= current + 1e-12 * max(abs(current), 1.0)
-                and margin_miss(trial_u, trial_v) < current_miss
-            ):
+        moved = None
+        # Newton's step, then ever more damped ones (Levenberg-Marquardt)
+        # when rounding makes the system singular or the step overshoots.
+        for damping in _EITC_RAKE_DAMPING:
+            damped = [
+                [
+                    value * (1 + damping) if a == b else value
+                    for b, value in enumerate(row)
+                ]
+                for a, row in enumerate(hessian)
+            ]
+            step = _solve_linear_system(damped, [-g for g in gradient])
+            if step is None:
+                continue
+            slope = sum(g * d for g, d in zip(gradient, step, strict=True))
+            length = 1.0
+            while length > 1e-12:
+                trial_u = {i: u[i] + length * step[position[("row", i)]] for i in rows}
+                trial_v = {
+                    j: v[j]
+                    if j in pinned
+                    else v[j] + length * step[position[("column", j)]]
+                    for j in columns
+                }
+                trial = objective(trial_u, trial_v)
+                # Armijo on the dual; near the optimum its gains fall below
+                # rounding, so also take a step that shrinks the worst
+                # relative margin miss without raising the dual beyond rounding.
+                if trial <= current + 1e-4 * length * slope or (
+                    trial <= current + 1e-12 * max(abs(current), 1.0)
+                    and margin_miss(trial_u, trial_v) < current_miss
+                ):
+                    moved = (trial_u, trial_v)
+                    break
+                length /= 2
+            if moved is not None:
                 break
-            length /= 2
-        else:
+        if moved is None:
             break
-        u, v = trial_u, trial_v
+        u, v = moved
     raise ValueError(
         f"{label}: raking to the child-split totals and the active AGI groups did "
         f"not converge in {_EITC_RAKE_MAX_NEWTON_STEPS} Newton steps."
@@ -2993,33 +3027,76 @@ def _require_scalable(
     *,
     label: str,
 ) -> None:
-    """Refuse margins no positive scaling of the seed can meet.
+    """Refuse margins that no positive scaling of the seed can meet.
 
     A positive scaling exists exactly when, for every set ``I`` of rows and
     the set ``J`` of columns their positive cells reach, the rows' totals
     are at most the columns' totals, and equal only if no other row reaches
-    ``J`` (Menon 1968; Brualdi 1968). Equality otherwise forces those other
-    rows' cells in ``J`` to zero. Checks every row set when there are at most
-    :data:`_EITC_RAKE_MAX_CHECKED_SIDE` rows (child splits, usually four).
+    ``J`` (Menon 1968; Brualdi 1968): equality forces those other rows'
+    cells in ``J`` to zero. The condition is symmetric in rows and columns,
+    so it is checked over every subset of the shorter side, which must have
+    at most :data:`_EITC_RAKE_MAX_CHECKED_SIDE` members.
+
+    It refuses only what is certain for the margins as given: totals beyond
+    the room by more than rounding, or exactly equal to it. Margins within
+    rounding of the boundary go to the solver, which reports if it cannot
+    meet them.
     """
 
-    rows = sorted(reach)
-    if len(rows) > _EITC_RAKE_MAX_CHECKED_SIDE:
-        return
-    tolerance = 1e-12 * sum(column_totals)
-    for size in range(1, len(rows)):
-        for subset in itertools.combinations(rows, size):
-            columns = frozenset().union(*(reach[i] for i in subset))
-            held = sum(row_totals[i] for i in subset)
-            room = sum(column_totals[j] for j in columns)
+    column_reach: dict[int, frozenset[int]] = {}
+    for i, columns in reach.items():
+        for j in columns:
+            column_reach[j] = column_reach.get(j, frozenset()) | {i}
+    if len(reach) <= _EITC_RAKE_MAX_CHECKED_SIDE:
+        _require_side_scalable(
+            reach,
+            row_totals,
+            column_totals,
+            label=label,
+            side="child splits",
+            other="the AGI groups their bins reach",
+        )
+    elif len(column_reach) <= _EITC_RAKE_MAX_CHECKED_SIDE:
+        _require_side_scalable(
+            column_reach,
+            column_totals,
+            row_totals,
+            label=label,
+            side="AGI groups",
+            other="the child splits with bins in them",
+        )
+    else:
+        raise ValueError(
+            f"{label}: the rake checks feasibility for at most "
+            f"{_EITC_RAKE_MAX_CHECKED_SIDE} child splits or AGI groups; this "
+            f"decomposition has {len(reach)} and {len(column_reach)}."
+        )
+
+
+def _require_side_scalable(
+    reach: Mapping[int, frozenset[int]],
+    totals: list[float],
+    other_totals: list[float],
+    *,
+    label: str,
+    side: str,
+    other: str,
+) -> None:
+    members = sorted(reach)
+    tolerance = 1e-12 * sum(other_totals)
+    for size in range(1, len(members)):
+        for subset in itertools.combinations(members, size):
+            reached = frozenset().union(*(reach[k] for k in subset))
+            held = sum(totals[k] for k in subset)
+            room = sum(other_totals[k] for k in reached)
             if held > room + tolerance or (
-                abs(held - room) <= tolerance
-                and any(reach[i] & columns for i in rows if i not in subset)
+                held == room
+                and any(reach[k] & reached for k in members if k not in subset)
             ):
                 raise ValueError(
                     f"{label}: no scaling of the source bins meets both "
-                    f"margins: child splits {list(subset)} total {held!r}, and "
-                    f"the AGI groups their bins reach total {room!r}."
+                    f"margins: {side} {list(subset)} total {held!r}, and "
+                    f"{other} total {room!r}."
                 )
 
 
