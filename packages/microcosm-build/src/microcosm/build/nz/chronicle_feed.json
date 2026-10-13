@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "country": "nz",
+  "scope": "nz_calibration",
+  "source_repo": "PolicyEngine/chronicle",
+  "source_commit": "a5280e18e276ba032ff97e77bf15dfb91a219b9f",
+  "build": "build-bundle --suite nz -> build-consumer-artifact",
+  "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+  "consumer_fact_schema_versions": [
+    "chronicle.consumer_fact.v4"
+  ],
+  "consumer_fact_schema_sha256": "cc9efb90e9c73913bc76a89e9df435a9ca6ff49942e63dc8d2bf183c65a70224",
+  "fact_row_count": 12251,
+  "facts_sha256": "66bfb6373cb66059b9d4cebeebec58c94360e0db82eefd222396b7477c9b7093",
+  "manifest_sha256": "a0804a0272d2b8572b1f790a54f8505f38e593c9f8ff012f0a16232fb4878f72"
+}

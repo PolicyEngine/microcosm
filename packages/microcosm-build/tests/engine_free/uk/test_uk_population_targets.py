@@ -77,9 +77,11 @@ LOCAL_SELECTOR_KEYS = {
 }
 POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
+    "allocation",
     "band",
     "band_filter_dimension",
     "band_period_factor",
+    "band_semantics",
     "band_upper_bound",
     "band_upper_bound_inclusive",
     "count_of",
@@ -215,10 +217,13 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # contribution targets and the DWP employee total leave the fit again (their
     # relief-mechanism and gross definitions do not match the engine's columns;
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
-    # pension-age Housing Benefit spending; microcosm#1113 adds ONS 07.2.2
-    # household road fuel; microcosm#1123 adds the four nation household
-    # controls (LFS English regions, NRS, Welsh Government, NI).
-    assert len(resource["targets"]) == 400
+    # pension-age Housing Benefit spending, and OBR's NICs total and the
+    # all-rates salary-sacrifice relief become diagnostics beside the bound
+    # rows they repeat, as do the two PIP daily-living caseload rows;
+    # microcosm#1113 adds ONS 07.2.2 household road fuel; microcosm#1123 adds
+    # the four nation household controls (LFS English regions, NRS, Welsh
+    # Government, NI).
+    assert len(resource["targets"]) == 396
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -232,10 +237,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 348
+    assert len(registry_scope) == 344
     assert len(profile_scope) == 52
-    assert target_ids[:348] == registry_scope
-    assert target_ids[348:] == profile_scope
+    assert target_ids[:344] == registry_scope
+    assert target_ids[344:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -248,8 +253,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 156
+    # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
+    # the mapped rows for diagnostics.
+    assert len(mapped_target_ids) == 189
+    assert len(unmapped_declarations) == 155
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -368,7 +375,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 400
+    assert len(target_ids) == 396
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -840,12 +847,16 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
             target["bindings"]["policyengine"]["filters"][0]["variable"]
             == "uc_calibration_administrative_family_type"
         )
-        assert target["bindings"]["policyengine"]["band_upper_bound"] == 2500
+        binding = target["bindings"]["policyengine"]
+        # microcosm#1095: whole-pence bands, closed at GBP 2,500.00 a month.
+        assert binding["band_semantics"] == "whole_pence_upper_closed"
+        assert binding["band_upper_bound"] == 2500
+        assert "band_upper_bound_inclusive" not in binding
 
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 400
+    assert len(targets) == 396
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -895,8 +906,8 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
             "from_entity", "household"
         )
         if target_id.startswith("dwp.uc.payment_distribution_"):
+            assert binding["band_semantics"] == "whole_pence_upper_closed"
             assert binding["band_upper_bound"] == 2500
-            assert binding["band_upper_bound_inclusive"] is True
             assert binding["band_period_factor"] == 12
     # The omitted source top-coded row is not introduced or merged into a
     # finite reference by these measurement-only changes.
@@ -1091,3 +1102,35 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
         assert by_id[target_id]["measurement"]["filters"] == [
             {"concept": "uk.housing.council_tax_band", "operator": "in", "value": bands}
         ], target_id
+
+
+def test_only_the_uc_award_bands_read_whole_pence() -> None:
+    """microcosm#1095: the four UC payment families opt in to whole-pence,
+    upper-closed bands; the other 28 banded bindings keep the half-open
+    reading."""
+
+    banded = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _load()["targets"]
+        if target["bindings"]["policyengine"].get("groupby_variable")
+    }
+    whole_pence = {
+        target_id
+        for target_id, binding in banded.items()
+        if binding.get("band_semantics") == "whole_pence_upper_closed"
+    }
+    assert len(banded) == 32
+    assert whole_pence == {
+        f"dwp.uc.payment_distribution_{family}"
+        for family in (
+            "single",
+            "lone_parent",
+            "couple_no_children",
+            "couple_with_children",
+        )
+    }
+    assert not [
+        target_id
+        for target_id, binding in banded.items()
+        if target_id not in whole_pence and "band_semantics" in binding
+    ]

@@ -12,6 +12,10 @@ and one of the two appliers below transports its value:
 * amount rows: the ratio of a policyengine-uk parameter between the fact's
   opening-year instant and the calibration year's, the same calendar-year
   instants the SPI donor rebasing uses (``spi_income._spi_income_uprating_factors``).
+  Savings interest takes two legs, since the index of its history is not the
+  one policyengine-uk's dataset projection applies: ONS household interest
+  income to the frame's survey year, then GDP per head to the calibration year
+  (``UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``).
   The OBR indices are calendar-year series keyed at 1 January, so the engine's
   period 2025 is calendar 2025 for incomes; the state pension rate is the
   tax-year rate the engine pays for the whole year, so its rows move by that
@@ -43,6 +47,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     TargetRegistry,
 )
+from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk_parameter:"
@@ -154,6 +159,30 @@ UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
 #: described different populations.
 UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT = "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
 UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.amount"
+#: The SPI savings interest amount by band (microcosm#1095, uk-data#541).
+#: policyengine-uk's dataset projection grows ``savings_interest_income`` by
+#: GDP per head, but the variable's own index, ONS household interest income,
+#: is what records its history: x1.99 from 2022 to 2023 as rates rose, against
+#: GDP per head's x1.05. The frame holds survey-year values (the SPI donors are
+#: rebased to that year by the history index) and the engine projects them to
+#: the calibration year. So a fact moves to the survey year by the history
+#: index and from there by the projection's, the path the data takes.
+UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT = (
+    "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp"
+)
+UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER = (
+    "gov.economic_assumptions.indices.ons.household_interest_income"
+)
+UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER = (
+    "gov.economic_assumptions.indices.obr.per_capita.gdp"
+)
+UK_DATASET_YEAR_RULE = "survey_year"
+UK_HISTORY_THEN_PROJECTION_BASIS = (
+    "policyengine-uk parameter ratios in two legs: {history} between 1 January of "
+    "the fact's opening year and 1 January of the dataset's year, the index of "
+    "the variable's history, then {projection} from there to 1 January of the "
+    "calibration year, the index the engine's dataset projection applies"
+)
 UK_RECIPIENT_AMOUNT_GROWTH_BASIS = (
     "recipients times the amount per recipient: the band's recipients grow like its "
     "taxpayers (the count row's index, {count_basis}) and the amount per recipient by "
@@ -441,6 +470,79 @@ def align_hmrc_row_by_engine_index(
             "uprating_index_to_instant": to_instant,
             "uprating_index_from_value": f"{from_value:.15g}",
             "uprating_index_to_value": f"{to_value:.15g}",
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
+def align_hmrc_row_by_history_then_projection(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_concept: str,
+    history_path: str,
+    projection_path: str,
+    dataset_year: int | None = None,
+    parameter_value: ParameterValue = engine_parameter_value,
+) -> TargetRegistry:
+    """Move an amount row by its history index, then the dataset projection's.
+
+    factor = ``history(pivot) / history(opening)`` x ``projection(target) /
+    projection(pivot)``, the pivot being the dataset's year held between the
+    fact's opening year and the calibration year. Both legs' values and
+    instants are written on the spec.
+    """
+
+    if reference.uprating_index != index_concept:
+        return registry
+    if dataset_year is None:
+        dataset_year = resolve_uk_year_rule(UK_DATASET_YEAR_RULE)
+    target_year = _target_year(reference)
+    aligned = []
+    for spec in registry.specs:
+        opening_year = _opening_year(spec, reference)
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        pivot_year = min(max(int(dataset_year), opening_year), target_year)
+        instants = {
+            "from": f"{opening_year}-01-01",
+            "pivot": f"{pivot_year}-01-01",
+            "to": f"{target_year}-01-01",
+        }
+        history = {
+            key: parameter_value(history_path, instants[key])
+            for key in ("from", "pivot")
+        }
+        projection = {
+            key: parameter_value(projection_path, instants[key])
+            for key in ("pivot", "to")
+        }
+        history_factor = history["pivot"] / history["from"]
+        projection_factor = projection["to"] / projection["pivot"]
+        factor = history_factor * projection_factor
+        metadata = {
+            **spec.metadata,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_HISTORY_THEN_PROJECTION_BASIS.format(
+                history=history_path, projection=projection_path
+            ),
+            "uprating_index_engine": f"policyengine-uk {_engine_version()}",
+            "uprating_index_from_instant": instants["from"],
+            "uprating_index_pivot_instant": instants["pivot"],
+            "uprating_index_to_instant": instants["to"],
+            "uprating_history_parameter": history_path,
+            "uprating_history_from_value": f"{history['from']:.15g}",
+            "uprating_history_to_value": f"{history['pivot']:.15g}",
+            "uprating_history_factor": f"{history_factor:.15g}",
+            "uprating_projection_parameter": projection_path,
+            "uprating_projection_from_value": f"{projection['pivot']:.15g}",
+            "uprating_projection_to_value": f"{projection['to']:.15g}",
+            "uprating_projection_factor": f"{projection_factor:.15g}",
             "uprating_factor": f"{factor:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
             "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
@@ -869,6 +971,12 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
         parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
     )
+    appliers[UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT] = partial(
+        align_hmrc_row_by_history_then_projection,
+        index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+        history_path=UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+        projection_path=UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+    )
     return appliers
 
 
@@ -892,7 +1000,11 @@ __all__ = [
     "SPI_BAND_TO_ITL_BANDS",
     "UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT",
     "UK_SPI_STATE_PENSION_RATE_PARAMETER",
+    "UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER",
+    "UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT",
+    "UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER",
     "align_hmrc_amount_by_recipient_growth_and_rate",
+    "align_hmrc_row_by_history_then_projection",
     "UK_ENGINE_INDEX_CONCEPTS",
     "UK_ENGINE_INDEX_PARAMETERS",
     "UK_ENGINE_PARAMETER_INDEX_PREFIX",

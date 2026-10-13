@@ -225,9 +225,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
-            # The Universal Credit draw's population: units with an adult
-            # under State Pension age (#882).
+            # The Universal Credit draw's population: units with a UC
+            # claimant or partner aged 18 to under Pension Credit qualifying
+            # age (#882, microcosm#1095).
             "age",
+            "is_uc_claimant",
         )
     )
     | frozenset({("benunit", "is_married")}),
@@ -344,6 +346,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "is_enhanced_disabled_for_benefits",
                     "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
+                    # The UC draw's population (frs_take_up's rule).
+                    "is_uc_claimant",
                 )
             ),
             ("benunit", "benunit_support_channel"),
@@ -360,6 +364,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "savings_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
+            # The recorded capitals' property: the household reference
+            # person's unit holds it (microcosm#1095).
+            ("person", "is_household_head"),
+            ("household", "owned_land"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
@@ -422,6 +432,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 for column in (
                     "capital_gains",
                     "property_income",
+                    "reports_rent_from_other_property",
                     "self_employment_income",
                     "dividend_income",
                 )
@@ -513,6 +524,8 @@ _ROOT_PERSON_BOOL = {
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
+    "reports_rent_from_other_property",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -599,6 +612,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "relationship_to_head", "string"),
         _Cell("person", "ons_family_role", "string"),
         _Cell("person", "ons_family_index", "int64"),
+        _Cell("person", "is_looked_after_by_local_authority", "bool"),
         _Cell("household", "ons_household_type", "string"),
     ),
     "frs_employment": (
@@ -1031,6 +1045,12 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#527: the UC start-up period holds on a redrawn row only while it
     # stays self-employed.
     "uc_is_in_startup_period",
+    # uk-data#525: a redrawn row's gainful self-employment follows its drawn
+    # incomes.
+    "uc_is_in_gainful_self_employment",
+    # A redrawn row drops its FRS twin's landlord carrier: its property income
+    # is an SPI donor's (microcosm#1095).
+    "reports_rent_from_other_property",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

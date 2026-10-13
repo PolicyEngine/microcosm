@@ -104,6 +104,16 @@ def _tables(*, n: int = 4, weights=None):
     if weights is None:
         weights = np.ones(n, dtype=float)
     household_ids = np.arange(1, n + 1, dtype=np.int64)
+    # One person per benefit unit and household, so each person is the
+    # household reference person and the unit holds the household's property
+    # at 90% of its value: other property for UC, and that with land for
+    # Pension Credit (microcosm#1095). The units that report Universal Credit
+    # hold none here.
+    claimant = np.arange(n) % 3 != 2
+    other_property = 1_000.0 * (np.arange(n) % 2)
+    non_residential = 500.0 * (np.arange(n) % 2)
+    land = 250.0 * (np.arange(n) % 2)
+    carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
             "person_id": np.arange(101, 101 + n, dtype=np.int64),
@@ -114,14 +124,19 @@ def _tables(*, n: int = 4, weights=None):
             # Distinct sub-exempt gains: not degenerate, and none crosses the
             # frozen 3,000 under the fake projection's pinned growth path.
             "capital_gains": np.linspace(500.0, 2_000.0, n),
+            "age": 30 + 10 * np.arange(n),
+            "is_uc_claimant": claimant,
+            "is_household_head": True,
         }
     )
     benunit = pd.DataFrame(
         {
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
-            "frs_benunit_capital": np.arange(n, dtype=float),
-            "uc_reported_capital": np.arange(n, dtype=float),
+            "frs_benunit_capital": carrier,
+            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
+            "pension_credit_reported_capital": carrier
+            + 0.9 * (land + other_property + non_residential),
         }
     )
     household = pd.DataFrame(
@@ -130,6 +145,9 @@ def _tables(*, n: int = 4, weights=None):
             "household_weight": np.asarray(weights, dtype=float),
             "household_is_spi_synthetic": np.arange(n) % 2 == 1,
             "household_is_capital_gains_clone": np.arange(n) % 4 >= 2,
+            "owned_land": land,
+            "other_residential_property_value": other_property,
+            "non_residential_property_value": non_residential,
         }
     )
     return person, benunit, household
@@ -250,6 +268,19 @@ def _run_battery(
     extra_artifacts=None,
 ):
     person, benunit, household = tables
+    # A dependant in the first household, so is_household_head varies as it
+    # does in a real frame: the degenerate-surface gate refuses a constant
+    # column. The dependant adds no income, receipt or taxable gain.
+    dependant = person.iloc[[0]].assign(
+        person_id=int(person["person_id"].max()) + 1,
+        employment_income=0.0,
+        universal_credit_reported=0.0,
+        capital_gains=250.0,
+        age=5,
+        is_uc_claimant=False,
+        is_household_head=False,
+    )
+    person = pd.concat([person, dependant], ignore_index=True)
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )
@@ -446,6 +477,133 @@ class TestUKSurfaceAdapter:
         assert failing.details["carrier_domain_violation_count"] > 0
         assert failing.details["sentinel_mismatch_count"] == 0
         assert failing.details["same_source_mismatch_count"] == 0
+
+    @staticmethod
+    def _capital_gate():
+        return next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+
+    def test_uc_column_implication_binding_checks_both_capitals_with_property(
+        self,
+    ) -> None:
+        # microcosm#1095: each recorded capital is the carrier plus the
+        # household's property, at 90% of its value, for the household
+        # reference person's unit: other property for UC, and that with land
+        # for Pension Credit.
+        person, benunit, household = _tables()
+        # Unit 0 reports no Universal Credit here, so it records the property.
+        person.loc[0, "universal_credit_reported"] = 0.0
+        household.loc[0, "other_residential_property_value"] = 40_000.0
+        household.loc[0, "owned_land"] = 10_000.0
+        benunit.loc[0, "uc_reported_capital"] = 36_000.0
+        benunit.loc[0, "pension_credit_reported_capital"] = 45_000.0
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = self._capital_gate()
+        evaluate = UK_GATE_REGISTRY["column_implication"].evaluate
+        context = EvidenceContext(frame=frame)
+
+        passing = evaluate(context, entry.parameters)
+        assert passing.passed, passing.failures
+        for rule in passing.details["property_shares"].values():
+            assert rule["owners"] == "household_reference_person_unit"
+            assert rule["valuation"] == 0.9
+
+        # The carrier alone, without the property, fails on both columns.
+        frame.table("benunit").loc[0, "uc_reported_capital"] = 0.0
+        frame.table("benunit").loc[0, "pension_credit_reported_capital"] = 0.0
+        failing = evaluate(context, entry.parameters)
+        assert not failing.passed
+        share_failures = [
+            failure
+            for failure in failing.failures
+            if "plus the unit's declared property share" in failure
+        ]
+        assert len(share_failures) == 2
+        columns = failing.details["capital_columns"]
+        for column in ("uc_reported_capital", "pension_credit_reported_capital"):
+            assert columns[f"benunit.{column}"]["same_source_mismatch_count"] == 1
+
+    def test_uc_column_implication_binding_keeps_a_reporters_receipt(
+        self,
+    ) -> None:
+        # microcosm#1095: a unit that reports Universal Credit records the
+        # carrier alone, whatever property its household holds.
+        person, benunit, household = _tables()
+        assert person.loc[0, "universal_credit_reported"] > 0
+        household.loc[0, "other_residential_property_value"] = 40_000.0
+        benunit.loc[0, "pension_credit_reported_capital"] = 36_000.0
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = self._capital_gate()
+        evaluate = UK_GATE_REGISTRY["column_implication"].evaluate
+        context = EvidenceContext(frame=frame)
+
+        passing = evaluate(context, entry.parameters)
+        assert passing.passed, passing.failures
+
+        # The property it would hold is refused on a reporting unit.
+        frame.table("benunit").loc[0, "uc_reported_capital"] = 36_000.0
+        failing = evaluate(context, entry.parameters)
+        assert not failing.passed
+        columns = failing.details["capital_columns"]
+        assert columns["benunit.uc_reported_capital"]["same_source_mismatch_count"] == 1
+        assert (
+            columns["benunit.pension_credit_reported_capital"][
+                "same_source_mismatch_count"
+            ]
+            == 0
+        )
+
+    def test_uc_column_implication_binding_tolerates_a_float32_round_trip(
+        self,
+    ) -> None:
+        person, benunit, household = _tables()
+        household.loc[1, "other_residential_property_value"] = 654_321.09
+        household.loc[1, "non_residential_property_value"] = 0.0
+        benunit.loc[1, "frs_benunit_capital"] = 123_456.78
+        benunit.loc[1, "pension_credit_reported_capital"] = 123_456.78 + 0.9 * (
+            household.loc[1, "owned_land"] + 654_321.09
+        )
+        expected = 123_456.78 + 0.9 * 654_321.09
+        benunit.loc[1, "uc_reported_capital"] = float(np.float32(expected))
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = self._capital_gate()
+        evaluate = UK_GATE_REGISTRY["column_implication"].evaluate
+        context = EvidenceContext(frame=frame)
+
+        assert evaluate(context, entry.parameters).passed
+        frame.table("benunit").loc[1, "uc_reported_capital"] = expected + 1.0
+        assert not evaluate(context, entry.parameters).passed
+
+    def test_uc_column_implication_binding_refuses_a_drifted_property_rule(
+        self,
+    ) -> None:
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = self._capital_gate()
+        parameters = {
+            **dict(entry.parameters),
+            "property_shares": {
+                "uc_reported_capital": {
+                    "sources": ["owned_land"],
+                    "owners": "is_uc_claimant",
+                }
+            },
+        }
+        with pytest.raises(ValueError, match="not the recorded-capital rules"):
+            UK_GATE_REGISTRY["column_implication"].evaluate(
+                EvidenceContext(frame=frame), parameters
+            )
 
     def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
         # frs_employment declares sic_industry_division nonnegative; a build
@@ -663,7 +821,9 @@ class TestUKSurfaceAdapter:
         )
 
         assert result.passed is True
-        assert result.details["columns_checked"] == 3
+        # The fixture's other residential and non-residential property are
+        # WAS outputs too.
+        assert result.details["columns_checked"] == 5
 
     def test_support_binding_fails_out_of_range_was_outputs(self) -> None:
         person, benunit, household = _tables(n=1)

@@ -99,6 +99,7 @@ from .graph_inputs import (
 )
 
 __all__ = [
+    "TARGET_COMPILATION_KERNELS",
     "COMPARISON_TYPE",
     "TARGETS_COMPILE",
     "TARGETS_PROBLEM",
@@ -114,6 +115,11 @@ __all__ = [
     "parse_reference_document",
     "register_target_kernels",
 ]
+
+#: Every transport kernel that resolves references against consumer facts.
+TARGET_COMPILATION_KERNELS = frozenset(
+    {"transport.create@1", "targets.compile@1", "takeup.compare@1", "takeup.gap@1"}
+)
 
 _SURFACE_KIND = "transport_target_surface"
 _COMPARISON_KIND = "transport_target_comparison"
@@ -306,17 +312,20 @@ def compile_target_surface(
     country: str,
     references_sha256: str,
     expected_facts_sha256: str | None = None,
+    feed_pin: Mapping[str, object] | None = None,
 ) -> tuple[bytes, TargetRegistry]:
     """Compile a reference document against one consumer artifact.
 
     Returns the surface bytes and the registry they encode. The artifact
     payload records content identities only, never the source path, so moving
-    a source file changes neither a node key nor an artifact byte.
+    a source file changes neither a node key nor an artifact byte. A declared
+    country feed supplies ``feed_pin`` for all six artifact identities; the
+    optional facts hash remains available for feeds without a full pin.
     """
 
     references = parse_reference_document(document, country=country)
     artifact = load_ledger_consumer_artifact(
-        facts_path, expected_facts_sha256=expected_facts_sha256
+        facts_path, expected_facts_sha256=expected_facts_sha256, feed_pin=feed_pin
     )
     registry = compile_ledger_target_references(
         artifact.facts, references, country=country
@@ -354,6 +363,11 @@ def _registry_from_context(
         country=country,
         references_sha256=references_sha256,
         expected_facts_sha256=expected,
+        feed_pin=(
+            canonical_document_param(context, ref, "chronicle_feed_pin")
+            if "chronicle_feed_pin" in context.params
+            else None
+        ),
     )
     return registry, payload
 
@@ -422,7 +436,7 @@ class TargetsCompileKernel(KernelBase):
         seed_source=SeedSource.NONE,
     )
     _required = frozenset({"country", "references", "references_sha256"})
-    _optional = frozenset({"facts_sha256"})
+    _optional = frozenset({"facts_sha256", "chronicle_feed_pin"})
 
     def implementation_hash(self) -> str:
         return source_hash(
@@ -540,7 +554,7 @@ class TakeupCompareKernel(KernelBase):
     _required = frozenset(
         {"country", "references", "references_sha256", "entities", "weight_entity"}
     )
-    _optional = frozenset({"facts_sha256"})
+    _optional = frozenset({"facts_sha256", "chronicle_feed_pin"})
 
     def implementation_hash(self) -> str:
         return source_hash(

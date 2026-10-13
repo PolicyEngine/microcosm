@@ -1,12 +1,12 @@
 {
- "compiled_count": 939,
+ "compiled_count": 938,
  "counts_by_kind": {
   "calibration_drift": 118,
   "fixture_only": 17,
   "ledger_absent": 3,
-  "ledger_only": 810
+  "ledger_only": 809
  },
- "difference_count": 948,
+ "difference_count": 947,
  "differences": [
   {
    "kind": "ledger_absent",
@@ -908,13 +908,6 @@
    "kind": "ledger_only",
    "ledger_value": 4400000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
-   "period": 2023,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 7200000000.0,
-   "name": "hmrc.salary_sacrifice.it_relief_total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

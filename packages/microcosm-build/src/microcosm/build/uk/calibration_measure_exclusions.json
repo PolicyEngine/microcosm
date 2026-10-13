@@ -2,33 +2,6 @@
   "schema_version": 2,
   "exclusions": [
     {
-      "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
-      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
-      "tracking": "microcosm#1069",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
-      "approved_on": "2026-09-30",
-      "expires_on": "2026-11-25"
-    },
-    {
       "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
       "reason": "Zero-support channel on total income (ITA 2007 s.23, which excludes capital gains): zero in-band carrier records with total income above 1m, under both the SPI assessable-income concept and the component-sum proxy, measured identically on spine-i and spine-j (microcosm#807, receipts uk-candidate-eval out/excluded_cell_support_spine_{i,j}.json). The spine carries capital gains to 20.4m and thousands of records above 1m wealth; the premise is total-income support, never a wealth or gains cap, and a zero-support cell cannot be reached by reweighting.",
       "tracking": "microcosm#757",
