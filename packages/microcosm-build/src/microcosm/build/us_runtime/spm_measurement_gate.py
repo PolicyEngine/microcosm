@@ -81,12 +81,16 @@ def engine_scopes_spm_universe(engine_variables: Collection[str]) -> bool:
     return UNIVERSE_INPUT in engine_variables
 
 
-def _is_boolean_like(value: object) -> bool:
-    """A Python or numpy Boolean, or a real number; never text or bytes."""
+def _is_real_zero_or_one(value: object, target: int | None = None) -> bool:
+    """Is ``value`` a Boolean or real number equal to 0 or 1 (or to ``target``)?
 
-    return isinstance(value, (bool, np.bool_, numbers.Real)) and not isinstance(
-        value, (str, bytes)
-    )
+    Compared as stored, with no conversion: text, bytes and complex numbers
+    are never Boolean here, whatever they would convert to.
+    """
+
+    if not isinstance(value, (bool, np.bool_, numbers.Real)):
+        return False
+    return bool(value == target) if target is not None else bool(value in (0, 1))
 
 
 def _validated_role(
@@ -97,11 +101,13 @@ def _validated_role(
     The engine and the composition check both cast a stored role to Boolean,
     and a cast turns any non-empty text or bytes value, ``"0"`` included,
     into ``True``. So only two encodings are accepted: an actual Boolean, or a
-    real number equal to 0 or 1, in a Boolean, numeric or object column.
-    Text, bytes and every other value are refused, as is a null: a declared
-    dataset source input may not be defaulted. The vector returned here is the
-    one the composition is graded on, so the counts and the verdict cannot
-    read the column two ways.
+    real number equal to 0 or 1, in a Boolean, real numeric or object column.
+    Each value is compared as stored: a conversion can lose what the cast
+    reads, as a float conversion drops the imaginary part of ``1j``, which
+    casts to ``True``. Text, bytes, complex numbers and every other value are
+    refused, as is a null: a declared dataset source input may not be
+    defaulted. The vector returned here is the one the composition is graded
+    on, so the counts and the verdict cannot read the column two ways.
     """
 
     if NATIVE_SPM_ROLE not in person.columns:
@@ -122,17 +128,17 @@ def _validated_role(
     if pd.api.types.is_bool_dtype(dtype):
         valid = ~null
         true = column.fillna(False).to_numpy(dtype=bool)
-    elif pd.api.types.is_numeric_dtype(dtype):
-        values = column.to_numpy(dtype=np.float64, na_value=np.nan)
-        valid = ~null & np.isin(values, (0.0, 1.0))
-        true = values == 1.0
+    elif pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_complex_dtype(
+        dtype
+    ):
+        # Compared in the column's own dtype; a missing value compares False.
+        true = column.eq(1).fillna(False).to_numpy(dtype=bool)
+        valid = ~null & (true | column.eq(0).fillna(False).to_numpy(dtype=bool))
     elif pd.api.types.is_object_dtype(dtype):
-        boolean_like = column.map(_is_boolean_like).to_numpy(dtype=bool)
-        values = pd.to_numeric(column.where(boolean_like), errors="coerce").to_numpy(
-            dtype=np.float64, na_value=np.nan
+        true = column.map(lambda value: _is_real_zero_or_one(value, 1)).to_numpy(
+            dtype=bool
         )
-        valid = ~null & boolean_like & np.isin(values, (0.0, 1.0))
-        true = values == 1.0
+        valid = ~null & column.map(_is_real_zero_or_one).to_numpy(dtype=bool)
     else:
         valid = np.zeros(len(column), dtype=bool)
         true = valid
@@ -148,8 +154,9 @@ def _validated_role(
     if non_boolean:
         failures.append(
             f"{non_boolean} person row(s) store a {NATIVE_SPM_ROLE!r} value that "
-            "is not a Boolean or a number equal to 0 or 1 (column dtype "
-            f"{dtype}); text and bytes cast to True whatever they spell."
+            "is not a Boolean or a real number equal to 0 or 1 (column dtype "
+            f"{dtype}); text, bytes and complex numbers can cast to True "
+            "whatever they spell."
         )
     details = {
         "role_column_present": True,

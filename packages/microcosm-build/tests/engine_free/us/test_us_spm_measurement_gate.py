@@ -178,6 +178,8 @@ _ACCEPTED_ROLE_ENCODINGS = {
     "float64": lambda role: role.astype(np.float64),
     "object_bool": lambda role: role.astype(object),
     "object_int": lambda role: pd.Series([int(v) for v in role], dtype=object),
+    "nullable_int": lambda role: role.astype("Int64"),
+    "float32": lambda role: role.astype(np.float32),
 }
 _REFUSED_ROLE_ENCODINGS = {
     "text_digits": lambda role: pd.Series(["1" if v else "0" for v in role]),
@@ -191,6 +193,10 @@ _REFUSED_ROLE_ENCODINGS = {
     "object_bool_and_text": lambda role: pd.Series([True, "0"], dtype=object),
     "two_for_true": lambda role: role.astype(np.int64) * 2,
     "fraction": lambda role: role.astype(np.float64) * 0.5,
+    # 1j casts to True, but a float conversion keeps only its real part, 0.
+    "complex_imaginary": lambda role: pd.Series([1 + 0j, 1j]),
+    "complex_real_valued": lambda role: role.astype(np.complex128),
+    "object_complex": lambda role: pd.Series([True, 1j], dtype=object),
 }
 
 
@@ -222,8 +228,9 @@ def test_every_accepted_role_encoding_reads_the_same_role(encoding):
 @pytest.mark.parametrize("encoding", sorted(_REFUSED_ROLE_ENCODINGS))
 def test_a_role_that_is_not_boolean_is_refused_before_it_can_cast_to_true(encoding):
     """Text and bytes cast to True whatever they spell: a stored ``"0"`` would
-    hand the teen the role and the release would pass. The gate refuses the
-    column instead of grading it."""
+    hand the teen the role and the release would pass. A complex ``1j`` casts
+    to True while its real part is 0. The gate refuses each column instead of
+    grading it on a reading the engine would not share."""
 
     frame = _with_role_encoding(_REFUSED_ROLE_ENCODINGS[encoding])
 

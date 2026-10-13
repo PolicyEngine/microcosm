@@ -1561,12 +1561,15 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     assert "must carry the 'stored_inputs' gate" in failures[0]
 
 
-def _write_measurable_lane_h5(path: Path, *, group_quarters_child: bool) -> None:
+def _write_measurable_lane_h5(
+    path: Path, *, group_quarters_child: bool, role=None
+) -> None:
     """The plausible-hours frame with the columns the SPM gate reads.
 
     Eight one-person ACS housing units of adults; with
     ``group_quarters_child`` the last is instead a group-quarters record of a
-    ten-year-old, whom no role can classify.
+    ten-year-old, whom no role can classify. ``role`` replaces the stored
+    role column, which is otherwise Boolean ``True`` for everyone.
     """
 
     from microcosm.frame import Frame
@@ -1579,7 +1582,7 @@ def _write_measurable_lane_h5(path: Path, *, group_quarters_child: bool) -> None
         ages[-1], kinds[-1] = 10.0, 2.0
     person = frame.table("person").assign(
         age=ages,
-        is_spm_independent_minor_role=[True] * 8,
+        is_spm_independent_minor_role=[True] * 8 if role is None else role,
         person_support_clone_index=0,
     )
     household = frame.table("household").assign(
@@ -1670,6 +1673,40 @@ def test_package_refuses_an_unmeasurable_release_before_any_release_dir(
     assert "0 inside the source SPM universe and 1 outside it" in message
     assert not (args.out / "releases").exists()
     assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_refuses_a_complex_role_after_the_h5_round_trip(tmp_path, monkeypatch):
+    """A complex role column survives the lane's H5 writer and reader. Its
+    ``1j`` casts to True, yet its real part is 0, so the gate must refuse the
+    column on the bytes the release would ship rather than read it one way."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(
+        args.out_h5,
+        group_quarters_child=False,
+        role=np.array([1 + 0j] * 7 + [1j], dtype=np.complex128),
+    )
+    _refresh_package_evidence_bindings(module, args)
+    stored = module._load_staging_frame(args.out_h5).table("person")[
+        "is_spm_independent_minor_role"
+    ]
+    assert pd.api.types.is_complex_dtype(stored.dtype)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "8 person row(s)" in message
+    assert "complex" in message
+    assert not (args.out / "releases").exists()
 
 
 def test_package_refuses_an_spm_gate_without_an_importable_engine(
