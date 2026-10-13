@@ -11569,11 +11569,17 @@
      "required": [
       "kind",
       "parents",
+      "maximum_total",
       "uncarried"
      ],
      "properties": {
       "kind": {
        "const": "recompose_from_remainder"
+      },
+      "maximum_total": {
+       "enum": [
+        "donor_support"
+       ]
       },
       "parents": {
        "type": "object",

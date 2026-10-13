@@ -1733,6 +1733,13 @@ def test_redraw_is_a_no_op_when_undeclared() -> None:
     assert result.fit_weight_records == ()
 
 
+#: Donor support wide enough that no recomposed total is held at its maximum.
+_WIDE_RECOMPOSE_SUPPORT = {
+    "housing_water_and_electricity_consumption": (0.0, 1e9),
+    "transport_consumption": (0.0, 1e9),
+}
+
+
 def _recompose_declaration() -> dict:
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
@@ -1778,7 +1785,11 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
     weights = np.array([2.0, 1.0, 3.0])
 
     out, receipt = recompose_parent_totals(
-        draws, drawn=drawn, parameters=_recompose_declaration(), weights=weights
+        draws,
+        drawn=drawn,
+        parameters=_recompose_declaration(),
+        weights=weights,
+        donor_support=_WIDE_RECOMPOSE_SUPPORT,
     )
 
     # Housing: 7000 - 2000 + 1600; 600 - 900 floors at 0, + 600; 800 + 0.
@@ -1808,6 +1819,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         drawn=drawn,
         parameters=_recompose_declaration(),
         weights=weights,
+        donor_support=_WIDE_RECOMPOSE_SUPPORT,
         uprating_factors={
             "housing_water_and_electricity_consumption": 1.02,
             "transport_consumption": 1.02,
@@ -1832,6 +1844,9 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
         + housing["weighted_floored_mass"]
     )
     assert housing["rows_below_components"] == 0
+    assert housing["maximum_total"] == "donor_support"
+    assert housing["rows_held_at_maximum"] == 0
+    assert housing["weighted_held_mass"] == 0.0
     transport = receipt["parents"]["transport_consumption"]
     assert transport["drawn_subtracts"] == [
         "petrol_spending",
@@ -1886,6 +1901,7 @@ def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
             lambda d: d["uncarried"]["classes"][0].update(concept="ons.other"),
             "expected one",
         ),
+        (lambda d: d.pop("maximum_total"), "maximum_total"),
     ],
 )
 def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> None:
@@ -1907,7 +1923,75 @@ def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> Non
     )
     draws = pd.DataFrame({column: [1.0] for column in columns})
     with pytest.raises(ValueError, match=match):
-        recompose_parent_totals(draws, drawn=draws, parameters=declared, weights=[1.0])
+        recompose_parent_totals(
+            draws,
+            drawn=draws,
+            parameters=declared,
+            weights=[1.0],
+            donor_support=_WIDE_RECOMPOSE_SUPPORT,
+        )
+
+
+def test_recompose_holds_each_total_to_the_donor_maximum() -> None:
+    """A total is held to the donor's maximum of it, never below its parts (#1164)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import recompose_parent_totals
+
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [2000.0, 100.0, 0.0],
+            "petrol_spending": [0.0, 0.0, 0.0],
+            "diesel_spending": [0.0, 0.0, 0.0],
+            "bus_fare_spending": [0.0, 0.0, 0.0],
+        }
+    )
+    draws = pd.DataFrame(
+        {
+            # Remainders 5800, 4900 and 3000 before the levelled energy.
+            "housing_water_and_electricity_consumption": [7800.0, 5000.0, 3000.0],
+            "electricity_consumption": [2500.0, 700.0, 4000.0],
+            "gas_consumption": [1500.0, 200.0, 3000.0],
+            "transport_consumption": [10.0, 10.0, 10.0],
+            "petrol_spending": [0.0, 0.0, 0.0],
+            "diesel_spending": [0.0, 0.0, 0.0],
+            "bus_fare_spending": [0.0, 0.0, 0.0],
+        }
+    )
+    support = {**_WIDE_RECOMPOSE_SUPPORT}
+    support["housing_water_and_electricity_consumption"] = (0.0, 6500.0)
+
+    out, receipt = recompose_parent_totals(
+        draws,
+        drawn=drawn,
+        parameters=_recompose_declaration(),
+        weights=np.array([2.0, 1.0, 3.0]),
+        donor_support=support,
+    )
+
+    # 5800 + 4000 is held at 6500; 4900 + 900 is within it; 3000 + 7000 would
+    # be held at 6500, below its parts, so it keeps the parts alone.
+    assert out["housing_water_and_electricity_consumption"].tolist() == [
+        6500.0,
+        5800.0,
+        7000.0,
+    ]
+    housing = receipt["parents"]["housing_water_and_electricity_consumption"]
+    assert housing["rows_held_at_maximum"] == 2
+    assert housing["weighted_held_mass"] == 2.0 * 3300.0 + 3.0 * 3000.0
+    assert housing["rows_below_components"] == 0
+    assert housing["weighted_total"] == pytest.approx(
+        housing["weighted_remainder"]
+        + housing["weighted_components"]
+        - housing["weighted_held_mass"]
+    )
+    with pytest.raises(ValueError, match="no donor support"):
+        recompose_parent_totals(
+            draws,
+            drawn=drawn,
+            parameters=_recompose_declaration(),
+            weights=np.array([2.0, 1.0, 3.0]),
+            donor_support={"transport_consumption": (0.0, 1e9)},
+        )
 
 
 def test_recompose_is_a_no_op_when_undeclared() -> None:
@@ -1930,7 +2014,7 @@ def test_recompose_is_a_no_op_when_undeclared() -> None:
     draws = pd.DataFrame({"transport_consumption": [1.0]})
 
     out, receipt = lcfs_recompose_from_remainder(
-        stage, draws, drawn=draws, weights=[1.0]
+        stage, draws, drawn=draws, weights=[1.0], donor_support={}
     )
 
     assert out is draws and receipt is None

@@ -2855,12 +2855,14 @@ def _recomposed_totals_gate(
 
     Checks on the ``recomposed_totals`` receipt (microcosm#1113): each total
     the stage declares keeps its own draw less the declared drawn parts and
-    adds the declared levelled parts back; no remainder is negative and no
+    adds the declared levelled parts back, held to the declared
+    ``maximum_total`` (microcosm#1164); no remainder is negative and no
     household's total is below its components; to
     ``maximum_relative_deviation``, the weighted remainder equals the drawn
     total less the drawn parts plus the floored mass, and the weighted total
-    the remainder plus the components; and the uncarried ONS spend is
-    recomputed from the vendored rows through the stage's own declaration.
+    the remainder plus the components less the mass held at the maximum; and
+    the uncarried ONS spend is recomputed from the vendored rows through the
+    stage's own declaration.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -2915,6 +2917,16 @@ def _recomposed_totals_gate(
             failures.append(
                 f"{stage}: {below!r} households have {parent} below its components."
             )
+        if entry.get("maximum_total") != declared.get("maximum_total"):
+            failures.append(
+                f"{stage}: {parent} is held to {entry.get('maximum_total')!r}, not "
+                f"the declared maximum_total {declared.get('maximum_total')!r}."
+            )
+        held = entry.get("rows_held_at_maximum")
+        if isinstance(held, bool) or not isinstance(held, int) or held < 0:
+            failures.append(
+                f"{stage}: {parent} records {held!r} rows held at the maximum."
+            )
 
         def number(key: str, parent: str = parent, entry=entry) -> float:
             return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
@@ -2931,11 +2943,16 @@ def _recomposed_totals_gate(
                 f"drawn parts plus the floored mass ({split})."
             )
         total = number("weighted_total")
-        parts = remainder + number("weighted_components")
+        held_mass = number("weighted_held_mass")
+        if held_mass < 0:
+            failures.append(
+                f"{stage}: {parent} records a negative held mass ({held_mass})."
+            )
+        parts = remainder + number("weighted_components") - held_mass
         if abs(total - parts) > tolerance * max(1.0, abs(total)):
             failures.append(
                 f"{stage}: {parent} weighted total {total} is not its remainder plus "
-                f"components {parts}."
+                f"components less the mass held at the maximum ({parts})."
             )
     uncarried = uncarried_spend(declared)
     observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")

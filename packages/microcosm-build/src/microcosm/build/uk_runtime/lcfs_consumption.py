@@ -382,6 +382,12 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
         ("petrol_spending", "diesel_spending", "bus_fare_spending"),
     ),
 }
+#: The declared ``maximum_total`` of the recomposition (microcosm#1164): each
+#: total is held to the donor's realised maximum of that total, the support
+#: every drawn column is clipped to, so a remainder near the top of the diary's
+#: range plus levelled parts larger than the drawn ones cannot leave the range
+#: the terminal support gate holds the emitted totals to.
+UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
 #: The chain draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
@@ -589,6 +595,7 @@ class UKLCFSConsumptionStageTransform:
             household_draws,
             drawn=drawn_parts,
             weights=weights,
+            donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
         )
         uprating = uprating_operation(self.stage)
@@ -1560,6 +1567,11 @@ def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
                 f"{RECOMPOSE_FROM_REMAINDER_KIND} declares {parent!r} as "
                 f"{declared!r}, not its draw less {subtracted} plus {components}."
             )
+    if parameters.get("maximum_total") != UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL:
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare maximum_total: "
+            f"{UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL}."
+        )
 
 
 def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -1619,6 +1631,7 @@ def recompose_parent_totals(
     drawn: pd.DataFrame,
     parameters: Mapping[str, Any],
     weights: Sequence[float],
+    donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
@@ -1631,6 +1644,11 @@ def recompose_parent_totals(
     conditional on, its total, so the remainder is the chain's own split; a
     remainder drawn as a chain target of its own over-drew the vehicle-purchase
     tail of transport (10 to 13 percent above the donor in-sample).
+
+    The total is then held to the donor's realised maximum of it
+    (``donor_support``, the declared ``maximum_total``; microcosm#1164), never
+    below its parts: what it gives up comes out of the remainder, and the
+    receipt counts the rows held and the weighted mass taken.
     """
 
     check_recomposed_parents(parameters)
@@ -1639,11 +1657,15 @@ def recompose_parent_totals(
     result = household_draws.copy()
     parents: dict[str, Any] = {}
     for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        if parent not in donor_support:
+            raise ValueError(f"{parent}: no donor support to hold the total to.")
+        maximum = float(donor_support[parent][1])
         drawn_total = result[parent].to_numpy(dtype=float)
         drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
         rest = np.maximum(drawn_total - drawn_parts, 0.0)
         parts = sum(result[column].to_numpy(dtype=float) for column in components)
-        total = rest + parts
+        unheld = rest + parts
+        total = np.maximum(np.minimum(unheld, maximum), parts)
         result[parent] = total
         # The parent was uprated by its own factor and each netted part by its
         # own (a drawn part the uprating never touched by 1.0), so the
@@ -1674,6 +1696,9 @@ def recompose_parent_totals(
             ),
             "weighted_remainder": float(np.dot(weight, rest)),
             "weighted_components": float(np.dot(weight, parts)),
+            "maximum_total": UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL,
+            "rows_held_at_maximum": int((unheld > total).sum()),
+            "weighted_held_mass": float(np.dot(weight, unheld - total)),
             "weighted_total": float(np.dot(weight, total)),
             "minimum_remainder": float(rest.min()) if rest.size else 0.0,
             "rows_below_components": int((total < parts).sum()),
@@ -1692,6 +1717,7 @@ def lcfs_recompose_from_remainder(
     *,
     drawn: pd.DataFrame,
     weights: Sequence[float],
+    donor_support: Mapping[str, tuple[float, float]],
     uprating_factors: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
@@ -1704,6 +1730,7 @@ def lcfs_recompose_from_remainder(
         drawn=drawn,
         parameters=parameters,
         weights=weights,
+        donor_support=donor_support,
         uprating_factors=uprating_factors,
     )
 
