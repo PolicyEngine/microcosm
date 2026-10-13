@@ -1,5 +1,6 @@
 {
  "input": "retirement_stage_input.pkl",
+ "input_sha256": "e283b6703f9a48c933c81517faaa2e2e8ef7047ee47ea88242c464d894d9413f",
  "platform": {
   "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
   "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",

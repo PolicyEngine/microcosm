@@ -1,5 +1,6 @@
 {
  "input": "retirement_stage_input.pkl",
+ "input_sha256": "e283b6703f9a48c933c81517faaa2e2e8ef7047ee47ea88242c464d894d9413f",
  "platform": {
   "python": "3.14.2 (main, Feb  3 2026, 03:09:04) [GCC 12.2.0]",
   "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.36",

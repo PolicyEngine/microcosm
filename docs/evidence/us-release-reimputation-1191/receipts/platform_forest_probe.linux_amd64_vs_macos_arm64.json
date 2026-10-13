@@ -1,4 +1,26 @@
 {
+ "inputs": {
+  "left": {
+   "file": "forest_probe.linux_amd64.json",
+   "sha256": "743f08e7f7a250a5efb20a9a1588ac54547548936018b14058ee9dcd6676177a"
+  },
+  "left_arrays": {
+   "file": "forest_probe.linux_amd64.npz",
+   "sha256": "844bf90b8ae53c0b9ac84f625a6277adda495a34a347b15303140e1f24e082a4"
+  },
+  "right": {
+   "file": "forest_probe.macos_arm64.json",
+   "sha256": "c33ab2588d1858ccfffb6f9334600f859bab3e8d2775ca69a774a5b8f2aaa085"
+  },
+  "right_arrays": {
+   "file": "forest_probe.macos_arm64.npz",
+   "sha256": "2a4636c6ffbe6f3469d99104a707ab1bb2e03a43e788e6454fdafc92430a84d7"
+  }
+ },
+ "probed_input": {
+  "file": "retirement_stage_input.pkl",
+  "sha256": "e283b6703f9a48c933c81517faaa2e2e8ef7047ee47ea88242c464d894d9413f"
+ },
  "left": {
   "python": "3.14.2 (main, Feb  3 2026, 03:09:04) [GCC 12.2.0]",
   "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.36",
