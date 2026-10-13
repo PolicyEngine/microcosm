@@ -25,8 +25,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 622,
-    "excluded_rows": 30,
+    "mapped_rows": 620,
+    "excluded_rows": 32,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -394,7 +394,6 @@
       "ons/east_midlands_age_80_89": "ons.population.age_80_89_by_region",
       "ons/female_0_4": "ons.population.female_0_4",
       "ons/female_10_14": "ons.population.female_10_14",
-      "ons/female_15_19": "ons.population.female_15_19",
       "ons/female_20_24": "ons.population.female_20_24",
       "ons/female_25_29": "ons.population.female_25_29",
       "ons/female_30_34": "ons.population.female_30_34",
@@ -427,7 +426,6 @@
       "ons/lone_parent_non_dependent_children_households": "ons.household_composition.lone_parent_non_dependent_children_households",
       "ons/male_0_4": "ons.population.male_0_4",
       "ons/male_10_14": "ons.population.male_10_14",
-      "ons/male_15_19": "ons.population.male_15_19",
       "ons/male_20_24": "ons.population.male_20_24",
       "ons/male_25_29": "ons.population.male_25_29",
       "ons/male_30_34": "ons.population.male_30_34",
@@ -681,7 +679,9 @@
       "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
       "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
       "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
-      "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted."
+      "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
+      "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
+      "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -838,7 +838,13 @@
       "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
       "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
-      "nisra.households.northern_ireland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win)."
+      "nisra.households.northern_ireland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "ons.population.female_15": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 female band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/female_15_19 is excluded.",
+      "ons.population.female_16_17": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 female band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/female_15_19 is excluded.",
+      "ons.population.female_18_19": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 female band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/female_15_19 is excluded.",
+      "ons.population.male_15": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded.",
+      "ons.population.male_16_17": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded.",
+      "ons.population.male_18_19": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the incumbent five-year 15_19 male band is split into ages 15, 16-17 and 18-19, the ages at which the child and qualifying-young-person rules change. The three rows partition the band, so no incumbent row has this row's definition and incumbent ons/male_15_19 is excluded."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -869,7 +875,8 @@
       "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
       "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
-      "cgt_band_promotion": "The 18 banded CGT registry names (hmrc/cgt_taxpayers_band_<lower> and hmrc/capital_gains_band_<lower>, nine bands from 12,300) move from excluded to mapped: Chronicle now carries HMRC Table 2.1a for 2024-25 (cgt_size_of_gain_2026), so the incumbent's unpackaged uk-data CSV is superseded by published individual rows bound at identity; the 3,000 and 6,000 bands the incumbent never carried are authored under the same naming form and the 0-2,999 band below the 2024 AEA is signed out (microcosm#467, #725). Chronicle's Table 2.1a package emits taxpayers and gains only, although the published sheet carries an amounts-of-tax column, so no liability-by-band target exists yet; it becomes possible once Chronicle emits that column."
+      "cgt_band_promotion": "The 18 banded CGT registry names (hmrc/cgt_taxpayers_band_<lower> and hmrc/capital_gains_band_<lower>, nine bands from 12,300) move from excluded to mapped: Chronicle now carries HMRC Table 2.1a for 2024-25 (cgt_size_of_gain_2026), so the incumbent's unpackaged uk-data CSV is superseded by published individual rows bound at identity; the 3,000 and 6,000 bands the incumbent never carried are authored under the same naming form and the 0-2,999 band below the 2024 AEA is signed out (microcosm#467, #725). Chronicle's Table 2.1a package emits taxpayers and gains only, although the published sheet carries an amounts-of-tax column, so no liability-by-band target exists yet; it becomes possible once Chronicle emits that column.",
+      "ons_15_19_sex_band_split": "María's ruling of 2026-10-13 (microcosm#1095, uk-data#563): the two national 15_19 sex bands are split into ages 15, 16-17 and 18-19. uk-data#563 found weights that fit the five-year band while holding too many 16-year-olds and too few 18- and 19-year-olds, and nothing in this contract bound the mix inside the band either. The six rows partition the two bands and read the same ONS mid-year estimate by single year of age, so each sex's three rows sum to the band they replace. The incumbent ons/female_15_19 and ons/male_15_19 rows move from mapped to excluded: no single contract row has their definition."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -966,7 +973,9 @@
       "ons.population.age_80_89_by_region",
       "ons.population.female_0_4",
       "ons.population.female_10_14",
-      "ons.population.female_15_19",
+      "ons.population.female_15",
+      "ons.population.female_16_17",
+      "ons.population.female_18_19",
       "ons.population.female_20_24",
       "ons.population.female_25_29",
       "ons.population.female_30_34",
@@ -985,7 +994,9 @@
       "ons.population.female_90_plus",
       "ons.population.male_0_4",
       "ons.population.male_10_14",
-      "ons.population.male_15_19",
+      "ons.population.male_15",
+      "ons.population.male_16_17",
+      "ons.population.male_18_19",
       "ons.population.male_20_24",
       "ons.population.male_25_29",
       "ons.population.male_30_34",
@@ -8136,7 +8147,7 @@
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
-      "target_id": "ons.population.female_15_19",
+      "target_id": "ons.population.female_15",
       "family": "ons_population",
       "geography_levels": [
         "country"
@@ -8158,13 +8169,13 @@
           {
             "concept": "uk.demographics.age",
             "operator": "<=",
-            "value": 19
+            "value": 15
           }
         ]
       },
       "bindings": {
         "policyengine": {
-          "metric_name": "ons/female_15_19",
+          "metric_name": "ons/female_15",
           "filters": [
             {
               "variable": "gender",
@@ -8178,7 +8189,7 @@
             {
               "variable": "age",
               "operator": "<=",
-              "value": 19
+              "value": 15
             }
           ],
           "value_variable": "person_count",
@@ -8186,7 +8197,7 @@
           "map_to": "household"
         },
         "axiom": {
-          "metric_name": "ons/female_15_19",
+          "metric_name": "ons/female_15",
           "status": "pending",
           "value_rule": "uk.person.count"
         }
@@ -8197,16 +8208,154 @@
         "dimension_values": {
           "sex": "female",
           "age": [
-            15,
+            15
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Female 15",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.female_16_17",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 17
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/female_16_17",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 17
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/female_16_17",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             16,
-            17,
+            17
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Female 16 17",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.female_18_19",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 18
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 19
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/female_18_19",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 18
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 19
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/female_18_19",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             18,
             19
           ]
         }
       },
       "category_id": "ons.population",
-      "label": "Female 15 19",
+      "label": "Female 18 19",
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
@@ -9528,7 +9677,7 @@
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
-      "target_id": "ons.population.male_15_19",
+      "target_id": "ons.population.male_15",
       "family": "ons_population",
       "geography_levels": [
         "country"
@@ -9550,13 +9699,13 @@
           {
             "concept": "uk.demographics.age",
             "operator": "<=",
-            "value": 19
+            "value": 15
           }
         ]
       },
       "bindings": {
         "policyengine": {
-          "metric_name": "ons/male_15_19",
+          "metric_name": "ons/male_15",
           "filters": [
             {
               "variable": "gender",
@@ -9570,7 +9719,7 @@
             {
               "variable": "age",
               "operator": "<=",
-              "value": 19
+              "value": 15
             }
           ],
           "value_variable": "person_count",
@@ -9578,7 +9727,7 @@
           "map_to": "household"
         },
         "axiom": {
-          "metric_name": "ons/male_15_19",
+          "metric_name": "ons/male_15",
           "status": "pending",
           "value_rule": "uk.person.count"
         }
@@ -9589,16 +9738,154 @@
         "dimension_values": {
           "sex": "male",
           "age": [
-            15,
+            15
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Male 15",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.male_16_17",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 17
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/male_16_17",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 17
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/male_16_17",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             16,
-            17,
+            17
+          ]
+        }
+      },
+      "category_id": "ons.population",
+      "label": "Male 16 17",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
+    },
+    {
+      "target_id": "ons.population.male_18_19",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 18
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 19
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/male_18_19",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 18
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 19
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/male_18_19",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             18,
             19
           ]
         }
       },
       "category_id": "ons.population",
-      "label": "Male 15 19",
+      "label": "Male 18 19",
       "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
