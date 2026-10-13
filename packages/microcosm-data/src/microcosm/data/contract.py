@@ -495,6 +495,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_support_split_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_residential_split_mass": ("stage_health", "transferred"),
     "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
@@ -559,9 +560,13 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
     "uk_local_weight_ratio": ("weight_ratio", "terminal"),
     "uk_local_weight_ess": ("weight_ess", "terminal"),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal"),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
-_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -597,6 +602,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
+        "uk_stage_high_value_home_support_mass",
         "uk_stage_cgt_support_split_mass",
         "uk_stage_cgt_residential_split_mass",
         "uk_stage_spi_income_band_donors_support",
@@ -775,6 +781,8 @@ _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
         "uk_local_per_family_fit",
         "uk_local_weight_ratio",
         "uk_local_weight_ess",
+        "uk_high_value_homes_benchmarks",
+        "uk_high_value_homes_support",
     }
 )
 _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
@@ -800,6 +808,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",

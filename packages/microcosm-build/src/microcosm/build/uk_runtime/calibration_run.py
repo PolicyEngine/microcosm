@@ -87,10 +87,18 @@ UK_LOCAL_GATE_SCOPE = (
     "uk_local_weight_ess",
 )
 
+#: Report-only gates the dense battery evaluates on the calibrated pool beside
+#: the local battery; they are excluded from certification like the local scope.
+UK_LOCAL_DIAGNOSTIC_GATE_SCOPE = (
+    "uk_high_value_homes_benchmarks",
+    "uk_high_value_homes_support",
+)
+
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
+    "uk_stage_high_value_home_support_mass",
     "uk_stage_property_components",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
@@ -215,6 +223,11 @@ def _scope_exclusions() -> dict[str, str]:
                 "scoped battery and excluded from national certification "
                 "until microcosm#146."
             )
+        elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
+            reason = (
+                "local diagnostic gate; report-only on the dense battery's "
+                "calibrated pool and excluded from certification (microcosm#1240)."
+            )
         elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
         else:
@@ -241,6 +254,11 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
             reason = "national calibration-seam gate; outside the local candidate."
         elif gate_id in UK_NATIONAL_GATE_SCOPE:
             reason = "national release-cut gate; outside the local candidate."
+        elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
+            reason = (
+                "local diagnostic gate; evaluated by the dense battery but outside "
+                "the six-gate local release contract (microcosm#1240)."
+            )
         else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
             raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
         exclusions[gate_id] = reason

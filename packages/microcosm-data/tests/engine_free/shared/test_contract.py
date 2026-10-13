@@ -228,6 +228,10 @@ UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
     "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
+#: microcosm#1240: the two report-only high-value homes gates.
+UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
         "release_input_coverage",
@@ -287,6 +291,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
@@ -408,6 +413,8 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
     "uk_local_weight_ratio": ("weight_ratio", "terminal", None),
     "uk_local_weight_ess": ("weight_ess", "terminal", None),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal", None),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal", None),
 }
 
 
@@ -1366,6 +1373,7 @@ def _gate_battery_payload(
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
+        "uk_stage_high_value_home_support_mass": "high_value_home_support",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_residential_split_mass": "cgt_residential_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
@@ -1417,9 +1425,10 @@ def _gate_battery_payload(
                 "worst_year": 2030,
                 "bound": 73_000.0,
             }
-        elif entry_id.startswith("uk_local_"):
+        elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
             # Local candidate gates are explicitly excluded from national
-            # certification; this full-report fixture needs only their
+            # certification, and the microcosm#1240 high-value homes gates are
+            # report-only; this full-report fixture needs only their
             # authenticated envelope, not candidate-only evidence details.
             details = {}
         elif gate == "stage_health":
@@ -1433,8 +1442,13 @@ def _gate_battery_payload(
             "gate": gate,
             "phase": phase,
             # PR #870 review: every entry is release-blocking, the local fit and
-            # weight gates included.
-            "criticality": "release_blocking",
+            # weight gates included; the two microcosm#1240 diagnostics are the
+            # only report-only entries.
+            "criticality": (
+                "diagnostic"
+                if entry_id in UK_DIAGNOSTIC_ENTRY_IDS
+                else "release_blocking"
+            ),
             "status": "passed",
             "failures": [],
             "details": details,

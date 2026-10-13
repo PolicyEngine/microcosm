@@ -1,0 +1,485 @@
+"""Diagnostic evidence and gates for high-value homes (microcosm#1240, fix 8).
+
+Two report-only gates read one evidence summary computed once on the
+calibrated pool:
+
+- ``high_value_home_benchmarks``: England owner-occupied counts by surcharge
+  band at April-2026 prices beside the OBR costing note's Table 1.1 (when its
+  facts are vendored), the regional split of homes over £2m beside the derived
+  Land Registry stock, and the rank correlation by constituency of homes over
+  £1.5m and £2m against the derived stock and against VOA band H.
+- ``high_value_home_support``: how many distinct source households carry each
+  constituency's and local authority's homes over £1.5m and £2m, in bands,
+  and whether one source household dominates a cell.
+
+The shipped gate details are aggregates only: counts of areas by support
+band, correlations, shares and national totals. The per-area table (rows,
+distinct sources, weight, largest source share) is written as a candidate
+artifact that stays in the run directory; it never enters the diagnostics
+payload or the release bundle (UKDS disclosure control).
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime.high_value_homes import (
+    UKHighValueHomeStockFacts,
+    uk_owner_occupied_mask,
+)
+
+__all__ = [
+    "HVCTS_BANDS_2026",
+    "HighValueHomeEvidence",
+    "high_value_home_benchmarks_gate",
+    "high_value_home_support_gate",
+    "uk_high_value_home_evidence",
+]
+
+#: Surcharge bands at April-2026 prices (Budget 2025 schedule): lower bound,
+#: upper bound and the OBR Table 1.1 band id.
+HVCTS_BANDS_2026: tuple[tuple[float, float, str], ...] = (
+    (2_000_000.0, 2_500_000.0, "gbp_2m_to_2_5m"),
+    (2_500_000.0, 3_500_000.0, "gbp_2_5m_to_3_5m"),
+    (3_500_000.0, 5_000_000.0, "gbp_3_5m_to_5m"),
+    (5_000_000.0, math.inf, "over_gbp_5m"),
+)
+OBR_PROPERTIES_CONCEPT = "obr.hvcts_costing.properties_in_scope"
+SUPPORT_BANDS: tuple[tuple[str, int, int], ...] = (
+    ("<10", 0, 10),
+    ("10-29", 10, 30),
+    ("30+", 30, 10**9),
+)
+_SUPPORT_THRESHOLDS = ("over_gbp_1_5m", "over_gbp_2m")
+_LEVEL_COLUMNS = {
+    "constituency": "constituency_code",
+    "local_authority": "local_authority_code",
+}
+REQUIRED_COLUMNS = (
+    "region_code",
+    "constituency_code",
+    "local_authority_code",
+    "tenure_type",
+    "main_residence_value",
+    "source_household_id",
+)
+
+
+@dataclass(frozen=True)
+class HighValueHomeEvidence:
+    """The gate summary and the per-area support table."""
+
+    summary: dict[str, Any]
+    support: pd.DataFrame = field(repr=False)
+
+
+def _spearman(
+    x: Mapping[str, float], y: Mapping[str, float]
+) -> tuple[float | None, int]:
+    keys = sorted(set(x) & set(y))
+    if len(keys) < 3:
+        return None, len(keys)
+    a = pd.Series([float(x[k]) for k in keys]).rank(method="average")
+    b = pd.Series([float(y[k]) for k in keys]).rank(method="average")
+    if a.std(ddof=0) == 0 or b.std(ddof=0) == 0:
+        return None, len(keys)
+    return float(np.corrcoef(a.to_numpy(), b.to_numpy())[0, 1]), len(keys)
+
+
+def _weighted_counts(
+    codes: np.ndarray, weights: np.ndarray, mask: np.ndarray
+) -> dict[str, float]:
+    if not mask.any():
+        return {}
+    series = pd.Series(weights[mask]).groupby(codes[mask]).sum()
+    return {str(code): float(value) for code, value in series.items()}
+
+
+def _obr_band_counts(
+    obr_rows: Sequence[Mapping[str, Any]] | None, *, period: str, basis: str
+) -> dict[str, float]:
+    """Table 1.1 (static) or 1.2 (post_behaviour) counts by band id, in properties."""
+    if not obr_rows:
+        return {}
+    out: dict[str, float] = {}
+    for row in obr_rows:
+        observed = row.get("observed_measure") or {}
+        if observed.get("source_concept") != OBR_PROPERTIES_CONCEPT:
+            continue
+        spec = str((row.get("layout") or {}).get("record_set_spec_id") or "")
+        if basis not in spec or f"fy{period}" not in spec:
+            continue
+        values = {str(v) for v in (row.get("dimensions") or {}).values()}
+        values.add(str((row.get("layout") or {}).get("groupby_value_id") or ""))
+        for band in (*(band_id for _, _, band_id in HVCTS_BANDS_2026), "total"):
+            if band in values:
+                value = float(row["value"])
+                unit = str(observed.get("unit") or "")
+                out[band] = (
+                    value * 1_000.0 if unit in {"thousand", "thousands"} else value
+                )
+    return out
+
+
+def uk_high_value_home_evidence(
+    household: pd.DataFrame,
+    *,
+    weights: np.ndarray,
+    facts: UKHighValueHomeStockFacts,
+    initial_weights: np.ndarray | None = None,
+    obr_rows: Sequence[Mapping[str, Any]] | None = None,
+    obr_period: str = "2028",
+    obr_basis: str = "static",
+) -> HighValueHomeEvidence:
+    """Compute the gate summary and the per-area support table on the pool."""
+    missing = [column for column in REQUIRED_COLUMNS if column not in household.columns]
+    if missing:
+        raise ValueError(f"high-value home evidence needs household columns {missing}.")
+    weights = np.asarray(weights, dtype=float)
+    if len(weights) != len(household):
+        raise ValueError("weights must align with the household rows.")
+    thresholds = {t.threshold_id: t for t in facts.thresholds}
+    two_m = thresholds["over_gbp_2m"]
+    deflator = two_m.basis_gbp / two_m.nominal_gbp
+    stored = household["main_residence_value"].to_numpy(dtype=float)
+    value_2026 = stored / deflator
+    owner = uk_owner_occupied_mask(household["tenure_type"].to_numpy())
+    region = household["region_code"].to_numpy().astype(str)
+    england = np.char.startswith(region, "E12")
+    constituency = household["constituency_code"].to_numpy().astype(str)
+    source = household["source_household_id"].to_numpy()
+    positive = weights > 0
+
+    # 1. England owner-occupied counts by surcharge band at April-2026 prices.
+    bands: dict[str, float] = {}
+    for lower, upper, band_id in HVCTS_BANDS_2026:
+        mask = owner & england & positive & (value_2026 >= lower) & (value_2026 < upper)
+        bands[band_id] = float(weights[mask].sum())
+    bands["total"] = float(sum(bands[band_id] for _, _, band_id in HVCTS_BANDS_2026))
+    obr = _obr_band_counts(obr_rows, period=obr_period, basis=obr_basis)
+    obr_leg: dict[str, Any] = {"status": "awaiting_vendored_facts"}
+    if obr:
+        non_owner = facts.parameters.get("obr_non_owner_occupied_share")
+        obr_leg = {
+            "status": "available",
+            "period": obr_period,
+            "basis": obr_basis,
+            "all_properties": obr,
+            "frame_over_all_properties_ratio": {
+                band: (bands[band] / obr[band] if obr.get(band) else None)
+                for band in bands
+            },
+        }
+        if isinstance(non_owner, (int, float)):
+            obr_leg["owner_occupied_sensitivity_total"] = obr.get("total", 0.0) * (
+                1.0 - float(non_owner)
+            )
+
+    # 2. Regional split of owner-occupied homes over £2m, England.
+    frame_region = _weighted_counts(
+        region, weights, owner & england & positive & (stored > two_m.basis_gbp)
+    )
+    frame_total = sum(frame_region.values())
+    frame_shares = (
+        {code: value / frame_total for code, value in frame_region.items()}
+        if frame_total
+        else {}
+    )
+    derived_region = {
+        code: value
+        for code, value in facts.rows_at(
+            level="region",
+            measure_id="owner_occupied_homes",
+            threshold_id="over_gbp_2m",
+        ).items()
+        if code.startswith("E12")
+    }
+    derived_total = sum(derived_region.values())
+    derived_shares = (
+        {code: value / derived_total for code, value in derived_region.items()}
+        if derived_total
+        else {}
+    )
+    share_gaps = {
+        code: frame_shares.get(code, 0.0) - derived_shares.get(code, 0.0)
+        for code in sorted(set(frame_shares) | set(derived_shares))
+    }
+
+    # 3. Rank correlations by constituency.
+    correlations: dict[str, dict[str, Any]] = {}
+    voa_band_h = (facts.benchmarks or {}).get("voa_band_h_by_constituency") or {}
+    for threshold_id in _SUPPORT_THRESHOLDS:
+        threshold = thresholds[threshold_id]
+        derived_seat = facts.rows_at(
+            level="constituency",
+            measure_id="owner_occupied_homes",
+            threshold_id=threshold_id,
+        )
+        legs: dict[str, Any] = {}
+        for label, weight_vector in (("final", weights), ("initial", initial_weights)):
+            if weight_vector is None or len(weight_vector) != len(household):
+                legs[label] = {"status": "unavailable"}
+                continue
+            weight_vector = np.asarray(weight_vector, dtype=float)
+            frame_seat = _weighted_counts(
+                constituency,
+                weight_vector,
+                owner & (weight_vector > 0) & (stored > threshold.basis_gbp),
+            )
+            frame_seat = {code: frame_seat.get(code, 0.0) for code in derived_seat}
+            rho_derived, n_derived = _spearman(frame_seat, derived_seat)
+            rho_voa, n_voa = (
+                _spearman(frame_seat, {k: float(v) for k, v in voa_band_h.items()})
+                if voa_band_h
+                else (None, 0)
+            )
+            legs[label] = {
+                "status": "available",
+                "spearman_vs_derived_stock": rho_derived,
+                "seats_vs_derived_stock": n_derived,
+                "spearman_vs_voa_band_h": rho_voa,
+                "seats_vs_voa_band_h": n_voa,
+            }
+        correlations[threshold_id] = legs
+
+    # 4. Support by area and threshold (the table stays in the run directory).
+    records: list[dict[str, Any]] = []
+    for level, column in _LEVEL_COLUMNS.items():
+        codes = household[column].to_numpy().astype(str)
+        for threshold_id in _SUPPORT_THRESHOLDS:
+            threshold = thresholds[threshold_id]
+            mask = owner & positive & (stored > threshold.basis_gbp)
+            table = pd.DataFrame(
+                {"area": codes[mask], "source": source[mask], "weight": weights[mask]}
+            )
+            by_source = (
+                table.groupby(["area", "source"], sort=False)["weight"]
+                .sum()
+                .reset_index()
+            )
+            grouped = by_source.groupby("area", sort=True)
+            summary = grouped.agg(
+                nonzero_source_households=("source", "nunique"),
+                weight_sum=("weight", "sum"),
+                largest_source_weight=("weight", "max"),
+            )
+            households_by_area = table.groupby("area", sort=True).size()
+            for area, row in summary.iterrows():
+                records.append(
+                    {
+                        "geography_level": level,
+                        "area_code": str(area),
+                        "threshold_id": threshold_id,
+                        "nonzero_households": int(households_by_area.get(area, 0)),
+                        "nonzero_source_households": int(
+                            row["nonzero_source_households"]
+                        ),
+                        "weight_sum": float(row["weight_sum"]),
+                        "max_source_share": float(
+                            row["largest_source_weight"] / row["weight_sum"]
+                        )
+                        if row["weight_sum"] > 0
+                        else 0.0,
+                    }
+                )
+    support = pd.DataFrame.from_records(
+        records,
+        columns=[
+            "geography_level",
+            "area_code",
+            "threshold_id",
+            "nonzero_households",
+            "nonzero_source_households",
+            "weight_sum",
+            "max_source_share",
+        ],
+    )
+    support_summary: dict[str, dict[str, Any]] = {}
+    for level in _LEVEL_COLUMNS:
+        for threshold_id in _SUPPORT_THRESHOLDS:
+            derived_areas = facts.rows_at(
+                level=level,
+                measure_id="owner_occupied_homes",
+                threshold_id=threshold_id,
+            )
+            rows = support[
+                (support["geography_level"] == level)
+                & (support["threshold_id"] == threshold_id)
+            ]
+            sources_by_area = dict(
+                zip(rows["area_code"], rows["nonzero_source_households"], strict=True)
+            )
+            dominance_by_area = dict(
+                zip(rows["area_code"], rows["max_source_share"], strict=True)
+            )
+            support_summary[f"{level}:{threshold_id}"] = {
+                "derived_target_by_area": derived_areas,
+                "sources_by_area": sources_by_area,
+                "dominance_by_area": dominance_by_area,
+            }
+
+    summary = {
+        "schema": "microcosm.build.uk.high-value-home-evidence.v1",
+        "frame_basis_deflator": deflator,
+        "households": int(len(household)),
+        "owner_occupied_rows": int(owner.sum()),
+        "england_owner_occupied_by_band_2026": bands,
+        "obr": obr_leg,
+        "regional_over_2m_share": {
+            "frame": frame_shares,
+            "derived_stock": derived_shares,
+            "gap": share_gaps,
+            "frame_total": frame_total,
+            "derived_total": derived_total,
+        },
+        "seat_rank_correlation": correlations,
+        "support": support_summary,
+    }
+    return HighValueHomeEvidence(summary=summary, support=support)
+
+
+def _band_counts(
+    sources_by_area: Mapping[str, int], assessed: Sequence[str]
+) -> dict[str, int]:
+    counts = {label: 0 for label, _, _ in SUPPORT_BANDS}
+    for area in assessed:
+        n = int(sources_by_area.get(area, 0))
+        for label, lower, upper in SUPPORT_BANDS:
+            if lower <= n < upper:
+                counts[label] += 1
+                break
+    return counts
+
+
+def high_value_home_support_gate(
+    summary: Mapping[str, Any],
+    *,
+    minimum_distinct_sources: int = 10,
+    minimum_target_homes: float = 100.0,
+    dominance_share: float = 0.5,
+) -> GateResult:
+    """Every assessed area clears the distinct-source floor without a dominant source.
+
+    An area is assessed when the derived stock places at least
+    ``minimum_target_homes`` owner-occupied homes above the threshold there,
+    so a rural seat with no such homes is not a failure. The details carry
+    counts of areas by support band and the number with a dominant source,
+    never an area code or a cell value.
+    """
+    if isinstance(minimum_distinct_sources, bool) or minimum_distinct_sources < 1:
+        raise ValueError("minimum_distinct_sources must be a positive integer.")
+    if not 0 < dominance_share <= 1:
+        raise ValueError("dominance_share must be in (0, 1].")
+    failures: list[str] = []
+    details: dict[str, Any] = {
+        "minimum_distinct_sources": minimum_distinct_sources,
+        "minimum_target_homes": minimum_target_homes,
+        "dominance_share": dominance_share,
+        "cells": {},
+    }
+    for key, cell in (summary.get("support") or {}).items():
+        targets = cell.get("derived_target_by_area") or {}
+        assessed = sorted(
+            area
+            for area, value in targets.items()
+            if float(value) >= minimum_target_homes
+        )
+        sources = cell.get("sources_by_area") or {}
+        dominance = cell.get("dominance_by_area") or {}
+        bands = _band_counts(sources, assessed)
+        below = [
+            area
+            for area in assessed
+            if int(sources.get(area, 0)) < minimum_distinct_sources
+        ]
+        dominant = [
+            area
+            for area in assessed
+            if float(dominance.get(area, 0.0)) > dominance_share
+        ]
+        details["cells"][key] = {
+            "assessed_areas": len(assessed),
+            "areas_by_source_band": bands,
+            "areas_below_floor": len(below),
+            "areas_with_dominant_source": len(dominant),
+        }
+        if below:
+            failures.append(
+                f"{key}: {len(below)} of {len(assessed)} assessed areas rest on fewer than "
+                f"{minimum_distinct_sources} distinct source households."
+            )
+        if dominant:
+            failures.append(
+                f"{key}: {len(dominant)} of {len(assessed)} assessed areas have one source "
+                f"household above {dominance_share:.0%} of the cell."
+            )
+    return GateResult(
+        name="high_value_home_support",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
+    )
+
+
+def high_value_home_benchmarks_gate(
+    summary: Mapping[str, Any],
+    *,
+    minimum_rank_correlation: float = 0.6,
+    maximum_regional_share_gap: float = 0.10,
+) -> GateResult:
+    """Seat ranks track the derived stock and regions split as Land Registry does.
+
+    The OBR leg is informational: Table 1.1 counts every residential property
+    in scope for 2028-29, so it bounds the owner-occupied frame from above and
+    is reported beside the costing note's non-owner-occupied share.
+    """
+    failures: list[str] = []
+    correlations = summary.get("seat_rank_correlation") or {}
+    reported: dict[str, Any] = {}
+    for threshold_id, legs in correlations.items():
+        final = legs.get("final") or {}
+        reported[threshold_id] = final
+        rho = final.get("spearman_vs_derived_stock")
+        if rho is None:
+            failures.append(
+                f"{threshold_id}: no seat rank correlation could be measured."
+            )
+        elif rho < minimum_rank_correlation:
+            failures.append(
+                f"{threshold_id}: seat rank correlation with the derived stock is "
+                f"{rho:.3f}, below {minimum_rank_correlation:.2f}."
+            )
+    regional = summary.get("regional_over_2m_share") or {}
+    gaps = regional.get("gap") or {}
+    worst = max((abs(float(v)) for v in gaps.values()), default=0.0)
+    if worst > maximum_regional_share_gap:
+        failures.append(
+            f"regional split of owner-occupied homes over 2m differs from the derived stock "
+            f"by up to {worst:.3f} of England's total, above {maximum_regional_share_gap:.2f}."
+        )
+    return GateResult(
+        name="high_value_home_benchmarks",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "minimum_rank_correlation": minimum_rank_correlation,
+            "maximum_regional_share_gap": maximum_regional_share_gap,
+            "seat_rank_correlation": reported,
+            "regional_over_2m_share": {
+                "frame": regional.get("frame"),
+                "derived_stock": regional.get("derived_stock"),
+                "largest_gap": worst,
+            },
+            "england_owner_occupied_by_band_2026": summary.get(
+                "england_owner_occupied_by_band_2026"
+            ),
+            "obr": summary.get("obr"),
+        },
+    )

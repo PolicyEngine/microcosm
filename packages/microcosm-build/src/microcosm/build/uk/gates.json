@@ -593,6 +593,21 @@
       "notes": "Stage-time conservation gate over the CGT incidence clone receipt."
     },
     {
+      "id": "uk_stage_high_value_home_support_mass",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "high_value_home_support",
+        "check": "high_value_home_support",
+        "stratum_lower": 0.95,
+        "copies": 6,
+        "maximum_relative_mass_deviation": 1e-09
+      },
+      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. The stage assigns no value and makes no draw, so it holds no distributional threshold."
+    },
+    {
       "id": "uk_stage_cgt_support_split_mass",
       "gate": "stage_health",
       "phase": "transferred",
@@ -884,10 +899,11 @@
           "etb_services_support_bounds.json",
           "uc_deduction_support_bounds.json",
           "nts_bus_travel_support_bounds.json",
-          "was_lisa_support_bounds.json"
+          "was_lisa_support_bounds.json",
+          "price_paid_property_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003. Since microcosm#1240 the dense graph rewrites main_residence_value and property_wealth per clone from the Land Registry value knots, winsorised at the knots' declared cap; price_paid_property_support_bounds.json, generated beside the knots, carries that cap as the two columns' bound and is listed last so it overrides the WAS donor bound for them."
     },
     {
       "id": "uk_aggregate_admin",
@@ -1316,6 +1332,29 @@
         "minimum_ess_fraction": 0.01
       },
       "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
+    },
+    {
+      "id": "uk_high_value_homes_benchmarks",
+      "gate": "high_value_home_benchmarks",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "minimum_rank_correlation": 0.6,
+        "maximum_regional_share_gap": 0.1
+      },
+      "notes": "microcosm#1240 fix 8, report-only. On the calibrated pool: England owner-occupied homes by surcharge band at April-2026 prices beside the OBR costing note's Table 1.1 (every residential property in scope, 2028-29; shown with the note's non-owner-occupied share, never bound); the regional split of homes over 2m beside the derived Land Registry stock; and the Spearman rank correlation by constituency of homes over 1.5m and over 2m against the derived stock and VOA band H. Fails when a correlation is below 0.6 or a region's share differs by more than 0.10. The 11 October 2026 candidate measured 0.37 against VOA band H before this family existed."
+    },
+    {
+      "id": "uk_high_value_homes_support",
+      "gate": "high_value_home_support",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "minimum_distinct_sources": 10,
+        "minimum_target_homes": 100.0,
+        "dominance_share": 0.5
+      },
+      "notes": "microcosm#1240 fix 8, report-only. For every constituency and local authority where the derived stock places at least 100 owner-occupied homes over 1.5m or over 2m, the pool must carry at least 10 distinct source households above the threshold with no source household above half of the cell (the UKDS disclosure floor the Budget-day outputs apply). The gate's details carry counts of areas by support band only; the per-area table is the candidate's high_value_home_support.csv, which stays in the run directory."
     }
   ]
 }
