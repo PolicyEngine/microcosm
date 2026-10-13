@@ -44,7 +44,7 @@ def _household() -> pd.DataFrame:
         "a124": [0, 1, 2, 9],
         "p389p": [100.0, 200.0, 300.0, 400.0],
         "p344p": [150.0, 250.0, 350.0, 450.0],
-        "weighta": [1.5, 2.0, 2.5, 3.0],
+        "cal_weight_annual": [1.5, 2.0, 2.5, 3.0],
         "a122": [4, 8, 5, 7],
         "a121": [4, 5, 6, 7],
         **_energy_codes(
@@ -790,7 +790,7 @@ def _synthetic_lcfs_donor(
         "a124": rows % 4,
         "p389p": rng.uniform(100.0, 1500.0, n),
         "p344p": rng.uniform(150.0, 2000.0, n),
-        "weighta": rng.uniform(0.5, 2.0, n),
+        "cal_weight_annual": rng.uniform(0.5, 2.0, n),
         "a122": 1 + rows % 8,
         "a121": 1 + rows % 8,
         "b226": rng.uniform(0.0, 30.0, n),
@@ -1015,7 +1015,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     # less the donor's own other-fuels share (#1113).
     level = evidence["road_fuel_level"]
     assert level["coicop"] == "07.2.2" and level["period_value"] == 2024
-    weight = donor_household["weighta"].to_numpy()
+    weight = donor_household["cal_weight_annual"].to_numpy()
     fuels = donor_household[["c72211", "c72212", "c72213"]].to_numpy()
     assert level["other_fuels_share"] == pytest.approx(
         weight @ fuels[:, 2] / (weight @ fuels.sum(axis=1))
@@ -1489,7 +1489,7 @@ def test_other_road_fuel_share_is_the_donor_weighted_c72213_share() -> None:
 
     donor = pd.DataFrame(
         {
-            "WEIGHTA": [1.0, 3.0],
+            "CAL_WEIGHT_ANNUAL": [1.0, 3.0],
             "C72211": [10.0, 0.0],
             "C72212": [0.0, 5.0],
             "C72213": [1.0, 0.0],
@@ -1637,8 +1637,8 @@ def test_redraw_gives_every_flagged_household_road_fuel() -> None:
     )
     assert receipt["weighted_total_after"] == pytest.approx(weights @ after.sum(axis=1))
     assert [record.fit_name for record in result.fit_weight_records] == [
-        "uk_lcfs_2023_24_consumption:road_fuel_total",
-        "uk_lcfs_2023_24_consumption:petrol_share_of_road_fuel",
+        "uk_lcfs_2024_25_consumption:road_fuel_total",
+        "uk_lcfs_2024_25_consumption:petrol_share_of_road_fuel",
     ]
 
 

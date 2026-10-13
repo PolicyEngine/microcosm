@@ -843,7 +843,7 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
-        "weighta": 1.0 + rows % 7 / 10.0,
+        "cal_weight_annual": 1.0 + rows % 7 / 10.0,
         "a122": 1 + rows.astype(int) % 8,
         "a121": 1 + rows.astype(int) % 8,
         "p537": 10.0 + rows,

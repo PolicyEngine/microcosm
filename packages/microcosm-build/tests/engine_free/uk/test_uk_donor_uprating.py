@@ -6,10 +6,13 @@ from test_support.microcosm_build.uk_donor_uprating import *
 
 def test_both_donor_stages_declare_uprating_to_the_base_year() -> None:
     stages = _stages()
+    # The LCFS 2024-25 diary starts in the base year (microcosm#1164); the ETB
+    # FYE-2024 donor is a year behind.
+    periods = {"lcfs_consumption": (2024, 2024), "etb_services": (2023, 2024)}
     for name in ("lcfs_consumption", "etb_services"):
         operation = uprating_operation(stages[name])
         assert operation is not None, name
-        assert (operation["from_period"], operation["to_period"]) == (2023, 2024)
+        assert (operation["from_period"], operation["to_period"]) == periods[name]
         assert [op.kind for op in stages[name].operations][:2] == [
             "derive",
             "uprate_donor_columns",
@@ -23,7 +26,8 @@ def test_both_donor_stages_declare_uprating_to_the_base_year() -> None:
     assert lcfs["columns"]["petrol_spending"]["basis"] == "vendored_litre_proxy"
     assert lcfs["columns"]["diesel_spending"]["basis"] == "vendored_litre_proxy"
     # Every diary spend column starts from the April-to-March diary year and
-    # ends at calendar 2024 (microcosm#1113); income predictors move a full year.
+    # ends at calendar 2024 (microcosm#1113); income predictors take the plain
+    # ratio, one for the 2024-25 diary.
     assert lcfs["fiscal_year_bridge"] == {
         "start_year_weight": 0.75,
         "next_year_weight": 0.25,

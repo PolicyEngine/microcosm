@@ -81,10 +81,10 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     services = _load("etb_services_support_bounds.json")
 
     assert lcfs["source"]["household_tab_sha256"] == (
-        "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72"
+        "b39b1dd39170b63ca0aa84f747e1d2239213fcfcf197bf8d5c047e146ed8c781"
     )
     assert lcfs["source"]["person_tab_sha256"] == (
-        "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
+        "952d128362334388af12d9e2ef7b40db591d2d3e043ae8f6cc0f98fb813f2089"
     )
     # Raked or levelled columns carry no bounds: energy, bus fares since
     # microcosm#890, and petrol and diesel since microcosm#1113. The housing
@@ -96,8 +96,13 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     # The tool floors the donor as the stage does, so no bound starts below 0.
     assert lcfs["bounds"]["housing_water_and_electricity_consumption"] == [
         0.0,
-        300000,
+        80000,
     ]
+    # LCFS 2024-25, SN 9603 2nd edition (microcosm#1164).
+    assert (lcfs["source"]["ukds_study_number"], lcfs["source"]["doi"]) == (
+        9603,
+        "10.5255/UKDA-SN-9603-2",
+    )
     assert all(low >= 0 for low, _high in lcfs["bounds"].values())
     assert lcfs["bounds"]["transport_consumption"] == [0.0, 200000]
     assert vat["source"]["tab_sha256"] == (

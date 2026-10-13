@@ -70,14 +70,6 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
 WEEKS_IN_YEAR = 365.25 / 7
-LCFS_HOUSEHOLD_FILENAME = "dvhh_ukanon_v2_2023.tab"
-LCFS_HOUSEHOLD_SHA256 = (
-    "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72"
-)
-LCFS_HOUSEHOLD_SIZE_BYTES = 22_812_887
-LCFS_PERSON_FILENAME = "dvper_ukanon_202324_2023.tab"
-LCFS_PERSON_SHA256 = "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
-LCFS_PERSON_SIZE_BYTES = 6_545_146
 
 UK_LCFS_CONSUMPTION_DECLARED_SEEDS = {"lcfs_consumption": 0}
 
@@ -115,6 +107,10 @@ LCFS_ACCOMM_MAP: Mapping[int, str] = {
     7: "HOUSE_DETACHED",
     8: "OTHER",
 }
+#: The donor's annual household weight, thousands of households: LCFS 2024-25
+#: (2nd edition) carries it as cal_weight_annual, the name weighta had in
+#: earlier years (microcosm#1164).
+UK_LCFS_DONOR_WEIGHT_COLUMN = "cal_weight_annual"
 HOUSEHOLD_LCFS_RENAMES = {
     "g018": "household_adult_count",
     "g019": "household_child_count",
@@ -122,7 +118,7 @@ HOUSEHOLD_LCFS_RENAMES = {
     "a124": "num_vehicles",
     "p389p": "hbai_household_net_income",
     "p344p": "household_gross_income",
-    "weighta": "household_weight",
+    UK_LCFS_DONOR_WEIGHT_COLUMN: "household_weight",
 }
 PERSON_LCFS_RENAMES = {
     "b303p": "employment_income",
@@ -400,7 +396,7 @@ UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     UK_LCFS_PREPAYMENT_METER_COLUMN,
 )
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
-UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2023_24_consumption"
+UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2024_25_consumption"
 UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
 
 
@@ -1390,9 +1386,15 @@ def lcfs_other_road_fuel_share(lcfs_household: pd.DataFrame) -> float:
 
     household = _lowercase(lcfs_household)
     _require_columns(
-        household, ("weighta", "c72211", "c72212", *UK_LCFS_OTHER_ROAD_FUEL_CODES)
+        household,
+        (
+            UK_LCFS_DONOR_WEIGHT_COLUMN,
+            "c72211",
+            "c72212",
+            *UK_LCFS_OTHER_ROAD_FUEL_CODES,
+        ),
     )
-    weight = _numeric(household["weighta"]).to_numpy(dtype=float)
+    weight = _numeric(household[UK_LCFS_DONOR_WEIGHT_COLUMN]).to_numpy(dtype=float)
 
     def spend(code: str) -> np.ndarray:
         # Floored at zero, as the imputation's donor is (microcosm#1063 c9).
@@ -2150,9 +2152,9 @@ def clean_lcfs_consumption_table(
     """Return the LCFS donor table with annualized consumption variables.
 
     ``uprating`` maps donor columns to the declared factors that move the
-    2023-24 diary to the base year (``uprate_donor_columns``): the spend
-    columns to calendar-2024 prices, the income predictors a full year to the
-    FRS 2024-25 incomes. It is applied after annualisation and before the
+    2024-25 diary to the base year (``uprate_donor_columns``): the spend
+    columns a quarter back to calendar-2024 prices, the income predictors by
+    one (the diary year is the FRS 2024-25 year; microcosm#1164). It is applied after annualisation and before the
     donor-side NEED rake, so the income bands and the support-clip ranges see
     base-year values.
     ``energy`` (the declared ``price_domestic_energy``) converts the diary's
