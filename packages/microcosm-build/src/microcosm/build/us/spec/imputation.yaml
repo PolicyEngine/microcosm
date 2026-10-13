@@ -4415,7 +4415,7 @@ producer_graph:
             recipient_share: household_design_weight_over_puf_recipient_total
             cap: top_slice_positive_mass_per_slice_weight
             floor: bottom_slice_negative_mass_per_slice_weight
-            snapped_outputs: bounded_on_snap_grid_values_cap_lowered_onto_grid
+            snapped_outputs: bounded_on_snap_grid_values_cap_lowered_onto_positive_grid
             seam: raw_tax_unit_draws_after_tail_bound_quantiles
           worker_execution:
             surface: execution_profile

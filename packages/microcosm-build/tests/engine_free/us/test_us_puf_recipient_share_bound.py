@@ -385,21 +385,34 @@ def test_snapping_after_the_lowered_cap_never_crosses_it(
     observed: list[float], draws: list[float], cap: float
 ) -> None:
     grid = np.unique(np.rint(np.asarray(observed, dtype=np.float64)).clip(min=0.0))
+    positive_grid = grid[grid > 0.0]
     caps = np.full(len(draws), cap)
     lowered = _grid_within(caps, grid)
-    bounded = np.minimum(np.asarray(draws, dtype=np.float64), lowered)
+    raw = np.asarray(draws, dtype=np.float64)
+    bounded = np.minimum(raw, lowered)
 
     snapped = _snap(bounded, observed)
+    unbounded = _snap(raw, observed)
 
-    assert (lowered <= np.maximum(cap, grid[0])).all()
-    assert np.isin(lowered, grid).all()
+    if len(positive_grid) == 0:
+        # Nothing positive to snap onto: the cap is left alone and every draw
+        # snaps to zero with or without it.
+        np.testing.assert_array_equal(lowered, caps)
+        assert (snapped == 0.0).all()
+        return
+    # The lowered cap is a positive grid value: the largest within the cap, or
+    # the smallest positive one when the cap is below them all.
+    assert np.isin(lowered, positive_grid).all()
+    assert (lowered <= np.maximum(cap, positive_grid[0])).all()
     assert (snapped <= lowered).all()
+    # The bound never turns a draw that would have snapped positive into zero.
+    assert (snapped[unbounded > 0.0] > 0.0).all()
 
 
-def test_lowering_keeps_infinite_caps_infinite() -> None:
+def test_lowering_keeps_infinite_caps_infinite_and_stays_positive() -> None:
     grid = np.asarray([0.0, 5.0, 10.0])
     lowered = _grid_within(np.asarray([np.inf, 7.0, 10.0, 3.0]), grid)
-    np.testing.assert_array_equal(lowered, [np.inf, 5.0, 10.0, 0.0])
+    np.testing.assert_array_equal(lowered, [np.inf, 5.0, 10.0, 5.0])
 
 
 # --------------------------------------------------------------------------- #
@@ -554,6 +567,7 @@ def test_one_extreme_draw_is_bounded_by_its_slice_and_recorded() -> None:
             "clipped_mass_after": float(expected[1] * weights[1]),
             "largest_weighted_draw_before": float(np.abs(raw * weights).max()),
             "largest_weighted_draw_after": float(np.abs(expected * weights).max()),
+            "recipient_count": 4,
             "recipient_weight_total": float(weights.sum()),
             "donor_weight_total": float(donor["weight"].sum()),
         }
@@ -675,6 +689,29 @@ def test_snapped_outputs_stay_on_observed_values_within_the_bound() -> None:
     # The cap of the heaviest-share draw is not itself a donor value; the draw
     # lands on the largest donor value within it.
     assert actual[1] == grid[grid <= cap[1]].max()
+
+
+def test_the_bound_never_zeroes_a_carrier_of_a_snapped_output() -> None:
+    # Half the donor holds 10 and half holds nothing, so a recipient standing
+    # for two thirds of the population has a slice mass of 7.5 per unit, below
+    # the only positive donor value. Lowering that cap to the grid value 0
+    # would erase the carrier; the cap stays at the smallest positive value and
+    # the carrier count is left to the donor-rate sparsification.
+    frame = _recipient_frame([20.0, 40.0])
+    donor = pd.DataFrame({_SNAPPED: [0.0, 10.0], "weight": [1.0, 1.0]})
+    raw = np.asarray([0.25, 9.6])
+    diagnostics: list[dict[str, object]] = []
+
+    finalized = _finalize(frame, donor, {_SNAPPED: raw}, diagnostics=diagnostics)
+
+    _, cap = _bounds(
+        puf_support_module._snap_grid_values(donor[_SNAPPED]),
+        donor["weight"],
+        _recipient_weights(frame),
+    )
+    assert cap[1] < 10.0
+    np.testing.assert_array_equal(_puf_values(finalized, _SNAPPED), [0.0, 10.0])
+    assert diagnostics[0]["clipped_row_count"] == 0
 
 
 def test_draws_at_a_tied_maximum_on_the_snap_grid_are_not_clipped() -> None:
@@ -818,7 +855,7 @@ def test_bound_identity_is_pinned() -> None:
         "recipient_share": "household_design_weight_over_puf_recipient_total",
         "cap": "top_slice_positive_mass_per_slice_weight",
         "floor": "bottom_slice_negative_mass_per_slice_weight",
-        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_grid",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_positive_grid",
         "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
     }
 

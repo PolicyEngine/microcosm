@@ -11936,6 +11936,13 @@ def _run_stacked_puf_pass_evaluate(
         if person_outputs is None and tax_unit_outputs is None
         else None
     )
+    # Finalization always needs a sink, because the recipient-share bound acts
+    # on every amount output. Production has supplied one (checked above); a
+    # non-production pass that asked for no diagnostics discards the records,
+    # and its execution config still records the sink as disabled.
+    finalization_diagnostics: list[dict[str, object]] = (
+        [] if tail_bound_diagnostics is None else tail_bound_diagnostics
+    )
     tail_spec, tail_agi_bands = resolve_puf_capital_gains_tail_execution_inputs()
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
@@ -12000,7 +12007,7 @@ def _run_stacked_puf_pass_evaluate(
             seed=seed,
             n_estimators=n_estimators,
             fit_records=fit_records,
-            tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_diagnostics=finalization_diagnostics,
             tail_bound_quantiles=canonical_tail_bounds,
             predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
@@ -12143,7 +12150,7 @@ def _run_stacked_puf_pass_evaluate(
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
             checkpoint_dir,
-            tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_diagnostics=finalization_diagnostics,
             tail_bound_quantiles=canonical_tail_bounds,
         )
         if fit_records is not None:

@@ -60,7 +60,11 @@ def _finalize(
         person_outputs=components,
         tax_unit_outputs=(),
         absent_cells=absent_cells,
-        tail_bound_diagnostics=[],
+        # These tests isolate CPS Social Security preservation on two-unit
+        # frames, where every draw exceeds its recipient's slice. The
+        # recipient-share bound is covered, with this reconciliation, in
+        # test_us_puf_recipient_share_bound.py.
+        recipient_share_bound_outputs=(),
     )
 
 

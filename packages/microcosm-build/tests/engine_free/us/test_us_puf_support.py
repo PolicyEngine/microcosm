@@ -1174,6 +1174,10 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
         n_estimators=4,
         seed=0,
         tail_bound_diagnostics=[],
+        # The snapped column keeps the recipient-share bound, which must not
+        # zero its carrier. The dividends column is this test's untouched
+        # passthrough control, and on a two-unit frame the bound would cap it.
+        recipient_share_bound_outputs=("taxable_interest_income",),
     )
 
     puf_people = imputed.table("person")[
@@ -1244,7 +1248,12 @@ def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
-        tail_bound_diagnostics=[],
+        # Isolates the donor-rate sparsification and the earnings allocation on
+        # a two-unit frame, where a unit standing for a quarter of the
+        # population would have its 300 draw bounded to 200. The bound and
+        # the sparsification together are covered in
+        # test_us_puf_recipient_share_bound.py.
+        recipient_share_bound_outputs=(),
     )
 
     person = imputed.table("person")

@@ -433,7 +433,7 @@ def puf_tax_detail_recipient_share_bound_identity() -> dict[str, object]:
         "recipient_share": "household_design_weight_over_puf_recipient_total",
         "cap": "top_slice_positive_mass_per_slice_weight",
         "floor": "bottom_slice_negative_mass_per_slice_weight",
-        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_grid",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_positive_grid",
         "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
     }
 
@@ -1735,6 +1735,7 @@ def impute_us_puf_tax_detail_support(
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    recipient_share_bound_outputs: Sequence[str] | None = None,
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -1766,6 +1767,10 @@ def impute_us_puf_tax_detail_support(
         tail_bound_diagnostics: Optional output sink for the per-target tail-bound
             records produced during finalization. Build callers publish these
             records with the QRF-finalization telemetry.
+        recipient_share_bound_outputs: Test-only narrowing of the
+            recipient-share bound (see
+            :func:`finalize_us_puf_tax_detail_predictions`). Production callers
+            leave it unset, which bounds every amount output.
         predictor_universe_receipts: Optional output sink for the exact
             recipient predictor source-universe receipt. Stacked callers bind
             this receipt into the PUF-pass provenance; legacy callers omit it.
@@ -1863,6 +1868,7 @@ def impute_us_puf_tax_detail_support(
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
         tail_bound_quantiles=tail_bound_quantiles,
+        recipient_share_bound_outputs=recipient_share_bound_outputs,
         absent_cells=absent_cells,
     )
 
@@ -1987,7 +1993,9 @@ def finalize_us_puf_tax_detail_predictions(
     explicit ``recipient_share_bound_outputs`` narrows it for tests and must
     name amount outputs of this invocation. It writes one diagnostics record
     per bounded output, including outputs it leaves unchanged. It holds on the
-    raw tax-unit draws and, for snapped outputs, after snapping. Three later
+    raw tax-unit draws and, for snapped outputs, after snapping; a snapped
+    output's cap is never below its smallest positive donor value, so the
+    bound moves no draw to zero. Three later
     steps move bounded values without adding mass. The donor-rate
     sparsification of sparse outputs restores the column's mass after zeroing
     carriers, and the signed-mass calibration scales each leg of its outputs;
@@ -2164,6 +2172,7 @@ def finalize_us_puf_tax_detail_predictions(
                 ),
                 "largest_weighted_draw_before": float(weighted_before.max(initial=0.0)),
                 "largest_weighted_draw_after": float(weighted_after.max(initial=0.0)),
+                "recipient_count": int(len(recipient_weights)),
                 "recipient_weight_total": float(recipient_weights.sum()),
                 "donor_weight_total": float(
                     pd.to_numeric(donor["weight"], errors="coerce").fillna(0.0).sum()
@@ -2915,20 +2924,23 @@ def _recipient_share_slice_bounds(
 
 
 def _largest_grid_values_within(caps: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    """Lower each finite cap to the largest ``grid`` value not above it.
+    """Lower each finite cap to the largest positive ``grid`` value not above it.
 
     A capped value that is itself a grid value snaps to itself, and every value
     at or below it snaps to a grid value at or below it, so snapping after the
-    bound cannot carry a value past it. ``grid`` is sorted and starts at its
-    smallest value; a cap below it keeps that smallest value.
+    bound cannot carry a value past it. Only positive grid values are used: a
+    cap below the smallest of them keeps that smallest value, so the bound
+    never turns a positive draw into a zero. How many records carry a sparse
+    output is the donor-rate sparsification's job, not this bound's.
     """
 
     lowered = np.array(caps, dtype=np.float64, copy=True)
+    positive_grid = grid[grid > 0.0]
     finite = np.isfinite(lowered)
-    if not finite.any():
+    if not finite.any() or len(positive_grid) == 0:
         return lowered
-    position = np.searchsorted(grid, lowered[finite], side="right") - 1
-    lowered[finite] = grid[np.maximum(position, 0)]
+    position = np.searchsorted(positive_grid, lowered[finite], side="right") - 1
+    lowered[finite] = positive_grid[np.maximum(position, 0)]
     return lowered
 
 
