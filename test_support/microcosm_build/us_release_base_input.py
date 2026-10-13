@@ -106,11 +106,13 @@ class StageCall:
 def constant_binding(source: str, name: str) -> object | None:
     """The constant a module binds ``name`` to, or ``None``.
 
-    Only a single top-level ``name = <constant>`` counts, and only when nothing
-    else in the module binds ``name``: no other assignment, augmented or
-    annotated assignment, ``del``, ``global``/``nonlocal``, import alias,
-    parameter, loop or ``with`` target, ``except ... as``, ``match`` capture,
-    walrus, or function or class of that name.
+    Only a single top-level ``name = <constant>`` counts, and only when no other
+    statically visible binding of ``name`` exists: no other assignment,
+    augmented or annotated assignment, ``del``, ``global``/``nonlocal``, import
+    alias, wildcard import (which may supply it), parameter, loop or ``with``
+    target, ``except ... as``, ``match`` capture, walrus, or function or class
+    of that name. Dynamic rebinding (``globals()``, ``exec``, ``setattr`` on the
+    module) is not detected.
     """
 
     tree = ast.parse(source)
@@ -125,7 +127,7 @@ def constant_binding(source: str, name: str) -> object | None:
             or (isinstance(node, ast.Global | ast.Nonlocal) and name in node.names)
             or (
                 isinstance(node, ast.alias)
-                and (node.asname or node.name.split(".")[0]) == name
+                and (node.asname or node.name.split(".")[0]) in (name, "*")
             )
             or (isinstance(node, ast.arg) and node.arg == name)
             or (isinstance(node, ast.ExceptHandler) and node.name == name)

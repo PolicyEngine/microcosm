@@ -3,7 +3,7 @@
 ``run`` replays the exported stage input (see ``platform_stage_input.py``)
 through the production stage code with four observers attached to
 ``microcosm.fit.qrf``: the weighted bootstrap sample each forest is grown on,
-every fitted tree (structure, thresholds, leaf values), each sign gate's
+every fitted tree (structure, thresholds, node target means), each sign gate's
 predicted probabilities on the PUF rows, and each forest's drawn values. The
 observers only read; the stage output is unchanged.
 
@@ -327,6 +327,8 @@ def run(args: argparse.Namespace) -> None:
                 "structure_sha256": [structure_digest(tree) for tree in trees],
                 "threshold_sha256": [digest(tree.threshold) for tree in trees],
                 "diagnostic_sha256": [diagnostic_digest(tree) for tree in trees],
+                # ``tree.value`` holds every node's target mean, internal
+                # nodes included.
                 "value_sha256": [digest(tree.value) for tree in trees],
             }
         )
@@ -484,7 +486,7 @@ def compare(args: argparse.Namespace) -> None:
             entry["trees_differing_in_thresholds"] = sum(
                 x != y for x, y in zip(a["threshold_sha256"], b["threshold_sha256"])
             )
-            entry["trees_differing_in_leaf_values"] = sum(
+            entry["trees_differing_in_node_values"] = sum(
                 x != y for x, y in zip(a["value_sha256"], b["value_sha256"])
             )
             entry["trees_differing_in_node_count"] = sum(

@@ -63,7 +63,7 @@
    "trees": 100,
    "trees_differing_in_structure": 100,
    "trees_differing_in_thresholds": 100,
-   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_values": 100,
    "trees_differing_in_node_count": 75,
    "trees_with_a_divergent_split": 100,
    "first_divergence": {
@@ -678,7 +678,7 @@
    "trees": 100,
    "trees_differing_in_structure": 100,
    "trees_differing_in_thresholds": 100,
-   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_values": 100,
    "trees_differing_in_node_count": 89,
    "trees_with_a_divergent_split": 100,
    "first_divergence": {
@@ -1139,7 +1139,7 @@
    "trees": 100,
    "trees_differing_in_structure": 100,
    "trees_differing_in_thresholds": 100,
-   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_values": 100,
    "trees_differing_in_node_count": 91,
    "trees_with_a_divergent_split": 100,
    "first_divergence": {
@@ -1516,7 +1516,7 @@
    "trees": 100,
    "trees_differing_in_structure": 100,
    "trees_differing_in_thresholds": 100,
-   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_values": 100,
    "trees_differing_in_node_count": 91,
    "trees_with_a_divergent_split": 100,
    "first_divergence": {
@@ -1893,7 +1893,7 @@
    "trees": 100,
    "trees_differing_in_structure": 27,
    "trees_differing_in_thresholds": 27,
-   "trees_differing_in_leaf_values": 17,
+   "trees_differing_in_node_values": 17,
    "trees_differing_in_node_count": 0,
    "trees_with_a_divergent_split": 27,
    "first_divergence": {

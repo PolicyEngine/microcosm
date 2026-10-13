@@ -469,6 +469,8 @@ def test_replay_accepts_the_period_it_replays() -> None:
         # Something else rebinds or shadows it.
         (f"PERIOD = {PERIOD}\nPERIOD += 1\n", _CHILDCARE_CALL),
         (f"PERIOD = {PERIOD}\nfrom periods import NEXT as PERIOD\n", _CHILDCARE_CALL),
+        # A wildcard import may supply it.
+        (f"PERIOD = {PERIOD}\nfrom next_period import *\n", _CHILDCARE_CALL),
         (f"PERIOD = {PERIOD}\n", f"    PERIOD = {PERIOD + 1}\n" + _CHILDCARE_CALL),
         (f"PERIOD = {PERIOD}\n", "    global PERIOD\n" + _CHILDCARE_CALL),
     ],

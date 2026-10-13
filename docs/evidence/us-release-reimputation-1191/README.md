@@ -114,8 +114,8 @@ commit that built the release, loads the base with the builder's
    base stage recorded when it finished (`base_stage_record_check…json`);
    five sums cannot show that every row is the stage's own.
 5. Given identical inputs, the stages give different outputs on the two
-   platforms (`platform_replay.*.json`). Each stage's input table was exported
-   from the base and replayed with the production stage code on linux/amd64
+   platforms (`platform_replay.*.json`). The input table of each of the four
+   re-run stages that changed stored values was exported from the base and replayed with the production stage code on linux/amd64
    (CPython 3.14.2 and the base build's uv.lock wheels, under QEMU) and on
    macOS arm64. Each exported table keeps only the columns its stage reads and
    gives exactly the full table's output values
@@ -131,8 +131,8 @@ commit that built the release, loads the base with the builder's
    | retirement contributions (traditional 401(k)) | 235 persons, below 7e-11 | 21,765 persons, 21,484 by more than $1 |
 
    The other four contribution leaves differ on 15, 5, 11 and 1 persons on
-   Linux, below 1.6e-12. The two platforms' retirement outputs differ from
-   each other on 21,764 persons
+   Linux, below 1.6e-12. The two platforms' traditional 401(k) outputs differ
+   from each other on 21,764 persons
    (`platform_outputs.linux_amd64_vs_macos_arm64.json`). quantile-forest 1.4.2
    has no cp314 Linux aarch64 wheel, so architecture and operating system were
    not separated.
