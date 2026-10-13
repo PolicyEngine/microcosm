@@ -87,9 +87,11 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    processed_puf_tax_unit_partnership_s_corp_income,
     puf_tax_unit_donor_from_arrays,
     resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
+    source_year_puf_partnership_s_corp_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
@@ -3439,11 +3441,21 @@ def _puf_tax_unit_donor_from_h5(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = _source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        arrays,
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _puf_e01000_reconciliation_basis(
@@ -3492,6 +3504,25 @@ def _source_year_puf_adjusted_gross_income(
         source_puf_csv,
         processed_tax_unit_ids=processed_tax_unit_ids,
         processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
+def _source_year_puf_partnership_s_corp_income(
+    source_puf_csv: Path,
+    arrays: Mapping[str, Sequence[object]],
+    *,
+    receipt: dict[str, object] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load Schedule E line 32 through the same narrow source-year seam."""
+
+    return source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=receipt,
     )
 
 

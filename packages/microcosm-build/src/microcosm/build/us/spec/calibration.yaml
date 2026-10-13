@@ -305,6 +305,7 @@ tail_contracts:
     - partnership_income
     - partnership_s_corp_income_would_be_qualified
     - partnership_self_employment_net_earnings
+    - passive_partnership_s_corp_income
     - qualified_bdc_income
     - qualified_dividend_income
     - qualified_passenger_vehicle_loan_interest
