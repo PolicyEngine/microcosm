@@ -3402,6 +3402,7 @@
     "lcfs_consumption": {
       "artifacts": [
         {
+          "doi": "10.5255/UKDA-SN-9468-3",
           "filename": "dvhh_ukanon_v2_2023.tab",
           "format": "tab",
           "kind": "private_microdata",
@@ -3410,9 +3411,11 @@
           "runtime_sha256_required": true,
           "sha256": "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72",
           "size_bytes": 22812887,
+          "ukds_study_number": 9468,
           "vintage": "2023_24"
         },
         {
+          "doi": "10.5255/UKDA-SN-9468-3",
           "filename": "dvper_ukanon_202324_2023.tab",
           "format": "tab",
           "kind": "private_microdata",
@@ -3421,6 +3424,7 @@
           "runtime_sha256_required": true,
           "sha256": "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50",
           "size_bytes": 6545146,
+          "ukds_study_number": 9468,
           "vintage": "2023_24"
         },
         {

@@ -72,16 +72,32 @@ def build_lcfs_support_bounds(
     donor, _floor_receipt = floor_negative_donor_consumption(
         donor, floor=donor_consumption_floor(stage)
     )
+    study = _lcfs_study(stage)
     return _payload(
         source={
-            "ukds_study_number": 9468,
-            "doi": "10.5255/UKDA-SN-9468-3",
+            **study,
             "household_tab_sha256": hh_sha,
             "person_tab_sha256": person_sha,
         },
         bounds=lcfs_ranges(donor),
         label="LCFS consumption",
     )
+
+
+def _lcfs_study(stage) -> dict[str, object]:
+    """The LCFS study number and DOI the committed stage pins on both tabs."""
+
+    studies = {
+        (artifact.get("ukds_study_number"), artifact.get("doi"))
+        for artifact in stage.artifacts
+        if artifact.get("role") in ("lcfs_household_tab", "lcfs_person_tab")
+    }
+    if len(studies) != 1 or None in next(iter(studies)):
+        raise SystemExit(
+            "The LCFS stage must pin one ukds_study_number and doi on both tabs."
+        )
+    number, doi = next(iter(studies))
+    return {"ukds_study_number": int(number), "doi": str(doi)}
 
 
 def build_etb_vat_support_bounds(etb_tab: Path) -> dict[str, object]:

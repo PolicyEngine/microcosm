@@ -64,6 +64,40 @@ def test_committed_json_mirror_matches_the_yaml_declaration() -> None:
         )
 
 
+def test_a_diary_year_starting_in_the_target_year_steps_a_quarter_back() -> None:
+    # microcosm#1164: the April 2024 to March 2025 diary sits a quarter past
+    # calendar 2024, so its window factor is below one; a column without the
+    # window, an income predictor, takes 1.
+    factors, receipt = donor_uprating_factors(
+        {
+            "from_period": 2024,
+            "to_period": 2024,
+            "fiscal_year_bridge": {"start_year_weight": 0.75, "next_year_weight": 0.25},
+            "columns": {
+                "food": {
+                    "basis": "engine_parameter",
+                    "parameter_path": CPI,
+                    "from_window": "fiscal_year",
+                },
+                "pay": {"basis": "engine_parameter", "parameter_path": CPI},
+            },
+        },
+        parameter_reader=_fake_reader,
+    )
+    base = 0.75 * 1.55763 + 0.25 * 1.60100
+    assert factors["food"] == pytest.approx(1.55763 / base)
+    assert factors["food"] < 1.0
+    assert factors["pay"] == 1.0
+    food = receipt["columns"]["food"]
+    assert food["base"] == pytest.approx(base)
+    # The following year's index is recorded: base is not 0.75 before + 0.25
+    # after when the diary starts in the target year.
+    assert food["following"] == 1.60100
+    assert food["base"] == pytest.approx(
+        0.75 * food["before"] + 0.25 * food["following"]
+    )
+
+
 def test_engine_parameter_basis_is_the_ratio_of_the_two_instants() -> None:
     factors, receipt = donor_uprating_factors(
         {

@@ -2878,6 +2878,8 @@ stages:
   artifacts:
   - role: lcfs_household_tab
     kind: private_microdata
+    ukds_study_number: 9468
+    doi: 10.5255/UKDA-SN-9468-3
     format: tab
     vintage: '2023_24'
     locator: dvhh_ukanon_v2_2023.tab
@@ -2887,6 +2889,8 @@ stages:
     filename: dvhh_ukanon_v2_2023.tab
   - role: lcfs_person_tab
     kind: private_microdata
+    ukds_study_number: 9468
+    doi: 10.5255/UKDA-SN-9468-3
     format: tab
     vintage: '2023_24'
     locator: dvper_ukanon_202324_2023.tab

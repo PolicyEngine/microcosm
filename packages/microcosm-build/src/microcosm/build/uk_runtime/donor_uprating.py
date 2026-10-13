@@ -14,7 +14,9 @@ column, the basis that moves it from ``from_period`` to ``to_period``:
   year beginning in ``from_period``, placed on the calendar-year index by the
   operation's ``fiscal_year_bridge`` weights (three quarters in the starting
   year, one in the next), and ends at calendar ``to_period`` (microcosm#1113:
-  a full step would carry a 2023-24 diary a quarter past calendar 2024);
+  a full step would carry a 2023-24 diary a quarter past calendar 2024). A
+  diary year that starts in ``to_period`` takes a factor below one, a quarter
+  back to the calendar year;
 * ``vendored_litre_proxy`` — publisher outturn for road fuel: the DESNZ annual
   pump-price ratio times the HMRC fiscal-year litres ratio over the ONS
   population ratio, all read from the vendored Chronicle facts (María's ruling
@@ -139,7 +141,12 @@ def donor_uprating_factors(
                 _require_positive(column, before, following)
                 base = bridge[0] * before + bridge[1] * following
                 factor = after / base
-                detail.update({"from_window": window, "base": base})
+                # The following year's index is recorded so base can be
+                # recomputed when it is not ``after`` (a diary year that starts
+                # in the target year, as LCFS 2024-25 does for 2024).
+                detail.update(
+                    {"from_window": window, "base": base, "following": following}
+                )
         elif basis == BASIS_VENDORED_LITRE_PROXY:
             factor, detail = _litre_proxy_factor(spec, from_period, to_period)
             audit_path = spec.get("audit_parameter_path")
