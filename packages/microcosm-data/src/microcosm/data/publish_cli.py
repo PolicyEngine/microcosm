@@ -325,7 +325,10 @@ def main(argv: list[str] | None = None) -> int:
         evidence=args.evidence,
         line=args.promote_line,
     )
-    from microcosm.data.source_enrichment import recorded_narrowed_claims
+    from microcosm.data.source_enrichment import (
+        recorded_claim_measurement,
+        recorded_narrowed_claims,
+    )
 
     # A re-certification that reverted a declared compatibility range to the
     # exact pin warned in the terminal that ran it, days and an operator ago.
@@ -340,11 +343,23 @@ def main(argv: list[str] | None = None) -> int:
             f"earlier certification: {json.dumps(narrowed)}",
             file=sys.stderr,
         )
+    # A declared compatibility range admits model versions no check measured.
+    # The bundle records which one was; say it on the same two paths.
+    measurement = recorded_claim_measurement(Path(args.release_dir))
+    if measurement:
+        print(
+            "note: this release declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(measurement)}",
+            file=sys.stderr,
+        )
     if args.preflight_only:
         prepare_release(Path(args.release_dir), **preparation_options)
         preflight = {"valid": True, "published": False}
         if narrowed:
             preflight["narrowed_claims"] = narrowed
+        if measurement:
+            preflight["claim_measurement"] = measurement
         print(json.dumps(preflight))
         return 0
 

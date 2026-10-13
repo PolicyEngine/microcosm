@@ -16,7 +16,9 @@ explicit selection:
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 
-So a node binds exactly the resources it selects. The graph resource's own
+Target compilers also bind the complete ``chronicle_feed.json`` declaration
+when the spec carries it, including CREATE's inventory probe and extension
+nodes. Other nodes bind exactly the resources they select. The graph resource's own
 digest and the country spec's fingerprint enter no node: editing one
 resource re-keys only the nodes that select the changed data and their
 descendants. Selector-shaped objects inside selected resource data remain
@@ -66,6 +68,7 @@ from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
     ATOMIC_SUPPORT_TYPE,
 )
+from microcosm.build.ledger_artifact import CHRONICLE_FEED_RESOURCE
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.graph import (
     ArtifactInput,
@@ -85,6 +88,7 @@ from microcosm.graph.canonical import canonical_json
 
 from .artifact_types import KERNEL_OUTPUTS
 from .column_kernels import validate_receipt_contract
+from .target_kernels import TARGET_COMPILATION_KERNELS
 
 __all__ = [
     "GRAPH_RESOURCE",
@@ -210,7 +214,9 @@ class TransportExtension:
     Checkpoints name nodes in the extended graph and run after calibration,
     before the skeleton H5 is written; they cannot read the exported dataset.
     ``package_inputs`` explicitly connect typed extension evidence to a
-    skeleton package receipt. No other skeleton node can gain predecessors.
+    skeleton package receipt. ``gate_inputs`` connect required extension
+    evidence to a skeleton battery, whose verdict already governs export.
+    No other skeleton node can gain predecessors.
     The factory receives a deep copy of the caller's spec.
     """
 
@@ -218,6 +224,7 @@ class TransportExtension:
     sources: tuple[SourceRef, ...] = ()
     checkpoints: tuple[str, ...] = ()
     package_inputs: tuple[tuple[str, ArtifactInput], ...] = ()
+    gate_inputs: tuple[tuple[str, ArtifactInput], ...] = ()
 
     def __post_init__(self) -> None:
         if not callable(self.factory):
@@ -238,6 +245,12 @@ class TransportExtension:
                 raise TypeError(
                     "Extension package inputs require typed artifact edges."
                 )
+        if not isinstance(self.gate_inputs, tuple):
+            raise TypeError("Extension gate inputs must be a tuple.")
+        for target, edge in self.gate_inputs:
+            _safe_node_id(target)
+            if not isinstance(edge, ArtifactInput):
+                raise TypeError("Extension gate inputs require typed artifact edges.")
 
     def __call__(
         self,
@@ -315,6 +328,26 @@ def _has_resource(spec: Mapping[str, object], name: str) -> bool:
     documents = _resources(spec)
     stem = _stem(name)
     return stem in documents or f"{stem}.json" in documents
+
+
+def _target_feed_params(
+    spec: Mapping[str, object], kernel: str, params: Mapping[str, object]
+) -> dict[str, object]:
+    """Bind the declared feed to every target compiler, including preparation."""
+
+    result = dict(params)
+    if kernel in TARGET_COMPILATION_KERNELS and _has_resource(
+        spec, CHRONICLE_FEED_RESOURCE
+    ):
+        pin = canonical_json(transport_resource(spec, CHRONICLE_FEED_RESOURCE)).decode(
+            "utf-8"
+        )
+        if "chronicle_feed_pin" in result and result["chronicle_feed_pin"] != pin:
+            raise ValueError(
+                f"{kernel} Chronicle feed pin differs from {CHRONICLE_FEED_RESOURCE}."
+            )
+        result["chronicle_feed_pin"] = pin
+    return result
 
 
 def transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
@@ -1068,6 +1101,7 @@ def _node(
             for name, value in _mapping(row.get("params", {}), "node params").items()
         }
     )
+    params = _target_feed_params(spec, kernel, params)
     if "rules_binding" in row:
         params = _rules_params(spec, row, params, config)
     elif kernel == RULES_ROUTER:
@@ -1162,10 +1196,14 @@ def skeleton_create_declaration(spec: Mapping[str, object]) -> CreateDeclaration
         id=_safe_node_id(row.get("id")),
         kernel=row["kernel"],
         params=MappingProxyType(
-            {
-                name: _param(spec, value, None)
-                for name, value in _mapping(row.get("params", {}), "params").items()
-            }
+            _target_feed_params(
+                spec,
+                row["kernel"],
+                {
+                    name: _param(spec, value, None)
+                    for name, value in _mapping(row.get("params", {}), "params").items()
+                },
+            )
         ),
         sources=tuple(_sequence(row.get("sources", ()), "node sources")),
     )
@@ -1220,9 +1258,19 @@ def compose_transport_graph(
     additional: list[Node] = []
     additional_sources: list[SourceRef] = []
     package_inputs: dict[str, list[ArtifactInput]] = {}
+    gate_inputs: dict[str, list[ArtifactInput]] = {}
     source_names = {source.name for source in skeleton.sources}
     for factory in config.extensions:
         if isinstance(factory, TransportExtension):
+            for target, edge in factory.gate_inputs:
+                if (
+                    target not in compiled.order
+                    or skeleton.node(target).kernel != "gates.battery@1"
+                ):
+                    raise ValueError(
+                        "Extension gate evidence may target only a skeleton battery node."
+                    )
+                gate_inputs.setdefault(target, []).append(edge)
             for target, edge in factory.package_inputs:
                 if (
                     target not in compiled.order
@@ -1253,13 +1301,24 @@ def compose_transport_graph(
             raise TypeError("A transport extension must return a tuple of Nodes.")
         for node in nodes:
             _safe_node_id(node.id)
-        additional.extend(nodes)
-    if not additional and not additional_sources and not package_inputs:
+        additional.extend(
+            replace(node, params=_target_feed_params(spec, node.kernel, node.params))
+            for node in nodes
+        )
+    if (
+        not additional
+        and not additional_sources
+        and not package_inputs
+        and not gate_inputs
+    ):
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
-        edges = tuple(package_inputs.get(node.id, ()))
+        edges = (
+            *package_inputs.get(node.id, ()),
+            *gate_inputs.get(node.id, ()),
+        )
         aliases = [edge.name for edge in (*node.artifact_inputs, *edges)]
         if len(aliases) != len(set(aliases)):
             raise ValueError(
@@ -1280,9 +1339,11 @@ def compose_transport_graph(
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
     for node in skeleton.nodes:
-        expected = set(compiled.predecessors[node.id]) | {
-            edge.producer for edge in package_inputs.get(node.id, ())
-        }
+        expected = (
+            set(compiled.predecessors[node.id])
+            | {edge.producer for edge in package_inputs.get(node.id, ())}
+            | {edge.producer for edge in gate_inputs.get(node.id, ())}
+        )
         if set(extended.predecessors[node.id]) != expected:
             raise ValueError(
                 f"An extension would re-key skeleton node {node.id!r}; "

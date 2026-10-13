@@ -52,6 +52,7 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import (
     CONCEPTS,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     AlignmentRelation,
     CanonicalConceptKind,
     ConceptAlignment,
@@ -253,6 +254,36 @@ class TestEveryMapping:
 
 
 class TestExecution:
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    @settings(max_examples=20, deadline=None, database=None)
+    @given(tables=concept_frames(), data=st.data())
+    def test_source_household_lineage_changes_no_engine_input(
+        self, name, tables, data
+    ) -> None:
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        before = mapping.encode(tables, **parameters)
+        household = tables["household"].copy()
+        household[SOURCE_HOUSEHOLD_ID_COLUMN] = pd.array(
+            data.draw(
+                st.lists(
+                    st.text(min_size=1, max_size=20),
+                    min_size=len(household),
+                    max_size=len(household),
+                )
+            ),
+            dtype=pd.StringDtype(storage="python"),
+        )
+        after = mapping.encode(
+            {"person": tables["person"], "household": household}, **parameters
+        )
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(before.tables[entity], after.tables[entity])
+        assert before.deferred == after.deferred
+        assert (
+            SOURCE_HOUSEHOLD_ID_COLUMN not in mapping.decode(after.tables)["household"]
+        )
+
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())
     def test_encode_matches_a_row_by_row_reference(self, name, tables, data) -> None:

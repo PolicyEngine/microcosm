@@ -660,8 +660,13 @@ def test_reader_scopes_repeated_person_id_to_exact_source_lineage(
     exact_leaf = person.loc[0, "source_person_id"]
     person.loc[3, "source_person_id"] = exact_leaf
     if scope == "year":
-        person.loc[3, "source_household_id"] = person.loc[0, "source_household_id"]
-        person.loc[3, "source_year"] = person.loc[0, "source_year"] - 1
+        household_members = (
+            person["person_household_id"] == person.loc[3, "person_household_id"]
+        )
+        person.loc[household_members, "source_household_id"] = person.loc[
+            0, "source_household_id"
+        ]
+        person.loc[household_members, "source_year"] = person.loc[0, "source_year"] - 1
     donor = _fake_donor(monkeypatch, tmp_path, tables)
     assert donor.source_person_ids[0] != donor.source_person_ids[3]
     for index in (0, 3):

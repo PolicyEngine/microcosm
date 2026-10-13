@@ -199,6 +199,7 @@ OUTPUT_COLUMNS = (
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
     "employment_income",
@@ -208,6 +209,7 @@ OUTPUT_COLUMNS = (
     "savings_interest_income",
     "dividend_income",
     "property_income",
+    "reports_rent_from_other_property",
     "maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
@@ -563,6 +565,11 @@ def _assemble_frame(
         job=frs["job"],
         benefits=frs["benefits"],
     )
+    pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
+        _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
+        pe_person["self_employment_income"],
+        pe_person["employment_income"],
+    )
 
     _add_household_columns(pe_household, household, frs)
 
@@ -651,6 +658,9 @@ def _add_person_income(
     evidence: dict[str, object] | None = None,
 ) -> None:
     pe_person["property_income"] = frs_property_income(person, household)
+    pe_person[FRS_LANDLORD_CARRIER_COLUMN] = frs_reports_rent_from_other_property(
+        person
+    )
     maintenance_to_self = np.maximum(
         np.where(
             _number(person, "mntus1") == 2,
@@ -694,6 +704,24 @@ def _add_person_income(
     pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
     pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
+
+
+#: The internal landlord carrier ``frs_reports_rent_from_other_property`` writes.
+FRS_LANDLORD_CARRIER_COLUMN = "reports_rent_from_other_property"
+
+
+def frs_reports_rent_from_other_property(person: pd.DataFrame) -> np.ndarray:
+    """Whether the person reports rent from other property, at a profit or a loss.
+
+    ROYYR1 is entered as a positive amount whether the letting made a profit or
+    a loss (RENTPROF 2 marks the loss), so a positive ROYYR1 marks a landlord
+    either way. ``property_income`` counts a loss as zero
+    (``frs_property_income``), so this internal carrier keeps the landlord
+    signal the CGT stages read for loss-making landlords too. It is not an
+    engine input and does not leave the release.
+    """
+
+    return (_positive(person, "royyr1") > 0).to_numpy(dtype=bool)
 
 
 def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
@@ -1378,6 +1406,29 @@ def frs_uc_start_up_period(
         unlinked & (draws < linked_share)
     )
     return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def uc_gainful_self_employment(
+    self_employed_main_job: Any, self_employment_income: Any, employment_income: Any
+) -> np.ndarray:
+    """Whether each person is in gainful self-employment for Universal Credit.
+
+    UC Regs 2013 reg 64(a) asks whether the person carries on a trade as their
+    main employment. DWP's Advice for Decision Making starts from hours (H4031)
+    but lets earnings outweigh them (H4034). So the flag holds for a
+    self-employed main job (FRS EMPSTATI 3 or 4) whatever its profit, since a
+    trade at a loss or breaking even is still carried on (H4013, H4054,
+    H4503), and for a side trade whose profit is above the person's employment
+    income (uk-data#525). It overrides the engine's default, which reads any
+    nonzero self-employment income as gainful. The flag is fixed at the
+    survey-year (or SPI-drawn) incomes: uprating reprices the two incomes by
+    different indices, and the flag does not follow.
+    """
+
+    profit = np.asarray(self_employment_income, dtype=float)
+    pay = np.asarray(employment_income, dtype=float)
+    main_job = np.asarray(self_employed_main_job, dtype=bool)
+    return main_job | ((profit > 0) & (profit > pay))
 
 
 #: FRS yes code for the local-authority registration questions (SPCREG1-3).

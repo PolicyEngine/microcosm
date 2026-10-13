@@ -142,12 +142,12 @@ def rulespec_commit_mentions(value: object) -> set[str]:
     - a string (a value or a mapping key) that contains "rulespec" in any
       case, wherever in the string the run sits;
     - any key or value, at any depth, below a key that contains "rulespec"
-      or in a rulespec record (a mapping whose ``repository`` contains
+      or in a rulespec record (its ``repository`` or ``source_repo`` contains
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
-      unless the key's mapping is a foreign record (its ``repository`` lacks
-      "rulespec") and neither the key nor an enclosing key contains
-      "rulespec".
+      unless the key's mapping is a foreign record (its repository
+      attribution lacks "rulespec") and neither the key nor an enclosing
+      key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
     keys still count below a rulespec key. Integers count where hex strings
@@ -159,9 +159,15 @@ def rulespec_commit_mentions(value: object) -> set[str]:
 
     def visit(node: object, *, rulespec_context: bool, commit_value: bool) -> None:
         if isinstance(node, Mapping):
-            repository = node.get("repository")
-            named = isinstance(repository, str)
-            rulespec_record = named and "rulespec" in repository.lower()
+            repositories = [
+                repository
+                for field in ("repository", "source_repo")
+                if isinstance(repository := node.get(field), str)
+            ]
+            named = bool(repositories)
+            rulespec_record = any(
+                "rulespec" in repository.lower() for repository in repositories
+            )
             foreign = named and not rulespec_record
             if rulespec_record:
                 commit_value = True
@@ -535,6 +541,20 @@ def _fresh_hold_out_and_plant(
     )
 
 
+def test_chronicle_feed_is_a_loaded_legacy_json_resource() -> None:
+    spec = load_country_spec("nz")
+    row = next(row for row in spec.resource_rows if row.path == "chronicle_feed.json")
+
+    assert row.kind == "legacy_json"
+    assert row.schema_id == "legacy_json"
+    assert (
+        spec.resource_hashes[row.path]
+        == hashlib.sha256((NZ_ROOT / row.path).read_bytes()).hexdigest()
+    )
+    assert _load(row.path)["country"] == spec.country
+    assert _load(row.path)["scope"] == "nz_calibration"
+
+
 class TestReferenceSets:
     @pytest.mark.parametrize("reference_set", sorted(REFERENCE_FILES))
     def test_each_set_is_a_self_identifying_nz_reference_resource(
@@ -750,10 +770,24 @@ class TestRulespecPin:
         assert rulespec_commit_mentions({"wrapper": [record]}) == {commit}
 
     @settings(max_examples=200, deadline=None)
-    @given(commit=_HEX40_TEXT)
-    def test_scanner_ignores_commits_of_other_repositories(self, commit: str) -> None:
-        other = {"repository": "TheAxiomFoundation/axiom-oracles", "commit": commit}
+    @given(
+        commit=_HEX40_TEXT,
+        repository_field=st.sampled_from(("repository", "source_repo")),
+        repository_name=st.sampled_from(
+            ("TheAxiomFoundation/axiom-oracles", "PolicyEngine/chronicle")
+        ),
+        commit_field=st.sampled_from(("commit", "source_commit")),
+    )
+    def test_scanner_ignores_commits_of_other_repositories(
+        self,
+        commit: str,
+        repository_field: str,
+        repository_name: str,
+        commit_field: str,
+    ) -> None:
+        other = {repository_field: repository_name, commit_field: commit}
         assert rulespec_commit_mentions(other) == set()
+        assert rulespec_commit_mentions({"rulespec": other}) == {commit}
 
     @settings(max_examples=200, deadline=None)
     @given(
@@ -897,13 +931,14 @@ class TestRulespecPin:
         commit=_HEX40_TEXT,
         length=st.integers(7, 40),
         repository=st.sampled_from(_RULESPEC_REPOSITORIES),
+        repository_field=st.sampled_from(("repository", "source_repo")),
         key=st.sampled_from(["commit", "revision", "sha", "ref", "head", "pinned"]),
     )
     def test_every_hex_value_of_a_rulespec_record_is_a_mention(
-        self, commit: str, length: int, repository: str, key: str
+        self, commit: str, length: int, repository: str, repository_field: str, key: str
     ) -> None:
         short = commit[:length]
-        record = {"repository": repository, key: short}
+        record = {repository_field: repository, key: short}
         assert rulespec_commit_mentions({"source": record}) == {short}
         assert rulespec_commit_mentions({"rulespec": {key: short}}) == {short}
         # A value straight under a rulespec key, as a string or in a list.
@@ -1528,14 +1563,12 @@ class TestScenarios:
 
 
 class TestDeclaredResources:
-    def test_threshold_gates_await_d1_and_carry_no_numeric_threshold(self) -> None:
+    def test_reference_tolerances_remain_deferred(self) -> None:
         spec = load_country_spec("nz")
         by_function = {gate.gate: gate for gate in spec.gates.gates}
         for function in (
             "per_family_fit",
             "aggregate_admin",
-            "weight_ess",
-            "weight_ratio",
         ):
             assert by_function[function].not_applicable.startswith("awaiting D1")
 
@@ -1552,8 +1585,57 @@ class TestDeclaredResources:
         assert not [
             leaf
             for gate in spec.gates.gates
+            if gate.gate in {"per_family_fit", "aggregate_admin"}
             for leaf in numeric_leaves(gate.parameters)
         ]
+
+    def test_mc15_ruled_thresholds_and_tracked_targets_are_declared(self) -> None:
+        spec = load_country_spec("nz")
+        gates = {gate.id: gate for gate in spec.gates.gates}
+        ess = gates["weight_effective_sample_size"]
+        ratio = gates["weight_max_to_median_ratio"]
+        support = gates["reported_cell_support"]
+        target = gates["weight_effective_sample_size_target_a"]
+        cell_target = gates["reported_cell_support_target_a"]
+        assert ess.parameters["minimum_effective_sample_size"] == 4000
+        assert "minimum_ess_fraction" not in ess.parameters
+        assert ratio.parameters["maximum_max_to_median_ratio"] == 5
+        assert support.parameters["minimum_cell_ess"] == 100
+        assert support.parameters["maximum_contribution_cv"] == 2
+        assert support.parameters["maximum_single_donor_dollar_share"] == 0.1
+        assert target.parameters["minimum_effective_sample_size"] == 16000
+        assert cell_target.parameters["minimum_cell_ess"] == 400
+        assert cell_target.parameters["maximum_single_donor_dollar_share"] == 0.05
+        # The support contract's copy of target (a) drives the per-cell flags;
+        # it must match the tracked target gate that reports them.
+        assert support.parameters["target_minimum_cell_ess"] == 400
+        assert support.parameters["target_maximum_single_donor_dollar_share"] == 0.05
+        assert set(cell_target.parameters["required_cells"]) == set(
+            support.parameters["required_cells"]
+        )
+        assert set(cell_target.parameters["required_scenarios"]) == set(
+            support.parameters["required_scenarios"]
+        )
+        for gate in (ess, ratio, support, target, cell_target):
+            assert gate.not_applicable is None
+            assert gate.parameters["aggregation_column"] == "source_household_id"
+            assert gate.parameters["required_weight_entity"] == "household"
+            assert gate.parameters["required_weight_kind"] == "calibrated"
+        assert all(
+            g.criticality == "release_blocking" and g.evidence_absent_blocks
+            for g in (ess, ratio, support)
+        )
+        assert target.criticality == cell_target.criticality == "diagnostic"
+        scenarios = _load("scenarios.json")["scenarios"]
+        assert support.parameters["required_scenarios"] == tuple(
+            s["id"] for s in scenarios
+        )
+        from microcosm.build.transport.takeup_kernels import reporting_cell_declarations
+
+        grid = _load("scenarios.json")["gap_conventions"]["reporting_cells"]
+        assert set(support.parameters["required_cells"]) == {
+            row["name"] for row in reporting_cell_declarations(grid)
+        }
 
     def test_currency_bridge_is_one_declared_multiplication(self) -> None:
         bridge = _load("currency_bridge.json")
@@ -1564,11 +1646,11 @@ class TestDeclaredResources:
         assert bridge["source"]["url"].startswith("https://www.irs.gov/")
         assert bridge["source"]["column"] == str(bridge["rate_year"])
 
-    def test_benefit_unit_rule_refuses_to_guess_the_dependent_child_age(self) -> None:
+    def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")
         assert rule["entity"] == "family" and rule["engine_entity"] == "Family"
-        assert rule["dependent_child"]["age_limit_years"] is None
-        assert rule["dependent_child"]["candidate_basis"].startswith("UNVERIFIED")
+        assert rule["dependent_child"]["age_limit_years"] == 18
+        assert "UNVERIFIED" not in json.dumps(rule)
         assert set(rule["membership_columns"]) == {
             "family_id",
             "family_household_id",

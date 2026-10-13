@@ -44,9 +44,11 @@ UK_GEOGRAPHY_IDS = {
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
         "affected_flag_variable",
+        "allocation",
         "band",
         "band_filter_dimension",
         "band_period_factor",
+        "band_semantics",
         "band_upper_bound",
         "band_upper_bound_inclusive",
         "count_of",
@@ -76,7 +78,6 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 
-_UK_DATA_REPO = "policyengine-" + "uk-data"
 
 DESCRIPTION = (
     "UK active-subset Ledger target references for the FRS 2024-25 line. "
@@ -112,6 +113,16 @@ def main() -> None:
         if line.strip()
     ]
     inverse_mapping = _registry_inverse(contract)
+    # The facts each family's fan-out leaves unnamed, counted rather than
+    # declared, so the membership report states what the feed carried.
+    skipped_fanout: Counter[str] = Counter()
+
+    def fanout_name(target: Mapping[str, Any], fact: Mapping[str, Any]) -> str | None:
+        name = _fanout_name(target, fact, inverse_mapping)
+        if not name:
+            skipped_fanout[str(target["family"])] += 1
+        return name
+
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
         geography_pins=_geography_pins(contract),
@@ -119,11 +130,7 @@ def main() -> None:
         geography_fanout_metadata=_geography_fanout_metadata,
         geography_composition_by_target_id=_geography_composition(contract),
         geography_composition_aliases=_geography_composition_aliases(),
-        fanout_name=lambda target, fact: _fanout_name(
-            target,
-            fact,
-            inverse_mapping,
-        ),
+        fanout_name=fanout_name,
         sum_target_ids=_sum_target_ids(contract),
         value_operation_by_target_id=_value_operation_by_target_id(contract),
         selector_pins_by_target_id=_selector_pins(contract),
@@ -135,7 +142,11 @@ def main() -> None:
         uprating_appliers=UK_UPRATING_APPLIERS,
     )
     authored = author_target_references(contract, facts, config)
-    _add_uk_membership_accounting(authored.membership_report, authored.references)
+    _add_uk_membership_accounting(
+        authored.membership_report,
+        authored.references,
+        skipped_fanout=skipped_fanout,
+    )
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -456,8 +467,21 @@ DFT_BUS_AREA_GEOGRAPHY_IDS = {
 }
 
 
+#: Target ids pinned one by one, where neither a prefix nor the substring rule
+#: gives the geography the publisher's fact is stamped with.
+TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
+    # OBR table 4.1 row 15 sums the England, Scotland and Wales council tax
+    # rows; Chronicle stamps it K02000001, as the table is UK-wide, while the
+    # substring rule would read "scotland" in its concept (microcosm#1095).
+    # The binding scopes the model column to Great Britain.
+    "obr.council_tax": "uk",
+}
+
+
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    if target_id in TARGET_ID_GEOGRAPHY_PINS:
+        return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):
         area = str(
             (target.get("ledger_selector") or {}).get("layout_groupby_value_id", "")
@@ -638,6 +662,22 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
                     ),
                 )
             )
+        operands = target.get("value_operands") or ()
+        if (
+            target.get("value_operation") == "rolled_forward_by_ratio"
+            and operands
+            and operands[0].get("geography_level")
+        ):
+            # A roll-forward whose base sits below the row (Northern
+            # Ireland's districts' census cells for its nation row, #1123) is
+            # a composed row: it declares its own geography for the hierarchy.
+            metadata.update(
+                {
+                    "composed_from_level": str(operands[0]["geography_level"]),
+                    "geography_level": "country",
+                    "geography_id": _geography_id_for_target(target),
+                }
+            )
         if metadata:
             result[str(target["target_id"])] = metadata
     return result
@@ -765,6 +805,9 @@ def _int_token(value: int) -> str:
 
 def _annual_uc_award_band_token(value: str) -> str:
     normalized = value.strip().lower()
+    # "No payment" and the top-coded "or over" categories stay unbound: bound
+    # to DWP's counts, the GBP 2,500.01 or over band left OBR's Universal
+    # Credit total short (microcosm#1095 receipts).
     if normalized == "no payment" or "or over" in normalized:
         return ""
     if " to " not in normalized:
@@ -783,6 +826,8 @@ def _annual_uc_award_band_token(value: str) -> str:
 def _add_uk_membership_accounting(
     report: dict[str, Any],
     references: tuple[dict[str, Any], ...],
+    *,
+    skipped_fanout: Mapping[str, int],
 ) -> None:
     fanout_counts = Counter(
         reference["family"]
@@ -803,17 +848,21 @@ def _add_uk_membership_accounting(
     report["fanout_family_outcomes"] = [
         {
             "family": "hmrc_spi",
-            "status": "active_with_signed_property_amount_exclusion",
+            "status": "active_strict_band_pins",
             "active_reference_count": fanout_counts.get("hmrc_spi", 0),
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins, except the HMRC property-income amount "
-                "surface. Those 13 rows are signed out because Ledger carries "
-                "the official SPI Table 3.7 net property-income amounts, "
-                "while the incumbent target applies the populace-side x1.9 "
-                "property-income undercount adjustment traced to "
-                f"{_UK_DATA_REPO} PR #311 / issue #230 and HMRC "
-                "Property Rental Income Statistics."
+                "dimension pins. The 13 property-income amount rows bind the "
+                "SPI Table 3.7 net concept unscaled: landlords' profit after "
+                "allowable expenses and before residential finance costs, "
+                "which is what policyengine-uk's property_income means. The "
+                "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
+                "Property Rental Income Statistics' receipts before expenses "
+                "against this net amount, so it is retired; the receipts are "
+                "constructed on property_rental_income by the "
+                "property_components stage and PRIS stays a diagnostic "
+                "(microcosm#1106, María's rulings of 2026-10-05 and "
+                "2026-10-08)."
             ),
         },
         {
@@ -830,6 +879,20 @@ def _add_uk_membership_accounting(
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_itl_marginal_rate",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_marginal_rate", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "higher and additional rate Income Tax payers (Table 2.2, July "
+                "2026) fan out over the twelve-area region tier (microcosm#905) "
+                "and bind at the calendar-2025 window of HMRC's 2024-25 and "
+                "2025-26 projections, measured on the engine's tax_band. Each "
+                "region or nation row controls its higher rate area cells "
+                "(microcosm#1123)."
             ),
         },
         {
@@ -854,14 +917,16 @@ def _add_uk_membership_accounting(
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": fanout_counts.get("dwp_universal_credit", 0),
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": int(
+                skipped_fanout.get("dwp_universal_credit", 0)
+            ),
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {
@@ -944,14 +1009,6 @@ def _add_uk_membership_accounting(
         },
     ]
     report["signed_exclusion_rationales"] = [
-        {
-            "family": "hmrc_spi",
-            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-            "status": "signed_excluded",
-            "signed_rationale": report["targets"][
-                "hmrc.spi.property_income.amount_by_total_income_band"
-            ]["candidates"][0]["signed_rationale"],
-        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",

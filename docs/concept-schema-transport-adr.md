@@ -22,6 +22,11 @@ on built benefit units; the other three mappings list it as unmapped with a
 reason. A scale, sum, scaled sum, share or fraction now computes from annual
 flows only (invariant 11), so none of them can rescale the stock, add it to a
 year's income, or split it.
+**Amended 2026-10-10:** schema version 3 adds original
+`household.source_household_id` lineage for donor support diagnostics. The
+reader scopes explicit raw household identifiers by source year and carries
+the same key across support clones and their benefit units. Rules mappings
+leave this provenance concept unmapped.
 
 ## Context
 
@@ -42,7 +47,7 @@ working through the same layer.
 ### 1. Primitive facts are the neutral layer
 
 `microcosm.frame.concepts` declares the record-level facts a household survey
-observes and that keep their meaning across countries. There are 29, on two
+observes and that keep their meaning across countries. There are 30, on two
 entities. Engine group entities (tax units, benefit units, SPM units,
 families) are engine constructs built from relationships. Today the US unit
 operator builds them from raw CPS roster columns, and the UK adapter requires
@@ -52,6 +57,7 @@ not yet built from them.
 
 | Topic | Concepts |
 |---|---|
+| Source lineage | household `source_household_id` |
 | Demography | `age`, `sex`, `legal_marital_status` |
 | Relationships | `partner_person_id`, `parent_1_person_id`, `parent_2_person_id`, household `reference_person_id` |
 | Labour income | `employment_income`, `nonfarm_self_employment_income`, `farm_self_employment_income` |
@@ -66,7 +72,7 @@ not yet built from them.
 Each concept declares:
 
 - **Unit.** Years, base currency, hours per week, weeks, category, boolean,
-  person id or unit interval.
+  person id, source id or unit interval.
 - **Period semantics.** The kernel's `year`, `month` or `point`, plus what the
   value measures over it: an annual flow, a state at the reference date, a usual
   rate over the weeks worked, or persistent state.

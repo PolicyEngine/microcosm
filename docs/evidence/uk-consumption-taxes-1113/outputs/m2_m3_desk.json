@@ -1,0 +1,145 @@
+{
+ "feed_period_keys_sample": {
+  "04.5": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ],
+  "04.5.1": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ],
+  "04.5.2": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ],
+  "04.5.3": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ],
+  "04.5.4": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ],
+  "07.2.2": [
+   "2020",
+   "2020-Q1",
+   "2020-Q2",
+   "2025-Q3",
+   "2025-Q4",
+   "2026-Q1"
+  ]
+ },
+ "m2_energy": {
+  "cy2025": {
+   "electricity": {
+    "energy_trends_twh": 92.8125,
+    "ons_bn": 26.522,
+    "ons_implied_all_in_pence_per_kwh": 28.575892255892253,
+    "ons_over_unit_only": 1.1099126568149906,
+    "ons_over_unit_plus_fixed": 0.8959278267967942,
+    "qep_all_in_pence_per_kwh": 31.895306073994245,
+    "qep_fixed_gbp_per_year": 193.97637754712437,
+    "qep_unit_gbp_per_kwh": 0.2574607297288936,
+    "unit_only_bn": 23.89557397796294,
+    "unit_plus_fixed_per_household_bn": 29.60283094992591
+   },
+   "gas": {
+    "energy_trends_twh": 250.35467,
+    "ons_bn": 15.339,
+    "ons_implied_all_in_pence_per_kwh": 6.12690787833117,
+    "ons_over_unit_only": 0.954864386565531,
+    "ons_over_unit_plus_fixed": 0.8096847699054153,
+    "qep_all_in_pence_per_kwh": 7.56702868333178,
+    "qep_fixed_gbp_per_year": 115.82063769351817,
+    "qep_unit_gbp_per_kwh": 0.06416521512932861,
+    "unit_only_bn": 16.064061259182072,
+    "unit_plus_fixed_per_household_bn": 18.944409688960622
+   }
+  },
+  "fy2024_25": {
+   "electricity": {
+    "energy_trends_twh": 93.0268,
+    "ons_bn": 25.58,
+    "ons_implied_all_in_pence_per_kwh": 27.49745234706558,
+    "ons_over_unit_only": 1.1083455378292948,
+    "ons_over_unit_plus_fixed": 0.8748262957464121,
+    "qep_all_in_pence_per_kwh": 31.431899659125385,
+    "qep_fixed_gbp_per_year": 209.38599214492953,
+    "qep_unit_gbp_per_kwh": 0.24809458249743663,
+    "unit_only_bn": 23.079445107072537,
+    "unit_plus_fixed_per_household_bn": 29.240090432095254
+   },
+   "gas": {
+    "energy_trends_twh": 260.07266,
+    "ons_bn": 14.662,
+    "ons_implied_all_in_pence_per_kwh": 5.637655261418098,
+    "ons_over_unit_only": 0.9047648228612897,
+    "ons_over_unit_plus_fixed": 0.7709264310246218,
+    "qep_all_in_pence_per_kwh": 7.312831723677202,
+    "qep_fixed_gbp_per_year": 113.12698361893374,
+    "qep_unit_gbp_per_kwh": 0.062310725604795225,
+    "unit_only_bn": 16.205316154569203,
+    "unit_plus_fixed_per_household_bn": 19.018675985091146
+   }
+  },
+  "gas_connected_households_design_m": 24.869043092306743,
+  "gb_meters_2024_m": {
+   "electricity": 29.344362,
+   "gas": 24.702708
+  },
+  "households_design_m": {
+   "gb": 28.647089333333337,
+   "ni": 0.7753436666666668,
+   "uk": 29.422433
+  },
+  "lcfs_fye2024_p537_bn": 60.089294518810306,
+  "ons_04_5_fy2023_24_bn": 46.689
+ },
+ "m3_fuel": {
+  "desnz_2024_divisors": {
+   "fuel_duty_2025_bn": 13.234832230762382,
+   "litres_2024_bn": 25.686262365716125,
+   "vs_obr_cars_14_4": -0.08091442841927898
+  },
+  "frame_design_bn": {
+   "diesel": 9.125353225182106,
+   "petrol": 19.300497308930442
+  },
+  "fuel_car_households_design_m": 22.259794651531145,
+  "fuel_car_zero_fuel_share_design": 0.33588497980394383,
+  "lcfs_other_fuels_share": 0.0037195500952492827,
+  "lcfs_vehicle_households_zero_diary_fuel_share": 0.32366066575040786,
+  "level_bn": 36.887283657723394,
+  "level_factor": 1.2976668407320537,
+  "ons_07_2_2_bn": {
+   "cy2024": 37.025,
+   "cy2025": 35.099,
+   "fy2024_25": 36.92
+  },
+  "rac_divisors_pe_uk_2_100": {
+   "fuel_duty_2025_bn": 12.975711911731786,
+   "litres_2024_bn": 25.18335969321851,
+   "vs_obr_cars_14_4": -0.09890889501862599
+  }
+ }
+}

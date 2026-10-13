@@ -12,7 +12,8 @@
     "monthly_window_count_x_mean",
     "linear_combination",
     "scaled_by_ratio",
-    "calendar_year_window"
+    "calendar_year_window",
+    "rolled_forward_by_ratio"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",
@@ -24,16 +25,14 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 625,
-    "excluded_rows": 27,
+    "mapped_rows": 622,
+    "excluded_rows": 30,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
       "dwp/esa_contrib_claimants": "dwp.esa_contrib_claimants",
       "dwp/esa_income_claimants": "dwp.esa_income_claimants",
       "dwp/jsa_claimants": "dwp.jsa_claimants",
-      "dwp/pip_dl_enhanced_claimants": "dwp.pip.daily_living_enhanced_claimants",
-      "dwp/pip_dl_standard_claimants": "dwp.pip.daily_living_standard_claimants",
       "dwp/scotland_uc_households_child_under_1": "dwp.uc.scotland_households_child_under_1",
       "dwp/uc/claimants_couple_no_children": "dwp.uc.households_couple_no_children",
       "dwp/uc/claimants_couple_with_children": "dwp.uc.households_couple_with_children",
@@ -353,7 +352,6 @@
       "obr/housing_benefit": "obr.housing_benefit",
       "obr/income_tax": "obr.income_tax",
       "obr/jobseekers_allowance": "obr.jobseekers_allowance",
-      "obr/ni": "obr.ni",
       "obr/ni_employee": "obr.ni_employee",
       "obr/ni_employer": "obr.ni_employer",
       "obr/ni_self_employed": "obr.ni_self_employed",
@@ -680,7 +678,10 @@
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
-      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit."
+      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
+      "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
+      "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -702,11 +703,12 @@
       "dft.bus_fare_receipts.uk": "#789 consumer target.",
       "dft.bus_net_support.uk": "#789 consumer target.",
       "hmrc.cgt.liability_total": "Observed FY2024-25 individuals liability from the pinned HMRC Table 1 fact. No incumbent same-basis liability target; OBR cash is a separate diagnostic.",
-      "obr.fuel_duties_cars": "No incumbent ancestor: uk-data bound the all-road-users OBR fuel duties total; the cars receipts from the OBR vehicle-type release are a net-new household-incidence target (microcosm#890 E1, ruling 2026-09-10).",
+      "obr.fuel_duties_cars": "No incumbent ancestor: uk-data bound the all-road-users OBR fuel duties total; the cars receipts from the OBR vehicle-type release are a net-new household-incidence target (microcosm#890 E1, ruling 2026-09-10); a measured diagnostic since microcosm#1113.",
       "orr.rail_government_support": "No incumbent target: uk-data scaled rail_subsidy_spending to the ORR total after calibration (the #790 rail scaler); microcosm#890 G binds the ORR table 7270 fact instead.",
-      "ons.household_energy_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 binds ONS Consumer Trends COICOP 04.5.",
-      "ons.household_electricity_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 binds ONS Consumer Trends COICOP 04.5.1 electricity per fuel (chronicle#270 / #271).",
-      "ons.household_gas_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 binds ONS Consumer Trends COICOP 04.5.2 gas per fuel (chronicle#270 / #271).",
+      "ons.household_energy_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 declared ONS Consumer Trends COICOP 04.5, signed out for its per-fuel sub-classes.",
+      "ons.household_electricity_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 bound ONS Consumer Trends COICOP 04.5.1 electricity per fuel (chronicle#270 / #271); a measured diagnostic since microcosm#1113.",
+      "ons.household_gas_expenditure": "No incumbent target: uk-data raked energy to NEED means and never bound a household-sector expenditure total; microcosm#890 F1 bound ONS Consumer Trends COICOP 04.5.2 gas per fuel (chronicle#270 / #271); a measured diagnostic since microcosm#1113.",
+      "ons.household_road_fuel_expenditure": "No incumbent target: uk-data bound the all-road-users OBR fuel duties total and never a household road-fuel spend; microcosm#1113 binds ONS Consumer Trends COICOP 07.2.2 on petrol plus diesel spend in place of the OBR cars receipts, which stay measured as a diagnostic.",
       "scotgov.bus.passenger_revenue": "No incumbent target: uk-data uplifted DfT England fares to the UK by population; microcosm#890 binds the Scotland leg from Scottish Transport Statistics.",
       "scotgov.bus.government_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds the Scotland leg from Scottish Transport Statistics.",
       "welshgov.bus.public_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds the Wales leg (local-authority route) from the StatsWales revenue outturn.",
@@ -752,6 +754,8 @@
       "hmrc.itl.taxpayers_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle (income_tax_liabilities_july_2026): taxpayers by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds SPI 2023-24 component counts only (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.total_income_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: total income by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry has no total-income anchor (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.income_tax_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: Income Tax liabilities by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds the OBR receipts total only (PolicyEngine/chronicle#280 lane).",
+      "hmrc.itl.higher_rate_taxpayers": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by marginal rate for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1123).",
+      "hmrc.itl.additional_rate_taxpayers": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by marginal rate for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1123).",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest from banks and building societies in Chronicle (spi_income_bands_2023_24); the incumbent registry deliberately excludes savings interest from its SPI targets (uk-data incomes_projection.py) and binds the ONS D.41 row instead (microcosm#866, #280 lane).",
       "hmrc.spi.savings_interest_income.count_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest recipient counts in Chronicle (spi_income_bands_2023_24); the incumbent registry has no savings-interest count target (microcosm#866, #280 lane).",
       "hmrc.spi_region.taxpayers_by_region_12570_15000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
@@ -831,7 +835,10 @@
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
-      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
+      "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nisra.households.northern_ireland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -866,7 +873,6 @@
     },
     "scope_target_ids": [
       "obr.income_tax",
-      "obr.ni",
       "obr.ni_employee",
       "obr.ni_employer",
       "obr.ni_self_employed",
@@ -915,8 +921,6 @@
       "hmrc.cgt.taxpayers_total",
       "hmrc.cgt.gains_total",
       "dwp.benefit_cap.capped_households",
-      "dwp.pip.daily_living_standard_claimants",
-      "dwp.pip.daily_living_enhanced_claimants",
       "dwp.esa_claimants",
       "dwp.esa_contrib_claimants",
       "dwp.esa_income_claimants",
@@ -1011,6 +1015,10 @@
       "ons.household_composition.lone_parent_dependent_children_households",
       "ons.household_composition.lone_parent_non_dependent_children_households",
       "ons.household_composition.multi_family_households",
+      "ons.households.english_regions",
+      "nrs.households.scotland",
+      "welshgov.households.wales",
+      "nisra.households.northern_ireland",
       "mhclg.council_tax_stock.band_a",
       "mhclg.council_tax_stock.band_b",
       "mhclg.council_tax_stock.band_c",
@@ -1080,6 +1088,7 @@
       "ons.household_energy_expenditure",
       "ons.household_electricity_expenditure",
       "ons.household_gas_expenditure",
+      "ons.household_road_fuel_expenditure",
       "scotgov.bus.passenger_revenue",
       "scotgov.bus.government_support",
       "welshgov.bus.public_support",
@@ -1126,6 +1135,8 @@
       "hmrc.itl.taxpayers_by_total_income_band",
       "hmrc.itl.total_income_by_total_income_band",
       "hmrc.itl.income_tax_by_total_income_band",
+      "hmrc.itl.higher_rate_taxpayers",
+      "hmrc.itl.additional_rate_taxpayers",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band",
       "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -1204,8 +1215,7 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age",
-      "hmrc.salary_sacrifice.it_relief_total"
+      "dwp.hb.amount_pension_age"
     ]
   },
   "profile_parity": {
@@ -1215,7 +1225,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 51,
+    "contract_target_count": 52,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1392,13 +1402,25 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households",
-          "record_set_spec_id": [
-            "uk.local_geography.uc_households.by_constituency.v1",
-            "uk.local_geography.uc_households.by_local_authority.v1"
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
           ]
         },
-        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row.",
+        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households"
       },
       {
@@ -1409,10 +1431,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 0
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.0_children"
       },
       {
@@ -1423,10 +1466,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 1
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.1_child"
       },
       {
@@ -1437,10 +1501,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 2
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.2_children"
       },
       {
@@ -1451,10 +1536,35 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": [
+              3,
+              4,
+              "5 or more"
+            ]
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.3plus_children"
       },
       {
@@ -1564,7 +1674,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 26,
+    "activation_added_rows": 27,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1669,6 +1779,10 @@
       {
         "target_id": "scotgov.council_tax_stock.by_area.band_h",
         "basis": "microcosm#929; pinned Scottish Government CTAXBASE chargeable dwellings by band and council area"
+      },
+      {
+        "target_id": "hmrc.higher_rate_taxpayers.count",
+        "basis": "microcosm#1123; pinned HMRC SPI 2023-24 Tables 3.14 and 3.15 higher rate taxpayers by constituency and local authority, England, Wales and Northern Ireland"
       }
     ],
     "scope_target_ids": [
@@ -1722,7 +1836,8 @@
       "scotgov.council_tax_stock.by_area.band_e",
       "scotgov.council_tax_stock.by_area.band_f",
       "scotgov.council_tax_stock.by_area.band_g",
-      "scotgov.council_tax_stock.by_area.band_h"
+      "scotgov.council_tax_stock.by_area.band_h",
+      "hmrc.higher_rate_taxpayers.count"
     ]
   },
   "targets": [
@@ -1759,41 +1874,6 @@
       },
       "category_id": "obr.efo_receipts",
       "label": "Income tax",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.ni",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "concept": "uk.tax.national_insurance.amount",
-        "map_to": "household"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/ni",
-          "value_variable": "total_national_insurance",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
-        },
-        "axiom": {
-          "metric_name": "obr/ni",
-          "status": "pending",
-          "value_rule": "uk.tax.national_insurance.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.ni_total",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_receipts",
-      "label": "National Insurance contributions",
       "value_operation": "calendar_year_window"
     },
     {
@@ -2196,13 +2276,46 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.tax.council_tax.net_amount"
+        "concept": "uk.tax.council_tax.net_amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "household"
+            }
+          ],
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). It binds row 15 ('Total council tax receipts'), the sum of the England, Scotland and Wales rows, over Great Britain's households (microcosm#1095). Row 19 ('Total net council tax receipts', obr.council_tax_total, bound before) adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge: GBP 1.34bn, 2.7% of the calendar-2025 window, which no household's council tax carries (domestic rates are obr.domestic_rates, held). Chronicle stamps the row K02000001, as OBR's table is UK-wide, and the selector pins it there. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2213,7 +2326,7 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_total"
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales"
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax",
@@ -3084,16 +3197,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[0].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "basic"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the basic rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_basic_rate",
@@ -3126,16 +3245,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "higher"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the higher rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_higher_rate",
@@ -3168,15 +3293,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "additional"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the additional rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_additional_rate",
@@ -3366,7 +3498,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.employment.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3375,7 +3514,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_income_band",
@@ -3392,7 +3538,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -3408,6 +3554,11 @@
         "filters": [
           {
             "concept": "uk.income.employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -3420,6 +3571,11 @@
           "filters": [
             {
               "variable": "employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3442,7 +3598,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -3454,7 +3610,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.self_employment.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3463,7 +3626,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_income_band",
@@ -3480,7 +3650,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3496,6 +3666,11 @@
         "filters": [
           {
             "concept": "uk.income.self_employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -3508,6 +3683,11 @@
           "filters": [
             {
               "variable": "self_employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3530,7 +3710,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -3542,7 +3722,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.dividends.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3551,7 +3738,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/dividend_income_income_band",
@@ -3568,7 +3762,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -3586,6 +3780,11 @@
             "concept": "uk.income.dividends.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3596,6 +3795,11 @@
           "filters": [
             {
               "variable": "dividend_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3618,7 +3822,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -3630,7 +3834,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.property.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3639,7 +3850,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). The x1.9 property-income undercount adjustment is a populace-side value declaration, not a fact property."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/property_income_income_band",
@@ -3655,8 +3873,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national index ignores (microcosm#1063, 2026-10-02). Property joins the employment, self-employment and private pension amount rows on María's ruling of 2026-10-11 (microcosm#1145 review): paired with the count rows' taxpayer_count_growth_by_total_income_band, the flat per-capita GDP index implied per-band mean profit moves of -13% to +11% between 2023 and 2025. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -3674,6 +3892,11 @@
             "concept": "uk.income.property.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3684,6 +3907,11 @@
           "filters": [
             {
               "variable": "property_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3706,7 +3934,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -3718,7 +3946,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.private_pension.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3727,7 +3962,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/private_pension_income_income_band",
@@ -3744,7 +3986,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -3762,6 +4004,11 @@
             "concept": "uk.income.private_pension.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3772,6 +4019,11 @@
           "filters": [
             {
               "variable": "private_pension_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3794,7 +4046,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3806,7 +4058,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.state_pension.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3815,7 +4074,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/state_pension_income_band",
@@ -3832,7 +4098,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -3850,6 +4116,11 @@
             "concept": "uk.income.state_pension.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3860,6 +4131,11 @@
           "filters": [
             {
               "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3882,7 +4158,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -4060,100 +4336,6 @@
       },
       "category_id": "dwp.benefit_cap",
       "label": "Capped households"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_standard_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "standard"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "STANDARD"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "standard"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living standard claimants"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_enhanced_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "enhanced"
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "ENHANCED"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "enhanced"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living enhanced claimants"
     },
     {
       "target_id": "dwp.esa_claimants",
@@ -5751,7 +5933,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5773,9 +5957,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/SINGLE",
@@ -5843,7 +6025,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5865,9 +6049,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/LONE_PARENT",
@@ -5935,7 +6117,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5957,9 +6141,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN",
@@ -6027,7 +6209,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -6049,9 +6233,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN",
@@ -7151,11 +7333,11 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimensions": []
       },
       "category_id": "ons.population",
-      "label": "UK population"
+      "label": "UK population",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_0_9_by_region",
@@ -7210,7 +7392,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -7227,7 +7408,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 0 9 by region"
+      "label": "Age 0 9 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_10_19_by_region",
@@ -7282,7 +7464,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -7299,7 +7480,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 10 19 by region"
+      "label": "Age 10 19 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_20_29_by_region",
@@ -7354,7 +7536,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -7371,7 +7552,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 20 29 by region"
+      "label": "Age 20 29 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_30_39_by_region",
@@ -7426,7 +7608,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -7443,7 +7624,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 30 39 by region"
+      "label": "Age 30 39 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_40_49_by_region",
@@ -7498,7 +7680,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -7515,7 +7696,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 40 49 by region"
+      "label": "Age 40 49 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_50_59_by_region",
@@ -7570,7 +7752,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -7587,7 +7768,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 50 59 by region"
+      "label": "Age 50 59 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_60_69_by_region",
@@ -7642,7 +7824,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -7659,7 +7840,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 60 69 by region"
+      "label": "Age 60 69 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_70_79_by_region",
@@ -7714,7 +7896,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -7731,7 +7912,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 70 79 by region"
+      "label": "Age 70 79 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_80_89_by_region",
@@ -7786,7 +7968,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -7803,7 +7984,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 80 89 by region"
+      "label": "Age 80 89 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_0_4",
@@ -7864,7 +8046,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -7877,7 +8058,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 0 4"
+      "label": "Female 0 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_10_14",
@@ -7938,7 +8120,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -7951,7 +8132,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 10 14"
+      "label": "Female 10 14",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_15_19",
@@ -8012,7 +8194,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8025,7 +8206,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 15 19"
+      "label": "Female 15 19",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_20_24",
@@ -8086,7 +8268,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8099,7 +8280,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 20 24"
+      "label": "Female 20 24",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_25_29",
@@ -8160,7 +8342,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8173,7 +8354,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 25 29"
+      "label": "Female 25 29",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_30_34",
@@ -8234,7 +8416,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8247,7 +8428,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 30 34"
+      "label": "Female 30 34",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_35_39",
@@ -8308,7 +8490,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8321,7 +8502,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 35 39"
+      "label": "Female 35 39",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_40_44",
@@ -8382,7 +8564,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8395,7 +8576,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 40 44"
+      "label": "Female 40 44",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_45_49",
@@ -8456,7 +8638,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8469,7 +8650,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 45 49"
+      "label": "Female 45 49",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_50_54",
@@ -8530,7 +8712,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8543,7 +8724,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 50 54"
+      "label": "Female 50 54",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_55_59",
@@ -8604,7 +8786,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8617,7 +8798,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 55 59"
+      "label": "Female 55 59",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_5_9",
@@ -8678,7 +8860,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8691,7 +8872,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 5 9"
+      "label": "Female 5 9",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_60_64",
@@ -8752,7 +8934,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8765,7 +8946,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 60 64"
+      "label": "Female 60 64",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_65_69",
@@ -8826,7 +9008,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8839,7 +9020,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 65 69"
+      "label": "Female 65 69",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_70_74",
@@ -8900,7 +9082,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8913,7 +9094,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 70 74"
+      "label": "Female 70 74",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_75_79",
@@ -8974,7 +9156,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8987,7 +9168,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 75 79"
+      "label": "Female 75 79",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_80_84",
@@ -9048,7 +9230,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9061,7 +9242,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 80 84"
+      "label": "Female 80 84",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_85_89",
@@ -9122,7 +9304,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9135,7 +9316,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 85 89"
+      "label": "Female 85 89",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_90_plus",
@@ -9186,7 +9368,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9195,7 +9376,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 90 plus"
+      "label": "Female 90 plus",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_0_4",
@@ -9256,7 +9438,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9269,7 +9450,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 0 4"
+      "label": "Male 0 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_10_14",
@@ -9330,7 +9512,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9343,7 +9524,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 10 14"
+      "label": "Male 10 14",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_15_19",
@@ -9404,7 +9586,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9417,7 +9598,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 15 19"
+      "label": "Male 15 19",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_20_24",
@@ -9478,7 +9660,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9491,7 +9672,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 20 24"
+      "label": "Male 20 24",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_25_29",
@@ -9552,7 +9734,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9565,7 +9746,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 25 29"
+      "label": "Male 25 29",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_30_34",
@@ -9626,7 +9808,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9639,7 +9820,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 30 34"
+      "label": "Male 30 34",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_35_39",
@@ -9700,7 +9882,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9713,7 +9894,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 35 39"
+      "label": "Male 35 39",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_40_44",
@@ -9774,7 +9956,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9787,7 +9968,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 40 44"
+      "label": "Male 40 44",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_45_49",
@@ -9848,7 +10030,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9861,7 +10042,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 45 49"
+      "label": "Male 45 49",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_50_54",
@@ -9922,7 +10104,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9935,7 +10116,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 50 54"
+      "label": "Male 50 54",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_55_59",
@@ -9996,7 +10178,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10009,7 +10190,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 55 59"
+      "label": "Male 55 59",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_5_9",
@@ -10070,7 +10252,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10083,7 +10264,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 5 9"
+      "label": "Male 5 9",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_60_64",
@@ -10144,7 +10326,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10157,7 +10338,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 60 64"
+      "label": "Male 60 64",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_65_69",
@@ -10218,7 +10400,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10231,7 +10412,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 65 69"
+      "label": "Male 65 69",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_70_74",
@@ -10292,7 +10474,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10305,7 +10486,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 70 74"
+      "label": "Male 70 74",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_75_79",
@@ -10366,7 +10548,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10379,7 +10560,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 75 79"
+      "label": "Male 75 79",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_80_84",
@@ -10440,7 +10622,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10453,7 +10634,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 80 84"
+      "label": "Male 80 84",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_85_89",
@@ -10514,7 +10696,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10527,7 +10708,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 85 89"
+      "label": "Male 85 89",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_90_plus",
@@ -10578,7 +10760,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10587,7 +10768,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 90 plus"
+      "label": "Male 90 plus",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_children_under_16",
@@ -10638,7 +10820,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -10661,7 +10842,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Scotland children under 16"
+      "label": "Scotland children under 16",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_babies_under_1",
@@ -10712,7 +10894,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0
@@ -10720,7 +10901,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Scotland babies under 1"
+      "label": "Scotland babies under 1",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_households_3plus_children",
@@ -10772,11 +10954,11 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age"
+        "source_concept": "ons.mid_year_population_estimate"
       },
       "category_id": "ons.population",
-      "label": "Scotland households 3 or more children"
+      "label": "Scotland households 3 or more children",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.household_composition.lone_households_under_65",
@@ -11247,6 +11429,240 @@
       },
       "category_id": "ons.household_composition",
       "label": "Multi-family households"
+    },
+    {
+      "target_id": "ons.households.english_regions",
+      "family": "ons_households",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/english_regions",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            }
+          ],
+          "notes": "ONS household estimates by region from the Labour Force Survey (April to June 2025), ONS's official household estimate for England and its regions (2025: England 24.329m, the nine regions summing to it). Each region's row controls the census household cells of its constituencies and authorities; the projection is not used for levels (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/english_regions",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households by English region (LFS)",
+      "selector_note": "ONS household estimates by region from the Labour Force Survey (April to June 2025), ONS's official household estimate for England and its regions (2025: England 24.329m, the nine regions summing to it). Each region's row controls the census household cells of its constituencies and authorities; the projection is not used for levels (microcosm#1123, nations win)."
+    },
+    {
+      "target_id": "nrs.households.scotland",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/scotland",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "SCOTLAND"
+            }
+          ],
+          "notes": "NRS household estimates for Scotland, June 2025 (2,570,799), from council tax records: Scotland's official estimate. It controls Scotland's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/scotland",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "nrs",
+        "source_concept": "nrs.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Scotland (NRS)",
+      "selector_note": "NRS household estimates for Scotland, June 2025 (2,570,799), from council tax records: Scotland's official estimate. It controls Scotland's census household cells (microcosm#1123, nations win)."
+    },
+    {
+      "target_id": "welshgov.households.wales",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "WALES"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/wales",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "WALES"
+            }
+          ],
+          "notes": "Welsh Government household estimates, mid-2024 (1,388,543), Wales's official estimate, carried to 2025 by the growth of Wales's ONS mid-year population (mid-2025 over revised mid-2024): no mid-2025 household estimate is published yet. It controls Wales's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/wales",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "source_concept": "welshgov.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Wales (Welsh Government, rolled to 2025)",
+      "selector_note": "Welsh Government household estimates, mid-2024 (1,388,543), Wales's official estimate, carried to 2025 by the growth of Wales's ONS mid-year population (mid-2025 over revised mid-2024): no mid-2025 household estimate is published yet. It controls Wales's census household cells (microcosm#1123, nations win).",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2024
+        }
+      ]
+    },
+    {
+      "target_id": "nisra.households.northern_ireland",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "NORTHERN_IRELAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/northern_ireland",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "NORTHERN_IRELAND"
+            }
+          ],
+          "notes": "Census 2021 households in Northern Ireland's eleven districts (768,810), carried to 2025 by LPS domestic and mixed-rated dwelling stock (1 April 2025 over 1 April 2021): NISRA's official household figures are 2016-based projections the census has overtaken. The lowest-confidence nation control; it controls Northern Ireland's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/northern_ireland",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "nisra",
+        "source_concept": "nisra.census2021_households",
+        "dimensions": []
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Northern Ireland (Census 2021, rolled to 2025)",
+      "selector_note": "Census 2021 households in Northern Ireland's eleven districts (768,810), carried to 2025 by LPS domestic and mixed-rated dwelling stock (1 April 2025 over 1 April 2021): NISRA's official household figures are 2016-based projections the census has overtaken. The lowest-confidence nation control; it controls Northern Ireland's census household cells (microcosm#1123, nations win).",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base",
+          "geography_level": "local_authority",
+          "geography_id": [
+            "N09000001",
+            "N09000002",
+            "N09000003",
+            "N09000004",
+            "N09000005",
+            "N09000006",
+            "N09000007",
+            "N09000008",
+            "N09000009",
+            "N09000010",
+            "N09000011"
+          ]
+        },
+        {
+          "role": "numerator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2021
+        }
+      ]
     },
     {
       "target_id": "mhclg.council_tax_stock.band_a",
@@ -13247,10 +13663,20 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_measure_id": "total_public_sector"
+        "source_measure_id": "total_public_sector",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-06",
+          "2025-09",
+          "2025-12"
+        ]
       },
       "category_id": "ons.employment",
-      "label": "Public sector employment"
+      "label": "Public sector employment",
+      "value_operation": "monthly_window_average",
+      "selector_note": "The mean of the four 2025 quarter-end headcounts (March, June, September, December) in ONS's June 2026 edition, a calendar-2025 level rather than the December snapshot (microcosm#1123, PolicyEngine/chronicle#313).",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "ons.land.land_value",
@@ -13277,10 +13703,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44r",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Land value"
+      "label": "Land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "ons.land.household_land_value",
@@ -13307,10 +13737,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44n",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Household land value"
+      "label": "Household land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "ons.land.corporate_land_value",
@@ -13337,10 +13771,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e43b",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Corporate land value"
+      "label": "Corporate land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "slc.repayments.devolved_total",
@@ -14931,7 +15369,7 @@
         "policyengine": {
           "metric_name": "obr/fuel_duties_cars",
           "value_variable": "fuel_duty",
-          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10). Bound at FY2024-25 (OBR label 2024), the base data's fiscal year, held to the calibration period like the HMRC CGT rows: the vehicle-type release is a single April 2024 vintage and its FY2025-26 figure is a projection the pipeline does not adopt (ruling 2026-09-11: fiscal-year sources bind FY2024-25 or CY2025, never a later fiscal year)."
+          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10). Measured at FY2024-25 (OBR label 2024), the base data's fiscal year, held to the calibration period like the HMRC CGT rows, and since microcosm#1113 held out of the objective as a reviewed measure exclusion (the OBR cars receipts include business-paid car fuel), still measured on every evaluation: the vehicle-type release is a single April 2024 vintage and its FY2025-26 figure is a projection the pipeline does not adopt (ruling 2026-09-11: fiscal-year sources bind FY2024-25 or CY2025, never a later fiscal year)."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties_cars",
@@ -15014,7 +15452,7 @@
         "policyengine": {
           "metric_name": "ons/household_energy_expenditure",
           "value_variable": "domestic_energy_consumption",
-          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); retained for registry parity."
+          "notes": "ONS Consumer Trends COICOP 04.5 electricity, gas and other fuels, current prices, calendar year; the publisher class includes other fuels (heating oil, solid fuel), which the frame's electricity plus gas column does not carry, so the bound total is a few percent wide of the modelled scope (#890 F1). Signed out of calibration once the 04.5.1 electricity and 04.5.2 gas sub-classes were published and bound per fuel (chronicle #271); since microcosm#1113 those per-fuel rows are reviewed measure exclusions, measured on every evaluation and held out of the objective; retained for registry parity."
         },
         "axiom": {
           "metric_name": "ons/household_energy_expenditure",
@@ -15029,7 +15467,10 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "04.5",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         }
       },
       "category_id": "ons.consumer_trends",
@@ -15064,7 +15505,10 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "04.5.1",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         }
       },
       "category_id": "ons.consumer_trends",
@@ -15099,11 +15543,52 @@
         "period_type": "calendar_year",
         "dimension_values": {
           "coicop": "04.5.2",
-          "frequency": "annual"
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
         }
       },
       "category_id": "ons.consumer_trends",
       "label": "Gas (COICOP 04.5.2)"
+    },
+    {
+      "target_id": "ons.household_road_fuel_expenditure",
+      "family": "ons_national_accounts",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.consumption.road_fuel.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/household_road_fuel_expenditure",
+          "value_expression": "petrol_spending + diesel_spending",
+          "notes": "ONS Consumer Trends COICOP 07.2.2 fuels and lubricants for personal transport equipment, current prices, calendar year, bound on the frame's petrol plus diesel spend (microcosm#1113). The publisher class also carries other motor fuels and lubricants, about 0.4 percent of it on the LCFS 2023-24 diary (c72213), which the measure does not. The lcfs_consumption stage levels petrol plus diesel to the calendar-2024 row less that share, so this row reads about 0.4 percent low from scope alone: a known offset, left in place and not scaled into the target (María's ruling of 2026-10-10). ONS publishes the class on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322): it includes non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves out residents' fuel bought abroad. Consumer Trends publishes those two flows for total spending only (for 2024, GBP 64.7bn by non-residents in the UK, 3.8 percent of the domestic total, and GBP 78.9bn by residents abroad) and splits them by no class, so no national bridge is applied and their size for road fuel is not known. Beyond the scope offset, the design-weight gap to this calendar-2025 row is the engine's 2024-to-2025 uprating of the two columns against ONS's own move (37.025bn to 35.099bn, -5.2 percent). policyengine-uk 2.122.2 carries both columns -2.7 percent, so on that version the row reads about +2.3 percent at design weights, scope offset included, and the calibration closes that by moving weight away from fuel buyers. That is a desk figure from the engine's indices; the national remeasure records the measured one. Household-scope road fuel replaces the OBR cars receipts as the bound fuel row: those are a fiscal-year duty total that includes business use of cars, which the frame reaches only through the engine's conversion of spend to litres, so they stay measured as a diagnostic (calibration_measure_exclusions.json)."
+        },
+        "axiom": {
+          "metric_name": "ons/household_road_fuel_expenditure",
+          "status": "pending",
+          "value_rule": "uk.consumption.road_fuel.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "dimension_values": {
+          "coicop": "07.2.2",
+          "frequency": "annual",
+          "consumption_concept": "domestic",
+          "price_basis": "current_prices",
+          "seasonal_adjustment": "not_seasonally_adjusted"
+        }
+      },
+      "category_id": "ons.consumer_trends",
+      "label": "Fuels and lubricants for personal transport (COICOP 07.2.2)"
     },
     {
       "target_id": "scotgov.bus.passenger_revenue",
@@ -18645,6 +19130,134 @@
       "label": "Income Tax liabilities by total income band"
     },
     {
+      "target_id": "hmrc.itl.higher_rate_taxpayers",
+      "family": "hmrc_itl_marginal_rate",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "higher"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/higher",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "HIGHER"
+            }
+          ],
+          "notes": "Higher rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's higher row is the Scottish higher rate alone, as the engine's HIGHER band is for a Scottish taxpayer. microcosm#1123."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/higher",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Higher rate Income Tax payers by region and nation"
+    },
+    {
+      "target_id": "hmrc.itl.additional_rate_taxpayers",
+      "family": "hmrc_itl_marginal_rate",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "additional"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/additional",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "ADDITIONAL"
+            }
+          ],
+          "notes": "Additional rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's additional row is the Scottish advanced and top rates together, as the engine's ADDITIONAL band is for a Scottish taxpayer (the advanced rate began in 2024-25, so the 2023-24 row is the top rate alone). microcosm#1123."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/additional",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Additional rate Income Tax payers by region and nation"
+    },
+    {
       "target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "family": "hmrc_spi",
       "geography_levels": [
@@ -18654,7 +19267,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.savings_interest.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -18663,7 +19283,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension."
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/savings_interest_income_income_band",
@@ -18679,8 +19306,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+      "uprating_index": "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period in two legs on the pinned engine's parameters: gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2024, the index of the variable's history up to the dataset's year, then gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025, the index policyengine-uk's dataset projection grows savings_interest_income with (policyengine_uk/data/uprating_indices.yaml; uk-data#541). The SPI donors take the same path: rebased to the dataset's year by the history index, then projected by the engine. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane), with the projection leg moved to the engine's index by her ruling of 2026-10-09 (microcosm#1095). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
@@ -18698,6 +19325,11 @@
             "concept": "uk.income.savings_interest.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -18708,6 +19340,11 @@
           "filters": [
             {
               "variable": "savings_interest_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -18730,7 +19367,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -26877,42 +27514,6 @@
       "value_operation": "calendar_year_window"
     },
     {
-      "target_id": "hmrc.salary_sacrifice.it_relief_total",
-      "family": "hmrc_salary_sacrifice",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.tax.salary_sacrifice.income_tax_relief"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "kind": "input_substitution_counterfactual",
-          "zeroed_input": "pension_contributions_via_salary_sacrifice",
-          "folded_into": "employment_income",
-          "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions, all rates, as the rise in income tax when the sacrifice is returned to pay (one counterfactual simulation from the same frame at the calibration year, uk-data's recipe; microcosm#1069 c11, R7). income_tax carries the High Income Child Benefit charge and the annual-allowance charge, so the delta includes their response to the returned pay (measured on the c11 arm). The rate-band rows wait for a band test that reads after-allowance thresholds and the Scottish bands."
-        },
-        "axiom": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "status": "pending",
-          "value_rule": "uk.tax.salary_sacrifice.income_tax_relief"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_income_tax_relief_total"
-      },
-      "category_id": "hmrc.salary_sacrifice_income_tax_relief",
-      "label": "Income Tax relief total"
-    },
-    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -26925,7 +27526,7 @@
         "concept": "uk.income.self_employment.amount",
         "filters": [
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -26962,9 +27563,10 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
-      "label": "Amount"
+      "label": "Amount",
+      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
     },
     {
       "target_id": "hmrc.self_employment_income.count",
@@ -26984,7 +27586,7 @@
             "value": 0
           },
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27024,7 +27626,9 @@
         ]
       },
       "category_id": "hmrc.tax_statistics",
-      "label": "Count"
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -27039,7 +27643,7 @@
         "concept": "uk.income.employment.amount",
         "filters": [
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27076,9 +27680,10 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
-      "label": "Amount"
+      "label": "Amount",
+      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
     },
     {
       "target_id": "hmrc.employment_income.count",
@@ -27098,7 +27703,7 @@
             "value": 0
           },
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27138,7 +27743,9 @@
         ]
       },
       "category_id": "hmrc.tax_statistics",
-      "label": "Count"
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge). The bridge is gated on source agreement at each grain: the bands over the area cells before either side's index, within 2% (microcosm#1123)."
     },
     {
       "target_id": "ons.age.0_10",
@@ -27525,6 +28132,20 @@
             "operator": ">",
             "value": 0
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27549,14 +28170,29 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households",
-        "record_set_spec_id": [
-          "uk.local_geography.uc_households.by_constituency.v1",
-          "uk.local_geography.uc_households.by_local_authority.v1"
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area"
+      "label": "Households by area",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -27576,6 +28212,20 @@
             "concept": "uk.household.children",
             "equals": 0
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27591,11 +28241,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 0
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 0"
+      "label": "Households by area children 0",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -27615,6 +28289,20 @@
             "concept": "uk.household.children",
             "equals": 1
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27630,11 +28318,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 1
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 1"
+      "label": "Households by area children 1",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -27654,6 +28366,20 @@
             "concept": "uk.household.children",
             "equals": 2
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27669,11 +28395,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 2
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 2"
+      "label": "Households by area children 2",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -27693,6 +28443,20 @@
             "concept": "uk.household.children",
             "lower": 3
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27708,11 +28472,56 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": [
+            3,
+            4,
+            "5 or more"
+          ]
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 3 or more"
+      "label": "Households by area children 3 or more",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "number_of_children": 3
+          }
+        },
+        {
+          "dimension_values": {
+            "number_of_children": 4
+          }
+        },
+        {
+          "dimension_values": {
+            "number_of_children": "5 or more"
+          }
+        }
+      ],
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
     },
     {
       "target_id": "ons.equiv_net_income_bhc",
@@ -27848,7 +28657,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
       },
       "category_id": "ons.housing",
-      "label": "Owned outright"
+      "label": "Owned outright",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.owned_mortgage",
@@ -27888,7 +28699,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
       },
       "category_id": "ons.housing",
-      "label": "Owned mortgage"
+      "label": "Owned mortgage",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.private_rent",
@@ -27928,7 +28741,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
       },
       "category_id": "ons.housing",
-      "label": "Private rent"
+      "label": "Private rent",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.social_rent",
@@ -27974,7 +28789,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
       },
       "category_id": "ons.housing",
-      "label": "Social rent"
+      "label": "Social rent",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.rent.private_rent",
@@ -29772,6 +30589,82 @@
           ]
         }
       }
+    },
+    {
+      "target_id": "hmrc.higher_rate_taxpayers.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "N"
+          ]
+        },
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "N"
+          ]
+        }
+      },
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "higher"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/higher_rate_taxpayers/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "HIGHER"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/higher_rate_taxpayers/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "higher_rate_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Higher rate taxpayers",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
     }
   ],
   "diagnostic_references": {
@@ -29985,6 +30878,124 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:31256472aba8a0b143c30697"
       },
       "notes": "DWP Winter Fuel Payment statistics, winter 2025/26 recipients in England and Wales (11.0m), retained as diagnostic provenance beside the bound OBR line (microcosm#1069 c10): DWP counts everyone paid and HMRC recovers the payment above £35,000 later, while the engine withholds the household payment above £35,000 (PolicyEngine/policyengine-uk#1760), so the count measures a different quantity until the engine separates payment from recovery. Never insert it into the fitting registry."
+    },
+    "obr.ni": {
+      "attach_to_target": "obr.ni_employee",
+      "metadata_prefix": "obr_ni_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "obr.ni",
+        "ledger_selector": {
+          "source_name": "obr",
+          "source_concept": "obr.ni_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "obr/ni",
+        "family": "obr",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "cash_total_beside_accrued_class_rows"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:eccab3ee763d68bb782276a7"
+      },
+      "notes": "March 2026 OBR FY2025-26 total National Insurance contributions forecast (table 3.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 1.8% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "attach_to_target": "hmrc.salary_sacrifice.it_relief_higher_rate",
+      "metadata_prefix": "salary_sacrifice_it_relief_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "tax_year",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "hmrc.salary_sacrifice.it_relief_total",
+        "ledger_selector": {
+          "source_name": "hmrc",
+          "source_concept": "hmrc.ss_income_tax_relief_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "hmrc/salary_sacrifice_it_relief_total",
+        "family": "hmrc_salary_sacrifice",
+        "period": 2024,
+        "metadata": {
+          "diagnostic_role": "all_rates_total_beside_bound_rate_bands"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:ab19a7f36038519a7f359742"
+      },
+      "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions at all rates (GBP 8.8bn), retained as diagnostic provenance beside the three bound rate bands of Table 6.1 (María's ruling of 2026-10-09, microcosm#1095). The bands carry the same relief by rate; binding the total as well would fit it twice. Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_standard_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_standard_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_standard_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "standard"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_standard_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:7e25a3faa6fdceb4f5ee5868"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living standard-rate claimants in England and Wales at the end of January 2025 (1.283m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_enhanced_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_enhanced_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_enhanced_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "enhanced"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_enhanced_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:8d850c8ffb6eae8f4c71e611"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living enhanced-rate claimants in England and Wales at the end of January 2025 (1.608m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

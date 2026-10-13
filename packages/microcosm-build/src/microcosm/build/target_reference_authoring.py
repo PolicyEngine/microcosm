@@ -139,6 +139,9 @@ class AreaSignedDeferral:
     rationale: str
     area_ids: tuple[str, ...]
     defer_if_compiles: bool = False
+    #: ISO date after which the deferral no longer stands; the runtime refuses
+    #: an expired one at its review date (microcosm#1123 small-cell rule).
+    expires_on: str | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id:
@@ -189,6 +192,10 @@ class AreaTargetReferenceAuthoringConfig:
     )
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
+    #: ``uprating_index -> applier``: an area target declaring an index is
+    #: uprated at authoring exactly as the runtime compile uprates it, so the
+    #: committed reference and the run manifest carry one value (#1123).
+    uprating_appliers: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
 
     def normalized_areas(self) -> dict[str, tuple[str, ...]]:
         """Return area rosters with duplicate ids removed in declared order."""
@@ -384,8 +391,10 @@ def author_target_references(
             if operand_selectors:
                 # A ratio-scaled cell resolves its quotient from facts the
                 # row selector never matches (national rows for a region
-                # cell), so the compile sees the source's facts that match
-                # any operand selector as well.
+                # cell), so the compile sees the facts that match any operand
+                # selector as well, read from the operand's own source: a
+                # roll-forward's growth can come from another publisher than
+                # its base (Wales's households by ONS population, #1123).
                 compile_facts = [
                     fact
                     for fact in source_facts
@@ -395,6 +404,15 @@ def author_target_references(
                         for selector in operand_selectors
                     )
                 ]
+                own_source = target["ledger_selector"].get("source_name")
+                compile_facts.extend(
+                    fact
+                    for selector in operand_selectors
+                    if selector.get("source_name")
+                    and selector.get("source_name") != own_source
+                    for fact in facts_by_source.get(str(selector["source_name"]), ())
+                    if _fact_matches_selector(fact, selector)
+                )
             try:
                 registry = compile_ledger_target_references(
                     compile_facts,
@@ -625,6 +643,10 @@ def author_area_target_references(
                                 "status": "signed_deferred",
                                 "signed_reason_id": signed_deferral.reason_id,
                                 "signed_rationale": signed_deferral.rationale,
+                                # The compiled value a deferral keeps out of the
+                                # solve, so reconciliation can still count it
+                                # in its leg's control (microcosm#1123).
+                                "deferred_value": float(registry.specs[0].value),
                             }
                         )
                         candidates.append(entry)
@@ -632,6 +654,16 @@ def author_area_target_references(
                     spec = registry.specs[0]
                     resolved_period = str(spec.metadata.get("ledger_fact_period", ""))
                     _apply_uprating_hold(row, resolved_period, config.target_period)
+                    uprating: dict[str, str] = {}
+                    if row.get("uprating_index") is not None:
+                        registry = _apply_declared_uprating(row, registry, config)
+                        applied = registry.specs[0]
+                        uprating = {
+                            "index": str(row["uprating_index"]),
+                            "factor": str(applied.metadata["uprating_factor"]),
+                            "value_before_uprating": str(spec.value),
+                        }
+                        spec = applied
                     if "uprating_from_period" in row:
                         uprating_holds.append(
                             {
@@ -641,6 +673,7 @@ def author_area_target_references(
                                 "geography_id": area_id,
                                 "from": str(row["uprating_from_period"]),
                                 "to": str(row["uprating_to_period"]),
+                                **uprating,
                             }
                         )
                     active_rows.append(row)
@@ -706,6 +739,7 @@ def author_area_target_references(
                 "rationale": deferral.rationale,
                 "area_ids": list(deferral.area_ids),
                 **({"defer_if_compiles": True} if deferral.defer_if_compiles else {}),
+                **({"expires_on": deferral.expires_on} if deferral.expires_on else {}),
             }
             for deferral in config.area_signed_deferrals
         ],
@@ -793,6 +827,7 @@ def target_references_resource(
                         "monthly_window_count_x_mean",
                         "linear_combination",
                         "scaled_by_ratio",
+                        "rolled_forward_by_ratio",
                         "calendar_year_window",
                     }
                 }
@@ -1128,6 +1163,12 @@ def _area_reference_row(
     assertion_policy = target.get("assertion_policy")
     if assertion_policy is not None:
         row["assertion_policy"] = assertion_policy
+    period_match_policy = target.get("period_match_policy")
+    if period_match_policy is not None:
+        row["period_match_policy"] = period_match_policy
+    uprating_index = target.get("uprating_index")
+    if uprating_index is not None:
+        row["uprating_index"] = str(uprating_index)
     value_operation = config.value_operation_by_target_id.get(target_id)
     if value_operation is not None and value_operation != "identity":
         row["value_operation"] = value_operation
@@ -1466,7 +1507,7 @@ def _signed_row_exclusion(
 def _apply_declared_uprating(
     row: Mapping[str, Any],
     registry: TargetRegistry,
-    config: TargetReferenceAuthoringConfig,
+    config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
 ) -> TargetRegistry:
     """Apply the country's applier for the reference's declared ``uprating_index``.
 
