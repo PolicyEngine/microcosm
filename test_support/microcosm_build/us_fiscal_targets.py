@@ -1174,6 +1174,7 @@ def complete_coverage_targets() -> list[dict[str, object]]:
     return [
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
+        *complete_state_agi_top_tail_rows(),
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
@@ -1182,6 +1183,32 @@ def complete_coverage_targets() -> list[dict[str, object]]:
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
+
+
+def complete_state_agi_top_tail_rows() -> list[dict[str, object]]:
+    """$1M+ AGI and return-count state band rows for all 51 states (#940)."""
+    rows = []
+    for state_fips, postal in US_STATE_FIPS_TO_POSTAL.items():
+        for measure in ("adjusted_gross_income", "return_count"):
+            name = (
+                f"irs_soi.ty2023.historic_table_2.state_agi.{postal.lower()}."
+                f"1m_plus.{measure}"
+            )
+            rows.append(
+                {
+                    "name": name,
+                    "measure": name,
+                    "family": "irs_soi",
+                    "metadata": {
+                        "requires_state_agi_band_rebase": "true",
+                        "source_measure_id": measure,
+                        "state_fips": state_fips,
+                        "agi_lower_bound": "1000000.0",
+                        "agi_upper_bound": "inf",
+                    },
+                }
+            )
+    return rows
 
 
 def federal_income_tax_total_row() -> dict[str, object]:

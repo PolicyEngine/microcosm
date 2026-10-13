@@ -120,7 +120,12 @@
             "source_name": "ons",
             "source_concept": "ons.mid_year_population_estimate",
             "geography_id": "K02000001",
-            "dimensions": []
+            "dimensions": [],
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 2
         }
@@ -334,7 +339,15 @@
               "dfi_ni.translink_bus.passenger_journeys",
               "dfi_ni.translink_bus.passenger_receipts"
             ],
-            "period_type": "fiscal_year"
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 24
         },
@@ -376,8 +389,10 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend targets (04.5.1 and 04.5.2 bound per fuel) and the motor-fuel spend diagnostic.",
-      "consumers": [],
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
       "planned_consumers": [
         "uk_aggregate_admin"
       ],
@@ -398,6 +413,90 @@
             "period_type": "calendar_year"
           },
           "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_totals_and_divisions",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": "0CN",
+              "coicop": [
+                "NAT0",
+                "0",
+                "01",
+                "02",
+                "03",
+                "04",
+                "05",
+                "06",
+                "07",
+                "08",
+                "09",
+                "10",
+                "11",
+                "12"
+              ]
+            }
+          },
+          "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_out_of_survey_classes",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": [
+                "02CN",
+                "04CN",
+                "12CN"
+              ],
+              "coicop": [
+                "02.3",
+                "04.2",
+                "12.6.1"
+              ]
+            }
+          },
+          "expected_row_count": 9
+        }
+      ]
+    },
+    {
+      "resource": "desnz_road_fuel_by_vehicle.json",
+      "purpose": "DESNZ sub-national road transport fuel consumption (25 June 2026 workbook), UK totals by vehicle type and fuel in ktoe, calendar years 2022 to 2024: the cars share of each fuel's road use for the LCFS litres audit's per-fuel benchmark (microcosm#1113, PolicyEngine/chronicle#322).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "desnz_road_fuel_uk_by_vehicle_and_fuel",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": "desnz.road_transport.fuel_consumption",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              2022,
+              2023,
+              2024
+            ]
+          },
+          "expected_row_count": 30
         }
       ]
     },
@@ -726,7 +825,11 @@
               "E12000008",
               "E12000009"
             ],
-            "dimensions": []
+            "dimensions": [],
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 26
         }
@@ -1047,6 +1150,113 @@
             ]
           },
           "expected_row_count": 21
+        }
+      ]
+    },
+    {
+      "resource": "ons_spree_tenure_dwellings.json",
+      "purpose": "ONS subnational dwelling stock by tenure (SPREE) for English local authorities, 2022 and 2024: owned outright, owned with a mortgage, private rented, social rented and total dwellings. Consumed by the census tenure share drift (uk_runtime.tenure_drift, microcosm#1123): dwellings move the census tenure shares, never their levels.",
+      "consumers": [
+        "uk_runtime.tenure_drift"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spree_dwellings_by_tenure_2022_2024",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": [
+              "ons.spree.owned_outright_dwellings",
+              "ons.spree.owned_mortgage_dwellings",
+              "ons.spree.private_rent_dwellings",
+              "ons.spree.social_rent_dwellings",
+              "ons.spree.total_dwellings"
+            ],
+            "geography_level": "local_authority",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2022",
+              "2024"
+            ]
+          },
+          "expected_row_count": 2950
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_spi_table_3_11_uk_rows.json",
+      "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.11 (income and tax by sex, region and country): the United Kingdom rows by range of total income, for taxpayers, total income and total tax. The UK row counts the taxpayers HMRC places in no region, so it is larger than the twelve regional areas' sum. Consumed by the national band bridges (uk_runtime.national_reconciliation, microcosm#1123), which check that the factor each bridge applies to the regional cells is the one the UK row over the regional sum explains.",
+      "consumers": [
+        "uk_runtime.national_reconciliation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spi_2023_24_table_3_11_united_kingdom_rows",
+          "selector": {
+            "source_name": "hmrc",
+            "source_measure_id": [
+              "total_income_count",
+              "total_income_amount",
+              "total_tax_amount"
+            ],
+            "groupby_dimension": "hmrc.total_income_band_by_sex",
+            "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+            "geography_id": "K02000001",
+            "period_type": "tax_year"
+          },
+          "expected_row_count": 120
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_property_rental_income_facts.json",
+      "purpose": "HMRC Property Rental Income Statistics 2026 release, tax year 2024-25 rows the property components stage allocates landlords' receipts from and reports against (microcosm#1106): Table 1 unincorporated landlords by type of tax entity (individuals, partnerships, all; the individuals' share that restates Table 13 on the individuals basis), Table 2 rental income before allowable expenses by type of tax entity (the individuals' receipts the open top band is solved to), Table 6 allowable expenses by type of tax entity (the individuals' share of expenses), Table 8 allowable expenses by expense type, all tax entities (residential finance costs among them, although ITTOIA 2005 s. 272A no longer deducts them) and Table 13 landlords by size of rental income, all tax entities (the eleven bands the receipts walk fills). No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_property_rental",
+        "uk_runtime.property_components"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table1_ty2024_landlords_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_1.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table2_ty2024_rental_income_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_2.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table6_ty2024_allowable_expenses_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_6.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table8_ty2024_allowable_expenses_by_expense_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_8.ty2024"
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table13_ty2024_landlords_by_size_of_rental_income",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_13.ty2024"
+          },
+          "expected_row_count": 11
         }
       ]
     }

@@ -98,6 +98,8 @@ from microcosm.build.plan import _nonzero_share
 from microcosm.calibrate.solve import effective_sample_size
 from microcosm.frame import Frame
 
+from .weight_quality import aggregate_source_weights
+
 __all__ = [
     "DIAGNOSTICS",
     "PROBLEM",
@@ -117,6 +119,7 @@ PROBLEM = "problem"
 #: Alias of one calibration's schema-8 diagnostics
 #: (``diagnostics.calibration@1`` ``diagnostics``).
 DIAGNOSTICS = "diagnostics"
+CELL_DIAGNOSTICS = "cell_diagnostics"
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +335,11 @@ def _exact_median(positive: np.ndarray) -> float:
     return float(statistics.median(Fraction(float(value)) for value in central))
 
 
-def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
+def weight_summary(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
+) -> dict[str, Any]:
     """The concentration summary of one shipped weight vector.
 
     The ESS fraction divides the Kish effective sample size by every record,
@@ -348,7 +355,11 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     invalid concentration summaries are refused rather than compared.
     """
 
-    values = np.asarray(weights, dtype=np.float64)
+    values = (
+        np.asarray(weights, dtype=np.float64)
+        if source_household_ids is None
+        else aggregate_source_weights(weights, source_household_ids)
+    )
     if values.ndim != 1 or values.size == 0:
         raise ValueError("Weights must be a non-empty vector.")
     if not np.isfinite(values).all() or (values < 0).any():
@@ -410,38 +421,70 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
 
 
 def weight_ess_gate(
-    weights: Sequence[float] | np.ndarray, *, minimum_ess_fraction: float
+    weights: Sequence[float] | np.ndarray,
+    *,
+    minimum_ess_fraction: float | None = None,
+    minimum_effective_sample_size: float | None = None,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
 ) -> GateResult:
     """Require the shipped weights to retain an effective-sample-size floor."""
 
-    minimum = _number("minimum_ess_fraction", minimum_ess_fraction)
-    if not 0 < minimum <= 1:
+    if minimum_ess_fraction is None and minimum_effective_sample_size is None:
+        raise ValueError(
+            "Declare minimum_ess_fraction or minimum_effective_sample_size."
+        )
+    minimum = (
+        None
+        if minimum_ess_fraction is None
+        else _number("minimum_ess_fraction", minimum_ess_fraction)
+    )
+    if minimum is not None and not 0 < minimum <= 1:
         raise ValueError("minimum_ess_fraction must lie in (0, 1].")
+    absolute = (
+        None
+        if minimum_effective_sample_size is None
+        else _number("minimum_effective_sample_size", minimum_effective_sample_size)
+    )
+    if absolute is not None and not absolute > 0:
+        raise ValueError("minimum_effective_sample_size must be strictly positive.")
+    thresholds = {
+        **({"minimum_ess_fraction": minimum} if minimum is not None else {}),
+        **({"minimum_effective_sample_size": absolute} if absolute is not None else {}),
+    }
     try:
-        summary = weight_summary(weights)
+        summary = weight_summary(weights, source_household_ids=source_household_ids)
     except _InvalidWeightSummaryError as exc:
         return GateResult(
             name="weight_ess",
             passed=False,
             failures=(str(exc),),
-            details={"minimum_ess_fraction": minimum},
+            details=thresholds,
         )
     fraction = float(summary["ess_fraction"])
     failures = (
         (f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",)
-        if not fraction >= minimum
+        if minimum is not None and not fraction >= minimum
         else ()
     )
+    if absolute is not None and not summary["effective_sample_size"] >= absolute:
+        failures = (
+            *failures,
+            f"ESS {summary['effective_sample_size']:.6g} is below the reviewed "
+            f"absolute minimum {absolute:.6g}.",
+        )
     return GateResult(
         name="weight_ess",
         passed=not failures,
         failures=failures,
-        details={**summary, "minimum_ess_fraction": minimum},
+        details={**summary, **thresholds},
     )
 
 
 def weight_ratio_gate(
-    weights: Sequence[float] | np.ndarray, *, maximum_max_to_median_ratio: float
+    weights: Sequence[float] | np.ndarray,
+    *,
+    maximum_max_to_median_ratio: float,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
 ) -> GateResult:
     """Backstop a shipped-weight max to positive-median concentration blowout."""
 
@@ -449,7 +492,7 @@ def weight_ratio_gate(
     if not maximum > 0:
         raise ValueError("maximum_max_to_median_ratio must be strictly positive.")
     try:
-        summary = weight_summary(weights)
+        summary = weight_summary(weights, source_household_ids=source_household_ids)
     except _InvalidWeightSummaryError as exc:
         return GateResult(
             name="weight_ratio",
@@ -821,18 +864,328 @@ def _formula_owned_export(
     )
 
 
-def _weight_ess(*, frame: Frame, minimum_ess_fraction: float) -> GateResult:
+def _weight_inputs(
+    frame: Frame,
+    aggregation_column: str | None,
+    required_weight_entity: str | None,
+    required_weight_kind: str | None,
+) -> tuple[str, np.ndarray, np.ndarray | None, dict[str, object]]:
     entity, weights = _weighted_entity(frame)
-    result = weight_ess_gate(weights, minimum_ess_fraction=minimum_ess_fraction)
-    return _with_failures(result, failures=(), details={"weight_entity": entity})
+    if required_weight_entity is not None and entity != required_weight_entity:
+        raise ValueError(
+            f"Weight gates require {required_weight_entity!r} weights, got {entity!r}."
+        )
+    kind = frame.weights_for(entity).kind.value
+    if required_weight_kind is not None and kind != required_weight_kind:
+        raise ValueError(
+            f"Weight gates require {required_weight_kind!r} weights, got {kind!r}."
+        )
+    lineage = None
+    details: dict[str, object] = {"weight_entity": entity}
+    if aggregation_column is not None:
+        if not isinstance(aggregation_column, str) or not aggregation_column:
+            raise ValueError("aggregation_column must name a lineage column.")
+        table = frame.table(entity)
+        if aggregation_column not in table:
+            raise ValueError(
+                f"Missing source-household lineage column {aggregation_column!r} "
+                f"on {entity!r}."
+            )
+        lineage = table[aggregation_column].to_numpy()
+        details.update(
+            aggregation_column=aggregation_column,
+            weight_kind=kind,
+            n_support_rows=int(weights.size),
+        )
+    return entity, weights, lineage, details
 
 
-def _weight_ratio(*, frame: Frame, maximum_max_to_median_ratio: float) -> GateResult:
-    entity, weights = _weighted_entity(frame)
-    result = weight_ratio_gate(
-        weights, maximum_max_to_median_ratio=maximum_max_to_median_ratio
+def _weight_ess(
+    *,
+    frame: Frame,
+    minimum_ess_fraction: float | None = None,
+    minimum_effective_sample_size: float | None = None,
+    aggregation_column: str | None = None,
+    required_weight_entity: str | None = None,
+    required_weight_kind: str | None = None,
+) -> GateResult:
+    _, weights, lineage, details = _weight_inputs(
+        frame, aggregation_column, required_weight_entity, required_weight_kind
     )
-    return _with_failures(result, failures=(), details={"weight_entity": entity})
+    result = weight_ess_gate(
+        weights,
+        minimum_ess_fraction=minimum_ess_fraction,
+        minimum_effective_sample_size=minimum_effective_sample_size,
+        source_household_ids=lineage,
+    )
+    return _with_failures(result, failures=(), details=details)
+
+
+def _weight_ratio(
+    *,
+    frame: Frame,
+    maximum_max_to_median_ratio: float,
+    aggregation_column: str | None = None,
+    required_weight_entity: str | None = None,
+    required_weight_kind: str | None = None,
+) -> GateResult:
+    _, weights, lineage, details = _weight_inputs(
+        frame, aggregation_column, required_weight_entity, required_weight_kind
+    )
+    result = weight_ratio_gate(
+        weights,
+        maximum_max_to_median_ratio=maximum_max_to_median_ratio,
+        source_household_ids=lineage,
+    )
+    return _with_failures(result, failures=(), details=details)
+
+
+def _cell_rows(
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+) -> list[tuple[str, Mapping[str, Any]]]:
+    """Refuse absent identities or incomplete declared cell/scenario coverage."""
+
+    scenarios = _strings("required_scenarios", required_scenarios)
+    cells = _strings("required_cells", required_cells)
+    if not isinstance(cell_diagnostics, Mapping):
+        raise ValueError("Cell diagnostics must be a decoded artifact mapping.")
+    if (
+        cell_diagnostics.get("schema_version") != 1
+        or cell_diagnostics.get("kind") != "transport_cell_support_diagnostics"
+    ):
+        raise ValueError("Unsupported cell diagnostics schema.")
+    for key, expected in (
+        ("source_household_column", aggregation_column),
+        ("weight_entity", required_weight_entity),
+        ("weight_kind", required_weight_kind),
+    ):
+        if not expected or cell_diagnostics.get(key) != expected:
+            raise ValueError(
+                f"Cell diagnostics require {key}={expected!r}, got "
+                f"{cell_diagnostics.get(key)!r}."
+            )
+    entries = cell_diagnostics.get("scenarios")
+    if not isinstance(entries, list | tuple) or not entries:
+        raise ValueError("Cell diagnostics are missing declared scenarios.")
+    found: list[str] = []
+    all_cells: set[str] | None = None
+    result = []
+    for entry in entries:
+        if not isinstance(entry, Mapping) or entry.get("scenario") not in scenarios:
+            raise ValueError("Cell diagnostics contain an undeclared scenario.")
+        scenario = entry["scenario"]
+        found.append(scenario)
+        rows = entry.get("cells")
+        if not isinstance(rows, list | tuple) or not rows:
+            raise ValueError(f"Cell diagnostics for {scenario} are missing cells.")
+        names = [row.get("name") for row in rows if isinstance(row, Mapping)]
+        if len(names) != len(rows) or len(set(names)) != len(names):
+            raise ValueError(f"Cell diagnostics for {scenario} repeat or omit cells.")
+        if not set(cells) <= set(names):
+            raise ValueError(
+                f"Cell diagnostics for {scenario} have incomplete declared cells: "
+                f"missing {[name for name in cells if name not in names]}."
+            )
+        if all_cells is None:
+            all_cells = set(names)
+        elif set(names) != all_cells:
+            raise ValueError(
+                "Cell diagnostics must cover the same cells in every scenario."
+            )
+        for row in rows:
+            period = row.get("period")
+            if (
+                isinstance(period, bool)
+                or not isinstance(period, int | str)
+                or period == ""
+            ):
+                raise ValueError(f"Cell {row['name']} needs an explicit period.")
+            for flag in ("structural_zero", "suppressed", "meets_tracked_target"):
+                if not isinstance(row.get(flag), bool):
+                    raise ValueError(f"Cell {row['name']} needs boolean {flag}.")
+            for metric in ("source_household_ess", "dollar_contribution_ess"):
+                if _number(metric, row.get(metric)) < 0:
+                    raise ValueError(f"Cell {row['name']} has negative {metric}.")
+            contributors = row.get("positive_contributors")
+            if (
+                isinstance(contributors, bool)
+                or not isinstance(contributors, int)
+                or contributors < 0
+            ):
+                raise ValueError(f"Cell {row['name']} needs a contributor count.")
+            if row["structural_zero"]:
+                if (
+                    contributors
+                    or row["dollar_contribution_ess"]
+                    or row.get("contribution_cv") != 0
+                    or row.get("maximum_single_donor_dollar_share") != 0
+                ):
+                    raise ValueError(
+                        "Structural-zero cells cannot have dollar support."
+                    )
+            elif contributors:
+                if _number("contribution_cv", row.get("contribution_cv")) < 0:
+                    raise ValueError("Contribution CV must be non-negative.")
+                share = _number(
+                    "maximum_single_donor_dollar_share",
+                    row.get("maximum_single_donor_dollar_share"),
+                )
+                if not 0 < share <= 1:
+                    raise ValueError(
+                        "Nonzero cells need positive donor dollar support."
+                    )
+            elif (
+                row.get("contribution_cv") is not None
+                or row.get("maximum_single_donor_dollar_share") is not None
+                or row["dollar_contribution_ess"] != 0
+            ):
+                raise ValueError(
+                    "Cells without positive contributors have no dollar ratios."
+                )
+            result.append((scenario, row))
+    if len(set(found)) != len(found) or set(found) != set(scenarios):
+        raise ValueError(
+            "Cell diagnostics have missing or repeated scenarios: "
+            f"missing {[name for name in scenarios if name not in found]}."
+        )
+    return result
+
+
+def _cell_support(
+    *,
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+    minimum_cell_ess: float,
+    maximum_contribution_cv: float,
+    maximum_single_donor_dollar_share: float,
+    target_minimum_cell_ess: float,
+    target_maximum_single_donor_dollar_share: float,
+) -> GateResult:
+    """Require complete diagnostics and suppression, allowing sparse cells."""
+
+    rows = _cell_rows(
+        cell_diagnostics,
+        required_scenarios,
+        required_cells,
+        aggregation_column,
+        required_weight_entity,
+        required_weight_kind,
+    )
+    minimum = _number("minimum_cell_ess", minimum_cell_ess)
+    cv_limit = _number("maximum_contribution_cv", maximum_contribution_cv)
+    share_limit = _number(
+        "maximum_single_donor_dollar_share", maximum_single_donor_dollar_share
+    )
+    target_minimum = _number("target_minimum_cell_ess", target_minimum_cell_ess)
+    target_share = _number(
+        "target_maximum_single_donor_dollar_share",
+        target_maximum_single_donor_dollar_share,
+    )
+    if (
+        minimum <= 0
+        or cv_limit < 0
+        or not 0 < share_limit <= 1
+        or target_minimum <= 0
+        or not 0 < target_share <= 1
+    ):
+        raise ValueError("Cell support thresholds are outside their valid ranges.")
+    failures = []
+    suppressed = []
+    structural = []
+    for scenario, row in rows:
+        identity = f"{scenario}/{row['name']}"
+        zero = row["structural_zero"]
+        unsupported = row["positive_contributors"] == 0
+        should_suppress = (
+            zero
+            or unsupported
+            or (
+                row["source_household_ess"] < minimum
+                or row["contribution_cv"] > cv_limit
+                or row["maximum_single_donor_dollar_share"] > share_limit
+            )
+        )
+        if should_suppress and not row["suppressed"]:
+            failures.append(f"{identity}: failing cell is not suppressed.")
+        tracked = (
+            not zero
+            and not unsupported
+            and (
+                row["source_household_ess"] >= target_minimum
+                and row["maximum_single_donor_dollar_share"] <= target_share
+            )
+        )
+        if row["meets_tracked_target"] != tracked:
+            failures.append(f"{identity}: tracked-target flag is inconsistent.")
+        if row["suppressed"]:
+            suppressed.append(identity)
+        if zero:
+            structural.append(identity)
+    return GateResult(
+        name="cell_support",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "n_cell_scenarios": len(rows),
+            "suppressed_cells": suppressed,
+            "structural_zero_cells": structural,
+        },
+    )
+
+
+def _cell_support_target(
+    *,
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+    minimum_cell_ess: float,
+    maximum_single_donor_dollar_share: float,
+) -> GateResult:
+    """Report the tighter cell screen without blocking release."""
+
+    rows = _cell_rows(
+        cell_diagnostics,
+        required_scenarios,
+        required_cells,
+        aggregation_column,
+        required_weight_entity,
+        required_weight_kind,
+    )
+    minimum = _number("minimum_cell_ess", minimum_cell_ess)
+    maximum = _number(
+        "maximum_single_donor_dollar_share", maximum_single_donor_dollar_share
+    )
+    if minimum <= 0 or not 0 < maximum <= 1:
+        raise ValueError("Tracked cell support thresholds are outside valid ranges.")
+    flags = {
+        f"{scenario}/{row['name']}": not row["structural_zero"]
+        and row["positive_contributors"] > 0
+        and row["source_household_ess"] >= minimum
+        and row["maximum_single_donor_dollar_share"] <= maximum
+        for scenario, row in rows
+    }
+    return GateResult(
+        name="cell_support_target",
+        passed=all(flags.values()),
+        failures=tuple(
+            f"{identity}: tracked cell target not met."
+            for identity, passed in flags.items()
+            if not passed
+        ),
+        details={"meets_tracked_target": flags},
+    )
 
 
 def _pending_support(*, donor_support_bounds: object) -> GateResult:
@@ -897,6 +1250,12 @@ def _problem_evidence(
     return {"problem_sha256": context.artifacts[PROBLEM].sha256}
 
 
+def _cell_diagnostics_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {CELL_DIAGNOSTICS: context.artifacts[CELL_DIAGNOSTICS]}
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -905,7 +1264,7 @@ def _problem_evidence(
 def _parameters(gate: object) -> frozenset[str]:
     """Every keyword the evaluator takes that no artifact or frame supplies."""
 
-    supplied = {"frame", SURFACE, PROBLEM, DIAGNOSTICS}
+    supplied = {"frame", SURFACE, PROBLEM, DIAGNOSTICS, CELL_DIAGNOSTICS}
     return frozenset(
         name for name in inspect.signature(gate).parameters if name not in supplied
     )
@@ -977,6 +1336,20 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
             parameter_keys=_parameters(_weight_ratio),
             frame_argument="frame",
         ),
+        "cell_support": FunctionBinding(
+            name="cell_support",
+            gate=_cell_support,
+            parameter_keys=_parameters(_cell_support),
+            artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
+            evidence=_cell_diagnostics_evidence,
+        ),
+        "cell_support_target": FunctionBinding(
+            name="cell_support_target",
+            gate=_cell_support_target,
+            parameter_keys=_parameters(_cell_support_target),
+            artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
+            evidence=_cell_diagnostics_evidence,
+        ),
         "support": FunctionBinding(
             name="support",
             gate=_pending_support,
@@ -1044,6 +1417,11 @@ def validate_required_gate_parameters(
         if binding is None:
             continue
         missing = sorted(required_gate_parameters(binding) - set(entry.parameters))
+        if entry.gate == "weight_ess" and not (
+            {"minimum_ess_fraction", "minimum_effective_sample_size"}
+            & set(entry.parameters)
+        ):
+            missing.append("minimum_ess_fraction or minimum_effective_sample_size")
         if missing:
             raise ValueError(
                 f"gate entry {entry.id!r} omits parameters {missing} that the "

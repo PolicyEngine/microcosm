@@ -97,6 +97,7 @@ from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.transport_graph import (
     PERIOD,
     TOY_POPULATION,
@@ -501,7 +502,10 @@ def _evaluate(gate: str, parameters: dict, evidence: dict, *, drop=()):
 class TestRegistry:
     def test_extends_the_default_registry_with_the_bound_gates(self) -> None:
         assert set(TRANSPORT_GATE_REGISTRY) == (
-            set(DEFAULT_REGISTRY) | set(BOUND) | set(PENDING)
+            set(DEFAULT_REGISTRY)
+            | set(BOUND)
+            | set(PENDING)
+            | {"cell_support", "cell_support_target"}
         )
         for name in DEFAULT_REGISTRY:
             if name not in BOUND:
@@ -1341,6 +1345,63 @@ def _is_nearest_float(value: float, exact: Fraction) -> bool:
 
 
 class TestWeightGates:
+    @pytest.mark.parametrize(
+        ("gate", "parameters", "failures"),
+        [
+            ("weight_ess", {"minimum_ess_fraction": 0.5}, ()),
+            (
+                "weight_ess",
+                {"minimum_ess_fraction": 1.0},
+                ("ESS fraction 0.833333 is below the reviewed minimum 1.",),
+            ),
+            ("weight_ratio", {"maximum_max_to_median_ratio": 1.0}, ()),
+            (
+                "weight_ratio",
+                {"maximum_max_to_median_ratio": 0.5},
+                (
+                    "Max/positive-median weight ratio 1.0 exceeds the reviewed "
+                    "maximum 0.5.",
+                ),
+            ),
+        ],
+    )
+    def test_legacy_row_gate_results_remain_byte_identical(
+        self, gate, parameters, failures
+    ) -> None:
+        # The existing row gates accept design weights with no lineage. Pin
+        # every recorded field and failure line, including zero-row semantics.
+        frame = toy_frame(weights=[0, 1, 1, 1, 1, 1], kind=WeightKind.DESIGN)
+        result = _evaluate(gate, parameters, {"frame": frame}).result
+        actual = canonical_json(
+            {
+                "name": result.name,
+                "passed": result.passed,
+                "failures": result.failures,
+                "details": dict(result.details),
+            }
+        )
+        expected = canonical_json(
+            {
+                "name": gate,
+                "passed": not failures,
+                "failures": failures,
+                "details": {
+                    "n_records": 6,
+                    "positive_weight_records": 5,
+                    "zero_weight_records": 1,
+                    "total_weight": 5.0,
+                    "effective_sample_size": 5.0,
+                    "ess_fraction": 5 / 6,
+                    "median_positive_weight": 1.0,
+                    "max_weight": 1.0,
+                    "max_to_median_positive_weight": 1.0,
+                    **parameters,
+                    "weight_entity": "household",
+                },
+            }
+        )
+        assert actual == expected
+
     @pytest.mark.parametrize(
         ("weights", "gate", "keyword", "threshold", "summary_field", "expected"),
         [

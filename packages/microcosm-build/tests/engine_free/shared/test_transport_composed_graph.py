@@ -53,6 +53,7 @@ from hypothesis import strategies as st
 
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
+from microcosm.build.transport.artifact_types import COMPARISON_TYPE
 from microcosm.build.transport.cli import (
     EXPORT_FILENAME,
     execute_transport_graph,
@@ -70,6 +71,7 @@ from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
+    ArtifactInput,
     Capabilities,
     ContentStore,
     Determinism,
@@ -1041,7 +1043,6 @@ def test_cli_arguments():
 # ---------------------------------------------------------------------------
 
 _GAPS = (
-    "benefit_unit_rule.dependent_child.age_limit_years",
     "placeholder reference precal_references.",
     "placeholder reference target_references.",
     "placeholder reference holdout_references.",
@@ -1059,6 +1060,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    # The dependent-child rule is settled from the Social Security Act 2018
+    # Schedule 2, so it is no longer an activation gap.
+    assert "benefit_unit_rule.dependent_child" not in str(error.value)
     for resource in ("precal_references", "target_references", "holdout_references"):
         for reference in spec["resources"][resource]["target_references"]:
             if reference["metadata"].get("activation_status", "active") != "active":
@@ -1775,6 +1779,28 @@ def test_extension_checkpoints_are_returned_in_declaration_order(composed):
     )
     with pytest.raises(ValueError, match="distinct nodes"):
         compose_module.transport_endpoints(composed.spec, extensions=(duplicate,))
+
+
+@pytest.mark.parametrize("target", ["nz.export.prepare", "absent.node"])
+def test_extension_gate_evidence_cannot_target_other_skeleton_nodes(composed, target):
+    extension = compose_module.TransportExtension(
+        toy_extension,
+        gate_inputs=(
+            (
+                target,
+                ArtifactInput(
+                    "cell_diagnostics",
+                    "nz.test.validate.compare",
+                    "comparison",
+                    COMPARISON_TYPE,
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="only a skeleton battery"):
+        compose_transport_graph(
+            composed.spec, replace(composed.config, extensions=(extension,))
+        )
 
 
 @pytest.mark.parametrize("failure_type", [ImportError, NotImplementedError])

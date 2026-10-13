@@ -20,6 +20,7 @@ from microcosm.graph import ArtifactType
 __all__ = [
     "KERNEL_OUTPUTS",
     "COMPARISON_TYPE",
+    "CELL_DIAGNOSTICS_TYPE",
     "DIAGNOSTICS_TYPE",
     "EXPORT_DESCRIPTOR_TYPE",
     "EXPORT_READBACK_TYPE",
@@ -32,6 +33,8 @@ __all__ = [
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.targets.surface", 1)
 #: Hold-out comparators measured on a population (canonical JSON).
 COMPARISON_TYPE = ArtifactType("microcosm.targets.comparison", 1)
+#: Source-household support and donor dollar influence in each scenario cell.
+CELL_DIAGNOSTICS_TYPE = ArtifactType("microcosm.takeup.cell-diagnostics", 1)
 #: One calibration's ``microcosm-diagnostics`` model, validated, as canonical
 #: JSON; the type version is the diagnostics schema version.
 DIAGNOSTICS_TYPE = ArtifactType(
@@ -54,6 +57,9 @@ KERNEL_OUTPUTS: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         "targets.compile@1": MappingProxyType({"surface": TARGET_SURFACE_TYPE}),
         "targets.problem@1": MappingProxyType({"problem": PROBLEM_TYPE}),
         "takeup.compare@1": MappingProxyType({"comparison": COMPARISON_TYPE}),
+        "takeup.cell_diagnostics@1": MappingProxyType(
+            {"cell_diagnostics": CELL_DIAGNOSTICS_TYPE}
+        ),
         "diagnostics.calibration@1": MappingProxyType(
             {"diagnostics": DIAGNOSTICS_TYPE}
         ),

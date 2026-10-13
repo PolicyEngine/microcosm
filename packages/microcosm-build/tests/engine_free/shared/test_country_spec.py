@@ -930,6 +930,7 @@ class TestUKCountryPackage:
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
+            "hmrc_property_rental_income_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -997,9 +998,15 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "desnz_road_fuel_by_vehicle.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
+            "cross_grain_declarations.json",
+            "uprating_holds.json",
+            "ons_spree_tenure_dwellings.json",
+            "local_small_cell_rule.json",
+            "hmrc_spi_table_3_11_uk_rows.json",
         )
 
     def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
@@ -1014,8 +1021,9 @@ class TestUKCountryPackage:
         # (microcosm#1069) and child_benefit_take_up (microcosm#1063) as the
         # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
         # retired (#901).
-        # microcosm#1063 also adds cgt_residential_split after the anchor.
-        assert len(spec.sources.stages) == 39
+        # microcosm#1063 also adds cgt_residential_split after the anchor, and
+        # microcosm#1106 property_components after the regional uprating.
+        assert len(spec.sources.stages) == 40
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1055,6 +1063,7 @@ class TestExistingPackagesGeneralize:
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
+            "hmrc_property_rental_income_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -1122,9 +1131,15 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "desnz_road_fuel_by_vehicle.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
+            "cross_grain_declarations.json",
+            "uprating_holds.json",
+            "ons_spree_tenure_dwellings.json",
+            "local_small_cell_rule.json",
+            "hmrc_spi_table_3_11_uk_rows.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
@@ -1132,8 +1147,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1231
-        )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1281
+        )  # microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1151,7 +1166,11 @@ class TestExistingPackagesGeneralize:
         # total (the Table 3.8 rows and the DWP employee total left the fit); two
         # Attendance Allowance and three pension-age Housing Benefit rows; the
         # income-tax relief total on salary sacrifice in place of the amount row;
-        # microcosm#1095: Great Britain pension-age Housing Benefit spending
+        # microcosm#1095: Great Britain pension-age Housing Benefit spending;
+        # microcosm#1123: the 12 nation household control cells and the 24
+        # ITL Table 2.2 marginal-rate cells;
+        # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
+        # total-income band, bound unscaled once the x1.9 exclusion retired
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1387,12 +1406,17 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_bus_pricing",
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
@@ -1494,12 +1518,17 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
+            "uk_stage_property_components",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_bus_pricing",
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",

@@ -25,6 +25,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
+from microcosm.data.stored_inputs import register_sha256
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -4079,7 +4080,10 @@ def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
     list. That is deliberate — the rows keep pinning the compile the
     supported/identity classification was reviewed against, and
     :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
-    is the arm that meets the restated keys on the live feed.
+    is the arm that meets the restated keys on the live feed. The rows also
+    predate microcosm#1206, so the Part B premium row still names
+    ``gross_medicare_part_b_premium``; the live mapping binds
+    ``gross_medicare_part_b_premium_if_enrolled``.
     """
 
     builder = _load_builder_module()
@@ -6000,6 +6004,18 @@ STORED_INPUT_REFUSAL_FIXTURE = (
     "'would_claim_wic' (person table) looks like a model input but is not a "
     "variable in policyengine-us 2.2.1, so the engine ignores it."
 )
+#: What the stubbed stored-input gate reports it checked: the verdict shape
+#: ``_stored_input_gate_failures`` returns, against the harness runtime's
+#: policyengine-us (2.2.1), so the green run's manifests meet the publisher's
+#: stored-input requirement (microcosm#1034).
+STORED_INPUT_GATE_DETAILS = {
+    "evaluated": True,
+    "engine": "policyengine-us 2.2.1",
+    "stored_columns": 12,
+    "registered_non_variables": ["person_source_id"],
+    "refused": [],
+    "register_sha256": register_sha256(),
+}
 #: What the stubbed post-write check reports in ``stored_input_premise``.
 STORED_INPUT_PREMISE_FIXTURE = (
     "Stored-input gate premise failed: the written H5 stores model-named "
@@ -6025,18 +6041,31 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
     assert not (release_dir / "release_manifest.json").exists()
     assert not (release_dir / "build_manifest.json").exists()
     assert "scorer_opened_on" not in captured
+    # microcosm#1034: either way the run leaves the gate's own verdict, as
+    # the tool writes every gate's evidence before the batched raise.
+    evidence = json.loads((release_dir / "stored_inputs.json").read_text())
     if mode == "stored_input_refused":
         assert str(abort.value) == (
             f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
         )
         assert "written_dataset" not in captured
         assert "stored_input_post_write_check" not in captured
+        assert evidence["stored_inputs"] == {
+            "passed": False,
+            "failures": [STORED_INPUT_REFUSAL_FIXTURE],
+            "details": {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
+        }
     else:
         assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
         assert captured["stored_input_post_write_check"] == (
             captured["written_dataset"],
             captured["written_dataset"],
         )
+        assert evidence["stored_inputs"] == {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        }
 
 
 def _run_dry_run_release(
@@ -6183,6 +6212,8 @@ def _run_green_register_release(
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -6231,9 +6262,65 @@ def _run_green_register_release(
 
         def open_consumer(self, name, baseline_plan):
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
-            return SimpleNamespace(
-                name=name, simulate=self.dataset_path, record=lambda: record
-            )
+            simulate = self.dataset_path
+            if name == "ssi_social_security_holdout":
+                captured["holdout_scored"] = self.dataset_path
+                record.update(
+                    baseline_passes=1,
+                    reform_passes=0,
+                    reform_systems=0,
+                    n_batches=1,
+                    max_batch_households=2,
+                )
+
+                def calculate(variable, period):
+                    assert period == builder.PERIOD
+                    values = {
+                        "age": [40, 75],
+                        "ssi": [100, 100],
+                        "social_security": [0, 100],
+                    }
+                    return builder._PostExportValues(
+                        np.array(values[variable]), np.array([2.0, 3.0])
+                    )
+
+                def simulate(reform):
+                    return SimpleNamespace(calculate=calculate)
+
+            if name == "medicare_irmaa_holdout":
+                captured["irmaa_holdout_scored"] = self.dataset_path
+                record.update(
+                    baseline_passes=1,
+                    reform_passes=0,
+                    reform_systems=0,
+                    n_batches=1,
+                    max_batch_households=2,
+                )
+
+                def calculate(variable, period):
+                    assert period == builder.PERIOD
+                    # One enrollee in IRMAA tier 1 (2024: $69.90 and $12.90 a
+                    # month) and one eligible non-enrollee.
+                    values = {
+                        "medicare_enrolled": [True, False],
+                        "gross_medicare_part_b_premium_if_enrolled": [
+                            12 * (174.70 + 69.90),
+                            0.0,
+                        ],
+                        "base_part_b_premium": [12 * 174.70, 12 * 174.70],
+                        "income_adjusted_part_d_premium_surcharge": [
+                            12 * 12.90,
+                            0.0,
+                        ],
+                    }
+                    return builder._PostExportValues(
+                        np.array(values[variable]), np.array([2.0, 3.0])
+                    )
+
+                def simulate(reform):
+                    return SimpleNamespace(calculate=calculate)
+
+            return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
 
         def finish_consumer(self, scoring):
             captured.setdefault("finished_consumers", []).append(scoring.name)
@@ -6289,10 +6376,14 @@ def _run_green_register_release(
         "input_mass_parity",
         "qrf_tail_concentration",
     ]
-    # All four stale verdicts were cleared before any gate ran, including the
-    # three this run goes on to rewrite: a gate that crashed or was skipped
-    # must leave no verdict rather than the superseded one.
-    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    # Every stale verdict was cleared before any gate ran, including the ones
+    # this run goes on to rewrite: a gate that crashed or was skipped must
+    # leave no verdict rather than the superseded one. The stored-input
+    # verdict is the one already on disk, and it is this run's own: its gate
+    # ran before the clear and its file is written right after
+    # (microcosm#1034).
+    assert captured["gate_evidence_on_disk_at_first_gate"] == ["stored_inputs.json"]
+    assert captured["stale_gate_evidence_at_first_gate"] == []
     assert captured["qrf_tail_register_seen"] == {
         "estate_income": "donor tail concentrated before calibration"
     }
@@ -6303,14 +6394,40 @@ def _run_green_register_release(
         captured["written_dataset"],
     )
     if skipped_smoke:
-        # No post-export stage runs, so no scorer opens.
+        # The report-only holdout runs even when the smoke is skipped.
         assert "smoke_scored" not in captured
-        assert "scorer_opened_on" not in captured
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
-        assert captured["scorer_opened_on"] == captured["written_dataset"]
         assert captured["smoke_scored"] == captured["written_dataset"]
-        assert captured["scorer_closed"] is True
+    assert captured["scorer_opened_on"] == captured["written_dataset"]
+    assert captured["holdout_scored"] == captured["written_dataset"]
+    assert captured["scorer_closed"] is True
+    holdout = json.loads(
+        (release_dir / "us_ssi_social_security_holdout.json").read_text()
+    )
+    assert holdout["status"] == "available"
+    assert holdout["release_id"] == release_id
+    assert holdout["enforced"] is False
+    assert holdout["used_for_calibration"] is False
+    assert holdout["benchmark"]["table"] == 9
+    assert holdout["benchmark"]["year"] == 2024
+    working_age, older = holdout["age_bands"]
+    assert working_age["weighted_ssi_recipients"] == 2
+    assert working_age["share"] == 0
+    assert older["weighted_ssi_recipients"] == 3
+    assert older["share"] == 1
+    assert captured["irmaa_holdout_scored"] == captured["written_dataset"]
+    irmaa = json.loads((release_dir / "us_medicare_irmaa_holdout.json").read_text())
+    assert irmaa["status"] == "available"
+    assert irmaa["release_id"] == release_id
+    assert irmaa["enforced"] is False
+    assert irmaa["used_for_calibration"] is False
+    assert irmaa["benchmark"]["year"] == 2024
+    part_b, part_d = irmaa["parts"]
+    assert part_b["weighted_payers"] == 2
+    assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
+    assert part_d["weighted_payers"] == 2
+    assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not skipped_smoke:
@@ -6326,16 +6443,21 @@ def _run_green_register_release(
         assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
     # Both manifests carry how the post-export gates were scored (route A
     # remediation PR-3's rule): the scorer's block, taken after every consumer
-    # finished and naming the bytes the manifest pins. With no post-export
-    # stage there is no scorer and no block.
+    # finished and naming the bytes the manifest pins. The observational
+    # holdout is scored independently of whether the smoke was skipped.
     for block in (build_manifest, release_manifest["build"]):
-        if skipped_smoke:
-            assert "post_export_scoring" not in block
-        else:
-            assert block["post_export_scoring"] == {
-                "dataset_sha256": build_manifest["dataset"]["sha256"],
-                "consumers": ["reform_coverage_smoke"],
-            }
+        assert block["post_export_scoring"] == {
+            "dataset_sha256": build_manifest["dataset"]["sha256"],
+            "consumers": (
+                ["ssi_social_security_holdout", "medicare_irmaa_holdout"]
+                if skipped_smoke
+                else [
+                    "reform_coverage_smoke",
+                    "ssi_social_security_holdout",
+                    "medicare_irmaa_holdout",
+                ]
+            ),
+        }
 
     artifacts = release_manifest["artifacts"]
     bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -6407,6 +6529,20 @@ def _run_green_register_release(
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+        "stored_inputs": "bound",
+    }
+    stored_inputs_evidence = json.loads(
+        (release_dir / "stored_inputs.json").read_text()
+    )
+    assert stored_inputs_evidence == {
+        "schema_version": 1,
+        "enforced": True,
+        "checked_at_stage": "export frame",
+        "stored_inputs": {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        },
     }
     for block in (build_manifest, release_manifest["build"]):
         assert block["gate_evidence"] == expected_gate_evidence
@@ -6419,6 +6555,10 @@ def _run_green_register_release(
         # One reading, recorded in the diagnostics and both manifests.
         assert runtime == captured["diagnostics"]["calibration_runtime"]
         assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+        # microcosm#1034: the stored-input verdict, bound to the pinned H5.
+        assert block["stored_inputs"] == stored_input_evidence_manifest_block(
+            stored_inputs_evidence, dataset_sha256=build_manifest["dataset"]["sha256"]
+        )
     # The manifests pin the reference the export-mass gate compared against.
     assert captured["export_reference_loaded"] == export_mass_reference
     parity_kwargs = captured["export_input_mass_kwargs"]
@@ -6431,6 +6571,15 @@ def _run_green_register_release(
     _check_build_manifest(build_manifest, release_id, failures)
     _check_release_manifest(release_manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    # Producer and publisher agree: what the tool wrote meets the stored-input
+    # evidence requirement (microcosm#1034).
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=failures,
+        evidence_tier=False,
+    )
     assert failures == []
     assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
     assert not list(release_dir.glob("final_household_weight*"))
@@ -6906,6 +7055,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
                 if (out / "releases" / release_id / filename).exists()
             )
+            captured["stale_gate_evidence_at_first_gate"] = sorted(
+                filename
+                for filename in captured["gate_evidence_on_disk_at_first_gate"]
+                if (out / "releases" / release_id / filename).read_text()
+                == '{"stale": true}'
+            )
             return builder.GateResult(
                 name="input_coverage",
                 passed=True,
@@ -7006,9 +7161,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         if terminal_mode == "stored_input_refused":
             return (
                 [STORED_INPUT_REFUSAL_FIXTURE],
-                {"evaluated": True, "refused": ["would_claim_wic"], "fixture": stage},
+                {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
             )
-        return ([], {"evaluated": True, "refused": [], "fixture": stage})
+        return ([], dict(STORED_INPUT_GATE_DETAILS))
 
     monkeypatch.setattr(builder, "_stored_input_gate_failures", fake_stored_input_gate)
 
@@ -8969,6 +9124,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
@@ -12353,17 +12510,145 @@ def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
     return release_id, release_dir, artifact_root
 
 
+@pytest.mark.parametrize(
+    "scoring_available", (True, False), ids=("available", "unavailable")
+)
+def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
+    monkeypatch, tmp_path, scoring_available
+) -> None:
+    from microcosm.build.us_runtime.ssi_social_security_holdout import (
+        ssi_social_security_holdout_payload,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+
+    def score_holdout(name, consumer, **kwargs):
+        assert name == "ssi_social_security_holdout"
+        if not scoring_available:
+            raise RuntimeError("holdout scoring is unavailable")
+        return ssi_social_security_holdout_payload(
+            np.array([40, 70]),
+            np.array([100.0, 100.0]),
+            np.array([0.0, 200.0]),
+            np.array([1.0, 2.0]),
+            period=builder.PERIOD,
+        )
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", score_holdout)
+    builder._write_ssi_social_security_holdout(
+        release_dir=release_dir,
+        dataset_path=artifact_root / builder.DATASET_FILENAME,
+        release_id=release_id,
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_ssi_social_security_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if scoring_available else "unavailable")
+    assert holdout["release_id"] == release_id
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_ssi_social_security_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    "scoring_available", (True, False), ids=("available", "unavailable")
+)
+def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
+    monkeypatch, tmp_path, scoring_available
+) -> None:
+    from microcosm.build.us_runtime.medicare_irmaa_holdout import (
+        medicare_irmaa_holdout_payload,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+
+    def score_holdout(name, consumer, **kwargs):
+        assert name == "medicare_irmaa_holdout"
+        if not scoring_available:
+            raise RuntimeError("holdout scoring is unavailable")
+        return medicare_irmaa_holdout_payload(
+            np.array([True, False]),
+            np.array([3_000.0, 0.0]),
+            np.array([2_000.0, 2_000.0]),
+            np.array([200.0, 0.0]),
+            np.array([1.0, 2.0]),
+            period=builder.PERIOD,
+        )
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", score_holdout)
+    builder._write_medicare_irmaa_holdout(
+        release_dir=release_dir,
+        dataset_path=artifact_root / builder.DATASET_FILENAME,
+        release_id=release_id,
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_medicare_irmaa_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if scoring_available else "unavailable")
+    assert holdout["release_id"] == release_id
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_medicare_irmaa_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
     """Route A remediation PR-3: a certified waiver must ship with the
-    release. The four gate verdicts become release artifacts, and both
-    manifests record the register the tail gate evaluated, the export-mass
-    reference, the solve's thread geometry and the exclusion receipt."""
+    release. The gate verdicts become release artifacts, and both manifests
+    record the register the tail gate evaluated, the export-mass reference,
+    the solve's thread geometry, the exclusion receipt and the stored-input
+    verdict (microcosm#1034) for the H5 they pin."""
     from microcosm.data.contract import (
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -12398,6 +12683,12 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
     (release_dir / "reform_coverage_smoke.json").write_text(
         '{"schema_version": 1, "enforced": true}'
+    )
+    stored_inputs_payload = builder._record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=[],
+        details=STORED_INPUT_GATE_DETAILS,
+        telemetry=builder._TerminalBatchProgress(None, []),
     )
     reference = {
         "path": "/runtime/forensics/populace_us_2024.h5",
@@ -12456,6 +12747,10 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
                 json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
         },
+        "stored_inputs": stored_input_evidence_manifest_block(
+            stored_inputs_payload,
+            dataset_sha256=hashlib.sha256(b"h5").hexdigest(),
+        ),
     }
     for key, block in expected.items():
         assert build_manifest[key] == block
@@ -12466,6 +12761,13 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     _check_build_manifest(build_manifest, release_id, contract_failures)
     _check_release_manifest(release_manifest, release_id, contract_failures)
     _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=contract_failures,
+        evidence_tier=False,
+    )
     assert contract_failures == []
     assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
         _release_manifest_release_artifacts(release_dir)
@@ -12524,7 +12826,11 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
         "input_mass_parity": "not_evaluated",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "not_evaluated",
+        "stored_inputs": "not_evaluated",
     }
+    # No stored-input verdict was written, so the manifests carry no block,
+    # and the publisher would refuse the release for it (microcosm#1034).
+    assert "stored_inputs" not in build
     # Only the verdict this run wrote is an artifact; direct callers that
     # pass no reference or runtime get no such block.
     evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -12538,13 +12844,19 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
 def test_build_manifests_without_gate_evidence_binds_none() -> None:
     builder = _load_builder_module()
     assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert (
+        builder._stored_inputs_manifest_block(
+            Path("/nonexistent"), dataset_sha256="d" * 64
+        )
+        is None
+    )
     assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
 
 
 def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
     """A skipped smoke and a gate that crashed under earlier failures both
     leave no verdict; the status block tells them apart. A gate cannot be
-    both skipped and bound, and only the four bound gates can be skipped."""
+    both skipped and bound, and only the registered gates can be skipped."""
     builder = _load_builder_module()
     bound = {"input_coverage": {}, "input_mass_parity": {}}
 
@@ -12555,6 +12867,7 @@ def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "not_evaluated",
         "reform_coverage_smoke": "skipped",
+        "stored_inputs": "not_evaluated",
     }
     with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
         builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
@@ -12645,6 +12958,7 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
             "_export_input_mass_gate",
             "_record_qrf_tail_concentration_gate",
             "us_reform_coverage_smoke_gate",
+            "_record_stored_inputs_gate_evidence",
         }
     )
     assert clear_loop.lineno < first_gate

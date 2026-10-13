@@ -107,6 +107,10 @@ def _apply_pending_roster_transformations(
     # household draws, so they run right after was_wealth.
     assert "was_lisa" not in roster
     roster.insert(roster.index("was_wealth") + 1, "was_lisa")
+    # microcosm#1106 re-mint pending: landlords' receipts and finance costs
+    # follow the uprated rental property values.
+    assert "property_components" not in roster
+    roster.insert(roster.index("regional_property_uprating") + 1, "property_components")
     # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
     # the post-SPI incomes, so it runs right after UC capital coherence.
     assert "pension_credit_take_up" not in roster

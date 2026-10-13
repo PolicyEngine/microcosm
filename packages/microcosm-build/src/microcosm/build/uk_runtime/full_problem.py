@@ -13,6 +13,11 @@ from microcosm.build.uk_runtime import (
     uk_area_region_codes,
     uk_local_target_surface,
 )
+from microcosm.build.uk_runtime.ledger_targets import (
+    load_uk_local_target_reference_membership,
+    uk_off_surface_cells,
+    uk_small_cell_deferred_cells,
+)
 from microcosm.build.uk_runtime.local_rowwise import (
     build_uk_rowwise_local_surface_matrix,
     empty_uk_local_problem,
@@ -89,6 +94,7 @@ def build_uk_full_local_problem(
     assigned = {grain: assigned[grain] for grain in metrics}
     national_ids = _national_contract_target_ids(national_registry)
     if selected_surface is None:
+        membership = load_uk_local_target_reference_membership()
         surface, cross_grain = uk_local_target_surface(
             _joint_surface_registry(local_registry, national_registry),
             bound_national_target_ids=national_ids,
@@ -98,6 +104,10 @@ def build_uk_full_local_problem(
             # #906: the run's ladder membership resolves English areas to their
             # region-tier leg, as the rowwise driver does.
             area_region_codes=uk_area_region_codes(assignment.ladder),
+            # The membership's signed cells that are not bound still count in
+            # their leg, as on the graph's surface (microcosm#1123).
+            deferred_cells=uk_small_cell_deferred_cells(membership),
+            off_surface_cells=uk_off_surface_cells(membership),
         )
     else:
         surface = selected_surface.copy()

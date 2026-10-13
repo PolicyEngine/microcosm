@@ -263,6 +263,47 @@ def test_spi_donor_rejects_undocumented_sex_code(tmp_path) -> None:
         spi_income._prepare_spi_donor(raw, seed=7)
 
 
+def test_spi_donor_carries_restricted_finance_costs_with_their_relief(
+    tmp_path,
+) -> None:
+    """microcosm#1106: LLIR_RESTRICT_AMT_TOT becomes the property_finance_costs
+    leaf, and the donor is refused unless TAX_CRED carries 20% relief on it."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+
+    donor = spi_income._prepare_spi_donor(raw, seed=7)
+
+    assert donor["property_finance_costs"].tolist() == [0.0, 0.0, 200.0, 300.0]
+    check = donor.attrs["property_finance_costs"]
+    assert check["rows_with_restricted_costs"] == 2
+    assert check["weighted_restricted_costs_gbp"] == pytest.approx(
+        3.0 * 200.0 + 4.0 * 300.0
+    )
+    assert check["median_relief_ratio"] == pytest.approx(0.2)
+    # The leaf is drawn last, so it conditions on every income leaf and moves
+    # no earlier draw.
+    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-1] == "property_finance_costs"
+
+    wrong = raw.copy()
+    wrong["TAX_CRED"] = wrong["LLIR_RESTRICT_AMT_TOT"] * 0.4
+    with pytest.raises(ValueError, match="20% finance-cost relief"):
+        spi_income._prepare_spi_donor(wrong, seed=7)
+    negative = raw.copy()
+    negative.loc[0, "LLIR_RESTRICT_AMT_TOT"] = -1.0
+    with pytest.raises(ValueError, match="negative costs"):
+        spi_income._prepare_spi_donor(negative, seed=7)
+    none = raw.copy()
+    none[["LLIR_RESTRICT_AMT_TOT", "TAX_CRED"]] = 0.0
+    assert (
+        spi_income._prepare_spi_donor(none, seed=7).attrs["property_finance_costs"][
+            "median_relief_ratio"
+        ]
+        is None
+    )
+
+
 def test_spi_qrf_fails_closed_on_unreviewed_stage2_gap(monkeypatch, tmp_path) -> None:
     support = _dead_support(drop_stage2="universal_credit_reported")
     donor_path = tmp_path / SPI_DONOR_FILENAME

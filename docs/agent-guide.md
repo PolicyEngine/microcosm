@@ -14,6 +14,12 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
+UK build completion exports and stages Orrery graph evidence. Publication uses
+an independent worker inside the existing local service and a durable queue;
+see [configuration and retry](orrery-publication.md). No new producer secret or
+environment variable is required. Keep graph export/publication tests independent
+of the hosted runs app and collector; use synthetic files and fake HTTP.
+
 ```bash
 uv sync --all-packages   # set up the whole workspace
 uv sync --all-packages --locked --extra us  # US engine environment
@@ -217,6 +223,30 @@ wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
 publisher's offline `--preflight-only` check and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
+Alongside its out-of-sample reports, it writes
+`us_ssi_social_security_holdout.json`: the household-weighted share of SSI
+recipients also receiving Social Security at ages 18–64 and 65+, compared with
+SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
+never feeds calibration or refuses a release; unavailable measurements are
+reported explicitly. The report records the difference between SSA's December
+2024 recipient snapshot and the model's positive annual benefits.
+It also writes `us_medicare_irmaa_holdout.json`: weighted Medicare Part B and
+Part D income-related premium (IRMAA) payers and annual amounts, compared with
+the 2026 Medicare Trustees Report's calendar-year rows in Tables V.E3 and V.E4
+(microcosm#1206). Both Parts count `medicare_enrolled` people only (Part A
+and/or Part B). Part B is
+`gross_medicare_part_b_premium_if_enrolled - base_part_b_premium`, because the
+base premium is defined for every eligible person. Part D is
+`income_adjusted_part_d_premium_surcharge`, which policyengine-us charges every
+Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
+gates it on Part D enrollment. IRMAA rests on income from two years before
+the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
+single-year release H5 has none, so a 2024 release on that engine reports
+`status: no_payers` (the batched scorer gives exactly that on the certified
+`populace-us-2024-spm-20260915` file) until the engine includes
+PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
+a Trustees comparison. It is held out the same way: no calibration row, no
+release refusal.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
@@ -264,8 +294,14 @@ certification and on every replay, and the ACS local-area chain's package
 stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
-name. A new US lane that writes a release H5 must run the check where it
-records `build.built_with_model_package`.
+name. A new US lane that writes a release H5 must run the check where it records
+`build.built_with_model_package`, and bind the verdict into the release: the
+publisher runs no engine for a calibration release, so it requires the
+fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
+and the ACS local-area `stored_inputs` gate, each naming the built-with engine
+(microcosm#1034). A source-enrichment publisher claim widens the range
+consumers accept, not what was checked: the bundle's
+`compatibility.claim_measurement` names the one version the probe measured.
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
@@ -392,9 +428,13 @@ local `--spec-dir`.
 Extensions can wrap a factory in `TransportExtension` to declare additional
 sources and ordered checkpoints. Source names must be new; skeleton predecessor
 sets must stay identical except for explicit `package_inputs` artifact edges
-from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
-nodes cannot gain predecessors. Checkpoints run after calibration and before export,
-and must not depend on the exported dataset. `transport_rules_node` supplies
+from extension nodes to a terminal `transport.package@1` receipt and the
+battery evidence edges described below. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. Explicit `gate_inputs` artifact
+edges may attach required extension diagnostics to a skeleton
+`gates.battery@1` node; its existing report edge governs export permission.
+Only package receipts and battery nodes may gain these declared artifact
+predecessors. `transport_rules_node` supplies
 the prepared engine reference and period from the binding, so extensions do
 not repeat period values.
 An optional `entitlement_graph.json` legacy resource installs the entitlement

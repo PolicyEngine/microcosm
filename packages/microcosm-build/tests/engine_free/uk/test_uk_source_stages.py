@@ -44,6 +44,9 @@ E5_STAGE_NAMES = [
     # #1003: the Lifetime ISA holdings read the was_wealth household draws.
     "was_lisa",
     "regional_property_uprating",
+    # #1106: landlords' receipts and finance costs follow the uprated rental
+    # property values their coherence receipt reads.
+    "property_components",
 ]
 E6_STAGE_NAMES = [
     "nts_bus_travel",
@@ -238,6 +241,7 @@ class TestUKSourceStagesManifest:
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
+                    "property_components": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
                     "etb_services": _identity,
@@ -620,6 +624,9 @@ class TestE3ManifestLockstep:
             "price_bus_journeys",
             "fold_into",
             "zero_when_false",
+            "redraw_zero_road_fuel",
+            "level_road_fuel",
+            "recompose_from_remainder",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -965,6 +972,8 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
             "price_domestic_energy": 0,
+            # The road-fuel incidence redraw (microcosm#1113).
+            "redraw_zero_road_fuel": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
@@ -1055,6 +1064,7 @@ class TestE3ManifestLockstep:
             SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
             SPI_HMRC_QRF_AUXILIARY_COLUMNS,
             SPI_INCOME_IMPUTATION_COLUMNS,
+            SPI_PROPERTY_FINANCE_COSTS_COLUMN,
         )
 
         spec = load_country_spec("uk")
@@ -1064,6 +1074,7 @@ class TestE3ManifestLockstep:
             set(SPI_INCOME_IMPUTATION_COLUMNS)
             | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
             | set(SPI_HMRC_DERIVED_AUXILIARY_COLUMNS)
+            | {SPI_PROPERTY_FINANCE_COSTS_COLUMN}
         )
         # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
         # by the stage even though the QRF output surface excludes it.

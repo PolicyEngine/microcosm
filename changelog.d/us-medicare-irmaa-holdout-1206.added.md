@@ -1,0 +1,1 @@
+Report held-out Medicare Part B and Part D IRMAA payers and income-related premiums against the 2026 Trustees Report Tables V.E3 and V.E4 in `us_medicare_irmaa_holdout.json`; validation only, never a calibration target or release gate. With no weighted payer (as on the locked policyengine-us 2.2.1 for 2024) it reports `no_payers` and withholds the comparisons (#1206).

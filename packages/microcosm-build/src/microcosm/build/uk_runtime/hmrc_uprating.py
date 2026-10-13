@@ -120,6 +120,32 @@ UK_HMRC_ITL_GROWTH_BASIS = (
     "calibration year over the SPI fact's year, summed over the Table 2.5 bands "
     "the SPI band spans"
 )
+#: The same Table 2.5 growth over all income ranges, for a row with no income
+#: band: the SPI income-by-area cells (Tables 3.14 and 3.15) are every
+#: taxpayer's employment or self-employment income in an area, so they move by
+#: HMRC's projected growth of all taxpayers and their total income, the index
+#: family the national band rows already use (microcosm#1123).
+UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT = (
+    "hmrc.itl_2026.taxpayer_count_growth_all_bands"
+)
+UK_HMRC_TOTAL_INCOME_GROWTH_ALL_BANDS_INDEX_CONCEPT = (
+    "hmrc.itl_2026.total_income_growth_all_bands"
+)
+UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES: Mapping[str, tuple[str, str]] = {
+    UK_HMRC_TAXPAYER_GROWTH_ALL_BANDS_INDEX_CONCEPT: (
+        "hmrc.spi_taxpayer_count",
+        "total_taxpayer_count",
+    ),
+    UK_HMRC_TOTAL_INCOME_GROWTH_ALL_BANDS_INDEX_CONCEPT: (
+        "hmrc.spi_total_income_before_tax_amount",
+        "total_income_amount",
+    ),
+}
+UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS = (
+    "HMRC Income Tax liabilities statistics Table 2.5 {measure} over all income "
+    "ranges: the calendar-year window of the two tax years overlapping the "
+    "calibration year over the SPI fact's year"
+)
 #: The SPI State Pension amount by band (microcosm#1069): an amount row is the
 #: band's recipients times the amount each is paid, so it moves by the growth
 #: its count row declares (the band's taxpayers, HMRC Table 2.5) times the
@@ -724,6 +750,103 @@ def align_hmrc_amount_by_recipient_growth_and_rate(
     return TargetRegistry(aligned, country="uk")
 
 
+def _itl_all_ranges_value(
+    rows: list[Mapping[str, Any]],
+    *,
+    measure_id: str,
+    opening_year: int,
+    spec_name: str,
+) -> tuple[float, str]:
+    matches = [
+        row
+        for row in rows
+        if str(row.get("measure_id")) == measure_id
+        and int((row.get("period") or {}).get("value", -1)) == opening_year
+        and not (row.get("dimensions") or {})
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"UK target {spec_name!r}: Table 2.5 {measure_id} over all ranges "
+            f"opening in {opening_year} matched {len(matches)} vendored rows; "
+            "expected one."
+        )
+    (row,) = matches
+    value = float(row["value"])
+    if not value > 0:
+        raise ValueError(
+            f"UK target {spec_name!r}: Table 2.5 {measure_id} is {value!r}."
+        )
+    return value, str(row.get("source_record_id") or "")
+
+
+def align_hmrc_row_by_itl_all_band_growth(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_concept: str,
+    rows: list[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """Move an unbanded SPI row by HMRC's projected all-ranges growth.
+
+    factor = window(measure in target-1, measure in target) / measure in the
+    fact's opening year, over Table 2.5's all-ranges rows: the band appliers'
+    rule with every taxpayer in one band.
+    """
+
+    if reference.uprating_index != index_concept:
+        return registry
+    concept, measure_id = UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES[index_concept]
+    target_year = _target_year(reference)
+    rows = list(_vendored_itl_rows(concept)) if rows is None else rows
+    aligned = []
+    for spec in registry.specs:
+        opening_year = _opening_year(spec, reference)
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        years = {opening_year: 0.0}
+        for offset in CALENDAR_YEAR_WINDOW_WEIGHTS:
+            years[target_year + offset] = 0.0
+        record_ids: list[str] = []
+        for year in years:
+            value, record_id = _itl_all_ranges_value(
+                rows,
+                measure_id=measure_id,
+                opening_year=year,
+                spec_name=spec.name,
+            )
+            years[year] = value
+            record_ids.append(record_id)
+        window = sum(
+            weight * years[target_year + offset]
+            for offset, weight in CALENDAR_YEAR_WINDOW_WEIGHTS.items()
+        )
+        factor = window / years[opening_year]
+        metadata = {
+            **spec.metadata,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_HMRC_ITL_ALL_BAND_GROWTH_BASIS.format(
+                measure=measure_id
+            ),
+            "uprating_index_resource": UK_HMRC_TAXPAYER_COUNTS_RESOURCE,
+            "uprating_index_measure_id": measure_id,
+            "uprating_index_values_by_opening_year": ";".join(
+                f"{year}={years[year]:.15g}" for year in sorted(years)
+            ),
+            "uprating_index_window_weights": ";".join(
+                f"{target_year + offset}={weight:.15g}"
+                for offset, weight in sorted(CALENDAR_YEAR_WINDOW_WEIGHTS.items())
+            ),
+            "uprating_index_source_record_ids": ",".join(record_ids),
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
 def hmrc_uprating_appliers() -> dict[str, Any]:
     """The appliers this module contributes to ``UK_UPRATING_APPLIERS``."""
 
@@ -736,6 +859,10 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
     for index_concept in UK_HMRC_ITL_GROWTH_MEASURES:
         appliers[index_concept] = partial(
             align_hmrc_row_by_itl_growth, index_concept=index_concept
+        )
+    for index_concept in UK_HMRC_ITL_ALL_BAND_GROWTH_MEASURES:
+        appliers[index_concept] = partial(
+            align_hmrc_row_by_itl_all_band_growth, index_concept=index_concept
         )
     appliers[UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT] = partial(
         align_hmrc_amount_by_recipient_growth_and_rate,

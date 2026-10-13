@@ -1528,14 +1528,12 @@ class TestScenarios:
 
 
 class TestDeclaredResources:
-    def test_threshold_gates_await_d1_and_carry_no_numeric_threshold(self) -> None:
+    def test_reference_tolerances_remain_deferred(self) -> None:
         spec = load_country_spec("nz")
         by_function = {gate.gate: gate for gate in spec.gates.gates}
         for function in (
             "per_family_fit",
             "aggregate_admin",
-            "weight_ess",
-            "weight_ratio",
         ):
             assert by_function[function].not_applicable.startswith("awaiting D1")
 
@@ -1552,8 +1550,57 @@ class TestDeclaredResources:
         assert not [
             leaf
             for gate in spec.gates.gates
+            if gate.gate in {"per_family_fit", "aggregate_admin"}
             for leaf in numeric_leaves(gate.parameters)
         ]
+
+    def test_mc15_ruled_thresholds_and_tracked_targets_are_declared(self) -> None:
+        spec = load_country_spec("nz")
+        gates = {gate.id: gate for gate in spec.gates.gates}
+        ess = gates["weight_effective_sample_size"]
+        ratio = gates["weight_max_to_median_ratio"]
+        support = gates["reported_cell_support"]
+        target = gates["weight_effective_sample_size_target_a"]
+        cell_target = gates["reported_cell_support_target_a"]
+        assert ess.parameters["minimum_effective_sample_size"] == 4000
+        assert "minimum_ess_fraction" not in ess.parameters
+        assert ratio.parameters["maximum_max_to_median_ratio"] == 5
+        assert support.parameters["minimum_cell_ess"] == 100
+        assert support.parameters["maximum_contribution_cv"] == 2
+        assert support.parameters["maximum_single_donor_dollar_share"] == 0.1
+        assert target.parameters["minimum_effective_sample_size"] == 16000
+        assert cell_target.parameters["minimum_cell_ess"] == 400
+        assert cell_target.parameters["maximum_single_donor_dollar_share"] == 0.05
+        # The support contract's copy of target (a) drives the per-cell flags;
+        # it must match the tracked target gate that reports them.
+        assert support.parameters["target_minimum_cell_ess"] == 400
+        assert support.parameters["target_maximum_single_donor_dollar_share"] == 0.05
+        assert set(cell_target.parameters["required_cells"]) == set(
+            support.parameters["required_cells"]
+        )
+        assert set(cell_target.parameters["required_scenarios"]) == set(
+            support.parameters["required_scenarios"]
+        )
+        for gate in (ess, ratio, support, target, cell_target):
+            assert gate.not_applicable is None
+            assert gate.parameters["aggregation_column"] == "source_household_id"
+            assert gate.parameters["required_weight_entity"] == "household"
+            assert gate.parameters["required_weight_kind"] == "calibrated"
+        assert all(
+            g.criticality == "release_blocking" and g.evidence_absent_blocks
+            for g in (ess, ratio, support)
+        )
+        assert target.criticality == cell_target.criticality == "diagnostic"
+        scenarios = _load("scenarios.json")["scenarios"]
+        assert support.parameters["required_scenarios"] == tuple(
+            s["id"] for s in scenarios
+        )
+        from microcosm.build.transport.takeup_kernels import reporting_cell_declarations
+
+        grid = _load("scenarios.json")["gap_conventions"]["reporting_cells"]
+        assert set(support.parameters["required_cells"]) == {
+            row["name"] for row in reporting_cell_declarations(grid)
+        }
 
     def test_currency_bridge_is_one_declared_multiplication(self) -> None:
         bridge = _load("currency_bridge.json")
@@ -1564,11 +1611,11 @@ class TestDeclaredResources:
         assert bridge["source"]["url"].startswith("https://www.irs.gov/")
         assert bridge["source"]["column"] == str(bridge["rate_year"])
 
-    def test_benefit_unit_rule_refuses_to_guess_the_dependent_child_age(self) -> None:
+    def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")
         assert rule["entity"] == "family" and rule["engine_entity"] == "Family"
-        assert rule["dependent_child"]["age_limit_years"] is None
-        assert rule["dependent_child"]["candidate_basis"].startswith("UNVERIFIED")
+        assert rule["dependent_child"]["age_limit_years"] == 18
+        assert "UNVERIFIED" not in json.dumps(rule)
         assert set(rule["membership_columns"]) == {
             "family_id",
             "family_household_id",

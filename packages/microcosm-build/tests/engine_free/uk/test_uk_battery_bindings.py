@@ -61,10 +61,11 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: or expiry boundary. Move it forward when a register gains a later approval.
 # The committed registers are evaluated as of this date; the microcosm#1063
 # c9 input-mass and QRF-tail entries take force on 2026-10-02, the
-# microcosm#1095 West Midlands target-fit deferral on 2026-10-06 and its two
-# UC payment-band measure exclusions on 2026-10-07. The earliest expiry is
-# 2026-10-15.
-CLOCK = date(2026, 10, 7)
+# microcosm#1095 UC payment-band measure exclusions on 2026-10-07 (its West
+# Midlands target-fit deferral is retired with microcosm#1106), and the
+# microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
+# expiry is 2026-10-15.
+CLOCK = date(2026, 10, 11)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -579,10 +580,15 @@ class TestUKSurfaceAdapter:
         spine_person = spine.table("person").copy()
         spine_person["sic_industry_division"] = [1.0, 2.0, 3.0, 4.0]
         spine_person[UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0]] = 0.0
+        # microcosm#1106: the WAS property_wealth total is the first household
+        # column the export drops; the was_wealth stage declares it
+        # non-negative, so the certifier reads it from the spine.
+        spine_household = spine.table("household").copy()
+        spine_household["property_wealth"] = [5.0, 0.0, 7.0, 0.0]
         spine = uk_national_frame(
             person=spine_person,
             benunit=spine.table("benunit"),
-            household=spine.table("household"),
+            household=spine_household,
             time_period="2023",
             household_weights=spine.weights_for("household").values,
         )
@@ -591,6 +597,7 @@ class TestUKSurfaceAdapter:
             [
                 "salary_sacrifice_pre_conversion_pay",
                 UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+                "property_wealth",
                 "sic_industry_division",
                 "never_declared",
             ],
@@ -600,7 +607,9 @@ class TestUKSurfaceAdapter:
         assert set(found) == {
             "salary_sacrifice_pre_conversion_pay",
             UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+            "property_wealth",
         }
+        assert found["property_wealth"].tolist() == [5.0, 0.0, 7.0, 0.0]
         assert found["salary_sacrifice_pre_conversion_pay"].tolist() == [
             0.0,
             30.0,
@@ -809,6 +818,33 @@ class TestBatteryRegressions:
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
+
+    def test_input_mass_parity_compares_the_release_surface(self) -> None:
+        # The frame carries the spine's WAS property_wealth and the reference
+        # stores its own total within tolerance. Compared on the raw frame the
+        # signed exclusion would be stale and the gate would fail; the gate
+        # compares the export frame, where the column is absent, so the
+        # exclusion is in force and nothing is stale (microcosm#1106).
+        person, benunit, household = _tables()
+        household = household.assign(property_wealth=100.0)
+        reference = UKInputMassReference(
+            totals={"employment_income": 10.0, "property_wealth": 400.0},
+            filename="enhanced_frs_2023_24.h5",
+            revision="655dd07e4bb9c777b00dac044949611f1feb824f",
+            sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+            vintage="2023_24",
+        )
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={"input_mass_reference": reference},
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+        details = outcome.result.details
+        assert details["stale_exclusions"] == []
+        assert "property_wealth" in details["reviewed_exclusions"]
 
     def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
@@ -1087,6 +1123,68 @@ class TestTerminalCoverageBinding:
         assert result.failures == direct.failures
         assert dict(result.details) == dict(direct.details)
 
+    def test_terminal_mode_reads_the_frame_the_release_writes(self) -> None:
+        # microcosm#1106: the full build's terminal gates hold the raw
+        # calibrated frame, which still carries the WAS property_wealth total
+        # the release export drops. A reviewed exclusion that the raw frame
+        # still populates reads as stale; the binding reads the export frame.
+        person, benunit, household = _tables()
+        household["main_residence_value"] = [300_000.0, 0.0, 150_000.0, 0.0]
+        household["property_wealth"] = [350_000.0, 0.0, 160_000.0, 0.0]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class Engine(_TerminalCoverageEngine):
+            def variables(self):
+                return [
+                    "employment_income",
+                    "main_residence_value",
+                    "property_wealth",
+                ]
+
+            def variable_entities(self, names):
+                return {
+                    name: "person" if name == "employment_income" else "household"
+                    for name in names
+                }
+
+        engine = Engine()
+        manifest = UKReleaseInputCoverageManifest(
+            reference={"source": "test"},
+            candidate_evidence={"source": "test"},
+            columns=(
+                UKReleaseInputColumn("employment_income", "required"),
+                UKReleaseInputColumn("main_residence_value", "required"),
+                UKReleaseInputColumn(
+                    "property_wealth",
+                    "reviewed_exclusion",
+                    reason="formula-owned in policyengine-uk",
+                    tracking_note="microcosm#1106",
+                ),
+            ),
+            family_coverage={},
+        )
+        raw = uk_release_input_coverage_gate(
+            _uk_gate_surface(frame), engine, manifest=manifest
+        )
+        result = UK_GATE_REGISTRY["release_input_coverage"].evaluate(
+            EvidenceContext(
+                frame=frame,
+                artifacts={
+                    "coverage_engine": engine,
+                    "coverage_manifest": manifest,
+                    # The spine build state the family half reads (#1115).
+                    "spine_frame": frame,
+                },
+            ),
+            {},
+        )
+
+        assert raw.passed is False
+        assert any("property_wealth" in failure for failure in raw.failures)
+        assert result.passed is True, result.failures
+
 
 class TestPreflightBindings:
     def test_preflight_passes_with_the_committed_manifest(self, uk_gates) -> None:
@@ -1228,14 +1326,17 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 20_885
-        assert result.details["reference_targets"] == 22_464
-        # Only the 1,579 signed area deferrals and absences remain (2,100
+        assert result.details["candidate_targets"] == 21_804
+        assert result.details["reference_targets"] == 23_386
+        # Only the 1,582 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
-        # Shetland band H is the one Scottish support deferral); the 1,011
-        # household rows are ordinary Chronicle-compiled references.
+        # Shetland band H is the one Scottish support deferral; microcosm#1123
+        # adds the three higher rate taxpayer gaps); the 1,011 household rows
+        # are ordinary Chronicle-compiled references. The small-cell rules
+        # are unsigned, so they defer nothing yet: signing them moves these
+        # counts with the regenerated references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_579
+        assert len(exclusions) == 1_582
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
