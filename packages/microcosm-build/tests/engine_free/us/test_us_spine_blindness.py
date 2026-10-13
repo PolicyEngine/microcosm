@@ -294,6 +294,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_chain.py",
         "puf_qrf_worker.py",
         "puf_source_agi.py",
+        # Source-year Schedule E line 32 alignment for the PUF donor; no
+        # population treatment (microcosm#1239).
+        "puf_source_schedule_e.py",
         "puf_support.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",

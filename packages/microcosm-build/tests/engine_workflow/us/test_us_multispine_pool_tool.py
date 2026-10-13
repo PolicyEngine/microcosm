@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 71,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -338,7 +338,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "98ab131c6410005042302a59fc279643742656bae4451a18cc2d628b20cc4504",
+            "spec_sha256": "33dbd80557bd29f59ff905549c10041fddf0dab08b4c745c62974cc3aad9d415",
         },
     }
 

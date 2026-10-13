@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "3b6f534db79be588396d6543a8368c6251d41ae25139153ade01bdb36ac7b1a2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "8bdac14461b8af182ddb78cb9d27aef298467108e467e601f2ed5b3f7b0b8e6b",
+    "full_checkpoint": "abdffaa7d6ccf23c37b9d4e4530f0f95c2b4dd821787c813cc0c06f0ddc7932c",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "5e5c89a0d5e00f759566b5bb025efd46f179e11faf7de4ff663ed2488c5a669b",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "734080f8857f8637913a0e3ae81c59bf28b63dccc8d4bbf42009d0a80e9f1e48",
-    "late_resource_semantics": "3c6150a07fcbcec4b46a9c38f87c6946d73ce18b1f6eb918a8d75051b696fdee",
+    "late_resource_semantics": "abf95b217f6b8baa0fdf0bf8c46be67e3bff364f1adf6e98a178746f7f1c9d29",
     "late_schedule": "6eb7556639fac5ef67bb1602c769aa01fc2070ecef42be097c6b866a05b030d0",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -364,8 +364,8 @@ EXPECTED_HASHES = {
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
     # both again: the protocol attests microcosm.calibrate.solve.
-    "seed_map": "67e9ab28c9090baca4d80a1ab9b2a7b55d423f4ea4a648482550b515f178c579",
-    "seed_protocol": "493429be16eba9f967c73bb3731ee8c7bd22594614e09beb89f1959f84148277",
+    "seed_map": "60c7e7e7c3f21d2a9d035ee423c2a2d1688678d32a70c60a877e4fad14a56a9d",
+    "seed_protocol": "7ce5c96b0c4e46657b1f536e6d6196ea9df4e5f1a3d086a3ae17bdadc864f708",
     "source_manifest": "22763ed5676fa29876951653368cbbc866cbd2425a2394a9f191ee09e448e413",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "4641e9a919a5c7719dd6e076e1eda06c17ec021d346a2b7f205fd299870a4688",
