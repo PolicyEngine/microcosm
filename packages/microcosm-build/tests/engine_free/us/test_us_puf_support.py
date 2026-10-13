@@ -1800,23 +1800,33 @@ def test_passive_placement_refuses_a_stale_line_32_basis(
     )
 
 
+@pytest.mark.parametrize(
+    "columns",
+    [
+        ("partnership_income", "passive_partnership_s_corp_income", "s_corp_income"),
+        ("partnership_income", "passive_partnership_s_corp_income"),
+    ],
+)
 def test_finalize_refuses_passive_placed_before_its_line_32(
     monkeypatch: pytest.MonkeyPatch,
+    columns: tuple[str, ...],
 ) -> None:
+    """A misordered or partial line-32 basis is refused before any QRF fit."""
+
     draws = pd.DataFrame(
         {
             "partnership_income": [6_000.0, 0.0],
             "passive_partnership_s_corp_income": [1_500.0, 0.0],
             "s_corp_income": [0.0, 0.0],
         }
-    )
+    ).loc[:, list(columns)]
 
     class FixedQRF:
         def __init__(self, *, n_estimators: int, seed: int) -> None:
             pass
 
         def fit(self, frame, predictors, outputs, *, weights) -> "FixedQRF":
-            return self
+            raise AssertionError("the basis check must run before any fit")
 
         @property
         def weight_kind(self) -> str:
@@ -1836,7 +1846,7 @@ def test_finalize_refuses_passive_placed_before_its_line_32(
         }
     )
 
-    with pytest.raises(ValueError, match="must come before it"):
+    with pytest.raises(ValueError, match="must come before it|same pass"):
         impute_us_puf_tax_detail_support(
             clone_us_frame_for_puf_support(_minimal_us_frame()),
             donor,
@@ -1845,6 +1855,14 @@ def test_finalize_refuses_passive_placed_before_its_line_32(
             tax_unit_outputs=(),
             n_estimators=4,
             seed=0,
+        )
+    with pytest.raises(ValueError, match="must come before it|same pass"):
+        puf_support_module.prepare_us_puf_tax_detail_chain_inputs(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=("puf_predictor_filing_status_code",),
+            person_outputs=tuple(draws.columns),
+            tax_unit_outputs=(),
         )
 
 

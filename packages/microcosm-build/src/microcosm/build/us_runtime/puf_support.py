@@ -1821,6 +1821,9 @@ def impute_us_puf_tax_detail_support(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
@@ -1929,6 +1932,9 @@ def prepare_us_puf_tax_detail_chain_inputs(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
