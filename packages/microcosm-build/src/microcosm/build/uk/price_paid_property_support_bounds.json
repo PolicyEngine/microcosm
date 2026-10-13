@@ -1,0 +1,24 @@
+{
+  "bounds": {
+    "main_residence_value": [
+      0.0,
+      20000000.0
+    ],
+    "property_wealth": [
+      0.0,
+      32000000.0
+    ]
+  },
+  "country": "uk",
+  "overrides": [
+    "was_wealth_support_bounds.json"
+  ],
+  "policy": "Support bounds for the two household columns the post-geography value node rewrites (microcosm#1240): main_residence_value is winsorised at the value knots' declared cap, and property_wealth moves by the same amount, so its bound is the cap plus the WAS donor bound's headroom over the main residence. Listed after was_wealth_support_bounds.json in uk_support so these bounds win for the two columns. Public caps, never donor values.",
+  "source": {
+    "cap": 20000000,
+    "knots_inputs_sha256": "41c4f1595befe47a299aa03c803f8539e2406750ab8a312e469affdc7d4990fa",
+    "knots_resource": "high_value_home_value_knots.json",
+    "was_bounds_resource": "was_wealth_support_bounds.json"
+  },
+  "version": 1
+}
