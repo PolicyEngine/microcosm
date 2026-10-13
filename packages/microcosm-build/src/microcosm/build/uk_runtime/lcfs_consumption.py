@@ -151,6 +151,63 @@ UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
     CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
 )
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
+#: LCFS fuel, light and power (p537) by fuel, from the LCF User Guide's
+#: derived-variable labels (2024-25 Volume F, Part 2) and its P537 definition
+#: (Part 3): the diary's COICOP 04.5 lines plus the questionnaire's account,
+#: meter and combined payments, less the gas and electricity rebates. Weekly
+#: amounts (microcosm#1164).
+#: The last account payment and its rebate: b175/b178 electricity, b170/b173 gas.
+UK_LCFS_ELECTRICITY_ACCOUNT = ("b175", "b178")
+UK_LCFS_GAS_ACCOUNT = ("b170", "b173")
+#: The rest of each fuel: the separate prepayment-meter payment (b1751, b1701),
+#: the fuel's component of a combined utilities bill (b227 electricity, b226
+#: gas), its part of a combined key/meter payment (b2332, b2331) and the
+#: diary's account and slot-meter lines (c45112/c45114, c45212/c45214).
+UK_LCFS_ELECTRICITY_PARTS = ("b1751", "b227", "b2332", "c45112", "c45114")
+UK_LCFS_GAS_PARTS = ("b1701", "b226", "b2331", "c45212", "c45214")
+#: Combined gas-and-electricity payments (b231 bill, b233 key/meter) and the
+#: parts the respondent split them into.
+UK_LCFS_COMBINED_PAYMENTS: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("b231", ("b226", "b227")),
+    ("b233", ("b2331", "b2332")),
+)
+#: The rest of p537, which no output column carries and the housing total
+#: keeps: central-heating oil (b017; diary c45312, with paraffin), bottled gas
+#: (b018; diary c45222), coal and coke (c45411), wood and peat (c45412), and
+#: hot water, steam and ice (c45511).
+UK_LCFS_OTHER_FUEL_PARTS = (
+    "b017",
+    "b018",
+    "c45222",
+    "c45312",
+    "c45411",
+    "c45412",
+    "c45511",
+)
+UK_LCFS_ENERGY_CODES = tuple(
+    dict.fromkeys(
+        (
+            "p537",
+            *UK_LCFS_ELECTRICITY_ACCOUNT,
+            *UK_LCFS_GAS_ACCOUNT,
+            *UK_LCFS_ELECTRICITY_PARTS,
+            *UK_LCFS_GAS_PARTS,
+            *(
+                code
+                for total, parts in UK_LCFS_COMBINED_PAYMENTS
+                for code in (total, *parts)
+            ),
+            *UK_LCFS_OTHER_FUEL_PARTS,
+        )
+    )
+)
+#: The electricity share of an unsplit combined payment when the donor has no
+#: dual-fuel household to take a mean from (a synthetic donor only).
+UK_LCFS_FALLBACK_ELECTRICITY_SHARE = 0.6
+#: The donor scratch column for the other fuels, read by the split receipt.
+UK_LCFS_OTHER_FUELS_COLUMN = "lcfs_other_fuels"
+#: ``donor.attrs`` key of the donor energy-split receipt.
+UK_LCFS_ENERGY_SPLIT_RECEIPT = "donor_energy_split"
 #: The donor columns floored at zero before the imputation (microcosm#1063
 #: c9): the diary consumption columns and the bus fares summed from the
 #: c73212-c73214 diary lines, which a refund can make negative as well.
@@ -227,14 +284,14 @@ UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
 #: (PolicyEngine/policyengine-uk#2098; microcosm#1110, uk-data#539).
 UK_LCFS_PREPAYMENT_METER_COLUMN = "uses_energy_prepayment_meter"
 IMPUTE_PREPAYMENT_METER_KIND = "impute_prepayment_meter"
-#: LCFS b489 is the household's weekly energy payment through a prepayment
-#: meter (electricity, and gas with it when b490 is present) and b490 the gas
-#: part; b226 is electricity paid by direct debit or quarterly bill. A
-#: household paying either fuel by prepayment meter has b489 or b490 nonzero (a
-#: negative entry is a refund through the meter). One with neither pays
-#: another way or did not say, and counts as not prepaying.
-UK_LCFS_PREPAYMENT_CODES = ("b489", "b490")
-UK_LCFS_PREPAYMENT_RULE = "b489_or_b490_nonzero"
+#: What a household last put on a prepayment key or meter (LCF questions
+#: ELECMETER, GASMETER and GEMETER, asked only of households that pay by
+#: prepayment meter): b1751 electricity, b1701 gas, b233 a combined gas and
+#: electricity meter, and the diary's slot-meter lines c45114 (electricity)
+#: and c45214 (gas). A household with any of them positive prepays; one with
+#: none pays by account or direct debit, or did not say (microcosm#1110).
+UK_LCFS_PREPAYMENT_CODES = ("b1751", "b1701", "b233", "c45114", "c45214")
+UK_LCFS_PREPAYMENT_RULE = "key_or_meter_payment_positive"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
 #: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
@@ -313,11 +370,9 @@ RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: remainder, and the levelled columns added back. The chain draws each part
 #: after its total, so the split is the chain's own. Housing (p604) nets the
 #: chain's domestic-energy draw, which is the electricity and gas
-#: ``derive_energy_from_lcfs`` makes of the diary. That derivation splits all of
-#: ``p537`` (fuel, light and power) where the household reports no combined
-#: payment, so those households' liquid and solid fuels leave with the drawn
-#: energy; where it reads the combined payment, whatever else ``p537`` holds
-#: stays in the housing remainder. Transport (p607) nets the drawn petrol and
+#: ``derive_energy_from_lcfs`` makes of the diary's fuel, light and power
+#: (``p537``) by its labelled parts, so the diary's oil, bottled gas, solid
+#: fuels and heat stay in the housing remainder (microcosm#1164). Transport (p607) nets the drawn petrol and
 #: diesel (c72211, c72212) and the drawn bus fares (which the pricing step
 #: replaces with journeys times yield), and keeps other motor fuels.
 UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -357,6 +412,7 @@ class UKLCFSConsumptionResult:
     donor_uprating: Mapping[str, Any] | None = None
     fuel_flag: Mapping[str, Any] | None = None
     prepayment_meter: Mapping[str, Any] | None = None
+    donor_energy_split: Mapping[str, Any] | None = None
     bus_pricing: Mapping[str, Any] | None = None
     energy_pricing: Mapping[str, Any] | None = None
     energy_rake: Mapping[str, Any] | None = None
@@ -378,6 +434,8 @@ class UKLCFSConsumptionResult:
             evidence["has_fuel_consumption"] = dict(self.fuel_flag)
         if self.prepayment_meter is not None:
             evidence[UK_LCFS_PREPAYMENT_METER_COLUMN] = dict(self.prepayment_meter)
+        if self.donor_energy_split is not None:
+            evidence[UK_LCFS_ENERGY_SPLIT_RECEIPT] = dict(self.donor_energy_split)
         if self.bus_pricing is not None:
             evidence["bus_pricing"] = dict(self.bus_pricing)
         if self.energy_pricing is not None:
@@ -583,6 +641,7 @@ class UKLCFSConsumptionStageTransform:
             donor_uprating=uprating_receipt,
             fuel_flag=fuel_flag_receipt,
             prepayment_meter=None if prepayment is None else prepayment.receipt,
+            donor_energy_split=donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT),
             bus_pricing=bus_pricing_receipt,
             energy_pricing=None if energy is None else energy.receipt,
             energy_rake=energy_rake_receipt,
@@ -1125,16 +1184,16 @@ def prepayment_meter_from_lcfs(household: pd.DataFrame) -> np.ndarray:
     """1.0 where the LCFS household pays energy through a prepayment meter.
 
     The rule is ``UK_LCFS_PREPAYMENT_RULE`` (microcosm#1110, the field reading
-    of uk-data#539): b489 or b490 nonzero. A household paying only electricity
-    by prepayment meter counts; one with no prepayment amount, which includes
-    any that did not answer, does not.
+    of uk-data#539): any key or meter payment positive. Electricity-only
+    prepayment counts; a household with no meter payment does not, whether it
+    pays by account (b175/b170, b489/b490 net of rebates) or did not answer.
     """
 
     _require_columns(household, UK_LCFS_PREPAYMENT_CODES)
-    nonzero = np.zeros(len(household), dtype=bool)
+    prepays = np.zeros(len(household), dtype=bool)
     for code in UK_LCFS_PREPAYMENT_CODES:
-        nonzero |= _numeric(household[code]).to_numpy(dtype=float) != 0.0
-    return nonzero.astype(float)
+        prepays |= _numeric(household[code]).to_numpy(dtype=float) > 0.0
+    return prepays.astype(float)
 
 
 @dataclass(frozen=True)
@@ -1505,9 +1564,9 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
 
     ONS Consumer Trends classes read from the vendored rows the declaration
     names: the liquid and solid fuels of COICOP 04.5, which have no column of
-    their own; part of them stays inside the housing remainder (the chain's
-    draw less the diary energy), and the receipt records their published
-    spend.
+    their own and stay inside the housing remainder (the chain's draw less the
+    diary's electricity and gas; microcosm#1164), and the receipt records their
+    published spend.
     """
 
     spec = parameters.get("uncarried")
@@ -2111,6 +2170,7 @@ def clean_lcfs_consumption_table(
         _lowercase(lcfs_household)["a121"], LCFS_ACCOMM_MAP, column="a121"
     )
     household = derive_energy_from_lcfs(household)
+    energy_split = donor_energy_split_receipt(household)
     household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment_meter_from_lcfs(household)
     household = household.rename(columns=CONSUMPTION_VARIABLE_RENAMES)
     for code in BUS_FARE_LCFS_CODES:
@@ -2165,7 +2225,43 @@ def clean_lcfs_consumption_table(
     missing = sorted(donor.columns[donor.isna().any()])
     if missing:
         raise ValueError(f"LCFS donor has missing values in {missing}.")
+    donor.attrs[UK_LCFS_ENERGY_SPLIT_RECEIPT] = energy_split
     return donor
+
+
+def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
+    """The donor's fuel, light and power by fuel: weighted annual diary totals.
+
+    Electricity and gas are what ``derive_energy_from_lcfs`` gives the chain;
+    the other fuels stay in the housing total. Their sum against ``p537``
+    shows how much of the published definition the labelled parts reach
+    (microcosm#1164). Totals over every donor, at diary prices.
+    """
+
+    weight = _numeric(household["household_weight"]).to_numpy(dtype=float) * 1_000
+    annual = weight * WEEKS_IN_YEAR
+
+    def total(column: str) -> float:
+        return float(np.dot(annual, _numeric(household[column]).to_numpy(dtype=float)))
+
+    electricity = total("electricity_consumption")
+    gas = total("gas_consumption")
+    other = total(UK_LCFS_OTHER_FUELS_COLUMN)
+    fuel_light_power = total("p537")
+    return {
+        "electricity": electricity,
+        "gas": gas,
+        "other_fuels": other,
+        "fuel_light_and_power": fuel_light_power,
+        "parts_over_fuel_light_and_power": (
+            (electricity + gas + other) / fuel_light_power
+            if fuel_light_power > 0
+            else None
+        ),
+        "electricity_share_of_electricity_and_gas": (
+            electricity / (electricity + gas) if electricity + gas > 0 else None
+        ),
+    }
 
 
 def mapped_lcfs_codes(
@@ -2265,43 +2361,59 @@ def floor_negative_donor_consumption(
 
 
 def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
-    """Split LCFS domestic energy into electricity and gas weekly amounts.
+    """Split LCFS fuel, light and power into electricity and gas (weekly amounts).
 
-    b226 is electricity paid by direct debit or quarterly bill, b489 the
-    prepayment-meter energy payment and b490 its gas part. A refund can make
-    any of them negative; they are read floored at zero, so every household
-    falls in one of the four cases below (microcosm#1164: a negative b489, or a
-    negative b490 beside a positive b489, matched none and lost its energy).
+    Each fuel is the sum of its labelled parts (``UK_LCFS_ELECTRICITY_*``,
+    ``UK_LCFS_GAS_*``; microcosm#1164): the last account payment less its
+    rebate, the prepayment-meter payment, the fuel's component of a combined
+    utilities bill and of a combined key/meter payment, and the diary's
+    account and slot-meter lines. What a combined payment leaves unsplit is
+    shared by the household's own electricity share, or the donor's mean share
+    of dual-fuel households where it reports neither fuel. Oil, bottled gas,
+    solid fuels and heat (``UK_LCFS_OTHER_FUEL_PARTS``) are neither: they stay
+    in the housing total. Negative amounts (refunds) are read as zero.
+
+    The derivation this replaces read b226 as electricity paid by direct debit
+    and b489/b490 as prepayment payments; the LCF labels make b226 the gas
+    component of a combined bill and b489/b490 the electricity and gas account
+    payments less rebates, so it gave combined-bill households their gas as
+    electricity and folded other fuels into gas.
     """
 
-    for column in ("p537", "b226", "b489", "b490"):
-        if column not in household:
-            raise ValueError(f"LCFS household donor is missing {column!r}.")
-    p537 = _numeric(household["p537"])
-    b226 = _numeric(household["b226"]).clip(lower=0.0)
-    b489 = _numeric(household["b489"]).clip(lower=0.0)
-    b490 = _numeric(household["b490"]).clip(lower=0.0)
-    dd_mask = (b226 > 0) & (p537 > 0)
-    mean_elec_share = (b226[dd_mask] / p537[dd_mask]).clip(0, 1).mean()
-    if np.isnan(mean_elec_share):
-        mean_elec_share = 0.52
-    electricity = np.zeros(len(household))
-    gas = np.zeros(len(household))
-    mask1 = b226 > 0
-    electricity[mask1] = b226[mask1]
-    gas[mask1] = np.maximum(p537[mask1] - b226[mask1], 0)
-    mask2 = (~mask1) & (b489 > 0) & (b490 > 0)
-    electricity[mask2] = np.maximum(b489[mask2] - b490[mask2], 0)
-    gas[mask2] = b490[mask2]
-    mask3 = (~mask1) & (b489 > 0) & (b490 == 0)
-    electricity[mask3] = b489[mask3] * mean_elec_share
-    gas[mask3] = b489[mask3] * (1 - mean_elec_share)
-    mask4 = (~mask1) & (b489 == 0)
-    electricity[mask4] = p537[mask4] * mean_elec_share
-    gas[mask4] = p537[mask4] * (1 - mean_elec_share)
+    _require_columns(household, UK_LCFS_ENERGY_CODES)
+
+    def part(code: str) -> pd.Series:
+        return _numeric(household[code]).clip(lower=0.0)
+
+    def fuel(account: tuple[str, str], parts: tuple[str, ...]) -> pd.Series:
+        paid, rebate = account
+        total = (_numeric(household[paid]) - _numeric(household[rebate])).clip(
+            lower=0.0
+        )
+        for code in parts:
+            total = total + part(code)
+        return total
+
+    electricity = fuel(UK_LCFS_ELECTRICITY_ACCOUNT, UK_LCFS_ELECTRICITY_PARTS)
+    gas = fuel(UK_LCFS_GAS_ACCOUNT, UK_LCFS_GAS_PARTS)
+    unsplit = pd.Series(0.0, index=household.index)
+    for total, parts in UK_LCFS_COMBINED_PAYMENTS:
+        split = sum(part(code) for code in parts)
+        unsplit = unsplit + (part(total) - split).clip(lower=0.0)
+    both = (electricity > 0) & (gas > 0)
+    mean_share = (
+        float((electricity[both] / (electricity[both] + gas[both])).mean())
+        if both.any()
+        else UK_LCFS_FALLBACK_ELECTRICITY_SHARE
+    )
+    known = electricity + gas
+    share = np.where(known > 0, electricity / known.where(known > 0, 1.0), mean_share)
     result = household.copy()
-    result["electricity_consumption"] = np.maximum(electricity, 0.0)
-    result["gas_consumption"] = np.maximum(gas, 0.0)
+    result["electricity_consumption"] = electricity + unsplit * share
+    result["gas_consumption"] = gas + unsplit * (1.0 - share)
+    result[UK_LCFS_OTHER_FUELS_COLUMN] = sum(
+        part(code) for code in UK_LCFS_OTHER_FUEL_PARTS
+    )
     return result
 
 

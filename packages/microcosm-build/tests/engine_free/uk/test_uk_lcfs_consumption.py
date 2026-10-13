@@ -22,6 +22,16 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
 
+def _energy_codes(n: int, **values) -> dict[str, np.ndarray]:
+    """Every labelled LCFS energy code at zero, with the given ones set."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_ENERGY_CODES
+
+    codes = {code: np.zeros(n) for code in UK_LCFS_ENERGY_CODES if code != "p537"}
+    codes.update({code: np.asarray(v, dtype=float) for code, v in values.items()})
+    return codes
+
+
 def _household() -> pd.DataFrame:
     base = {
         "case": [1, 2, 3, 4],
@@ -34,10 +44,19 @@ def _household() -> pd.DataFrame:
         "weighta": [1.5, 2.0, 2.5, 3.0],
         "a122": [4, 8, 5, 7],
         "a121": [4, 5, 6, 7],
-        "b226": [6.0, 0.0, 0.0, 0.0],
-        "b489": [0.0, 9.0, 8.0, 0.0],
-        "b490": [0.0, 4.0, 0.0, 0.0],
-        "p537": [10.0, 20.0, 30.0, -1.0],
+        **_energy_codes(
+            4,
+            b231=[10.0, 0.0, 0.0, 0.0],
+            b226=[4.0, 0.0, 0.0, 0.0],
+            b227=[6.0, 0.0, 0.0, 0.0],
+            b175=[0.0, 9.0, 0.0, 0.0],
+            b178=[0.0, 1.0, 0.0, 0.0],
+            b170=[0.0, 5.0, 0.0, 0.0],
+            b1751=[0.0, 0.0, 7.0, 0.0],
+            b017=[0.0, 0.0, 3.0, 0.0],
+            b233=[0.0, 0.0, 0.0, 10.0],
+        ),
+        "p537": [10.0, 13.0, 10.0, 10.0],
     }
     for source in (
         "p601",
@@ -163,42 +182,72 @@ def test_stage_declares_the_unmapped_code_refusal() -> None:
         )
 
 
-def test_energy_split_exercises_four_cases_fallback_and_clamp() -> None:
+def test_energy_split_sums_each_fuels_labelled_parts() -> None:
+    # microcosm#1164: b226 is the gas component of a combined bill and b227 the
+    # electricity one; b175 less b178 is the electricity account, b170 less b173
+    # the gas account; b1751 the electricity prepayment meter.
+    split = derive_energy_from_lcfs(_household())
+
+    electricity = split["electricity_consumption"].to_numpy()
+    gas = split["gas_consumption"].to_numpy()
+    np.testing.assert_allclose(electricity[:3], [6.0, 8.0, 7.0])
+    np.testing.assert_allclose(gas[:3], [4.0, 5.0, 0.0])
+    # The unsplit combined key/meter payment takes the dual-fuel mean share.
+    mean_share = np.mean([6.0 / 10.0, 8.0 / 13.0])
+    np.testing.assert_allclose(electricity[3], 10.0 * mean_share)
+    np.testing.assert_allclose(gas[3], 10.0 * (1.0 - mean_share))
+    # Oil is neither: it stays in the housing total.
+    np.testing.assert_allclose(split["lcfs_other_fuels"], [0.0, 0.0, 3.0, 0.0])
+
+
+def test_energy_split_shares_an_unsplit_payment_by_the_households_own_split() -> None:
     household = _household()
+    # A combined bill only partly split: 2 of electricity and 2 of gas are
+    # known, 6 are not, and go 50:50.
+    household.loc[0, ["b231", "b227", "b226"]] = [10.0, 2.0, 2.0]
+
     split = derive_energy_from_lcfs(household)
 
-    assert split["electricity_consumption"].tolist() == [6.0, 5.0, 4.8, 0.0]
-    assert split["gas_consumption"].tolist() == [4.0, 4.0, 3.2, 0.0]
-
-    fallback = household.copy()
-    fallback["b226"] = 0.0
-    fallback["b489"] = 0.0
-    fallback["p537"] = [10.0, 20.0, 30.0, 40.0]
-
-    split = derive_energy_from_lcfs(fallback)
-
-    np.testing.assert_allclose(
-        split["electricity_consumption"], [5.2, 10.4, 15.6, 20.8]
-    )
-    np.testing.assert_allclose(split["gas_consumption"], [4.8, 9.6, 14.4, 19.2])
+    assert split.loc[0, "electricity_consumption"] == pytest.approx(5.0)
+    assert split.loc[0, "gas_consumption"] == pytest.approx(5.0)
 
 
 def test_energy_split_reads_negative_payments_as_zero() -> None:
-    # microcosm#1164: a refund through the meter (negative b489) or a negative
-    # gas part beside a positive b489 matched none of the four cases, so the
-    # household lost its electricity and gas.
     household = _household()
-    household["b226"] = [0.0, 0.0, 0.0, -3.0]
-    household["b489"] = [-5.0, 9.0, 0.0, 0.0]
-    household["b490"] = [0.0, -1.0, 0.0, 0.0]
-    household["p537"] = [10.0, 20.0, 30.0, 40.0]
+    # A refund larger than the account, and a negative meter payment.
+    household.loc[1, ["b175", "b178"]] = [2.0, 5.0]
+    household.loc[2, "b1751"] = -4.0
 
     split = derive_energy_from_lcfs(household)
 
-    energy = split["electricity_consumption"] + split["gas_consumption"]
-    # Row 0 (b489 refund) and rows 2-3 split p537; row 1 splits b489 alone.
-    np.testing.assert_allclose(energy, [10.0, 9.0, 30.0, 40.0])
-    assert (split["electricity_consumption"] > 0).all()
+    assert split.loc[1, "electricity_consumption"] == 0.0
+    assert split.loc[1, "gas_consumption"] == pytest.approx(5.0)
+    assert split.loc[2, "electricity_consumption"] == 0.0
+    assert (split[["electricity_consumption", "gas_consumption"]] >= 0).all().all()
+
+
+def test_energy_split_refuses_a_missing_labelled_code() -> None:
+    with pytest.raises(ValueError, match="b2332"):
+        derive_energy_from_lcfs(_household().drop(columns="b2332"))
+
+
+def test_donor_records_its_fuel_light_and_power_split() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ENERGY_SPLIT_RECEIPT,
+    )
+
+    donor = clean_lcfs_consumption_table(_person(), _household())
+    receipt = donor.attrs[UK_LCFS_ENERGY_SPLIT_RECEIPT]
+    weights = np.array([1.5, 2.0, 2.5, 3.0]) * 1_000 * (365.25 / 7)
+    mean_share = np.mean([6.0 / 10.0, 8.0 / 13.0])
+    electricity = np.array([6.0, 8.0, 7.0, 10.0 * mean_share])
+    assert receipt["electricity"] == pytest.approx(float(weights @ electricity))
+    assert receipt["other_fuels"] == pytest.approx(float(weights[2] * 3.0))
+    assert receipt["fuel_light_and_power"] == pytest.approx(
+        float(weights @ np.array([10.0, 13.0, 10.0, 10.0]))
+    )
+    # The labelled parts reach the whole of p537 on this donor.
+    assert receipt["parts_over_fuel_light_and_power"] == pytest.approx(1.0)
 
 
 def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() -> None:
@@ -768,6 +817,18 @@ def _synthetic_lcfs_donor(
     household["c72213"] = np.where(rows % 10 == 1, 0.5, 0.0)
     for code in BUS_FARE_LCFS_CODES:
         household[code] = np.where(rng.random(n) < 0.55, 0.0, rng.uniform(1.0, 30.0, n))
+    # The labelled energy parts (microcosm#1164), deterministic so the draws
+    # below keep their stream: an electricity account everywhere, a gas account
+    # on five households in six, oil on a few.
+    household.update(
+        _energy_codes(
+            n,
+            b175=20.0 + rows % 15,
+            b170=np.where(rows % 6 == 0, 0.0, 10.0 + rows % 9),
+            b226=household["b226"],
+            b017=np.where(rows % 20 == 3, 5.0, 0.0),
+        )
+    )
     person = pd.DataFrame(
         {
             "case": rows + 1,
@@ -1915,22 +1976,34 @@ def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:
     assert not {"is_adult", "is_child"} & set(requested)
 
 
-def test_prepayment_meter_donor_rule_reads_b489_or_b490() -> None:
-    # microcosm#1110: b489 is the prepayment-meter energy payment and b490 its
-    # gas part; electricity-only prepayment and refunds through the meter count.
+def test_prepayment_meter_donor_rule_reads_key_and_meter_payments() -> None:
+    # microcosm#1110: b1751, b1701 and b233 are what the household last put on an
+    # electricity, gas or combined key/meter, c45114/c45214 the diary's
+    # slot-meter lines; an account payment (b489) is not prepayment.
     from microcosm.build.uk_runtime.lcfs_consumption import (
         prepayment_meter_from_lcfs,
     )
 
     household = pd.DataFrame(
-        {
-            "b489": [9.0, 0.0, -2.0, 0.0, None],
-            "b490": [4.0, 3.0, 0.0, 0.0, None],
-        }
-    )
-    assert prepayment_meter_from_lcfs(household).tolist() == [1.0, 1.0, 1.0, 0.0, 0.0]
-    with pytest.raises(ValueError, match="b490"):
-        prepayment_meter_from_lcfs(household.drop(columns="b490"))
+        _energy_codes(
+            6,
+            b1751=[9.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            b1701=[0.0, 4.0, 0.0, 0.0, 0.0, 0.0],
+            b233=[0.0, 0.0, 12.0, 0.0, 0.0, 0.0],
+            c45114=[0.0, 0.0, 0.0, 3.0, 0.0, 0.0],
+            c45214=[0.0, 0.0, 0.0, 0.0, 0.0, -1.0],
+        )
+    ).assign(b489=[0.0, 0.0, 0.0, 0.0, 20.0, 0.0])
+    assert prepayment_meter_from_lcfs(household).tolist() == [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+    ]
+    with pytest.raises(ValueError, match="b233"):
+        prepayment_meter_from_lcfs(household.drop(columns="b233"))
 
 
 def _prepayment_donor_and_recipient() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1967,8 +2040,8 @@ def _prepayment_parameters(**changes) -> dict:
     return {
         "kind": "impute_prepayment_meter",
         "output": "uses_energy_prepayment_meter",
-        "codes": ["b489", "b490"],
-        "rule": "b489_or_b490_nonzero",
+        "codes": ["b1751", "b1701", "b233", "c45114", "c45214"],
+        "rule": "key_or_meter_payment_positive",
         "seed": 0,
         "salt": "lcfs_prepayment_meter",
         "n_estimators": 8,
@@ -2026,8 +2099,8 @@ def test_prepayment_meter_draw_is_keyed_on_the_household() -> None:
     ("changes", "message"),
     [
         ({"output": "prepays"}, "must write"),
-        ({"codes": ["b489"]}, "must read"),
-        ({"rule": "b489_only"}, "unsupported"),
+        ({"codes": ["b489", "b490"]}, "must read"),
+        ({"rule": "b489_or_b490_nonzero"}, "unsupported"),
         ({"salt": ""}, "declared salt"),
         ({"seed": "0"}, "integer seed"),
     ],
