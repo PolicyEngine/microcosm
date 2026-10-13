@@ -109,10 +109,14 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             groupby_value_id="hi_01",
             geography_id="5001700US1501",
         ),
-        _soi_congressional_district_fact(
+        # The pinned feed reads the CD PTC measures from A85530, additional
+        # Medicare tax, so they never compile (source-column exclusion).
+        _cd_column_fact(
             "premium_tax_credit_amount",
-            90_000_000,
+            "A85530",
+            value=90_000_000,
             groupby_value_id="hi_01",
+            geography_level="congressional_district",
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
@@ -127,10 +131,14 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             groupby_value_id="hi_01",
             geography_id="5001700US1501",
         ),
-        _soi_congressional_district_fact(
+        # The pinned feed reads it from N19300 (line 8a mortgage interest, a
+        # component of the line 10 deduction), which is not excluded.
+        _cd_column_fact(
             "interest_paid_deduction_returns",
-            23_456,
+            "N19300",
+            value=23_456,
             groupby_value_id="hi_01",
+            geography_level="congressional_district",
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
@@ -166,9 +174,10 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             geography_level="state",
             geography_id="0400000US15",
         ),
-        _soi_congressional_district_fact(
+        _cd_column_fact(
             "premium_tax_credit_amount",
-            180_000_000,
+            "A85530",
+            value=180_000_000,
             groupby_value_id="hi_total",
             geography_level="state",
             geography_id="0400000US15",
@@ -736,12 +745,14 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
 
 
 def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
-    """One synthetic feed exercises all four rules. The M-CHIP and all-vintage
+    """One synthetic feed exercises all five rules. The M-CHIP and all-vintage
     rules list every vintage the feed carries (both CMS months even though a
     2024 build selects only 2024-12), exact-key hits land under
-    reviewed_exclusion, and the allowlisted bypass is the fact selection
-    activates. The receipt is plain JSON."""
-    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    reviewed_exclusion, the source-column rule lists the facts read from a
+    listed column and not the one read from the right column, and the
+    allowlisted bypass is the fact selection activates. The receipt is plain
+    JSON."""
+    synthetic, expected = _exclusion_rule_synthetic_feed(monkeypatch)
     facts = [*packaged_reference_facts(), *synthetic]
 
     receipt = us_fiscal_target_exclusion_receipt(facts, target_period=2024)
@@ -752,6 +763,7 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
     assert {name: rule["action"] for name, rule in rules.items()} == {
         "reviewed_exclusion": "dropped",
         "all_vintage_reviewed_exclusion": "dropped",
+        "source_column_concept_exclusion": "dropped",
         "m_chip_state_chip_enrollment": "dropped",
         "allowlisted_vintage_bypass": "allowed",
     }
@@ -763,11 +775,236 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
     assert rules["m_chip_state_chip_enrollment"]["state_fips"] == sorted(
         _M_CHIP_STATE_FIPS
     )
+    assert [
+        (entry["measure_id"], entry["source_column_id"])
+        for entry in rules["source_column_concept_exclusion"]["entries"]
+    ] == sorted(US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS)
+
+
+def test_source_column_exclusion_drops_only_the_mislabeled_column() -> None:
+    """A congressional-district fact labelled limited_state_local_taxes but read
+    from N18425/A18425 (state and local income taxes, Schedule A line 5a), or
+    labelled premium_tax_credit but read from N85530 (additional Medicare
+    tax), never compiles, at any geography; the same measures read from
+    A18460 and N85770, the columns a corrected package would read, compile
+    (microcosm#1038)."""
+    mislabeled = [
+        _cd_column_fact("limited_state_local_taxes_returns", "N18425"),
+        _cd_column_fact("limited_state_local_taxes_amount", "A18425"),
+        _cd_column_fact(
+            "limited_state_local_taxes_returns",
+            "N18425",
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+    corrected = _cd_column_fact(
+        "limited_state_local_taxes_amount",
+        "A18460",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    medicare = _cd_column_fact("premium_tax_credit_returns", "N85530")
+    ptc = _cd_column_fact(
+        "premium_tax_credit_returns",
+        "N85770",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    # The amount twin too: the removed record-set check dropped every
+    # district PTC amount; the register keeps A85770, the premium tax credit.
+    ptc_amount = _cd_column_fact(
+        "premium_tax_credit_amount",
+        "A85770",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    mislabeled = [*mislabeled, medicare]
+    facts = [*packaged_reference_facts(), *mislabeled, corrected, ptc, ptc_amount]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert not compiled & {fact["lineage"]["source_record_id"] for fact in mislabeled}
+    assert corrected["lineage"]["source_record_id"] in compiled
+    assert ptc["lineage"]["source_record_id"] in compiled
+    assert ptc_amount["lineage"]["source_record_id"] in compiled
+    rule = us_fiscal_target_exclusion_receipt(facts)["rules"][
+        "source_column_concept_exclusion"
+    ]
+    assert rule["source_record_ids"] == sorted(
+        fact["lineage"]["source_record_id"] for fact in mislabeled
+    )
+
+
+def test_source_column_exclusions_name_the_columns_their_guides_define() -> None:
+    """Each entry's reason names its own column and what its measure id means,
+    as 22incddocguide.docx defines them: N18425/A18425 (state and local income
+    taxes, Schedule A line 5a) stand in for the limited deduction N18460/A18460
+    (line 5e) and N85530/A85530 (additional Medicare tax) for the premium tax
+    credit N85770/A85770."""
+    right_columns = {
+        ("limited_state_local_taxes_returns", "N18425"): "N18460",
+        ("limited_state_local_taxes_amount", "A18425"): "A18460",
+        ("premium_tax_credit_returns", "N85530"): "N85770",
+        ("premium_tax_credit_amount", "A85530"): "A85770",
+    }
+    assert set(US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS) == set(right_columns)
+    for key, reason in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items():
+        measure_id, column = key
+        assert column in reason
+        # Counts read N columns and amounts read A columns.
+        assert column[0] == ("N" if measure_id.endswith("_returns") else "A")
+        assert right_columns[key] in reason
+        assert right_columns[key][0] == column[0]
+
+
+def test_source_column_exclusion_refuses_a_district_fact_without_a_column() -> None:
+    """A congressional-district fact of a listed measure that names no IRS
+    column refuses the compile and the receipt, because the register could not
+    tell a mislabeled column from a corrected one. A Historic Table 2 fact of
+    the same measure without a column (the US package publishes none) still
+    compiles."""
+    unnamed = _soi_congressional_district_fact(
+        "limited_state_local_taxes_amount",
+        250_000_000.0,
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    ht2 = _soi_capital_gains_fact(
+        2022,
+        source_record_id=(
+            "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount"
+        ),
+        measure_id="limited_state_local_taxes_amount",
+        value=122_000_000_000.0,
+    )
+    reference = packaged_reference_facts()
+
+    for facts in ([*reference, unnamed], [*reference, ht2, unnamed]):
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            us_fiscal_target_exclusion_receipt(facts)
+    registry = compile_us_fiscal_target_registry(
+        [*reference, ht2], allow_unaged_dollar_targets=True
+    )
+    assert ht2["lineage"]["source_record_id"] in {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+
+
+#: Two Hawaii source districts merged into one current district, so the
+#: crosswalk sums them under one contributor's layout.
+_HI_MERGE_CROSSWALK = [
+    {
+        "source_geography_id": "5001700US1501",
+        "target_geography_id": "5001900US1501",
+        "weight": 1.0,
+    },
+    {
+        "source_geography_id": "5001700US1502",
+        "target_geography_id": "5001900US1501",
+        "weight": 1.0,
+    },
+]
+
+
+def _hi_salt_district_fact(number: int, column: str | None, value: float):
+    if column is None:
+        return _soi_congressional_district_fact(
+            "limited_state_local_taxes_amount",
+            value,
+            groupby_value_id=f"hi_0{number}",
+            geography_id=f"5001700US150{number}",
+        )
+    return _cd_column_fact(
+        "limited_state_local_taxes_amount",
+        column,
+        value=value,
+        groupby_value_id=f"hi_0{number}",
+        geography_level="congressional_district",
+        geography_id=f"5001700US150{number}",
+    )
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [("A18460", "A18425"), ("A18425", "A18460")],
+    ids=["kept-first", "excluded-first"],
+)
+def test_source_column_exclusion_runs_before_the_crosswalk_merges(columns) -> None:
+    """The crosswalk sums source districts into one current district under one
+    contributor's layout, so the column check runs on each source fact first.
+    In either order the A18425 contribution never reaches the merged target,
+    which carries only the A18460 district's value, and the receipt names the
+    excluded source fact (#1224 review)."""
+    facts = [
+        _hi_salt_district_fact(number, column, value)
+        for number, column, value in zip((1, 2), columns, (100.0, 200.0), strict=True)
+    ]
+    feed = [*packaged_reference_facts(), *facts]
+
+    registry = compile_us_fiscal_target_registry(
+        feed,
+        congressional_district_vintage_crosswalk=_HI_MERGE_CROSSWALK,
+        allow_unaged_dollar_targets=True,
+    )
+    receipt = us_fiscal_target_exclusion_receipt(
+        feed, congressional_district_vintage_crosswalk=_HI_MERGE_CROSSWALK
+    )
+
+    merged = [
+        spec.value
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") == "limited_state_local_taxes_amount"
+        and spec.metadata.get("ledger_geography_level") == "congressional_district"
+    ]
+    assert merged == [100.0 if columns[0] == "A18460" else 200.0]
+    excluded = next(f for f in facts if f["layout"]["source_column_id"] == "A18425")
+    assert receipt["rules"]["source_column_concept_exclusion"]["source_record_ids"] == [
+        excluded["lineage"]["source_record_id"]
+    ]
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [("A18460", None), (None, "A18460"), ("A18425", None), (None, "A18425")],
+)
+def test_missing_column_refuses_before_the_crosswalk_merges(columns) -> None:
+    """A district fact of a listed measure with no column refuses in any merge
+    order: the crosswalk cannot hide it behind a contributor that has one, nor
+    behind an excluded one (#1224 review)."""
+    feed = [
+        *packaged_reference_facts(),
+        *(
+            _hi_salt_district_fact(number, column, 100.0)
+            for number, column in zip((1, 2), columns, strict=True)
+        ),
+    ]
+
+    with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+        compile_us_fiscal_target_registry(
+            feed,
+            congressional_district_vintage_crosswalk=_HI_MERGE_CROSSWALK,
+            allow_unaged_dollar_targets=True,
+        )
+    with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+        us_fiscal_target_exclusion_receipt(
+            feed, congressional_district_vintage_crosswalk=_HI_MERGE_CROSSWALK
+        )
 
 
 def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
     """Invariant (receipt completeness): each rule lists exactly the facts it
-    drops or allows. For any subset of the four-rule synthetic feed, each rule
+    drops or allows. For any subset of the five-rule synthetic feed, each rule
     lists exactly the full feed's ids for that rule that the subset carries.
     Hypothesis is a workspace dependency; the wheels job installs no test
     extras, so it skips there."""
@@ -775,7 +1012,7 @@ def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
-    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    synthetic, expected = _exclusion_rule_synthetic_feed(monkeypatch)
     ids = [fiscal_targets._source_record_id(fact) for fact in synthetic]
     reference = packaged_reference_facts()
 
@@ -861,9 +1098,12 @@ def test_exclusion_vintage_scope_fails_closed_for_any_vintage_pair(
 
 def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> None:
     """On the pinned feed the receipt names the 40 M-CHIP CHIP ids (20 states
-    x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the ty2020
-    and ty2023 tips return counts, and allows no vintage bypass (decision
-    d179)."""
+    x 2 CMS months), the 16 other-income ids (ty2020-ty2023), the ty2020 and
+    ty2023 tips return counts, and the 1,920 congressional-district SALT and
+    premium-tax-credit facts read from the wrong IRS column, as the feed
+    carries them before the district crosswalk (480 per measure: the US row,
+    51 states, 428 source districts), and allows no vintage bypass (decision
+    d179, microcosm#1038)."""
     _, _, receipt = pinned_feed_national_state_surface
     rules = receipt["rules"]
     m_chip_ids = rules["m_chip_state_chip_enrollment"]["source_record_ids"]
@@ -888,15 +1128,27 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
         ]
     )
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
+    column_ids = rules["source_column_concept_exclusion"]["source_record_ids"]
+    assert all(".congressional_district_2022." in i for i in column_ids)
+    assert {
+        measure: sum(
+            f".{measure}" in source_record_id for source_record_id in column_ids
+        )
+        for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+    } == {measure: 480 for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS}
+    assert len(column_ids) == 4 * 480
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,250 compiled targets after
-    Medicaid substitution, 6,102 national_state targets at registry
-    e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
+    """The release surface on the pinned feed: 31,786 compiled
+    targets after Medicaid substitution (the full surface, at f38dbd749180),
+    6,102 national_state targets at registry e1f9906bf0e0, 32 CHIP rows none
+    of them for an M-CHIP state, no other-income row and no tips return count.
+    microcosm#1038 dropped the 1,464 congressional-district SALT and
+    premium-tax-credit specs read from the wrong IRS column, all on the full
+    surface, from 33,250 (full f5bd921d6b21). microcosm#1206 moved the
     version from f96be9f41781 by binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
@@ -905,8 +1157,13 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
+    from microcosm.calibrate import TargetRegistry
+
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_250
+    assert len(registry.specs) == 31_786
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    full, _ = builder._select_target_surface(registry.specs, "full")
+    assert TargetRegistry(full, country="us").version == "f38dbd749180"
     assert len(surface.specs) == 6_102
     assert surface.version == "e1f9906bf0e0"
     chip = [
@@ -933,6 +1190,33 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+def test_pinned_feed_no_district_target_reads_an_excluded_column(
+    pinned_feed_national_state_surface,
+) -> None:
+    """No congressional-district SALT or premium-tax-credit target compiles on
+    the pinned feed: every district-file fact of those measures reads a
+    listed column. Before microcosm#1038 the 488 SALT amount specs summed to
+    1.98x the national Historic Table 2 target on the full surface (A18425,
+    state and local income taxes) and 488 premium-tax-credit return specs
+    counted additional-Medicare-tax payers (N85530)."""
+    registry, _, _ = pinned_feed_national_state_surface
+    excluded = {measure for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS}
+    assert not [
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") in excluded
+        and ".congressional_district_"
+        in spec.metadata.get("ledger_layout_record_set_id", "")
+    ]
+    # The Historic Table 2 rows of the same measures still compile.
+    assert {
+        spec.metadata["source_measure_id"]
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") in excluded
+        and ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+    } == excluded
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
