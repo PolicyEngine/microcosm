@@ -7231,6 +7231,10 @@
       },
       "cache": {
        "type": "boolean"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
       }
      }
     },

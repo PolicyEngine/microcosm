@@ -939,7 +939,7 @@
       "nonnegative_outputs": [
         "full_rate_vat_expenditure_rate"
       ],
-      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The rate is a share of expenditure after VAT, so the derive step declares it in [0, 1] (microcosm#1225, uk-data#572): the raw ETB accounts carry households whose VAT equals or exceeds their disposable expenditure, which leave nothing for the rate to be a share of and are dropped from the donor, and households with little expenditure left after VAT, whose rates exceed one, are capped at one. The donor_rate receipt counts both. A negative totvat fails the stage. The output is declared non-negative and the support gate bounds it. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
+      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The rate is a share of expenditure after VAT, so the derive step declares it in [0, 1] (microcosm#1225, uk-data#572): the raw ETB accounts carry households whose VAT equals or exceeds their disposable expenditure, which leave nothing for the rate to be a share of and are dropped from the donor, and households with little expenditure left after VAT, whose rates exceed one, are capped at one. The donor_rate receipt counts both. A negative totvat fails the stage. The output is declared non-negative and the support gate bounds it. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095). The income the rate is drawn on is disposable income on the ETB's concept (microcosm#1164): the donor's disinc, gross income less income tax, employees' National Insurance and council tax or domestic rates and before indirect taxes, carried by the declared uprate_donor_columns step from the 2023 donor year to the 2024 base year on the engine's average earnings index (as etb_services carries the same disinc); and the recipient's gross cash income (its HBAI net income with policyengine-uk's HBAI deductions added back) less the same direct taxes. The engine's household_net_income it replaces also takes off the indirect taxes and keeps the in-kind NHS and education spending, which read recipients about a quarter richer than the donor at the median. The rate is drawn at quantile and sign uniforms keyed on the household id (the declared salt), so a household keeps its draw however the frame is ordered.",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -954,14 +954,37 @@
           "year": 2023
         },
         {
+          "columns": {
+            "etb_disposable_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+            }
+          },
+          "from_period": 2023,
+          "instant": "january_first",
+          "kind": "uprate_donor_columns",
+          "to_period": 2024
+        },
+        {
           "derived_predictors": {
+            "etb_disposable_income": "HBAI net income plus the HBAI deductions, less income tax, National Insurance, council tax and domestic rates (the ETB disinc concept)",
             "is_adult": "count of household members with is_uc_claimant (FRS claimants and partners)",
             "is_child": "count of household members without is_uc_claimant (dependent children)"
           },
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
             "is_SP_age",
-            "household_net_income"
+            "hbai_household_net_income",
+            "council_tax",
+            "domestic_rates",
+            "income_tax",
+            "national_insurance",
+            "student_loan_repayments",
+            "employee_pension_contributions",
+            "personal_pension_contributions",
+            "maintenance_expenses",
+            "external_child_payments",
+            "LVT"
           ]
         },
         {
@@ -971,8 +994,9 @@
             "is_adult",
             "is_child",
             "is_SP_age",
-            "household_net_income"
+            "etb_disposable_income"
           ],
+          "salt": "etb_vat",
           "seed": 0,
           "targets": [
             "full_rate_vat_expenditure_rate"

@@ -632,6 +632,8 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
             "derive",
+            # The donor's disposable income to the base year (microcosm#1164).
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf",
             "support_clip",
@@ -841,11 +843,11 @@ class TestE3ManifestLockstep:
             "uses_energy_prepayment_meter",
         )
         assert (
-            tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_ENGINE_PREDICTORS
         )
         assert (
-            tuple(stages["etb_vat"].operations[2].parameters["predictors"])
+            tuple(stages["etb_vat"].operations[3].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -984,7 +986,8 @@ class TestE3ManifestLockstep:
             # The prepayment-meter flag (microcosm#1110).
             "impute_prepayment_meter": 0,
         }
-        assert stages["etb_vat"].operations[2].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:
