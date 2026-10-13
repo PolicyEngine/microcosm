@@ -2164,6 +2164,10 @@ def finalize_us_puf_tax_detail_predictions(
                 ),
                 "largest_weighted_draw_before": float(weighted_before.max(initial=0.0)),
                 "largest_weighted_draw_after": float(weighted_after.max(initial=0.0)),
+                "recipient_weight_total": float(recipient_weights.sum()),
+                "donor_weight_total": float(
+                    pd.to_numeric(donor["weight"], errors="coerce").fillna(0.0).sum()
+                ),
             }
         )
 

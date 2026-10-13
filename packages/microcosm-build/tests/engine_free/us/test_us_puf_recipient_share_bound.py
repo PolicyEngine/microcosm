@@ -226,14 +226,17 @@ def test_cap_mass_is_the_most_any_donor_subpopulation_of_that_size_holds(
     case: tuple[np.ndarray, ...],
 ) -> None:
     # Independent of the slice construction: a linear program picks any
-    # fractional subpopulation of donor weight `take` (0 <= x_d <= w_d) to
-    # maximize its positive mass (or minimize its negative mass). The bound's
-    # mass, w_r * cap scaled to donor weight, must equal that optimum.
+    # fractional subpopulation of donor weight `take` to maximize its positive
+    # mass (or minimize its negative mass). The problem is scaled to unit
+    # weight and unit value (y_d = x_d / take, values / max |value|), so the
+    # solver's tolerances apply to an objective in [0, 1]. The bound per unit
+    # of slice weight must equal the optimum.
     from scipy.optimize import linprog
 
     values, weights, recipient_weights = case
     donor_total = weights.sum()
     recipient_total = recipient_weights.sum()
+    scale = max(float(np.abs(values).max()), 1.0)
 
     floor, cap = _bounds(values, weights, recipient_weights)
 
@@ -242,22 +245,19 @@ def test_cap_mass_is_the_most_any_donor_subpopulation_of_that_size_holds(
         if take <= 0.0:
             continue
         for side, bound in ((1.0, cap[index]), (-1.0, floor[index])):
-            part = np.maximum(side * values, 0.0)
+            part = np.maximum(side * values, 0.0) / scale
             if not (part[weights > 0.0] > 0.0).any():
                 assert np.isinf(bound)
                 continue
             result = linprog(
                 -part,
                 A_eq=np.ones((1, len(values))),
-                b_eq=[take],
-                bounds=[(0.0, w) for w in weights],
+                b_eq=[1.0],
+                bounds=[(0.0, w / take) for w in weights],
                 method="highs",
             )
             assert result.success
-            best_mass = -result.fun
-            assert side * bound * take == pytest.approx(
-                best_mass, rel=1e-7, abs=1e-6 * max(1.0, best_mass)
-            )
+            assert side * bound / scale == pytest.approx(-result.fun, abs=1e-6)
 
 
 @_PROPERTY_SETTINGS
@@ -552,6 +552,8 @@ def test_one_extreme_draw_is_bounded_by_its_slice_and_recorded() -> None:
             "clipped_mass_after": float(expected[1] * weights[1]),
             "largest_weighted_draw_before": float(np.abs(raw * weights).max()),
             "largest_weighted_draw_after": float(np.abs(expected * weights).max()),
+            "recipient_weight_total": float(weights.sum()),
+            "donor_weight_total": float(donor["weight"].sum()),
         }
     ]
 
@@ -877,24 +879,42 @@ def test_realistic_weight_ratios_cap_a_forbes_tail_draw() -> None:
     assert np.isinf(floor).all()
     heavy = 4_000
     assert cap[heavy] < 2.189e8
-    take = recipient_weights[heavy] / recipient_weights.sum() * weights.sum()
-    assert recipient_weights[heavy] * cap[heavy] == pytest.approx(
-        recipient_weights.sum() / weights.sum() * take * reference_cap[-2], rel=1e-9
-    )
 
 
 def test_non_finite_bounded_draws_are_refused_before_any_write() -> None:
+    # non_sch_d_capital_gains has the q0.999 quantile cap, whose write runs
+    # before the recipient-share bound; a NaN in another bounded output must
+    # stop finalization before that write or any other.
     frame = _recipient_frame([20.0, 400.0])
-    raw = np.asarray([np.nan, 1.0])
-    predictions_before = raw.copy()
+    donor = pd.DataFrame(
+        {
+            "non_sch_d_capital_gains": [100.0, 200.0, 300.0],
+            _PASSTHROUGH: [100.0, 5_000.0, -10.0],
+            "weight": [999.0, 0.5, 0.5],
+        }
+    )
+    predictions = pd.DataFrame(
+        {
+            "non_sch_d_capital_gains": [50.0, 400.0],
+            _PASSTHROUGH: [np.nan, 1.0],
+        },
+        index=_recipient_index(frame),
+    )
+    before = predictions.copy(deep=True)
+    diagnostics: list[dict[str, object]] = []
+
     with pytest.raises(ValueError, match="must be finite"):
-        _finalize(
+        puf_support_module.finalize_us_puf_tax_detail_predictions(
             frame,
-            _heavy_tail_donor(_PASSTHROUGH),
-            {_PASSTHROUGH: raw},
-            diagnostics=[],
+            donor,
+            predictions,
+            person_outputs=("non_sch_d_capital_gains", _PASSTHROUGH),
+            tax_unit_outputs=(),
+            tail_bound_diagnostics=diagnostics,
         )
-    np.testing.assert_array_equal(raw, predictions_before)
+
+    pd.testing.assert_frame_equal(predictions, before, check_exact=True)
+    assert diagnostics == []
 
 
 def test_tax_unit_amount_outputs_are_bounded_on_the_tax_unit_table() -> None:

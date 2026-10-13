@@ -457,6 +457,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
         record = {
             "output": "non_sch_d_capital_gains",
+            "rule": "weighted_positive_donor_quantile",
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,

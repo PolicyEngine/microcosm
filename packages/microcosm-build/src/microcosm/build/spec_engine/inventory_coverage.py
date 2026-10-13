@@ -363,8 +363,8 @@ EXPECTED_HASHES = {
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
     # both again: the protocol attests microcosm.calibrate.solve. The
     # recipient-share bound in puf_support moves both again (#1259).
-    "seed_map": "1d7cc2ee599758e256d830640ecf01ce49fe35e4970c07cb6cdcfb009f9e2ee4",
-    "seed_protocol": "d2d2d7e4994f8970d4803c1e5506d2d8af2a4a606db2a04860ff7db498a7ffd1",
+    "seed_map": "06356affd52a29c92def0549db758e3ac4cb40eb3aa04e5040d1ac10951859e0",
+    "seed_protocol": "027c075e17c872780fad2dc6fb349d70a2bf9ec3e98811f09a460f070f6bc608",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
