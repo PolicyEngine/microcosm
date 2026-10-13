@@ -81,6 +81,7 @@ from microcosm.build.uk_runtime.local_targets import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -229,7 +230,11 @@ def _evaluate_release_input_coverage(
         )
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
-    # where they live; the coverage halves read the release frame.
+    # where they live; the coverage halves read the frame the release writes.
+    # On the full build the terminal gates hold the raw calibrated frame, so
+    # the export drops leave first: a column the release drops (the
+    # formula-owned property_wealth, microcosm#1106) is a reviewed exclusion,
+    # and the raw frame would otherwise report it as a stale exclusion.
     # The spine frame itself (the certifier's ``--spine-h5``), or the spine
     # checkpoint's published build state (weight kind, period, mass log: all
     # the build-state half reads) when a graph build hands it over.
@@ -251,7 +256,7 @@ def _evaluate_release_input_coverage(
     else:
         build_state = spine_frame
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame),
+        _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
         manifest=manifest,
         build_state_frame=build_state,
@@ -1472,8 +1477,14 @@ def _evaluate_input_mass_parity(
         minimum_reference_total=minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
+    # The reference is compared against the surface the release ships: the
+    # export frame, with the reviewed export exclusions dropped. The release
+    # cut already loads that frame; at the national seam the raw frame still
+    # carries the spine's WAS property_wealth, which the reference also
+    # stores, so comparing it there would call the signed exclusion stale
+    # (microcosm#1106).
     return uk_input_mass_parity_gate(
-        uk_input_mass_totals(context.frame),
+        uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
@@ -1797,6 +1808,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # LCFS spend column.
                 "period_type",
                 "period_value",
+                # #1106 property_components check: no receipts below profit,
+                # no landlord banded below their profit, the walk's rounding
+                # within its recorded boundary allowance.
+                "maximum_rows_receipts_below_profit",
+                "maximum_rows_with_profit_above_band",
+                "maximum_band_error_in_boundary_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

@@ -675,14 +675,26 @@ def test_committed_exclusion_registers_load() -> None:
     # Credit on SPI rows, and on the review-head arm the columns sit at +316%
     # and +103% of the reference and the access fund at +62%, its household
     # off the weight bound, all inside the fence, so the gate fails them as
-    # stale.
-    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
+    # stale. property_wealth joins with microcosm#1106 (signed 2026-10-11): the
+    # release leaves it to the engine, so the reference carries a column the
+    # candidate no longer ships.
+    assert set(input_mass["efrs-post-calibration"]) == {
+        "dfe_education_spending",
+        "property_wealth",
+    }
     assert set(qrf_tail) == {"charitable_investment_gifts"}
     for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-04"}
-        assert record.expires_on in {"2027-04-02", "2027-01-04", "2027-04-04"}
-        assert "microcosm#1063" in record.adjudication
+        assert record.approved_on in {"2026-10-02", "2026-10-04", "2026-10-11"}
+        assert record.expires_on in {
+            "2027-04-02",
+            "2027-01-04",
+            "2027-04-04",
+            "2027-04-11",
+        }
+        assert "microcosm#1063" in record.adjudication or (
+            "microcosm#1106" in record.adjudication
+        )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
     )

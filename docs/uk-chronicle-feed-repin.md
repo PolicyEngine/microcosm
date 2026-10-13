@@ -38,7 +38,10 @@ this order:
    (`uk/ledger_fact_vendor_selections.json` names them; each records the feed
    identity it was taken from);
 6. the signed compile parity receipts with
-   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`.
+   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`;
+7. the release input coverage manifest with
+   `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
+   conditioning resource, whose vendored header records the feed identity.
 
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
@@ -135,3 +138,21 @@ byte-identical. The national and local reference files are byte-identical; the e
 road-fuel targets resolve to the same values through the new keys. The vendored resources carry the
 same rows under the new feed identity, the Consumer Trends resource's 42 under their new keys, and
 the re-pin leaves the three compile-parity receipts unchanged.
+
+The `942a1fa` re-pin (microcosm#1123, PolicyEngine/chronicle#313 via #314, on top of `1ee7dfe`)
+brought the publisher inputs for the 2025 calibration: household estimates by nation and region
+(LFS 2025 for England's regions and the GB countries, NRS 2025, Welsh Government mid-2024, LPS
+dwelling stock 2021–2026), mid-2025 population estimates (the UK, country and region workbook,
+every local authority and the devolved council and district tables) with ONS's revision of
+mid-2024, the census residence-type tables (RM120, UV101a, CT0105), monthly Universal Credit by
+area from January 2025, PIPR and Scottish rent statistics, SPREE and the Welsh and Scottish
+dwelling stock by tenure, and newer editions of SLC repayments, ISC, public sector employment,
+land values and the DfI receipts (927,239 rows, 2.6 times the previous feed). Three selectors had to
+move with the data: the ONS mid-2025 workbook lays its rows out by geography, so the population
+selectors pin ages through `dimension_values` and no longer require the age layout; the
+preliminary end-2025 land rows carry `publication_status: preliminary` and are bound explicitly;
+and public sector employment is the mean of its four 2025 quarters. Three vendor selections pin
+the periods their stages were built on (UK and regional population 2023 and 2024, the DfI series
+to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
+population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
+rounding of seventeen earlier values (eleven receipts and six journeys).

@@ -1,6 +1,7 @@
 """Unit reporting classifiers using declared inputs and fixed baseline cells."""
 
 from copy import deepcopy
+from fractions import Fraction
 
 import numpy as np
 import pandas as pd
@@ -129,6 +130,35 @@ def _deciles(incomes, weights, ids=None, bins=10):
     )
 
 
+def _fraction_deciles(incomes, weights, ids, bins=10):
+    """Independent oracle on the actual float64 input values, without snapping."""
+
+    exact_weights = [Fraction(float(weight)) for weight in weights]
+    total = sum(exact_weights, Fraction(0))
+    preceding = Fraction(0)
+    labels = np.empty(len(weights), dtype=np.int64)
+    for row in sorted(range(len(weights)), key=lambda row: (incomes[row], ids[row])):
+        midpoint = (preceding + exact_weights[row] / 2) / total
+        labels[row] = min(int(midpoint * bins) + 1, bins)
+        preceding += exact_weights[row]
+    return labels
+
+
+def _large_float_weighted_sample(size, seed, *, exponent_limit=400):
+    """Generate large populations with ties, zero weights and dyadic float weights."""
+
+    rng = np.random.default_rng(seed)
+    incomes = rng.integers(-100, 101, size=size)
+    weights = np.ldexp(
+        rng.uniform(0.5, 1, size=size),
+        rng.integers(-exponent_limit, exponent_limit + 1, size=size),
+    )
+    weights[::17] = 0
+    weights[1] = 1
+    ids = np.arange(size) * 17 - 35
+    return incomes, weights, ids
+
+
 def test_declared_income_uses_gross_assigned_amounts_and_annual_factors():
     tables = _tables()
     before = deepcopy(tables)
@@ -175,6 +205,59 @@ def test_exact_weighted_midpoint_boundaries_and_uneven_weights():
     )
     assert diagnostics["zero_weight_units"] == 0
     np.testing.assert_array_equal(_deciles([0, 1], [2, 8])[0], [2, 7])
+
+
+@pytest.mark.parametrize(
+    "first_weight,last_weight,expected",
+    [
+        (np.nextafter(2.0, 0.0), 8.0, 1),
+        (2.0, np.nextafter(8.0, np.inf), 1),
+        (2.0, 8.0, 2),
+        (2.0, np.nextafter(8.0, 0.0), 2),
+    ],
+)
+def test_genuine_near_boundary_midpoints_are_not_snapped(
+    first_weight, last_weight, expected
+):
+    weights = [first_weight, last_weight]
+    labels, _ = _deciles([0, 1], weights)
+    assert labels[0] == expected
+    np.testing.assert_array_equal(
+        labels, _fraction_deciles([0, 1], weights, [0, 1])
+    )
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.1])
+def test_reviewer_625_unit_exact_half_boundary_with_float64_accumulator(
+    monkeypatch, scale
+):
+    # The rejected algorithm used longdouble, which has float64 precision on
+    # macOS arm64. Exercise that precision on every platform if it is restored.
+    monkeypatch.setattr("microcosm.frame.reporting.np.longdouble", np.float64)
+    left = np.tile([78.0, 46.0, 37.0], 104)
+    weights = np.r_[left, 80.0, left] * scale
+    ids = np.arange(625)
+    labels, _ = _deciles(ids, weights, ids)
+    assert labels[312] == 6
+    np.testing.assert_array_equal(labels, _fraction_deciles(ids, weights, ids))
+
+
+@pytest.mark.parametrize("repetitions", [200, 500, 1000])
+@pytest.mark.parametrize(
+    "pattern,center", [([1.0, 3.0, 6.0], 2.0), ([78.0, 46.0, 37.0], 80.0)]
+)
+@pytest.mark.parametrize("scale", [1.0, 0.1])
+def test_large_symmetric_populations_have_an_exact_half_boundary(
+    monkeypatch, repetitions, pattern, center, scale
+):
+    monkeypatch.setattr("microcosm.frame.reporting.np.longdouble", np.float64)
+    left = np.tile(pattern, repetitions)
+    weights = np.r_[left, center, left] * scale
+    ids = np.arange(len(weights))
+    labels, _ = _deciles(ids, weights, ids)
+    # Identical float weights occur in each half even after non-dyadic scaling;
+    # symmetry therefore makes this unit's exact midpoint precisely one half.
+    assert labels[len(left)] == 6
 
 
 def test_boundary_ties_split_by_stable_unit_id():
@@ -241,23 +324,19 @@ def test_weighted_deciles_permutation_invariance(sample):
 
 
 @settings(max_examples=100, deadline=None, database=None)
-@example(
-    sample=(np.arange(3), np.array([3, 2, 5]), np.arange(3), np.arange(3)), scale=0.3
-)
-@example(
-    sample=(np.arange(3), np.array([1, 3, 6]), np.arange(3), np.arange(3)), scale=0.1
-)
-@example(
-    sample=(np.arange(3), np.array([1, 3, 6]), np.arange(3), np.arange(3)), scale=1.1
-)
+@example(size=2000, seed=0, exponent=-200)
+@example(size=2000, seed=1, exponent=200)
 @given(
-    _weighted_samples(),
-    st.floats(min_value=0.125, max_value=1000, allow_nan=False, allow_infinity=False),
+    size=st.integers(200, 2000),
+    seed=st.integers(0, 2**32 - 1),
+    exponent=st.integers(-200, 200),
 )
-def test_weighted_deciles_weight_scale_invariance(sample, scale):
-    incomes, weights, ids, _ = sample
+def test_weighted_deciles_power_of_two_weight_scale_invariance(size, seed, exponent):
+    incomes, weights, ids = _large_float_weighted_sample(size, seed)
     labels, diagnostics = _deciles(incomes, weights, ids)
-    scaled, scaled_diagnostics = _deciles(incomes, weights * scale, ids)
+    # These exponents keep every positive weight normal and finite. Arbitrary
+    # multipliers round individual floats and can change the exact population.
+    scaled, scaled_diagnostics = _deciles(incomes, np.ldexp(weights, exponent), ids)
     np.testing.assert_array_equal(scaled, labels)
     np.testing.assert_allclose(
         scaled_diagnostics["weighted_shares"],
@@ -265,6 +344,39 @@ def test_weighted_deciles_weight_scale_invariance(sample, scale):
         rtol=1e-14,
         atol=1e-14,
     )
+
+
+@settings(max_examples=100, deadline=None, database=None)
+@example(size=2000, seed=0, bins=10)
+@example(size=2000, seed=1, bins=40)
+@given(
+    size=st.integers(200, 2000),
+    seed=st.integers(0, 2**32 - 1),
+    bins=st.integers(2, 40),
+)
+def test_weighted_deciles_agree_with_fraction_oracle_on_large_populations(
+    size, seed, bins
+):
+    incomes, weights, ids = _large_float_weighted_sample(
+        size, seed, exponent_limit=1000
+    )
+    labels, _ = _deciles(incomes, weights, ids, bins)
+    np.testing.assert_array_equal(
+        labels, _fraction_deciles(incomes, weights, ids, bins)
+    )
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        [np.nextafter(0.0, 1.0), np.finfo(np.float64).max, 0, 1],
+        [np.finfo(np.float64).max, 1, 0, np.nextafter(0.0, 1.0)],
+    ],
+)
+def test_weighted_deciles_agree_with_fraction_oracle_across_float64_range(weights):
+    ids = np.arange(len(weights))
+    labels, _ = _deciles(ids, weights, ids)
+    np.testing.assert_array_equal(labels, _fraction_deciles(ids, weights, ids))
 
 
 def test_variant_reweight_carries_baseline_cells_by_unit_id():

@@ -328,6 +328,30 @@ def decile_weighted_shares(labels, weights, n_bins) -> list[float]:
     return [fsum(scaled[labels == label]) / total for label in range(1, n_bins + 1)]
 
 
+def _exact_midpoint_labels(sorted_weights, n_bins):
+    """Compare float64 dyadic midpoints to bin boundaries without rounding."""
+
+    ratios = [float(weight).as_integer_ratio() for weight in sorted_weights]
+    exponent = max(denominator.bit_length() - 1 for _, denominator in ratios)
+    integer_weights = [
+        numerator << (exponent - (denominator.bit_length() - 1))
+        for numerator, denominator in ratios
+    ]
+    # Every denominator is a power of two. The common denominator cancels
+    # from the midpoint ratio, leaving exact Python integer prefix sums and
+    # division. In particular, equality with k/n_bins enters bin k + 1;
+    # there is no tolerance that could promote a genuinely lower midpoint.
+    twice_total = 2 * sum(integer_weights)
+    preceding = 0
+    labels = np.empty(len(integer_weights), dtype=np.int64)
+    for row, weight in enumerate(integer_weights):
+        labels[row] = min(
+            n_bins * (2 * preceding + weight) // twice_total + 1, n_bins
+        )
+        preceding += weight
+    return labels
+
+
 def weighted_deciles(incomes, weights, tie_ids, n_bins, *, rank_method):
     """Assign individual units by their sorted cumulative-weight midpoints.
 
@@ -345,18 +369,7 @@ def weighted_deciles(incomes, weights, tie_ids, n_bins, *, rank_method):
     weights = _weights(weights, len(incomes))
     tie_ids = _tie_ids(tie_ids, len(incomes))
     order = np.lexsort((tie_ids, incomes))
-    scaled = weights[order].astype(np.longdouble) / np.max(weights)
-    total = np.sum(scaled, dtype=np.longdouble)
-    midpoint = (np.cumsum(scaled, dtype=np.longdouble) - scaled / 2) / total
-    positions = midpoint * n_bins
-    boundaries = np.rint(positions)
-    # Rescaling float64 input weights can move a theoretical boundary by
-    # rounding error. Preserve the left-closed convention at that precision.
-    roundoff = np.finfo(np.float64).eps * n_bins * 4
-    positions = np.where(
-        np.abs(positions - boundaries) <= roundoff, boundaries, positions
-    )
-    sorted_labels = np.minimum(np.floor(positions).astype(np.int64) + 1, n_bins)
+    sorted_labels = _exact_midpoint_labels(weights[order], n_bins)
     labels = np.empty(len(incomes), dtype=np.int64)
     labels[order] = sorted_labels
     return labels, {

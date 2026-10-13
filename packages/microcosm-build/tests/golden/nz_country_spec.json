@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "a1a8179e64c1953cc5a7ebcc1bf63d700801b70394dfa79dddc74fea5405d32c",
+  "fingerprint": "5bb70e74a30e5a648b8cbd910501e2419dec8e7f2a0ea4f520d2cd34e1f17d97",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -37,7 +37,7 @@
     "staging_repo": "policyengine/populace-nz-staging"
   },
   "resource_hashes": {
-    "as_area_crosswalk.json": "cfb76c99898204598b0609e5462b2fba9d081872a13ac5dd973cb406bb6f7469",
+    "as_area_crosswalk.json": "2c296c9204efc37e8e4798d5ca23945e5b025830277a02ebad642725762f4783",
     "as_rate_bridge.json": "2dad25ba1ed46f37b2ca4fb75f0d99d6e8d36a46b40233ca51fce762e3655d0d",
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
@@ -50,7 +50,7 @@
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
-    "reporting_classifiers.json": "1de71e406021c5f22dcdf40a14bb5509fb21b5ebcf261c8397329007299e2e2f",
+    "reporting_classifiers.json": "1df7c97a98cbe2b38089d4f53596487202bb7a4b672fe289172bb793122f4d68",
     "scenarios.json": "30f96f3063773d77e3c70119c8f5d99d3528eca87428903da00ca071ab34cfaf",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "25ef74ecbc00c3f2ecca2d30ddd5e46a582657863c217da33ee9a396569d2cf2",

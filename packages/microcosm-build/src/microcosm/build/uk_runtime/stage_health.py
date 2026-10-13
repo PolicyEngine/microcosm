@@ -87,6 +87,8 @@ def uk_stage_health_gate(
         return _road_fuel_level_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
+    if check == "property_components":
+        return _property_components_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -2710,6 +2712,33 @@ def _consumption_basis_gate(
             "calendar_year" if bridged else "fiscal_year",
             uprating.get("to_period"),
         )
+        # The recorded factor must be the bridge's: after / base, where base is
+        # the declared mix of the starting and following years (the #1167
+        # re-review's nit).
+        off_bridge = []
+        for column in UK_LCFS_DIARY_PRICE_COLUMNS:
+            entry = columns.get(column)
+            if not isinstance(entry, Mapping):
+                continue
+            after, base, factor = (
+                entry.get("after"),
+                entry.get("base"),
+                entry.get("factor"),
+            )
+            if not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool)
+                for v in (after, base, factor)
+            ):
+                continue
+            if base <= 0 or abs(
+                float(factor) - float(after) / float(base)
+            ) > 1e-9 * max(1.0, abs(float(factor))):
+                off_bridge.append(column)
+        if off_bridge:
+            failures.append(
+                f"{stage}: the donor uprating's recorded factor is not after / base "
+                f"for {off_bridge}."
+            )
         if full_step:
             failures.append(
                 f"{stage}: the donor uprating does not carry {full_step} from "
@@ -3161,3 +3190,117 @@ def _bus_support_pricing_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _property_components_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Landlords' receipts keep their invariants (microcosm#1106).
+
+    No receipts below profit (the engine would read them as unknown), and no
+    landlord placed in a band below their own profit. The walk fills every
+    Table 13 band above the lowest to its share of the spine's landlords up to
+    whole-person rounding: a band's mass sits within the declared multiple of
+    its recorded rounding allowance, the weight of the person straddling each
+    of its two boundaries (one straddler for an empty band), capped at twice
+    the largest landlord weight. The open top band's profit multiplier stays below
+    its declared cap; a multiplier at its floor of 1 is reported, not failed.
+    """
+
+    check = "property_components"
+    receipts = _mapping(evidence.get("receipts"), label=f"{stage}.receipts")
+    failures: list[str] = []
+    maximum_below = int(parameters["maximum_rows_receipts_below_profit"])
+    below = int(
+        _finite_number(
+            receipts.get("rows_receipts_below_profit"),
+            label=f"{stage}.receipts.rows_receipts_below_profit",
+        )
+    )
+    if below > maximum_below:
+        failures.append(
+            f"{stage}: {below} rows carry receipts below profit "
+            f"(allowed {maximum_below})."
+        )
+    maximum_above = int(parameters["maximum_rows_with_profit_above_band"])
+    above = int(
+        _finite_number(
+            receipts.get("rows_with_profit_above_their_band"),
+            label=f"{stage}.receipts.rows_with_profit_above_their_band",
+        )
+    )
+    if above > maximum_above:
+        failures.append(
+            f"{stage}: {above} landlords sit in a receipts band below their "
+            f"profit (allowed {maximum_above})."
+        )
+    factor = _finite_number(
+        parameters["maximum_band_error_in_boundary_weights"],
+        label=f"{stage}.maximum_band_error_in_boundary_weights",
+    )
+    largest = _finite_number(
+        receipts.get("largest_landlord_weight"),
+        label=f"{stage}.receipts.largest_landlord_weight",
+    )
+    bands = receipts.get("bands_top_down")
+    if not isinstance(bands, list) or not bands:
+        raise ValueError(f"{stage}.receipts.bands_top_down must be a non-empty list.")
+    errors = []
+    for band in bands[:-1]:
+        band = _mapping(band, label=f"{stage}.receipts.bands_top_down[]")
+        target = _finite_number(
+            band.get("target_landlords"), label=f"{stage} band target"
+        )
+        walked = _finite_number(
+            band.get("walk_landlords_weight"), label=f"{stage} band mass"
+        )
+        # The stage's allowance is two straddlers' weights at most; a larger
+        # reported allowance is capped rather than trusted.
+        allowance = min(
+            _finite_number(
+                band.get("boundary_allowance_weight"),
+                label=f"{stage} band rounding allowance",
+            ),
+            2.0 * largest,
+        )
+        error = abs(walked - target)
+        errors.append(
+            {
+                "lower_bound": band.get("lower_bound"),
+                "error_weight": error,
+                "allowance_weight": allowance,
+            }
+        )
+        if error > factor * allowance:
+            failures.append(
+                f"{stage}: the band from {band.get('lower_bound')} holds "
+                f"{walked:.1f} landlords against {target:.1f}, beyond "
+                f"{factor} x its rounding allowance {allowance:.1f}."
+            )
+    top = _mapping(bands[0], label=f"{stage}.receipts.bands_top_down[0]")
+    multiplier = _finite_number(
+        top.get("profit_multiplier"), label=f"{stage} top-band multiplier"
+    )
+    bounds = receipts.get("top_band_multiplier_bounds")
+    if not isinstance(bounds, list) or len(bounds) != 2:
+        raise ValueError(f"{stage}.receipts.top_band_multiplier_bounds must be a pair.")
+    cap = _finite_number(bounds[1], label=f"{stage} top-band multiplier cap")
+    if multiplier >= cap:
+        failures.append(
+            f"{stage}: the top band's profit multiplier {multiplier} reached its "
+            f"cap {cap}; the receipts total is out of reach."
+        )
+    details = {
+        "rows_receipts_below_profit": below,
+        "rows_with_profit_above_their_band": above,
+        "largest_landlord_weight": largest,
+        "band_errors": errors,
+        "top_band_multiplier": multiplier,
+        "top_band_multiplier_cap": cap,
+        "top_band_multiplier_at_floor": bool(top.get("multiplier_at_floor", False)),
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)

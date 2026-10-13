@@ -116,8 +116,15 @@ at cumulative weight before it plus half its own weight; an exact boundary
 enters the higher decile. Zero-weight units have deterministic labels and no
 weighted mass. A single positive-weight unit enters decile 6 with ten bins;
 an all-zero population refuses. Each receipt reports all decile weighted shares.
-Bin positions within the floating-point roundoff bound of an integer boundary
-are snapped to that boundary, preserving this convention when weights scale.
+Each finite float64 weight is represented as an exact dyadic rational. The
+classifier converts these to integer weights at a common power-of-two
+denominator and uses exact integer prefix sums and division to decide labels.
+There is no boundary tolerance: a midpoint below a boundary stays below it.
+Multiplying every weight by a power of two preserves all labels when the
+scaling remains finite and exact (without underflow). Other floating-point
+scalings can round individual weights and change their relative mass; labels
+then follow the exact represented inputs. Published shares still use the
+existing floating-point share calculation.
 
 The baseline node declares `baseline_cells` with nominal type
 `microcosm.reporting.income-cells`, version 1. Variant nodes consume it through
@@ -140,7 +147,8 @@ the first matching group; the default handles unmatched units. Scenario receipts
 include `mixed_units`, predicate counts and group counts. A mixed unit matches
 more than one predicate, regardless of which member receives each programme.
 
-`nz/reporting_classifiers.json` records addendum A1/A2 parameters and provenance.
+`nz/reporting_classifiers.json` records A1/A2 parameters and provenance in the
+[reporting method](nz-reporting-classifiers-method.md).
 Its superannuitant predicate is also referenced by MC11 in `as_rate_bridge.json`.
 The cell-support gate entry explicitly lists the S0–S4 superannuitant structural
 zeros in its notes, and the classifier resource records them as data. The gate
@@ -152,6 +160,8 @@ declare a verified before-tax paid amount. The assigned Veterans Pension flag is
 unsupported in the current closure and must be supplied before classification.
 Family IDs used for ties are deterministic head-person IDs for the same pinned
 donor and unit rule; source-household keys shared by clones do not replace them.
+Clones remain distinct reporting units and may occupy different cells, including
+when their incomes and weights are equal.
 
 Engine components and masks can declare an NZS/VP alternative; an explicit
 exclusion input and counted excluded-unit reference can declare the fallback.

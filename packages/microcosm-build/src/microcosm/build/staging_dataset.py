@@ -25,7 +25,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal, TypedDict, cast
 
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 
@@ -36,6 +36,7 @@ __all__ = [
     "STAGED_MANIFEST_FILENAME",
     "STAGED_MANIFEST_SCHEMA",
     "StagedDatasetBundle",
+    "StagedDatasetDelivery",
     "StagedDatasetError",
     "StagedFile",
     "delivery_covers_bundle",
@@ -88,6 +89,30 @@ _SUMS_LINE = re.compile(r"^(?P<sha>[0-9a-f]{64})  (?P<name>[^/\\\s][^/\\]*)$")
 
 class StagedDatasetError(ValueError):
     """A staged-dataset bundle or delivery record is malformed."""
+
+
+class StagedFileDigest(TypedDict):
+    """The exact bytes registered for one staged file."""
+
+    sha256: str
+    bytes: int
+
+
+class StagedDatasetDelivery(TypedDict):
+    """Validated result of staging a dataset or graph-evidence bundle."""
+
+    contract_version: Literal[1]
+    mode: Literal["local_and_remote", "local_only", "disabled"]
+    repository: str | None
+    prefix: str | None
+    run_id: str | None
+    revision: str | None
+    status: Literal["uploaded", "already_staged", "failed", "skipped"]
+    error_code: (
+        Literal["UPLOAD_FAILED", "REMOTE_DIFFERS", "REPOSITORY_UNAVAILABLE"] | None
+    )
+    opt_out_reason: str | None
+    files: dict[str, StagedFileDigest]
 
 
 def sha256_file(path: Path | str) -> str:
@@ -353,7 +378,9 @@ def parse_sha256sums(text: str) -> list[tuple[str, str]]:
     return entries
 
 
-def validate_staged_dataset_delivery(payload: Mapping[str, Any]) -> dict[str, Any]:
+def validate_staged_dataset_delivery(
+    payload: Mapping[str, Any],
+) -> StagedDatasetDelivery:
     """Validate and normalize a staged-dataset delivery record."""
 
     if not isinstance(payload, Mapping):
@@ -423,7 +450,7 @@ def validate_staged_dataset_delivery(payload: Mapping[str, Any]) -> dict[str, An
             or files
         ):
             raise StagedDatasetError("a disabled staged dataset records nothing else.")
-        return record
+        return cast(StagedDatasetDelivery, record)
     if reason is not None:
         raise StagedDatasetError(
             "only a disabled staged dataset carries an opt-out reason."
@@ -439,7 +466,7 @@ def validate_staged_dataset_delivery(payload: Mapping[str, Any]) -> dict[str, An
             )
         if error_code is not None:
             raise StagedDatasetError("a local-only staged dataset has no error code.")
-        return record
+        return cast(StagedDatasetDelivery, record)
     if repository is None:
         raise StagedDatasetError("a remote staged dataset names its repository.")
     if status == "skipped":
@@ -451,12 +478,12 @@ def validate_staged_dataset_delivery(payload: Mapping[str, Any]) -> dict[str, An
             raise StagedDatasetError(
                 "a failed staged dataset carries an error code and no revision."
             )
-        return record
+        return cast(StagedDatasetDelivery, record)
     if error_code is not None:
         raise StagedDatasetError("a delivered staged dataset carries no error code.")
     if status == "uploaded" and revision is None:
         raise StagedDatasetError("an uploaded staged dataset records its revision.")
-    return record
+    return cast(StagedDatasetDelivery, record)
 
 
 def delivery_covers_bundle(
@@ -483,7 +510,7 @@ def delivery_covers_bundle(
     )
 
 
-def disabled_staged_dataset(reason: str) -> dict[str, Any]:
+def disabled_staged_dataset(reason: str) -> StagedDatasetDelivery:
     """Explicit evidence for a deliberate staged-dataset opt-out."""
 
     if not isinstance(reason, str) or not reason.strip():
@@ -506,7 +533,7 @@ def disabled_staged_dataset(reason: str) -> dict[str, Any]:
 
 def local_only_staged_dataset(
     bundle: StagedDatasetBundle, *, prefix: str = DEFAULT_STAGED_DATASET_PREFIX
-) -> dict[str, Any]:
+) -> StagedDatasetDelivery:
     """Evidence for a bundle verified and inventoried on disk but not uploaded."""
 
     return validate_staged_dataset_delivery(
@@ -535,7 +562,7 @@ def stage_bundle(
     storage: HuggingFaceDatasetStorage,
     prefix: str = DEFAULT_STAGED_DATASET_PREFIX,
     message: str | None = None,
-) -> dict[str, Any]:
+) -> StagedDatasetDelivery:
     """Upload the bundle and its sidecars in one commit; record, never raise.
 
     Idempotent on the outputs' digests: a remote ``staged_manifest.json`` whose

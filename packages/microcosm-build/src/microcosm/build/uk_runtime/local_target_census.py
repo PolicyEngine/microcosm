@@ -568,7 +568,9 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the "
             "taxbase set for that year, counted on the 31 October 2024 list, "
             "one count-year behind England and Scotland by ruling of "
-            "2026-09-15); all 198 cells bind, band I included."
+            "2026-09-15); all 198 cells compile, band I included, and bind "
+            "unless a signed small-cell rule defers them "
+            "(uk/local_small_cell_rule.json)."
         ),
     },
     {
@@ -589,8 +591,10 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 "
             "supplies the 32 councils by band A-H, the concept the "
             "scotgov.council_tax_stock country rows already bind; 255 cells "
-            "bind and Shetland band H is signed deferred (no band-H clone at "
-            "K=15). Chargeable dwellings run about 1 % above the household "
+            "compile and bind unless a signed small-cell rule defers them "
+            "(uk/local_small_cell_rule.json), and Shetland band H is signed "
+            "deferred (no band-H clone at K=15). Chargeable dwellings run "
+            "about 1 % above the household "
             "frame nationally, the residual the universe fence records."
         ),
     },

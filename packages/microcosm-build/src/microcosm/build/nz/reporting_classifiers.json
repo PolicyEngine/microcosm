@@ -1,8 +1,8 @@
 {
   "version": 1,
   "country": "nz",
-  "description": "Benefit-unit reporting classifiers implementing the G8 method addendum A1 and A2. Executable declarations are selected individually; provenance and activation gaps remain explicit spec data.",
-  "status": "A1 provisional for confirmation at D2; activation blocked by missing before-tax paid main-benefit amounts and Veterans Pension receipt/amount inputs",
+  "description": "Benefit-unit reporting classifiers with their A1 and A2 method basis archived in docs/nz-reporting-classifiers-method.md. Executable declarations are selected individually; provenance and activation gaps remain explicit spec data.",
+  "status": "A1 provisional pending confirmation of the publication income basis; activation blocked by missing before-tax paid main-benefit amounts and Veterans Pension receipt/amount inputs",
   "income_decile": {
     "entity": "family",
     "person_entity": "person",
@@ -184,10 +184,10 @@
     "diagnostics": "report_each_scenario_weighted_decile_shares",
     "citation": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     }
   },
-  "rank_method_note": "Provisional within-unit weighted rank convention: sort by income then stable unit id, assign floor(n_bins * (preceding_weight + unit_weight / 2) / total_weight) + 1, clamped to 1..n_bins. Tied units are ordered and may split across bins; no row is split. This midpoint convention adds a precise boundary convention to A1 and awaits hub confirmation.",
+  "rank_method_note": "Provisional within-unit weighted rank convention: sort by income then stable unit id, assign floor(n_bins * (preceding_weight + unit_weight / 2) / total_weight) + 1, clamped to 1..n_bins. Tied units and clones remain distinct reporting units and may land in different cells; no row is split. This midpoint convention adds a precise boundary convention to A1 and awaits confirmation of the publication method.",
   "tie_key_evidence": {
     "stability": "Same pinned donor and unit rule preserve person ids across rebuilds; each family id is its head person id. Units sharing source household lineage remain distinct units.",
     "implementation": [
@@ -197,7 +197,7 @@
     ],
     "citation": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     }
   },
   "blocked_inputs": [
@@ -211,7 +211,7 @@
       ],
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     },
     {
@@ -222,7 +222,7 @@
       ],
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     },
     {
@@ -233,7 +233,7 @@
       ],
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     },
     {
@@ -242,7 +242,7 @@
       "unavailable_bound_outputs": [],
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     }
   ],
@@ -253,7 +253,7 @@
       "required_behavior": "Missing flag is refused; a missing flag never implies false.",
       "citation": {
         "item": "A2",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
       }
     }
   ],
@@ -263,7 +263,7 @@
       "evidence": "axiom_input_closure.json:1045-1052",
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     },
     {
@@ -271,7 +271,7 @@
       "evidence": "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json:670-688; packages/microcosm-frame/src/microcosm/frame/concepts.py:990-1000,1040-1051",
       "citation": {
         "item": "A1",
-        "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+        "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
       }
     }
   ],
@@ -280,7 +280,7 @@
     "per_scenario": true,
     "citation": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     }
   },
   "structural_zero_cells": [
@@ -307,428 +307,428 @@
   ],
   "structural_zero_citation": {
     "item": "A2",
-    "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+    "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
   },
   "parameter_provenance": {
     "/income_decile/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/person_entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/unit_id_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/membership_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/weight_entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/expected_weight_kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/tie_key": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/boundary_scenario": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/n_bins": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/rank_method": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/0/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/0/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/0/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/0/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/0/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/1/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/1/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/1/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/1/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/1/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/2/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/2/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/2/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/2/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/2/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/3/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/3/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/3/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/3/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/3/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/4/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/4/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/4/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/4/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/4/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/5/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/5/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/5/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/5/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/5/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/6/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/6/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/6/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/6/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/6/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/7/receipt_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/8/receipt_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/9/receipt_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/10/receipt_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/kind": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/tax_basis": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/annualisation_factor": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/components/11/receipt_column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/0/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/0/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/1/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/1/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/2/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/2/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/3/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/3/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/4/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/4/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/5/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/5/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/6/entity": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/income_decile/excluded_columns/6/column": {
       "item": "A1",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
     },
     "/receipt_group/entity": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/person_entity": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/unit_id_column": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/membership_column": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/superannuitant/entity": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/superannuitant/columns/0": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/superannuitant/columns/1": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/superannuitant/reduction": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/beneficiary/entity": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/beneficiary/columns/0": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/beneficiary/columns/1": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/beneficiary/columns/2": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/predicates/beneficiary/reduction": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/priority/0": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/priority/1": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "/receipt_group/default": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     }
   },
   "as_non_beneficiary_audit": {
@@ -737,7 +737,7 @@
     "evidence": "axiom_input_closure.json:1183-1204",
     "citation": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     }
   }
 }

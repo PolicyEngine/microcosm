@@ -133,6 +133,18 @@ def _reporting_parameter_paths(value: object, path: str) -> Iterator[str]:
         yield path
 
 
+def _reporting_citations(value: object) -> Iterator[Mapping[str, Any]]:
+    """Include ancillary method citations as well as executable parameters."""
+    if isinstance(value, Mapping):
+        if "item" in value and "source" in value:
+            yield value
+        for child in value.values():
+            yield from _reporting_citations(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _reporting_citations(child)
+
+
 # ---------------------------------------------------------------------------
 # Validators (exercised by Hypothesis below, applied to the package here)
 # ---------------------------------------------------------------------------
@@ -1674,7 +1686,7 @@ class TestReportingClassifiers:
         resources = load_transport_spec("nz")["resources"]
         assert resources["reporting_classifiers"] == _load("reporting_classifiers.json")
 
-    def test_every_executable_parameter_cites_its_addendum_item(self) -> None:
+    def test_every_executable_parameter_cites_its_archived_method_item(self) -> None:
         document = _load("reporting_classifiers.json")
         paths = {
             path: item
@@ -1684,10 +1696,33 @@ class TestReportingClassifiers:
             )
         }
         assert set(document["parameter_provenance"]) == set(paths)
+        anchors = {"A1": "a1-income-decile-provisional", "A2": "a2-receipt-group"}
         for path, item in paths.items():
             citation = document["parameter_provenance"][path]
             assert citation["item"] == item
-            assert citation["source"].endswith("/g8-method-addendum.md")
+            assert citation["source"] == (
+                f"docs/nz-reporting-classifiers-method.md#{anchors[item]}"
+            )
+
+    def test_every_provenance_path_and_anchor_resolves_in_checkout(self) -> None:
+        citations = list(_reporting_citations(_load("reporting_classifiers.json")))
+        assert citations
+        for citation in citations:
+            relative_path, separator, anchor = citation["source"].partition("#")
+            assert separator and anchor, citation
+            source_path = (_BUILD.repository / relative_path).resolve()
+            assert source_path.is_relative_to(_BUILD.repository), citation
+            assert source_path.is_file(), citation
+            headings = re.findall(
+                r"^#{1,6} (.+)$",
+                source_path.read_text(encoding="utf-8"),
+                flags=re.MULTILINE,
+            )
+            heading_anchors = {
+                re.sub(r"[^\w -]", "", heading.lower()).replace(" ", "-")
+                for heading in headings
+            }
+            assert anchor in heading_anchors, citation
 
     def test_income_names_assigned_receipt_and_gross_components_only(self) -> None:
         document = _load("reporting_classifiers.json")

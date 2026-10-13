@@ -76,7 +76,6 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 
-_UK_DATA_REPO = "policyengine-" + "uk-data"
 
 DESCRIPTION = (
     "UK active-subset Ledger target references for the FRS 2024-25 line. "
@@ -638,6 +637,22 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
                     ),
                 )
             )
+        operands = target.get("value_operands") or ()
+        if (
+            target.get("value_operation") == "rolled_forward_by_ratio"
+            and operands
+            and operands[0].get("geography_level")
+        ):
+            # A roll-forward whose base sits below the row (Northern
+            # Ireland's districts' census cells for its nation row, #1123) is
+            # a composed row: it declares its own geography for the hierarchy.
+            metadata.update(
+                {
+                    "composed_from_level": str(operands[0]["geography_level"]),
+                    "geography_level": "country",
+                    "geography_id": _geography_id_for_target(target),
+                }
+            )
         if metadata:
             result[str(target["target_id"])] = metadata
     return result
@@ -803,17 +818,21 @@ def _add_uk_membership_accounting(
     report["fanout_family_outcomes"] = [
         {
             "family": "hmrc_spi",
-            "status": "active_with_signed_property_amount_exclusion",
+            "status": "active_strict_band_pins",
             "active_reference_count": fanout_counts.get("hmrc_spi", 0),
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins, except the HMRC property-income amount "
-                "surface. Those 13 rows are signed out because Ledger carries "
-                "the official SPI Table 3.7 net property-income amounts, "
-                "while the incumbent target applies the populace-side x1.9 "
-                "property-income undercount adjustment traced to "
-                f"{_UK_DATA_REPO} PR #311 / issue #230 and HMRC "
-                "Property Rental Income Statistics."
+                "dimension pins. The 13 property-income amount rows bind the "
+                "SPI Table 3.7 net concept unscaled: landlords' profit after "
+                "allowable expenses and before residential finance costs, "
+                "which is what policyengine-uk's property_income means. The "
+                "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
+                "Property Rental Income Statistics' receipts before expenses "
+                "against this net amount, so it is retired; the receipts are "
+                "constructed on property_rental_income by the "
+                "property_components stage and PRIS stays a diagnostic "
+                "(microcosm#1106, María's rulings of 2026-10-05 and "
+                "2026-10-08)."
             ),
         },
         {
@@ -830,6 +849,20 @@ def _add_uk_membership_accounting(
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_itl_marginal_rate",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_marginal_rate", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "higher and additional rate Income Tax payers (Table 2.2, July "
+                "2026) fan out over the twelve-area region tier (microcosm#905) "
+                "and bind at the calendar-2025 window of HMRC's 2024-25 and "
+                "2025-26 projections, measured on the engine's tax_band. Each "
+                "region or nation row controls its higher rate area cells "
+                "(microcosm#1123)."
             ),
         },
         {
@@ -944,14 +977,6 @@ def _add_uk_membership_accounting(
         },
     ]
     report["signed_exclusion_rationales"] = [
-        {
-            "family": "hmrc_spi",
-            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-            "status": "signed_excluded",
-            "signed_rationale": report["targets"][
-                "hmrc.spi.property_income.amount_by_total_income_band"
-            ]["candidates"][0]["signed_rationale"],
-        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
