@@ -265,11 +265,11 @@ interest) and #1040 (capital gains) use for other district families:
 - **Reviewed columns only.** Every source fact of a rebased row, and its US
   row, must read the register's `source_column`. Otherwise the compile
   refuses (`UnreviewedSoiNationalControlColumnError`), as it does for a
-  missing column. The columns are read as the feed carries them, before the
-  crosswalk merges source districts into one fact with a single
-  contributor's layout, and each merged district is traced back to its
-  contributors. Rows that keep their levels, and facts that compile to no
-  target (a stale AGI slice, a superseded vintage), are not checked. The
+  missing column. The crosswalk merges source districts into one fact with a
+  single contributor's layout, so it records each contributor's column in
+  the merged fact's lineage, and the check reads every one (facts sharing a
+  record id all count). Rows that keep their levels, and facts that compile
+  to no target (a stale AGI slice, a superseded vintage), are not checked. The
   district package's SALT and PTC measures read the wrong columns
   (microcosm#1038), so a re-pin could do the same here.
 - **The stamp cancels.** Row and US row carry the same stamp, so stamping the
