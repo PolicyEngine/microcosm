@@ -423,6 +423,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
 
@@ -439,6 +440,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
         round_tripped = json.loads(json.dumps({"weights_audit": weights_audit}))
