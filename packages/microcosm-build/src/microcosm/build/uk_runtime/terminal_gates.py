@@ -292,6 +292,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.statutory_paternity_pay",
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",

@@ -1153,8 +1153,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1269,8 +1269,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1312,8 +1312,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1530,8 +1530,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1641,8 +1641,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1872,8 +1872,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
-          "size_bytes": 30107,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2027,6 +2027,7 @@
         "student_loan_repayments",
         "statutory_sick_pay",
         "statutory_maternity_pay",
+        "statutory_paternity_pay",
         "childcare_expenses",
         "personal_pension_contributions",
         "employee_pension_contributions",
@@ -2118,6 +2119,7 @@
         "student_loan_repayments",
         "statutory_sick_pay",
         "statutory_maternity_pay",
+        "statutory_paternity_pay",
         "student_loans",
         "access_fund",
         "education_grants",

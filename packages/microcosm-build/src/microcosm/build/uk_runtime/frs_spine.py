@@ -217,6 +217,7 @@ OUTPUT_COLUMNS = (
     "student_loan_repayments",
     "statutory_sick_pay",
     "statutory_maternity_pay",
+    "statutory_paternity_pay",
     "student_loans",
     "access_fund",
     "education_grants",
@@ -688,6 +689,15 @@ def _add_person_income(
     pe_person["student_loan_repayments"] = _number(person, "slrepamt") * WEEKS_IN_YEAR
     pe_person["statutory_sick_pay"] = _number(person, "sspadj") * WEEKS_IN_YEAR
     pe_person["statutory_maternity_pay"] = _number(person, "smpadj") * WEEKS_IN_YEAR
+    # SPPADJ, "SPP amount": the weekly statutory paternity pay an adult gets
+    # for their main job (FRS 2024-25 adult table, beside SSPADJ and SMPADJ).
+    # A tab without it refuses, rather than set nobody's (uk-data#575).
+    if "sppadj" not in person.columns:
+        raise KeyError(
+            "The FRS adult tab has no SPPADJ column, so statutory paternity pay "
+            "cannot be set."
+        )
+    pe_person["statutory_paternity_pay"] = _number(person, "sppadj") * WEEKS_IN_YEAR
     pe_person["student_loans"] = _positive(person, "tuborr")
     access_fund_evidence: dict[str, object] = {}
     pe_person["access_fund"] = access_fund_annual(person, evidence=access_fund_evidence)

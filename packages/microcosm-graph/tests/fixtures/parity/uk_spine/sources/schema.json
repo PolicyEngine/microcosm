@@ -94,6 +94,7 @@
       "ssmg_reported": "float64",
       "state_pension_reported": "float64",
       "statutory_maternity_pay": "float64",
+      "statutory_paternity_pay": "float64",
       "statutory_sick_pay": "float64",
       "student_loan_repayments": "float64",
       "student_loans": "float64",
