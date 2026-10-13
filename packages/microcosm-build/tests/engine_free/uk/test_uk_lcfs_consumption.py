@@ -7,6 +7,7 @@ import pytest
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     LCFS_ACCOMM_MAP,
+    LCFS_REGIONS,
     LCFS_TENURE_MAP,
     UK_LCFS_CONSUMPTION_PREDICTORS,
     UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
@@ -95,6 +96,71 @@ def test_lcfs_donor_cleaning_arithmetic_and_lossy_maps() -> None:
     )
     assert donor.loc[1, "employment_income"] == 0.0
     assert np.isclose(donor.loc[0, "bus_fare_spending"], 3.0 * (365.25 / 7))
+
+
+@pytest.mark.parametrize(
+    ("column", "codes", "named"),
+    [
+        ("gorx", [7, 12, 13, 1], "13"),
+        ("a122", [4, 8, 9, 7], "9"),
+        ("a121", [4, 5, 6, 0], "0"),
+        ("a122", [4, 8, " ", 7], "blank or non-numeric"),
+    ],
+)
+def test_lcfs_donor_cleaning_refuses_unmapped_codes(column, codes, named) -> None:
+    # microcosm#1164: a recoded survey year must stop the stage, not lose donors.
+    household = _household()
+    household[column] = codes
+
+    with pytest.raises(ValueError, match=f"LCFS {column} has code") as raised:
+        clean_lcfs_consumption_table(_person(), household)
+
+    assert named in str(raised.value)
+    # The refusal names codes, never a count of rows.
+    assert "row" not in str(raised.value)
+
+
+def test_mapped_lcfs_codes_names_every_unknown_code_once() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import mapped_lcfs_codes
+
+    mapped = mapped_lcfs_codes(pd.Series([1, 12]), LCFS_REGIONS, column="gorx")
+    assert mapped.tolist() == ["NORTH_EAST", "NORTHERN_IRELAND"]
+    with pytest.raises(ValueError) as raised:
+        mapped_lcfs_codes(
+            pd.Series([14, 13, 13, None, "x"]), LCFS_REGIONS, column="gorx"
+        )
+    assert str(raised.value) == (
+        "LCFS gorx has code(s) the stage does not map: 13, 14, blank or non-numeric."
+    )
+
+
+def test_stage_declares_the_unmapped_code_refusal() -> None:
+    import dataclasses
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        require_refused_unmapped_codes,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    require_refused_unmapped_codes(stage)
+    operations = tuple(
+        dataclasses.replace(
+            operation,
+            parameters={
+                key: value
+                for key, value in operation.parameters.items()
+                if key != "unmapped_codes"
+            },
+        )
+        if operation.kind == "derive"
+        else operation
+        for operation in stage.operations
+    )
+    with pytest.raises(ValueError, match="unmapped_codes"):
+        require_refused_unmapped_codes(
+            dataclasses.replace(stage, operations=operations)
+        )
 
 
 def test_energy_split_exercises_four_cases_fallback_and_clamp() -> None:

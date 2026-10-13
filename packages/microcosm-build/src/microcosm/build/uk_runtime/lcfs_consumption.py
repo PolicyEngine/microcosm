@@ -433,6 +433,7 @@ class UKLCFSConsumptionStageTransform:
             energy=energy,
             donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
         )
+        require_refused_unmapped_codes(self.stage)
         donor, donor_floor_receipt = floor_negative_donor_consumption(
             donor, floor=donor_consumption_floor(self.stage)
         )
@@ -1916,13 +1917,15 @@ def clean_lcfs_consumption_table(
     household = _lowercase(lcfs_household).rename(columns=HOUSEHOLD_LCFS_RENAMES)
     _require_columns(household, ("case", *HOUSEHOLD_LCFS_RENAMES.values()))
     _require_columns(person, ("case", *PERSON_LCFS_RENAMES.values()))
-    household["region"] = _numeric(household["region"]).map(LCFS_REGIONS)
-    household["num_vehicles"] = vehicle_count(household["num_vehicles"])
-    household["tenure_type"] = _numeric(_lowercase(lcfs_household)["a122"]).map(
-        LCFS_TENURE_MAP
+    household["region"] = mapped_lcfs_codes(
+        household["region"], LCFS_REGIONS, column="gorx"
     )
-    household["accommodation_type"] = _numeric(_lowercase(lcfs_household)["a121"]).map(
-        LCFS_ACCOMM_MAP
+    household["num_vehicles"] = vehicle_count(household["num_vehicles"])
+    household["tenure_type"] = mapped_lcfs_codes(
+        _lowercase(lcfs_household)["a122"], LCFS_TENURE_MAP, column="a122"
+    )
+    household["accommodation_type"] = mapped_lcfs_codes(
+        _lowercase(lcfs_household)["a121"], LCFS_ACCOMM_MAP, column="a121"
     )
     household = derive_energy_from_lcfs(household)
     household = household.rename(columns=CONSUMPTION_VARIABLE_RENAMES)
@@ -1964,14 +1967,56 @@ def clean_lcfs_consumption_table(
     household["domestic_energy_consumption"] = (
         household["electricity_consumption"] + household["gas_consumption"]
     )
-    return household[
+    donor = household[
         [
             *UK_LCFS_CONSUMPTION_PREDICTORS,
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "household_gross_income",
             "household_weight",
         ]
-    ].dropna()
+    ]
+    # Every donor is kept or the stage stops: a silent drop would lose donors
+    # whenever a survey year recodes a variable (microcosm#1164).
+    missing = sorted(donor.columns[donor.isna().any()])
+    if missing:
+        raise ValueError(f"LCFS donor has missing values in {missing}.")
+    return donor
+
+
+def mapped_lcfs_codes(
+    raw: pd.Series, mapping: Mapping[int, str], *, column: str
+) -> pd.Series:
+    """Map an LCFS code column, refusing any code the map does not name.
+
+    Declared as ``unmapped_codes: refuse`` on the stage's derive step
+    (microcosm#1164). The message names each unknown code, and blank or
+    non-numeric entries, without counting rows: a build log is not an output
+    table, and a count of a rare code would be a small cell if it were posted.
+    """
+
+    codes = pd.to_numeric(raw, errors="coerce")
+    mapped = codes.map(mapping)
+    unknown = mapped.isna().to_numpy()
+    if unknown.any():
+        bad = codes[unknown]
+        labels = [f"{code:g}" for code in sorted(bad.dropna().unique())]
+        if bad.isna().any():
+            labels.append("blank or non-numeric")
+        raise ValueError(
+            f"LCFS {column} has code(s) the stage does not map: {', '.join(labels)}."
+        )
+    return mapped
+
+
+def require_refused_unmapped_codes(stage: SourceStageSpec) -> None:
+    """The derive step must declare the unknown-code refusal the code applies."""
+
+    declared = _operation_parameters(stage, "derive").get("unmapped_codes")
+    if declared != "refuse":
+        raise ValueError(
+            f"{stage.stage}: the derive operation must declare unmapped_codes: "
+            f"refuse, which mapped_lcfs_codes applies; got {declared!r}."
+        )
 
 
 def donor_consumption_floor(stage: SourceStageSpec) -> float:

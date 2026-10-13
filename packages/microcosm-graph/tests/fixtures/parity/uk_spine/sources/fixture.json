@@ -3525,7 +3525,6 @@
           "donor_weight": "weighta * 1000",
           "floor": 0,
           "kind": "derive",
-          "logged_dropna_row_count": true,
           "lossy_mappings": [
             "LCFS tenure 4 and 8 -> RENT_PRIVATELY",
             "LCFS accommodation 4 and 5 -> FLAT"
@@ -3533,7 +3532,8 @@
           "lowercase_columns": true,
           "mappings": {
             "num_vehicles": "a124"
-          }
+          },
+          "unmapped_codes": "refuse"
         },
         {
           "columns": {

@@ -7056,6 +7056,11 @@
       "logged_dropna_row_count": {
        "type": "boolean"
       },
+      "unmapped_codes": {
+       "enum": [
+        "refuse"
+       ]
+      },
       "margins": {
        "type": "array",
        "items": {
