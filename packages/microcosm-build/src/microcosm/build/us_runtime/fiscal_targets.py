@@ -46,6 +46,9 @@ from microcosm.calibrate import (
 from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
+    "AmbiguousSoiDistrictComponentControlError",
+    "AmbiguousSoiDistrictComponentShareTotalError",
+    "UnreviewedSoiDistrictColumnError",
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_TARGET_REGISTRY",
     "US_FISCAL_TARGET_SPECS",
@@ -1067,6 +1070,11 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
+    registry = _rebase_soi_district_component_shares(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
     registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
         registry,
@@ -1989,6 +1997,322 @@ def _soi_total_uprating_index(measure_id: str) -> str:
     if measure_id in _SOI_TOTAL_UPRATED_RETURN_MEASURES:
         return "total_taxable_interest_returns"
     return "total_taxable_interest_amount"
+
+
+@dataclass(frozen=True)
+class _SoiDistrictComponentShare:
+    """A district-file IRS column that counts one part of a model concept."""
+
+    #: The SOI concept (``SOI_VARIABLE_MAP`` key) the share rows bind.
+    variable: str
+    is_count: bool
+    #: The national measure whose level the district file's shares split, and
+    #: the return universe its fact must come from.
+    control_measure_id: str
+    control_universe: str
+    #: What the column counts, and what the control and ``variable`` count.
+    source_concept: str
+    control_concept: str
+
+
+#: The congressional-district file's interest-paid column (microcosm#1038).
+#:
+#: 22incd.csv has no Schedule A line 10 column. 22incddocguide.docx lists the
+#: line's parts: N19300/A19300 "Mortgage interest paid" (line 8a),
+#: N19500/A19500 home mortgage from a personal seller (8b), N19530/A19530
+#: deductible points (8c) and N19570/A19570 investment interest paid (line 9).
+#: Chronicle's congressional_district_2022 package publishes only line 8a,
+#: under the interest_paid_deduction_* measure ids, whose Table 2.1 rows are
+#: the line 10 total. Those rows used to compile onto interest_deduction as
+#: line 10 levels, and on the full surface they summed to 0.673x the national
+#: Table 2.1 target.
+#:
+#: Line 8a is 85.6% of line 10 in the file's US row, but 38.8% in FL-21 and
+#: under 46% in NY-10 and NY-12, where investment interest is concentrated. So
+#: a district's share of line 8a misstates its share of line 10 by a median
+#: 7.3% and at worst 54.6%. Line 8a is also 98.2% of lines 8a + 8b. Table
+#: 2.1's home mortgage interest total is exactly 8a + 8b, and
+#: deductible_mortgage_interest measures that total. A district's share of
+#: line 8a is within 2.4% of its share of 8a + 8b in every district (median
+#: 0.45%). So each district-file row that reads one of these columns compiles
+#: onto deductible_mortgage_interest as its share of the file's own US row,
+#: scaled to Table 2.1's home mortgage interest control
+#: (:func:`_rebase_soi_district_component_shares`). The column is the key, so
+#: the rule holds whatever measure id a package publishes it under.
+#: docs/us-soi-interest-paid-concepts.md has the measurements.
+_SOI_SCHEDULE_A_LINE_8A = (
+    "schedule_a_line_8a_home_mortgage_interest_paid_to_financial_institutions"
+)
+_SOI_SCHEDULE_A_LINES_8A_8B = "schedule_a_lines_8a_8b_total_home_mortgage_interest"
+_SOI_DISTRICT_COMPONENT_SHARE_COLUMNS: dict[str, _SoiDistrictComponentShare] = {
+    "N19300": _SoiDistrictComponentShare(
+        variable="deductible_mortgage_interest",
+        is_count=True,
+        control_measure_id="home_mortgage_interest_returns",
+        control_universe="itemized_returns",
+        source_concept=_SOI_SCHEDULE_A_LINE_8A,
+        control_concept=_SOI_SCHEDULE_A_LINES_8A_8B,
+    ),
+    "A19300": _SoiDistrictComponentShare(
+        variable="deductible_mortgage_interest",
+        is_count=False,
+        control_measure_id="home_mortgage_interest_amount",
+        control_universe="itemized_returns",
+        source_concept=_SOI_SCHEDULE_A_LINE_8A,
+        control_concept=_SOI_SCHEDULE_A_LINES_8A_8B,
+    ),
+}
+#: Measure ids for whose concept the district file has no column. A
+#: district-file fact of one must read a column registered above; any other
+#: column, or none, refuses the compile until it is reviewed.
+_SOI_DISTRICT_MEASURES_WITHOUT_A_COLUMN = frozenset(
+    {"interest_paid_deduction_returns", "interest_paid_deduction_amount"}
+)
+_SOI_DISTRICT_COMPONENT_SHARE_FLAG = "requires_soi_district_component_share"
+_SOI_SOURCE_COLUMN_ID_KEY = "soi_source_column_id"
+
+
+class UnreviewedSoiDistrictColumnError(ValueError):
+    """A district-file fact names no reviewed column for its measure's concept."""
+
+
+class AmbiguousSoiDistrictComponentControlError(ValueError):
+    """Different national facts tie for one district component control."""
+
+
+class AmbiguousSoiDistrictComponentShareTotalError(ValueError):
+    """One district-file record set carries two different US totals."""
+
+
+def _is_soi_congressional_district_family(fact: object) -> bool:
+    """Whether a fact comes from a congressional-district file, any vintage."""
+
+    return ".congressional_district_" in _str_at(fact, "layout", "record_set_id")
+
+
+def _soi_district_component_share(
+    fact: object, *, measure_id: str
+) -> _SoiDistrictComponentShare | None:
+    """The share rule a district-file fact's column follows, if any.
+
+    Raises:
+        UnreviewedSoiDistrictColumnError: For a district-file fact of a
+            measure the file has no column for that reads an unregistered
+            column or names none.
+    """
+
+    if _source_name(fact) != "irs_soi" or not _is_soi_congressional_district_family(
+        fact
+    ):
+        return None
+    column = _str_at(fact, "layout", "source_column_id")
+    rule = _SOI_DISTRICT_COMPONENT_SHARE_COLUMNS.get(column)
+    if rule is None and measure_id in _SOI_DISTRICT_MEASURES_WITHOUT_A_COLUMN:
+        raise UnreviewedSoiDistrictColumnError(
+            f"{_source_record_id(fact)} is a congressional-district "
+            f"{measure_id} fact read from column {column or '(none)'!r}. The "
+            "district file has no column for this concept; only the reviewed "
+            f"component columns {sorted(_SOI_DISTRICT_COMPONENT_SHARE_COLUMNS)} "
+            "compile, as shares (microcosm#1038)."
+        )
+    return rule
+
+
+def _rebase_soi_district_component_shares(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Bind district-file component rows as shares of a national control.
+
+    A row :func:`_soi_reference_from_fact` flagged reads a column that counts
+    one part of the concept it binds (``_SOI_DISTRICT_COMPONENT_SHARE_COLUMNS``).
+    It never ships as a level. Its value becomes ``control x row / US row``:
+    the US row is the same record set's national all-AGI row of the same
+    column, filing status and period, and the control is the latest
+    national all-AGI fact of the rule's control measure and universe not
+    after the build period. One factor per record set, column and status
+    scales the file's states and districts alike, so its districts still sum
+    to its states and, where the file's states sum to its US row, its states
+    and its districts each sum to the control. The US row retires, because
+    the control's own row owns the national concept. A row with no control at
+    or after its period, or no nonzero US row, is dropped. Every kept row
+    declares the bridge: ``soi_source_concept``, ``soi_control_concept``, the
+    denominator (``soi_share_total_source_record_id``) and the control's
+    universe. The value lands at the control's period, so target aging ages
+    it with the control's own row and the file's period stamp cancels.
+    """
+
+    controls = _soi_district_component_controls(facts, target_period=target_period)
+    share_totals = _soi_district_component_share_totals(facts)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get(_SOI_DISTRICT_COMPONENT_SHARE_FLAG) != "true":
+            specs.append(spec)
+            continue
+        column = spec.metadata[_SOI_SOURCE_COLUMN_ID_KEY]
+        rule = _SOI_DISTRICT_COMPONENT_SHARE_COLUMNS[column]
+        status = spec.metadata.get("filing_status", "")
+        source_period = spec.metadata.get("source_period", "")
+        control = controls.get((rule.control_measure_id, status))
+        if control is None or not _period_not_before(
+            control.period_key, _period_key_from_value(source_period)
+        ):
+            continue
+        share_total = share_totals.get(
+            (
+                spec.metadata.get("ledger_layout_record_set_id", ""),
+                column,
+                status,
+                source_period,
+            )
+        )
+        if share_total is None or share_total.value == 0:
+            continue
+        if _is_national_all_agi_spec(spec):
+            continue
+        factor = control.value / share_total.value
+        metadata = {
+            key: value
+            for key, value in spec.metadata.items()
+            if key != _SOI_DISTRICT_COMPONENT_SHARE_FLAG
+        }
+        metadata.update(
+            {
+                "uprating_index": rule.control_measure_id,
+                "uprating_from_period": source_period,
+                # The rebase lands the value at the CONTROL's period; target
+                # aging completes the remaining links from there.
+                "uprating_to_period": control.source_period,
+                "uprating_index_source_period": control.source_period,
+                "uprating_index_source_record_id": control.source_record_id,
+                "uprating_factor": _format_float(factor),
+                "stale_distribution_rebased_to_active_total": "true",
+                "soi_source_concept": rule.source_concept,
+                "soi_control_concept": rule.control_concept,
+                "soi_share_total_source_record_id": share_total.source_record_id,
+            }
+        )
+        if rule.control_universe != spec.metadata.get("soi_return_universe"):
+            metadata["soi_return_universe_bridge"] = rule.control_universe
+        specs.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_district_component_controls(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str], _SoiTotalControl]:
+    """Each component rule's national control, by (measure, filing status).
+
+    Only a national all-AGI fact of a rule's control measure and universe
+    from outside the district files qualifies. The latest period not after
+    the build period wins, and the choice depends on the fact set alone: two
+    different candidates at that period refuse the compile instead of letting
+    feed order pick one (microcosm#1035).
+    """
+
+    universes = {
+        rule.control_measure_id: rule.control_universe
+        for rule in _SOI_DISTRICT_COMPONENT_SHARE_COLUMNS.values()
+    }
+    target_period_key = _period_key_from_value(target_period)
+    controls: dict[tuple[str, str], _SoiTotalControl] = {}
+    tied: dict[tuple[str, str], set[tuple[str, float, str]]] = {}
+    for fact in facts:
+        if _source_name(fact) != "irs_soi":
+            continue
+        measure_id = _measure_id(fact)
+        universe = universes.get(measure_id)
+        if universe is None or _soi_return_universe_from_fact(fact) != universe:
+            continue
+        if _geography_level(fact) != "country" or not _is_all_agi_range_fact(fact):
+            continue
+        if _is_soi_congressional_district_family(fact):
+            continue
+        status = _filing_status_label(_dimensions(fact).get("filing_status"))
+        source_record_id = _source_record_id(fact)
+        if status is None or not source_record_id:
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        key = (measure_id, status)
+        identity = (source_record_id, candidate.value, candidate.source_period)
+        current = controls.get(key)
+        if current is not None and period_key[:2] == current.period_key[:2]:
+            tied[key].add(identity)
+            continue
+        if current is None or period_key[:2] > current.period_key[:2]:
+            controls[key] = candidate
+            tied[key] = {identity}
+    ambiguous = {key: sorted(found) for key, found in tied.items() if len(found) > 1}
+    if ambiguous:
+        raise AmbiguousSoiDistrictComponentControlError(
+            "District component control is ambiguous: different candidates "
+            f"tie at the latest period for {ambiguous}. Deduplicate them "
+            "upstream; feed order must not pick a control (microcosm#1035)."
+        )
+    return controls
+
+
+@dataclass(frozen=True)
+class _SoiDistrictShareTotal:
+    value: float
+    source_record_id: str
+
+
+def _soi_district_component_share_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], _SoiDistrictShareTotal]:
+    """Each district file's US row of a component column, its shares' denominator.
+
+    Keyed by (record set, column, filing status, period), so a row divides by
+    the US row of its own file. Two different values under one key refuse the
+    compile; equal values under two record ids keep the smaller id, so the
+    named denominator does not depend on feed order.
+    """
+
+    totals: dict[tuple[str, str, str, str], _SoiDistrictShareTotal] = {}
+    for fact in facts:
+        if _source_name(fact) != "irs_soi":
+            continue
+        column = _str_at(fact, "layout", "source_column_id")
+        if column not in _SOI_DISTRICT_COMPONENT_SHARE_COLUMNS:
+            continue
+        if not _is_soi_congressional_district_family(fact):
+            continue
+        if _geography_level(fact) != "country" or not _is_all_agi_range_fact(fact):
+            continue
+        status = _filing_status_label(_dimensions(fact).get("filing_status"))
+        source_record_id = _source_record_id(fact)
+        if status is None or not source_record_id:
+            continue
+        key = (
+            _str_at(fact, "layout", "record_set_id"),
+            column,
+            status,
+            str(_period_value(fact)),
+        )
+        candidate = _SoiDistrictShareTotal(_numeric_value(fact), source_record_id)
+        current = totals.get(key)
+        if current is not None and current.value != candidate.value:
+            raise AmbiguousSoiDistrictComponentShareTotalError(
+                f"District file has two US totals for {key}: {current.value!r} "
+                f"({current.source_record_id}) and {candidate.value!r} "
+                f"({candidate.source_record_id}). Deduplicate them upstream."
+            )
+        if current is None or candidate.source_record_id < current.source_record_id:
+            totals[key] = candidate
+    return totals
 
 
 def _rebase_soi_state_agi_bands(
@@ -3127,6 +3451,12 @@ def _soi_reference_from_fact(
     override = _soi_layout_variable_override(fact, measure_id=measure_id)
     if override is not None:
         variable, is_count = override
+    # A district-file column that counts part of a concept binds that
+    # concept's model variable as a share, whatever measure id it is
+    # published under (_rebase_soi_district_component_shares; microcosm#1038).
+    component = _soi_district_component_share(fact, measure_id=measure_id)
+    if component is not None:
+        variable, is_count = component.variable, component.is_count
     if variable is None:
         return None
 
@@ -3177,7 +3507,12 @@ def _soi_reference_from_fact(
         "source_variable": variable,
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
-        "target_role": _soi_target_role(fact, measure_id),
+        # A component share is never its measure id's national total.
+        "target_role": (
+            "soi_fiscal_distribution"
+            if component is not None
+            else _soi_target_role(fact, measure_id)
+        ),
         "variable": display_variable,
         "materializer": "irs_soi_slice",
         "measure_mode": _soi_measure_mode(variable, is_count=is_count),
@@ -3210,6 +3545,11 @@ def _soi_reference_from_fact(
         metadata["requires_total_soi_uprating"] = "true"
     if requires_state_agi_band_rebase:
         metadata[_SOI_STATE_AGI_BAND_REBASE_FLAG] = "true"
+    if component is not None:
+        metadata[_SOI_DISTRICT_COMPONENT_SHARE_FLAG] = "true"
+        metadata[_SOI_SOURCE_COLUMN_ID_KEY] = _str_at(
+            fact, "layout", "source_column_id"
+        )
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,

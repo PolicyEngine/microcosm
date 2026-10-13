@@ -241,7 +241,7 @@ defect inside the file. On the pinned feed all 2,193 blocks agree to float
 precision (largest relative gap 4e-16; the receipt records it under
 `internal_consistency`, and the feed-gated test pins it).
 
-On the pinned feed the band drops eight:
+On the pinned feed the band drops six:
 
 | State | Measure | Basis | Ratio | Median | Relative |
 |---|---|---|---:|---:|---:|
@@ -249,34 +249,54 @@ On the pinned feed the band drops eight:
 | Hawaii | `ordinary_dividends_amount` | rebase | 2.17 | 1.07 | 2.03 |
 | New York | `rental_royalty_income_amount` | rebase | 0.72 | 1.05 | 0.68 |
 | Utah | `tax_exempt_interest_amount` | rebase | 1.43 | 1.09 | 1.32 |
-| Wyoming | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.75 | 1.06 | 1.65 |
-| South Dakota | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.44 | 1.06 | 1.36 |
+| Wyoming | `charitable_amount` | bridge (itemized) | 1.75 | 1.06 | 1.65 |
+| South Dakota | `charitable_amount` | bridge (itemized) | 1.44 | 1.06 | 1.36 |
 
-That removes 34 district rows (Hawaii 2 x 2, New York 26, Utah 4) and four
+That removes 34 district rows (Hawaii 2 x 2, New York 26, Utah 4) and two
 bridged state rows (Wyoming and South Dakota are at-large, so they had no
-district rows). The largest gaps the band keeps are 1.22x (Wisconsin
+district rows). Their `interest_paid_deduction_amount` rows crossed the same
+bridge and were dropped too, until microcosm#1038 bound them as national
+shares (below). The largest gaps the band keeps are 1.22x (Wisconsin
 partnership and S-corporation income, West Virginia capital gains) and 1.20x
 (Mississippi capital gains); every other kept block is within 1.17x. So on
 this feed any tolerance above the largest kept gap (1.220) and below Utah's
-(1.316) drops the same eight. The band
+(1.316) drops the same six. The band
 is a reviewed tolerance, not an estimate; changing it moves the contract
 counts below, which a feed-gated test pins.
 
-The six measures only the district file has (`charitable_*`,
+Six measures only the district file has (`charitable_*`,
 `interest_paid_deduction_*`, `qualified_business_income_deduction_*`) have no
-Historic Table 2 parent. Their parent is the district file's own state row,
-**lifted onto the Historic Table 2 basis** by a sibling concept both files
-carry in the same state (`STATE_CD_LEVEL_BRIDGES`):
+Historic Table 2 parent. Their parent is the district file's own state row.
+Four of them are **lifted onto the Historic Table 2 basis** by a sibling
+concept both files carry in the same state (`STATE_CD_LEVEL_BRIDGES`):
 
 - counts use `return_count`;
-- charitable and interest-paid amounts use `itemized_deductions_amount`;
+- charitable amounts use `itemized_deductions_amount`;
 - QBI deduction amounts use `adjusted_gross_income`.
+
+The other two need no bridge. `interest_paid_deduction_*` reads Schedule A
+line 8a, and the compiler binds it as `deductible_mortgage_interest`: each
+row's share of the file's US row, times Table 2.1's home mortgage interest
+control (docs/us-soi-interest-paid-concepts.md). Such a row names its share's
+denominator (`soi_share_total_source_record_id`), and its states already sum
+to the control, so it has neither the coverage gap nor the stamp the bridge
+corrects. `state_cd` binds its state row as compiled
+(`state_cd_level_basis = national_control_share`), and its districts are
+rebased to it with basis `cd_file_state_total_national_share`, at factor 1 to
+float precision. Bridging it as well would have lifted its amounts about 6%,
+and its counts about 2%, a second time (the bridges' medians). It would also have tied it to the band's verdict on itemized
+deductions, which Wyoming and South Dakota fail because of charitable
+giving: their HT2/CD charitable ratios are 2.10 and 1.98, while their line
+8a ratios are 1.007 and 1.028. On the pinned feed the 51 interest-paid state
+rows sum to the national control, $186.31B and 11,644,348 returns aged to
+2024. Before, 49 bridged amount rows summed to $161.58B on
+`interest_deduction`, and 51 count rows to 11,514,598.
 
 The bridge assumes the measure shares its sibling's Historic Table 2 /
 district-file ratio in that state: the coverage and aging gap above, plus
 whatever the two publications disagree about for the sibling. It is an
 estimate, not an identity, which is why the factor band applies to it too.
-Without it these state rows and their 2,562 district rows would sit 2–6%
+Without it these state rows and their 1,708 district rows would sit 2–6%
 below every related concept. On the pinned feed the bridge factors are
 1.00–1.03 for counts (median 1.016), 1.03–1.75 for the itemized-deduction
 amounts (median 1.062; the two above 1.25x the median are dropped) and
@@ -299,7 +319,7 @@ bridged state row records its sibling and bridge factor.
 | Historic Table 2 rows copied to at-large districts | 360 | The same copies from the other vintage |
 | District-file state rows for concepts Historic Table 2 carries | 2,295 | Second vintage of a state concept |
 | District rows of the four out-of-band rebase blocks | 34 | The factor band (above) |
-| Bridged state rows whose sibling ratio is out of band | 4 | The factor band (above) |
+| Bridged state rows whose sibling ratio is out of band | 2 | The factor band (above) |
 
 PR #1040 (awaiting a ruling) excludes the same SALT and PTC columns in the
 compiler and rescales the district file's capital-gains rows by one national
@@ -323,14 +343,17 @@ change forces the same review.
 | `usda_snap` | 102 |
 | `cms_medicaid` (enrollment) | 51 |
 | `irs_soi` state, Historic Table 2 | 4,227 |
-| `irs_soi` state, district file (district-file-only measures) | 302 |
+| `irs_soi` state, district file (district-file-only measures) | 304 |
 | `irs_soi` district (427 districts x 51 measures, less 34 banded) | 21,743 |
-| **Admin specs** | **26,425** |
+| **Admin specs** | **26,427** |
 
 Of the 21,743 district rows, 19,181 are rebased to a Historic Table 2 parent
-and 2,562 keep a district-file parent. The 2,189 (state, concept) district
-blocks each sum to their parent within 1e-9. Adding the 487 population
-marginals gives 26,912 targets, before the holdout. The Historic Table 2
+and 2,562 keep a district-file parent: 1,708 bridged and 854 national shares
+(interest paid). The 2,189 (state, concept) district blocks each sum to their
+parent within 1e-9. Adding the 487 population marginals gives 26,914
+targets, before the holdout. Before microcosm#1038 bound interest paid as
+national shares, the district-file state count was 302, with 26,425 admin
+specs and 26,912 targets. The Historic Table 2
 state count includes the 408 state AGI-band rows of #940 (3,819 and 26,017
 admin specs before the 2026-10-04 re-pin). The feed-gated test
 `test_pinned_feed_state_cd_surface_matches_its_contract` pins these counts

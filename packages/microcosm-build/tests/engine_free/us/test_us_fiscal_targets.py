@@ -128,12 +128,6 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
-            "interest_paid_deduction_returns",
-            23_456,
-            groupby_value_id="hi_01",
-            geography_id="5001700US1501",
-        ),
-        _soi_congressional_district_fact(
             "charitable_returns",
             34_567,
             groupby_value_id="hi_01",
@@ -195,7 +189,9 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
     assert any(
         "hi_total.adjusted_gross_income" in source_id for source_id in source_ids
     )
-    assert len(cd_specs) == 11
+    # Interest paid binds only as a share of a national control:
+    # test_congressional_district_mortgage_interest_binds_as_a_national_share.
+    assert len(cd_specs) == 10
     by_measure = {
         spec.metadata["source_measure_id"]: spec
         for spec in cd_specs
@@ -238,12 +234,6 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
         qbi_returns.metadata["base_variable"] == "qualified_business_income_deduction"
     )
     assert qbi_returns.value == 12_345
-
-    interest_returns = by_measure["interest_paid_deduction_returns"]
-    assert interest_returns.metadata["measure_mode"] == "indicator_sum"
-    assert interest_returns.metadata["base_variable"] == "interest_deduction"
-    assert interest_returns.metadata["itemized_only"] == "true"
-    assert interest_returns.value == 23_456
 
     charitable_returns = by_measure["charitable_returns"]
     assert charitable_returns.metadata["measure_mode"] == "indicator_sum"
@@ -893,10 +883,13 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,250 compiled targets after
+    """The release surface on the pinned feed: 33,248 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
     e1f9906bf0e0, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1206 moved the
+    other-income row and no tips return count. microcosm#1038 retired the
+    congressional-district file's two interest-paid US rows (33,250 before);
+    national_state does not carry district-file rows, so it did not move.
+    microcosm#1206 moved the
     version from f96be9f41781 by binding the Part B premium target to
     gross_medicare_part_b_premium_if_enrolled; the counts are unchanged.
     The 408 state AGI-band rows of
@@ -906,7 +899,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_250
+    assert len(registry.specs) == 33_248
     assert len(surface.specs) == 6_102
     assert surface.version == "e1f9906bf0e0"
     chip = [
@@ -933,6 +926,82 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+def test_pinned_feed_district_interest_paid_binds_mortgage_interest_shares(
+    pinned_feed_national_state_surface,
+) -> None:
+    """The district file's line 8a rows on the pinned feed (microcosm#1038).
+
+    Its 51 state and 436 district rows of each measure bind
+    deductible_mortgage_interest, and each set sums to Table 2.1's national
+    home mortgage interest target after aging. None binds interest_deduction,
+    whose national line 10 row they summed to 0.673x of. The factors are
+    Table 2.1 TY2023 over the file's US row: $171,364,787,000 /
+    $140,135,155,000 and 11,644,348 / 11,352,500 returns.
+    """
+
+    registry, _, _ = pinned_feed_national_state_surface
+    district_file = [
+        spec
+        for spec in registry.specs
+        if ".congressional_district_"
+        in spec.metadata.get("ledger_layout_record_set_id", "")
+    ]
+    assert not [
+        spec.name
+        for spec in district_file
+        if spec.metadata.get("variable") == "interest_deduction"
+        or spec.metadata.get("requires_soi_district_component_share")
+    ]
+    national = {
+        spec.metadata["source_measure_id"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("ledger_layout_record_set_id")
+        == "irs_soi.ty2023.table_2_1.itemized_all_returns"
+        and spec.metadata.get("ledger_geography_level") == "country"
+    }
+    assert national["interest_paid_deduction_amount"].metadata["variable"] == (
+        "interest_deduction"
+    )
+    factors = {
+        "amount": 171_364_787_000 / 140_135_155_000,
+        "returns": 11_644_348 / 11_352_500,
+    }
+    for kind, factor in factors.items():
+        control = national[f"home_mortgage_interest_{kind}"]
+        rows = [
+            spec
+            for spec in district_file
+            if spec.metadata["source_measure_id"] == f"interest_paid_deduction_{kind}"
+        ]
+        assert {spec.metadata["ledger_geography_level"] for spec in rows} == {
+            "state",
+            "congressional_district",
+        }
+        assert {spec.metadata["variable"] for spec in rows} == {
+            "deductible_mortgage_interest"
+        }
+        assert {spec.metadata["aging_factor"] for spec in rows} == {
+            control.metadata["aging_factor"]
+        }
+        for spec in rows:
+            assert float(spec.metadata["uprating_factor"]) == pytest.approx(
+                factor, rel=1e-12
+            )
+            assert spec.metadata["soi_source_column_id"] == (
+                "A19300" if kind == "amount" else "N19300"
+            )
+        for level, count in (("state", 51), ("congressional_district", 436)):
+            level_rows = [
+                spec
+                for spec in rows
+                if spec.metadata["ledger_geography_level"] == level
+            ]
+            assert len(level_rows) == count
+            assert math.fsum(spec.value for spec in level_rows) == pytest.approx(
+                control.value, rel=1e-9
+            )
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:

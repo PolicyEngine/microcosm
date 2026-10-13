@@ -186,6 +186,32 @@ binds them:
   band. `experiments/940-state-agi-bands/` measures pre-calibration support
   per state and band on the #982 fix's offline outputs.
 
+### District-file components bind as shares of a national control (microcosm#1038)
+
+The congressional-district file sometimes publishes one part of a concept
+under the measure id of the whole. Its interest-paid column N19300/A19300 is
+Schedule A line 8a, but Chronicle publishes it as `interest_paid_deduction_*`,
+whose Table 2.1 rows are the line 10 total. `_SOI_DISTRICT_COMPONENT_SHARE_COLUMNS`
+registers such columns by IRS column id, with the model concept the part
+measures well and the national control of that concept:
+
+- **Which rows.** Every district-file fact that reads a registered column,
+  whatever its measure id, compiles onto the registered variable (line 8a
+  onto `deductible_mortgage_interest`). A district-file fact of a measure the
+  file has no column for (`_SOI_DISTRICT_MEASURES_WITHOUT_A_COLUMN`) that
+  reads another column, or names none, raises
+  `UnreviewedSoiDistrictColumnError`.
+- **The value.** `_rebase_soi_district_component_shares` sets
+  `control x row / US row`. The US row is the same record set's national row
+  of the same column; the control is Table 2.1's latest home mortgage interest
+  row not after the build period. Ties raise, the US row retires, and a row
+  with no anchor is dropped, never shipped as a level.
+- **Receipts.** `soi_source_concept`, `soi_control_concept`,
+  `soi_share_total_source_record_id`, `soi_source_column_id` and
+  `soi_return_universe_bridge`, beside the usual `uprating_*` fields.
+
+docs/us-soi-interest-paid-concepts.md has the measurements behind the choice.
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its
