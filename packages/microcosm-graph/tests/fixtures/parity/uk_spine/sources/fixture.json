@@ -936,13 +936,19 @@
         }
       ],
       "grain": "household",
-      "nonnegative_outputs": [],
-      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
+      "nonnegative_outputs": [
+        "full_rate_vat_expenditure_rate"
+      ],
+      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The rate is a share of expenditure after VAT, so the derive step declares it in [0, 1] (uk-data#572): the raw ETB accounts carry households whose VAT equals or exceeds their disposable expenditure, which leave nothing for the rate to be a share of and are dropped from the donor, and households with little expenditure left after VAT, whose rates exceed one, are capped at one. The donor_rate receipt counts both. A negative totvat fails the stage. The output is declared non-negative and the support gate bounds it. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52,
           "fail_loud_on_missing_rate": true,
           "kind": "derive",
+          "rate_bounds": [
+            0,
+            1
+          ],
           "reduced_rate_share": 0.025,
           "standard_rate": 0.2,
           "year": 2023

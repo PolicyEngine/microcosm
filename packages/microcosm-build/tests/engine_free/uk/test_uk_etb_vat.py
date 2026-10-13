@@ -5,11 +5,14 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.etb_vat import (
+    UK_ETB_VAT_DONOR_RATE_RECEIPT,
     UK_ETB_VAT_FIT_NAME,
+    UK_ETB_VAT_RATE_BOUNDS,
     UKETBVATResult,
     UKETBVATStageTransform,
     clean_etb_vat_table,
     donor_realized_ranges,
+    etb_vat_configuration,
     impute_etb_vat,
     support_clip_to_donor,
 )
@@ -50,12 +53,76 @@ def test_etb_vat_cleaning_fails_loud_on_missing_rate() -> None:
         clean_etb_vat_table(_raw_etb(), standard_rate=np.nan)
 
 
-def test_etb_vat_cleaning_fails_loud_on_zero_denominator() -> None:
+def test_etb_vat_cleaning_drops_donors_with_no_expenditure_after_vat() -> None:
+    # uk-data#572: VAT at or above disposable expenditure leaves nothing for
+    # the rate to be a share of, so the household is no donor.
     raw = _raw_etb()
     raw.loc[1, "expdis"] = raw.loc[1, "totvat"]
+    raw.loc[2, "expdis"] = raw.loc[2, "totvat"] - 1.0
 
-    with pytest.raises(ValueError, match="zero disposable-expenditure"):
+    donor = clean_etb_vat_table(raw)
+
+    assert donor.empty
+    assert donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT] == {
+        "rate_bounds": [0.0, 1.0],
+        "rows_dropped_no_expenditure_after_vat": 2,
+        "rows_capped_at_upper_bound": 0,
+        "donor_rows": 0,
+    }
+
+
+def test_etb_vat_cleaning_caps_rates_above_one() -> None:
+    raw = _raw_etb()
+    # 20 of VAT leaves 1 of expenditure: a rate far above one.
+    raw.loc[1, "expdis"] = 21.0
+
+    donor = clean_etb_vat_table(raw)
+
+    assert donor["full_rate_vat_expenditure_rate"].tolist() == [
+        1.0,
+        pytest.approx((10.0 * 0.975 / 0.20) / (110.0 - 10.0)),
+    ]
+    assert donor["full_rate_vat_expenditure_rate"].between(0.0, 1.0).all()
+    receipt = donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT]
+    assert receipt["rows_capped_at_upper_bound"] == 1
+    assert receipt["rows_dropped_no_expenditure_after_vat"] == 0
+    assert receipt["donor_rows"] == 2
+
+
+def test_etb_vat_cleaning_refuses_negative_vat() -> None:
+    raw = _raw_etb()
+    raw.loc[1, "totvat"] = -1.0
+
+    with pytest.raises(ValueError, match="below the declared lower bound"):
         clean_etb_vat_table(raw)
+
+
+@pytest.mark.parametrize("bounds", [(0.0, 2.0), (-1.0, 1.0), (0.0,), "unit"])
+def test_etb_vat_cleaning_refuses_other_rate_bounds(bounds) -> None:
+    with pytest.raises(ValueError, match="rate_bounds"):
+        clean_etb_vat_table(_raw_etb(), rate_bounds=bounds)
+
+
+def test_etb_vat_configuration_requires_declared_rate_bounds() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.source_manifest import SourceStageSpec
+
+    stage = load_country_spec("uk").sources.stage_map()["etb_vat"]
+    assert etb_vat_configuration(stage)["rate_bounds"] == UK_ETB_VAT_RATE_BOUNDS
+
+    undeclared = SourceStageSpec.from_mapping(
+        {
+            "stage": "etb_vat",
+            "survey": "test",
+            "source": "test",
+            "grain": "household",
+            "artifacts": [],
+            "operations": [{"kind": "derive", "year": 2023}],
+            "outputs": [],
+        }
+    )
+    with pytest.raises(ValueError, match="must declare rate_bounds"):
+        etb_vat_configuration(undeclared)
 
 
 def test_etb_vat_support_clip_and_ranges() -> None:
@@ -93,6 +160,15 @@ def test_etb_vat_support_clip_and_ranges() -> None:
         "stage": "etb_vat",
         "support_clip": clip_result.receipt.evidence(),
     }
+    transform.last_result = UKETBVATResult(
+        frame=object(),
+        support_clip=clip_result.receipt,
+        donor_rate=donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT],
+    )
+    assert (
+        transform.checkpoint_metadata()["evidence"]["donor_rate"]
+        == (donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT])
+    )
 
 
 def test_etb_vat_weighted_fit_record(monkeypatch: pytest.MonkeyPatch) -> None:

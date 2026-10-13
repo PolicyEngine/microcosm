@@ -101,7 +101,10 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
     )
-    assert set(vat["bounds"]) == {"full_rate_vat_expenditure_rate"}
+    # The rate is a share of expenditure after VAT (uk-data#572): its bound is
+    # the stage's declared range, not a rounded donor extreme.
+    assert vat["bounds"] == {"full_rate_vat_expenditure_rate": [0.0, 1]}
+    assert "no donor value is committed" in vat["source"]["sdc_treatment"]
     assert set(services["bounds"]) == {
         "dfe_education_spending",
         "rail_subsidy_spending",

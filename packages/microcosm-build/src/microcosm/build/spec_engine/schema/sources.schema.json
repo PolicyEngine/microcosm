@@ -7084,6 +7084,14 @@
       "range": {
        "type": "string"
       },
+      "rate_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 2,
+       "maxItems": 2
+      },
       "reduced_rate_share": {
        "type": "number"
       },

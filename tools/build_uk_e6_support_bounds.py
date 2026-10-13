@@ -18,7 +18,10 @@ from microcosm.build.uk_runtime.etb_services import (
 from microcosm.build.uk_runtime.etb_services import (
     donor_realized_ranges as etb_services_ranges,
 )
-from microcosm.build.uk_runtime.etb_vat import clean_etb_vat_table
+from microcosm.build.uk_runtime.etb_vat import (
+    clean_etb_vat_table,
+    etb_vat_configuration,
+)
 from microcosm.build.uk_runtime.etb_vat import (
     donor_realized_ranges as etb_vat_ranges,
 )
@@ -75,16 +78,34 @@ def build_lcfs_support_bounds(
 
 
 def build_etb_vat_support_bounds(etb_tab: Path) -> dict[str, object]:
+    """The declared [0, 1] share range, checked against the donor (uk-data#572).
+
+    The rate is a share of expenditure after VAT and the stage declares its
+    bounds, so the committed bound is that range, not a rounded donor extreme.
+    """
+
     sha = _sha256(etb_tab)
-    donor = clean_etb_vat_table(pd.read_csv(etb_tab, sep="\t", low_memory=False))
+    lower, upper = etb_vat_configuration(_committed_stage("etb_vat"))["rate_bounds"]
+    donor = clean_etb_vat_table(
+        pd.read_csv(etb_tab, sep="\t", low_memory=False), rate_bounds=(lower, upper)
+    )
+    for column, (low, high) in etb_vat_ranges(donor).items():
+        if low < lower or high > upper:
+            raise SystemExit(
+                f"ETB VAT donor {column} leaves the declared range {[lower, upper]}."
+            )
     return _payload(
         source={
             "ukds_study_number": 8856,
             "doi": "10.5255/UKDA-SN-8856-4",
             "tab_sha256": sha,
         },
-        bounds=etb_vat_ranges(donor),
+        bounds={column: (lower, upper) for column in etb_vat_ranges(donor)},
         label="ETB VAT",
+        sdc_treatment=(
+            "The bounds are the stage's declared [0, 1] share range, which the "
+            "donor is checked to lie within; no donor value is committed."
+        ),
     )
 
 
@@ -214,6 +235,7 @@ def _payload(
     source: dict[str, object],
     bounds: dict[str, tuple[float, float]],
     label: str,
+    sdc_treatment: str | None = None,
 ) -> dict[str, object]:
     return {
         "version": 1,
@@ -225,7 +247,8 @@ def _payload(
         ),
         "source": {
             **source,
-            "sdc_treatment": (
+            "sdc_treatment": sdc_treatment
+            or (
                 "Exact donor min/max values are rounded outward to one "
                 "significant figure before commit."
             ),
