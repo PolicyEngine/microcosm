@@ -1,0 +1,50 @@
+{
+ "donor_rate": {
+  "rate_bounds": [
+   0.0,
+   1.0
+  ],
+  "rows_capped_at_upper_bound": "10-49",
+  "rows_dropped_no_expenditure_after_vat": "<10"
+ },
+ "donor_uprating": {
+  "columns": {
+   "etb_disposable_income": {
+    "after": 1.54521,
+    "basis": "engine_parameter",
+    "before": 1.47023,
+    "factor": 1.0509988233133591,
+    "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+   }
+  },
+  "exempt": [],
+  "from_period": 2023,
+  "instant": "january_first",
+  "operation": "uprate_donor_columns",
+  "to_period": 2024
+ },
+ "gates": {
+  "uk_stage_etb_vat_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "predictors": [
+  "is_adult",
+  "is_child",
+  "is_SP_age",
+  "etb_disposable_income"
+ ],
+ "seconds": 28.3,
+ "share_at_one": 0.0008091671605067799,
+ "share_at_zero": 0.0,
+ "spine": "uk_frs_spine_2024_25.h5",
+ "weighted_mean_rate": 0.39793320207931027,
+ "weighted_mean_rate_by_hbai_net_income_quintile": {
+  "1": 0.35425242077838737,
+  "2": 0.3977315709686306,
+  "3": 0.40400454135571895,
+  "4": 0.4147524202445243,
+  "5": 0.41891733879749327
+ }
+}

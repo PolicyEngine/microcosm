@@ -12,7 +12,9 @@
   "stage_dev_run.control-2023-24-final.json": "#1200's head (a50ffba5e, carrying #1145 and #1198), the branch base, on LCFS 2023-24 (SN 9468)",
   "stage_dev_run.treatment-2024-25-final.json": "this branch, on LCFS 2024-25 (SN 9603, 2nd edition)",
   "nts_lcfs_chain_run.control.json": "#1200's head: nts_bus_travel then lcfs_consumption",
-  "nts_lcfs_chain_run.treatment.json": "this branch: nts_bus_travel then lcfs_consumption"
+  "nts_lcfs_chain_run.treatment.json": "this branch: nts_bus_travel then lcfs_consumption",
+  "etb_vat_dev_run.control.json": "#1200's head: etb_vat on the ETB 2023 donor year",
+  "etb_vat_dev_run.treatment.json": "this branch: etb_vat on the ETB 2023 donor year"
  },
  "not_committed": [
   "household dumps (*.households.parquet): unit records",
@@ -20,11 +22,14 @@
   "exact donor extremes, remainder minima, the donor-floor negative mass and counts under ten (see scripts/sanitize_outputs.py)"
  ],
  "files_sha256": {
-  "README.md": "e0e9060ce6bf80bc5711ff18ae0f9bde1058f9b7c36bae933ed26fbdd5168fc8",
+  "README.md": "c72c4d09368eefd07cdfe4f8e16eecdd9c888a6e2da08af3f2ac5f13ab27f273",
+  "outputs/etb_vat_dev_run.control.json": "1fd454cfa008c4f01f528b362d7b3fce7b38e0599b78706fcb06375203052a8e",
+  "outputs/etb_vat_dev_run.treatment.json": "d2b3c63f39eba4b25b205eae83565c595329f8279f686a54611011aa3e5cf85d",
   "outputs/nts_lcfs_chain_run.control.json": "6258ca0e2a55d6c6f00a195a020a93ae3c041f20bcc26af03624b2b8b90f9936",
   "outputs/nts_lcfs_chain_run.treatment.json": "7e110a246783a90a089b319dde8aef4d61b06197e40e82171f08c3702ced6951",
   "outputs/stage_dev_run.control-2023-24-final.json": "79c083d79959d5ff16edbc2fcf35cdb773fc878fbeef110fde700bb3a36837a2",
   "outputs/stage_dev_run.treatment-2024-25-final.json": "c437be80274fd4e2419af8fe500032a4fa1e3ebffcd8bb27c517b83da313656b",
+  "scripts/etb_vat_dev_run.py": "d60cd53ef7aa21db52d337eae30862639bbf834eebf294d25b1e1c4de5a75ac7",
   "scripts/nts_lcfs_chain_run.py": "7cf93989e17dbce174f49f1a179561b4492f5cf1e1c519e46ac20a048651843b",
   "scripts/run_stage_dev_at.sh": "0f804d24243e9f71e97f108337db02e19211c5540dc518260d7852b28310bf79",
   "scripts/sanitize_outputs.py": "8b59c72ffa04496d427c4195017efa54d73dd78371de1430a0154f3b6ca9001a",

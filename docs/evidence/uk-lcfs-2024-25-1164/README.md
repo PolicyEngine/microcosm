@@ -8,6 +8,7 @@ Evidence for microcosm#1164: the `lcfs_consumption` stage moved from the Living 
   - `stage_dev_run.control-2023-24-final.json`: the base tree, #1200's head (a50ffba5e, which carries #1145 and #1198), on LCFS 2023-24;
   - `stage_dev_run.treatment-2024-25-final.json`: this branch, on LCFS 2024-25.
 - **The NTS-then-LCFS chain** (`scripts/nts_lcfs_chain_run.py`). `nts_bus_travel` then `lcfs_consumption` on the same spine, because the LCFS stage prices bus fares from the NTS trips: `nts_lcfs_chain_run.control.json` and `nts_lcfs_chain_run.treatment.json`.
+- **The ETB VAT stage** (`scripts/etb_vat_dev_run.py`). `etb_vat` on the same spine, each tree's own stage on the ETB tab its spec pins, with the stage's support gate: `etb_vat_dev_run.control.json` and `etb_vat_dev_run.treatment.json`.
 
 Both arms run the same spine and policyengine-uk 2.123.0, so the comparison isolates this branch's stages. The spine already holds the stages after the LCFS stage, so compare the arms, not a run with the spine's stored columns (`before_spine`), which mixes in redraw drift. The R1 remeasure on fresh spines follows.
 
@@ -44,11 +45,13 @@ Every LCFS and NTS stage-health gate passes on both arms, and no household is le
 - **The NTS band.** On HBAI gross income the recipients' person-weighted NTS income bands (under £25k, £25-50k, £50k and over) move from 6 / 21 / 73 % to 13 / 30 / 57 %; London bus trips rise 1.6 % and other local bus trips fall 1.0 %, and bus fares are within 1 %.
 - **Prepayment meters** (microcosm#1110). The donor's weighted prepayment share is 11.0 %; the frame's is 11.5 %, and 10.5 % in Great Britain, about 3.0 million households. The government counted around three million prepayment households in Great Britain when the Energy Price Guarantee prepayment discount began in July 2023: a different reference period, households in both (Ofgem and DESNZ count meters or customers).
 - **Road fuel.** The incidence redraw leaves no flagged household at zero, and the level holds ONS 07.2.2 less the donor's other-fuels share.
+- **The ETB VAT rate.** Drawn on the ETB's own disposable-income concept, at identity-keyed uniforms and within [0, 1] (microcosm#1225), the weighted mean full-rate VAT expenditure rate moves from 0.401 to 0.398, and its profile by quintile of HBAI net income from 0.358 / 0.412 / 0.413 / 0.416 / 0.405 to 0.354 / 0.398 / 0.404 / 0.415 / 0.419: it now rises with income, where the engine's net income, inflated by in-kind spending, dipped in the top quintile. No recipient keeps a negative or zero rate. The support gate passes on both trees.
 
 ## Decisions behind the energy changes
 
 - **Which income bands the NEED rake.** The engine's `household_gross_income` adds capital gains and the imputed value of NHS, education and transport spending, about £15,000 a household on average, and missed NEED by 7.8 %. HBAI gross income (the HBAI net income with policyengine-uk's HBAI deductions added back) has a distribution close to the LCFS donor's gross income (weighted medians about £46k and £49k). HBAI net income leaves the two top NEED bands thin (about 6 % of households against about 14 % on HBAI gross), so the rake drives about 2 % of gas kWh above the domestic meter limit and the ceilings then leave those cells 3.2 % short.
 - **How the ceilings hand out what they take.** Handed to every household in proportion, the kWh capped households give up moved the cells holding most of them off their NEED means (3.2 % gas on the HBAI-gross band); re-raked within the capped households' own cells, it moves the fit 0.06 points.
+- **Which income the ETB VAT rate is drawn on.** On the K25 spine, against the ETB 2023 donor's `disinc` carried to 2024 on average earnings, the engine's `household_net_income` puts 12.8 % of recipients' mass in the wrong donor income decile (median about £47k against the donor's £39k), HBAI net income 4.1 % and the ETB's own concept, gross cash income less income tax, National Insurance and council tax, 3.0 %.
 - **How the shortfall is connected.** A gradient-boosted classifier of the donor's gas payers orders the zero-gas households a region connects (a weighted identity-keyed order, so likelier payers go first), and a regime-gated QRF of the payers' gas spend gives each its gas. Without the connect leg nine of the eleven Great Britain regions fell short of their share and the frame's gas-connected share was 79.2 %.
 
 ## What is not here
@@ -59,10 +62,10 @@ Every LCFS and NTS stage-health gate passes on both arms, and no household is le
 
 ## Re-running
 
-The runs need the licensed LCFS 2023-24 and 2024-25 tabs, the NTS 2002-2024 tabs and the spine:
+The runs need the licensed LCFS 2023-24 and 2024-25 tabs, the NTS 2002-2024 tabs, the ETB 1977-2024 household tab and the spine:
 
 ```bash
-scripts/run_stage_dev_at.sh <tree> <label> [stage_dev_run.py | nts_lcfs_chain_run.py]
+scripts/run_stage_dev_at.sh <tree> <label> [stage_dev_run.py | nts_lcfs_chain_run.py | etb_vat_dev_run.py]
 ```
 
 It runs `<tree>`'s own stage code with this worktree's environment, waits up to `WAIT` seconds (15 minutes by default) for a quieter machine, and writes `<script>.<label>.json` and the household dump to `$PE/data/ukds/acceptance/1164-lcfs-2024-25/`. A stage-only run takes about 90 seconds and 7 GB on a quiet machine; the chain about 150 seconds.
