@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     UK_QEP_ENERGY_PRICES_RESOURCE,
     EnergyPrices,
     NeedMargins,
+    declared_household_kwh_ceilings,
     impose_gas_connection,
     kwh_to_spend,
     need_margins_from_facts,
@@ -1717,6 +1718,7 @@ class LCFSEnergyPricing:
     level: Mapping[str, float]
     receipt: dict[str, Any]
     disconnect_seed: int = 0
+    ceilings: Mapping[str, float] | None = None
 
 
 def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
@@ -1765,6 +1767,7 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             f"{DISCONNECT_IDENTITY_UNIFORM_ORDER!r} must declare a non-negative "
             "integer seed."
         )
+    ceilings = declared_household_kwh_ceilings(parameters)
     return LCFSEnergyPricing(
         prices=prices,
         margins=margins,
@@ -1773,11 +1776,13 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
         disconnect_rule=disconnect_rule,
         disconnect_seed=int(disconnect_seed),
         level=level,
+        ceilings=ceilings,
         receipt={
             **prices_receipt,
             "need_margins": margins.receipt,
             "level": level_receipt,
             "gas_connection": connection_receipt,
+            "household_kwh_ceiling": ceilings,
         },
     )
 
@@ -1872,6 +1877,7 @@ def rake_recipient_energy(
         use_region_margin=True,
         gas_connected=connected,
         level=energy.level,
+        ceilings=energy.ceilings,
     )
     receipt["gas_connection"] = {"rule": energy.gas_connected, **connection_receipt}
     receipt["gas_connected_share"] = float(

@@ -21,6 +21,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
+#: About the UK's households, for synthetic frames the DESNZ energy level reads.
+UK_HOUSEHOLDS = 28_500_000.0
+
 
 def _energy_codes(n: int, **values) -> dict[str, np.ndarray]:
     """Every labelled LCFS energy code at zero, with the given ones set."""
@@ -633,7 +636,10 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     tenure = rng.choice(["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"], n)
     accommodation = rng.choice(["HOUSE_DETACHED", "FLAT", "OTHER"], n)
     region = rng.choice(["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"], n)
+    # Weights summing to the UK's households, so the DESNZ level gives each
+    # household a plausible kWh and the domestic ceilings bind only on outliers.
     weights = rng.uniform(0.5, 2.0, n)
+    weights *= UK_HOUSEHOLDS / weights.sum()
 
     raked, receipt = rake_recipient_energy(
         household,
@@ -879,7 +885,9 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     household = pd.DataFrame(
         {
             "household_id": np.arange(1, n + 1),
-            "household_weight": rng.uniform(0.5, 3.0, n),
+            # Summing to about the UK's households, so the DESNZ energy level
+            # gives each household a plausible kWh under the domestic ceilings.
+            "household_weight": rng.uniform(0.5, 3.0, n) * (UK_HOUSEHOLDS / (1.75 * n)),
             "region": regions,
             "tenure_type": np.array(
                 ["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"]

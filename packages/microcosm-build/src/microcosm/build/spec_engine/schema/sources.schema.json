@@ -9784,6 +9784,24 @@
        "enum": [
         "actual_temperature"
        ]
+      },
+      "household_kwh_ceiling": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "electricity",
+        "gas"
+       ],
+       "properties": {
+        "electricity": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "gas": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       }
       }
      },
      "if": {

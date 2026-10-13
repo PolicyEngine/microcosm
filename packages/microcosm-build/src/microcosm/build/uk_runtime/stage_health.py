@@ -287,6 +287,7 @@ def _energy_rake_gate(
         GAS_CONNECTED_PUBLISHED_METER_SHARE,
         GAS_KWH,
         PRICE_DOMESTIC_ENERGY_KIND,
+        declared_household_kwh_ceilings,
         need_margins_from_facts,
         pricing_operation,
         published_energy_level,
@@ -407,6 +408,50 @@ def _energy_rake_gate(
             )
         factors[fuel] = float(factor)
         details["level_factor"][fuel] = float(factor)
+    ceilings = declared_household_kwh_ceilings(declared)
+    if ceilings is not None:
+        # No household above its fuel's domestic ceiling, and the cap kept the
+        # levelled total (microcosm#1164).
+        ceiling_block = receipt.get("ceiling")
+        if not isinstance(ceiling_block, Mapping):
+            failures.append(
+                f"{stage}: the stage declares household kWh ceilings but the "
+                "energy_rake receipt carries no ceiling block."
+            )
+            ceiling_block = {}
+        details["ceiling"] = {}
+        for fuel, ceiling in ceilings.items():
+            entry = ceiling_block.get(fuel)
+            if not isinstance(entry, Mapping):
+                if ceiling_block:
+                    failures.append(f"{stage}: ceiling block lacks {fuel}.")
+                continue
+            if not _close(entry.get("ceiling_kwh"), ceiling, 1e-12):
+                failures.append(
+                    f"{stage}: {fuel} was capped at {entry.get('ceiling_kwh')!r}, "
+                    f"not the declared {ceiling}."
+                )
+            if entry.get("feasible") is False:
+                failures.append(
+                    f"{stage}: no household was left below the {fuel} ceiling to "
+                    "take what the capped households gave up."
+                )
+            if entry.get("households_above_after") != 0:
+                failures.append(
+                    f"{stage}: {fuel} leaves households above the declared "
+                    f"ceiling of {ceiling} kWh."
+                )
+            if not _close(entry.get("frame_kwh_after"), float(level[fuel]), 1e-6):
+                failures.append(
+                    f"{stage}: {fuel} total after the cap is "
+                    f"{entry.get('frame_kwh_after')!r}, not the published "
+                    f"{float(level[fuel])}."
+                )
+            details["ceiling"][fuel] = {
+                "ceiling_kwh": ceiling,
+                "households_capped": entry.get("households_capped"),
+                "capped_share_of_total": entry.get("capped_share_of_total"),
+            }
     for margin in expected_margins:
         if margin not in declared_margins:
             failures.append(f"{stage}: margin {margin!r} was not raked.")

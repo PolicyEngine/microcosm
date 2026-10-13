@@ -877,6 +877,100 @@ def income_band_ids(income: Sequence[float], margins: NeedMargins) -> np.ndarray
     return result
 
 
+#: The declared household ceilings (microcosm#1164, #1207): kWh a year above
+#: which DESNZ and NEED do not count a meter as domestic (NEED Annex B, Quality
+#: Assurance: gas meters under 73,200 kWh a year, electricity meters under
+#: 50,000 kWh on profile classes 1 and 2). The DESNZ total the stage levels to
+#: counts domestic meters, so no household of the frame is drawn above them.
+HOUSEHOLD_KWH_CEILING_KEY = "household_kwh_ceiling"
+
+
+def declared_household_kwh_ceilings(
+    parameters: Mapping[str, Any],
+) -> dict[str, float] | None:
+    """The declared ``household_kwh_ceiling`` per fuel column, if any."""
+
+    declared = parameters.get(HOUSEHOLD_KWH_CEILING_KEY)
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping) or set(declared) != {"electricity", "gas"}:
+        raise ValueError(
+            f"{HOUSEHOLD_KWH_CEILING_KEY} must give electricity and gas kWh."
+        )
+    ceilings = {
+        ELECTRICITY_KWH: float(declared["electricity"]),
+        GAS_KWH: float(declared["gas"]),
+    }
+    if not all(np.isfinite(v) and v > 0 for v in ceilings.values()):
+        raise ValueError(f"{HOUSEHOLD_KWH_CEILING_KEY} values must be positive.")
+    return ceilings
+
+
+def cap_household_kwh(
+    values: np.ndarray,
+    *,
+    weights: np.ndarray,
+    population: np.ndarray,
+    ceiling: float,
+    max_rounds: int = 100,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Cap one fuel's household kWh at ``ceiling`` and keep its weighted total.
+
+    Households above the ceiling are set to it, and the kWh they lose goes to
+    the other households of the population in proportion to their own use, so
+    the levelled total holds; a household lifted over the ceiling by that is
+    capped in the next round. The receipt counts the households drawn above
+    the ceiling and the share of the total they gave up, and records no
+    household's value.
+    """
+
+    capped_values = np.asarray(values, dtype=float).copy()
+    weight = np.asarray(weights, dtype=float)
+    members = np.asarray(population, dtype=bool)
+    total = float(np.dot(weight[members], capped_values[members]))
+    at_ceiling = np.zeros(len(capped_values), dtype=bool)
+    rounds = 0
+    feasible = True
+    while True:
+        over = members & (capped_values > ceiling)
+        if not over.any():
+            break
+        if rounds == max_rounds:
+            raise ValueError(f"capping at {ceiling} kWh did not settle.")
+        rounds += 1
+        at_ceiling |= over
+        capped_values[over] = ceiling
+        free = members & ~at_ceiling & (capped_values > 0)
+        free_total = float(np.dot(weight[free], capped_values[free]))
+        shortfall = total - float(np.dot(weight[members], capped_values[members]))
+        if free_total <= 0:
+            # No household is left below the ceiling to take the rest: a frame
+            # whose weights fall far short of the households it is levelled to
+            # (a synthetic fixture). The total then falls short, the receipt
+            # says so, and the energy_rake gate refuses it.
+            feasible = False
+            break
+        capped_values[free] *= 1.0 + shortfall / free_total
+    before = np.asarray(values, dtype=float)
+    # The outliers are the households drawn above the ceiling; one the
+    # rescaling lifted to it gave nothing up.
+    outliers = members & (before > ceiling)
+    removed = float(np.dot(weight[outliers], before[outliers] - ceiling))
+    after = float(np.dot(weight[members], capped_values[members]))
+    return capped_values, {
+        "ceiling_kwh": float(ceiling),
+        "households_capped": int(outliers.sum()),
+        "households_at_ceiling": int(at_ceiling.sum()),
+        "capped_share_of_total": removed / total if total > 0 else 0.0,
+        "rounds": rounds,
+        "households_above_after": int(
+            (members & (capped_values > ceiling * (1 + 1e-12))).sum()
+        ),
+        "feasible": feasible,
+        "frame_kwh_after": after,
+    }
+
+
 def rake_energy_kwh(
     table: pd.DataFrame,
     *,
@@ -890,6 +984,7 @@ def rake_energy_kwh(
     use_region_margin: bool = False,
     gas_connected: Sequence[bool] | None = None,
     level: Mapping[str, float] | None = None,
+    ceilings: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rake ``electricity_kwh`` and ``gas_kwh`` to the NEED shape, then to the level.
 
@@ -910,6 +1005,10 @@ def rake_energy_kwh(
     NEED means become the shape (every cell mean moves by the same factor,
     which the fit block records as ``level_factor`` beside the ``shape_target``
     and the levelled ``target``).
+
+    ``ceilings`` (kWh per fuel column, after the level) caps each household
+    and hands what it loses to the fuel's other households, so the total holds
+    (``cap_household_kwh``; microcosm#1164). The fit is read after the cap.
     """
 
     frame = table.copy()
@@ -1048,6 +1147,22 @@ def rake_energy_kwh(
                 "factor": factor,
                 "frame_kwh_after": after,
             }
+    ceiling_receipt: dict[str, Any] | None = None
+    if ceilings is not None:
+        ceiling_receipt = {}
+        for column in (ELECTRICITY_KWH, GAS_KWH):
+            population = (
+                np.ones(len(frame), dtype=bool)
+                if column == ELECTRICITY_KWH
+                else connected
+            )
+            capped, ceiling_receipt[column] = cap_household_kwh(
+                raked[column].to_numpy(dtype=float),
+                weights=weight_values,
+                population=population,
+                ceiling=float(ceilings[column]),
+            )
+            raked[column] = capped
     fit = _rake_fit(raked, margins, fitted, connected, weight_values, level_factor)
     receipt = {
         "unit": "kwh",
@@ -1063,6 +1178,7 @@ def rake_energy_kwh(
         "sweep_residuals": sweep_residuals,
         "level_factor": dict(level_factor),
         "level": level_receipt,
+        "ceiling": ceiling_receipt,
         "fit": fit,
     }
     return raked.drop(columns=[c for c in scratch if c in raked]), receipt
