@@ -50,6 +50,10 @@ the archived US data repository at commit
 that commit's `datasets/puf/uprate_puf.py::get_growth`.
 `run_archived_uprating_loop.py` executes that commit's `utils/uprating.py`
 (sha256 `688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a`).
+These paths are relative to the repository's Python package directory; the
+`archived_derivation_evidence` entries in
+`packages/microcosm-build/src/microcosm/build/us/spec/sources.yaml` give the
+repository (`repository_name_parts`) and the full paths (`path_parts`).
 
 ## Reproduce
 

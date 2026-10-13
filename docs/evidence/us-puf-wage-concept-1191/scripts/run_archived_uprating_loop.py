@@ -20,12 +20,11 @@ source_path, tmp_dir = sys.argv[1], Path(sys.argv[2])
 # The archived file imports STORAGE_FOLDER from its own package. Stub that
 # package's import name so the file runs unchanged; nothing is imported from
 # the retired package itself.
-ARCHIVED_PACKAGE = "policyengine_" + "us_data"
-storage = types.ModuleType(ARCHIVED_PACKAGE + ".storage")
+storage = types.ModuleType("policyengine_us_data.storage")
 storage.STORAGE_FOLDER = tmp_dir
-package = types.ModuleType(ARCHIVED_PACKAGE)
-sys.modules[ARCHIVED_PACKAGE] = package
-sys.modules[ARCHIVED_PACKAGE + ".storage"] = storage
+package = types.ModuleType("policyengine_us_data")
+sys.modules["policyengine_us_data"] = package
+sys.modules["policyengine_us_data.storage"] = storage
 namespace = {}
 exec(compile(Path(source_path).read_text(), source_path, "exec"), namespace)
 uprating = namespace["create_policyengine_uprating_factors_table"]()
