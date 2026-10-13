@@ -1,4 +1,9 @@
-"""Build disclosure-safe E6 UK support bounds from pinned donor tabs."""
+"""Build disclosure-safe E6 UK support bounds from pinned donor tabs.
+
+A bound is derived once per donor tab: while a file's tab digests are
+unchanged, writing refuses a re-derivation that moves a rounded bound
+(``refuse_rerounding``), since two roundings of one donor extreme narrow it.
+"""
 
 from __future__ import annotations
 
@@ -249,8 +254,52 @@ def main(argv: list[str] | None = None) -> int:
             if path.read_text(encoding="utf-8") != rendered:
                 raise SystemExit(f"{path} is stale.")
         else:
+            refuse_rerounding(path, payload)
             path.write_text(rendered, encoding="utf-8")
     return 0
+
+
+def refuse_rerounding(path: Path, payload: dict[str, object]) -> None:
+    """Refuse to move a committed rounded bound while its donor tabs are unchanged.
+
+    Each committed bound is the donor's extreme rounded outward. Re-derived
+    from the same tabs after a change in the declared uprating, the cleaning
+    or the floor, a bound that rounds to a different value tells the reader,
+    with the first, that the extreme lies between the two thresholds, each
+    divided by its own factor: a narrow interval around a unit record (UKDS
+    EUL disclosure control; microcosm#1164). A lower bound may move to zero,
+    the floor, which reads no donor value; any other move needs new donor tabs
+    or a bound that reads no donor value either.
+    """
+
+    if not path.exists():
+        return
+    committed = json.loads(path.read_text(encoding="utf-8"))
+
+    def digests(source: object) -> dict[str, object]:
+        if not isinstance(source, dict):
+            return {}
+        return {k: v for k, v in source.items() if str(k).endswith("sha256")}
+
+    if not digests(committed.get("source")) or digests(
+        committed.get("source")
+    ) != digests(payload.get("source")):
+        return
+    old = committed.get("bounds") or {}
+    new = payload.get("bounds") or {}
+    moved = sorted(
+        column
+        for column in set(old) & set(new)
+        if list(old[column]) != list(new[column])
+        and not (list(old[column])[1] == list(new[column])[1] and new[column][0] == 0)
+    )
+    if moved:
+        raise SystemExit(
+            f"{path.name}: the donor tabs are unchanged but the rounded bounds of "
+            f"{moved} would move. Committing a second rounding of the same donor "
+            "extremes narrows them (UKDS disclosure control); keep the committed "
+            "bounds or replace them with ones that read no donor value."
+        )
 
 
 def _payload(

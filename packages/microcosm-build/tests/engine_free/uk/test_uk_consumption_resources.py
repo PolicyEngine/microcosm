@@ -191,3 +191,42 @@ def test_e6_support_bounds_round_trip_against_licensed_tabs() -> None:
         assert json.dumps(payload, indent=2, sort_keys=False) + "\n" == (
             UK_PACKAGE / name
         ).read_text(encoding="utf-8")
+
+
+def test_support_bound_generator_refuses_a_second_rounding_of_unchanged_tabs(
+    tmp_path,
+) -> None:
+    # microcosm#1164: two outward roundings of one donor extreme under
+    # different factors narrow it, so with the tabs unchanged a re-derivation
+    # may not move a rounded bound; a lower bound may move to the floor (zero).
+    import importlib.util
+
+    path = ROOT / "tools/build_uk_e6_support_bounds.py"
+    spec = importlib.util.spec_from_file_location("build_uk_e6_support_bounds", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    committed = tmp_path / "bounds.json"
+    committed.write_text(
+        json.dumps(
+            {
+                "source": {"household_tab_sha256": "a" * 64},
+                "bounds": {"x": [-20000, 300000], "y": [0.0, 70000]},
+            }
+        )
+    )
+
+    def payload(digest: str, x: list, y: list) -> dict:
+        return {
+            "source": {"household_tab_sha256": digest * 64},
+            "bounds": {"x": x, "y": y},
+        }
+
+    module.refuse_rerounding(committed, payload("a", [0.0, 300000], [0.0, 70000]))
+    module.refuse_rerounding(committed, payload("b", [0.0, 300000], [0.0, 60000]))
+    module.refuse_rerounding(tmp_path / "absent.json", payload("a", [0, 1], [0, 1]))
+    with pytest.raises(SystemExit, match=r"\['y'\] would move"):
+        module.refuse_rerounding(
+            committed, payload("a", [-20000, 300000], [0.0, 60000])
+        )
