@@ -1036,9 +1036,9 @@ def compile_us_fiscal_target_registry(
             ``period_contract_waiver`` metadata in diagnostics.
     """
     materialized_facts = tuple(facts)
-    _require_reviewed_soi_district_columns(
-        materialized_facts, target_period=target_period
-    )
+    # Read before the crosswalk merges source districts into one fact that
+    # keeps a single contributor's layout.
+    district_source_columns = _soi_district_source_columns(materialized_facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -1081,6 +1081,7 @@ def compile_us_fiscal_target_registry(
         registry,
         materialized_facts,
         target_period=target_period,
+        source_columns=district_source_columns,
     )
     registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
@@ -2274,6 +2275,7 @@ def _rebase_stale_soi_district_distributions(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
+    source_columns: Mapping[str, str] | None = None,
 ) -> TargetRegistry:
     """Use congressional-district rows of the registered columns as shares.
 
@@ -2304,10 +2306,29 @@ def _rebase_stale_soi_district_distributions(
     US row stays. With an eligible control but no nonzero US row of the
     file's own, a row cannot be a share and is dropped; a stale level beside
     the control is the defect this pass removes (#1229 and #1040 do the same).
+
+    A share assumes its measure id reads the register's ``source_column``. A
+    package that maps the measure id to another column (the district SALT
+    and PTC measures read the wrong columns, microcosm#1038), or names none,
+    would be rebased as the wrong concept, so every source fact of a row
+    rebased here, and its denominator, must read that column.
+    ``source_columns`` maps each district fact's record id to its column as
+    the feed carries it, before the crosswalk merges source districts into
+    one fact with a single contributor's layout; without it the columns are
+    read from ``facts``. Rows that keep their levels, and facts that compile
+    to no target, are not checked.
+
+    Raises:
+        UnreviewedSoiNationalControlColumnError: A rebased row or its
+            denominator reads another column, or names none.
     """
 
     controls = _soi_ht2_national_controls(facts, target_period=target_period)
     us_totals = _soi_district_us_totals(facts)
+    if source_columns is None:
+        source_columns = _soi_district_source_columns(facts)
+    contributors = _soi_district_contributors(facts)
+    unreviewed: dict[str, str] = {}
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         measure_id = _soi_district_rebase_measure(spec)
@@ -2324,9 +2345,19 @@ def _rebase_stale_soi_district_distributions(
             continue
         if _is_national_all_agi_spec(spec):
             continue
-        us_total = us_totals.get((*key, source_period))
+        record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
+        us_total = us_totals.get((record_set_id, *key, source_period))
         if us_total is None or us_total.value == 0:
             continue
+        record_id = spec.metadata.get("ledger_source_record_id", "")
+        expected = _SOI_HT2_NATIONAL_CONTROLS[measure_id].source_column
+        for source_id in (
+            *contributors.get(record_id, (record_id,)),
+            us_total.source_record_id,
+        ):
+            column = source_columns.get(source_id, "")
+            if column != expected:
+                unreviewed[source_id] = column or "<none>"
         concept = _SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
         factor = control.value / us_total.value
         specs.append(
@@ -2349,6 +2380,14 @@ def _rebase_stale_soi_district_distributions(
                     "soi_share_total_source_record_id": us_total.source_record_id,
                 },
             )
+        )
+    if unreviewed:
+        sample = dict(sorted(unreviewed.items())[:5])
+        raise UnreviewedSoiNationalControlColumnError(
+            f"{len(unreviewed)} congressional-district fact(s) behind rebased "
+            "rows read an IRS column other than the reviewed one, e.g. "
+            f"{sample}. Review the column against the district documentation "
+            "guide and _SOI_HT2_NATIONAL_CONTROLS before rebasing it."
         )
     return TargetRegistry(specs, country=registry.country)
 
@@ -2389,16 +2428,17 @@ def _soi_district_fact_key(fact: object) -> tuple[str, str, str] | None:
 
 def _soi_district_us_totals(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], _SoiDistrictShareTotal]:
-    """The district file's US totals per (measure, filing status, universe, period).
+) -> dict[tuple[str, str, str, str, str], _SoiDistrictShareTotal]:
+    """Each district package's all-AGI US totals.
 
-    A total is a share denominator, so feed order must not pick it: two
-    different values for one key raise, and equal values under two record
-    ids name the smaller id (as the #1229 and #1040 denominators do). Two
-    district files compiled at one period, of different boundary vintages,
-    share the key, so their US rows must agree.
+    Keyed by (record set, measure, filing status, universe, period), so a
+    package's rows divide by its own US row and never by another district
+    file's at the same stamp (another data year or boundary vintage). A total
+    is a share denominator, so feed order must not pick it: two different
+    values for one key raise, and equal values under two record ids name the
+    smaller id (as the #1229 and #1040 denominators do).
     """
-    totals: dict[tuple[str, str, str, str], _SoiDistrictShareTotal] = {}
+    totals: dict[tuple[str, str, str, str, str], _SoiDistrictShareTotal] = {}
     for fact in facts:
         key = _soi_district_fact_key(fact)
         if key is None or _geography_level(fact) != "country":
@@ -2408,7 +2448,11 @@ def _soi_district_us_totals(
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        total_key = (*key, str(_period_value(fact)))
+        total_key = (
+            _str_at(fact, "layout", "record_set_id"),
+            *key,
+            str(_period_value(fact)),
+        )
         candidate = _SoiDistrictShareTotal(_numeric_value(fact), source_record_id)
         current = totals.get(total_key)
         if current is not None and current.value != candidate.value:
@@ -2424,50 +2468,46 @@ def _soi_district_us_totals(
     return totals
 
 
-def _require_reviewed_soi_district_columns(
+def _soi_district_source_columns(facts: tuple[object, ...]) -> dict[str, str]:
+    """Each registered district fact's IRS column, by source record id."""
+    return {
+        _source_record_id(fact): _str_at(fact, "layout", "source_column_id")
+        for fact in facts
+        if _soi_district_fact_key(fact) is not None
+    }
+
+
+def _soi_district_contributors(
     facts: tuple[object, ...],
-    *,
-    target_period: int | str,
-) -> None:
-    """Refuse a district fact the rebase would bind under an unreviewed column.
+) -> dict[str, tuple[str, ...]]:
+    """The source facts behind each crosswalk-merged district fact.
 
-    ``_rebase_stale_soi_district_distributions`` relies on each registered
-    measure id reading ``source_column``. A package that maps the measure id
-    to another column (the CD SALT and PTC measures read the wrong columns,
-    microcosm#1038), or names none, would be rebased as the wrong concept, so
-    it refuses the compile. Only a fact with an eligible control is checked;
-    the others keep their levels as before. This runs on the facts as the
-    feed carries them, before the crosswalk merges source districts into one
-    fact with a single contributor's layout.
-
-    Raises:
-        UnreviewedSoiNationalControlColumnError: A checked fact reads a column
-            other than its measure's ``source_column``, or names none.
+    The crosswalk lists a translated fact's contributions under
+    ``lineage.congressional_district_vintage_contributions``. A contributor
+    that proxies a state total for an at-large district names its origin
+    before ``.state_total_proxy_cd.``. Untranslated facts are their own
+    source and are not listed.
     """
-    controls: dict[tuple[str, str, str], _SoiTotalControl] | None = None
-    unreviewed: dict[str, str] = {}
+    contributors: dict[str, tuple[str, ...]] = {}
     for fact in facts:
-        key = _soi_district_fact_key(fact)
-        if key is None:
+        if _soi_district_fact_key(fact) is None:
             continue
-        if controls is None:
-            controls = _soi_ht2_national_controls(facts, target_period=target_period)
-        control = controls.get(key)
-        if control is None or not _period_not_before(
-            control.period_key, _period_key(fact)
-        ):
-            continue
-        column = _str_at(fact, "layout", "source_column_id")
-        if column != _SOI_HT2_NATIONAL_CONTROLS[key[0]].source_column:
-            unreviewed[_source_record_id(fact)] = column or "<none>"
-    if unreviewed:
-        sample = dict(sorted(unreviewed.items())[:5])
-        raise UnreviewedSoiNationalControlColumnError(
-            f"{len(unreviewed)} congressional-district fact(s) of registered "
-            f"measures read an IRS column other than the reviewed one, e.g. "
-            f"{sample}. Review the column against the district documentation "
-            "guide and _SOI_HT2_NATIONAL_CONTROLS before rebasing it."
+        contributions = _at(
+            fact, "lineage", "congressional_district_vintage_contributions"
         )
+        if not contributions:
+            continue
+        contributors[_source_record_id(fact)] = tuple(
+            sorted(
+                {
+                    str(_at(item, "source_record_id")).split(".state_total_proxy_cd.")[
+                        0
+                    ]
+                    for item in contributions
+                }
+            )
+        )
+    return contributors
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's

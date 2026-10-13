@@ -231,24 +231,32 @@ def cd_file_level(spec, *, aged_like=None) -> float:
         return value
     value /= float(metadata["uprating_factor"])
     if aged_like is not None:
-        other = _metadata(aged_like)
-        if _aging_series(other) != _aging_series(metadata):
+        if _aging_series(aged_like) != _aging_series(spec):
             raise ValueError(
-                f"{spec.name} ages on {_aging_series(metadata)!r} and "
-                f"{aged_like.name} on {_aging_series(other)!r}; a share's file "
-                "level can be re-aged only like a row on its own series."
+                f"{spec.name} ages on {_aging_series(spec)!r} and "
+                f"{aged_like.name} on {_aging_series(aged_like)!r}; a share's "
+                "file level can be re-aged only like a row on its own series."
             )
-        value *= float(other.get("aging_factor", "1")) / float(
+        value *= float(_metadata(aged_like).get("aging_factor", "1")) / float(
             metadata.get("aging_factor", "1")
         )
     return value
 
 
-def _aging_series(metadata: Mapping[str, str]) -> str:
-    """The growth series a spec's aging ends on (its last link, if chained)."""
+def _aging_series(spec) -> str:
+    """The growth series target aging ages ``spec`` on, from the spec alone.
 
-    source = str(metadata.get("aging_factor_source", "not_dollar_amount"))
-    return source.removeprefix("chained:").rsplit("+", 1)[-1]
+    Read from the compiler's rule, not the receipt: a receipt can be a no-op
+    (``source_equals_build`` for a share landed at the build period) that
+    names no series. Rows that never age return why.
+    """
+
+    from microcosm.build.us_runtime import target_aging
+
+    reason = target_aging._not_ageable_reason(spec)
+    if reason is not None:
+        return reason
+    return target_aging._cbo_income_source_for_spec(spec)
 
 
 def soi_materializer_semantics(spec) -> tuple:

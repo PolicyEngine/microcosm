@@ -528,6 +528,32 @@ def test_an_agi_slice_of_the_file_takes_the_same_factor() -> None:
         _compile(facts(column="A00101"))
 
 
+def test_the_column_guard_skips_facts_that_compile_to_no_target() -> None:
+    """The guard checks the rows the pass rebases (#1250 review). A stale AGI
+    slice compiles to no target at another period, and a superseded vintage
+    loses latest-vintage selection, so neither is checked whatever its
+    column."""
+    measure_id = "adjusted_gross_income"
+    stale_slice = _cd_agi_slice_fact(measure_id, 120.0, stamp=2023, column="A00101")
+    specs = _by_record(
+        _compile([*_cd_facts(measure_id), stale_slice, _control_fact(measure_id)])
+    )
+    assert stale_slice["lineage"]["source_record_id"] not in specs
+    assert specs[f"{_record_set(2023)}.hi_total.{measure_id}"].value == 550.0
+
+    measure_id = "return_count"
+    superseded = _cd_facts(measure_id, stamp=2022, column="N2")
+    current = _cd_facts(measure_id, stamp=2024)
+    rows = _cd_rows(
+        _compile([*superseded, *current, _control_fact(measure_id, period=2024)]),
+        measure_id,
+    )
+    assert rows["hi_total"].metadata["ledger_source_record_id"] == (
+        f"{_record_set(2024)}.hi_total.{measure_id}"
+    )
+    assert rows["hi_total"].value == 550.0
+
+
 # --------------------------------------------------------------------------
 # The denominator
 
@@ -548,6 +574,23 @@ def test_conflicting_district_us_totals_refuse_the_compile() -> None:
             fiscal_targets._soi_district_us_totals(ordered)
     with pytest.raises(fiscal_targets.AmbiguousSoiNationalControlError):
         _compile([rival, us, *rest, _control_fact(measure_id)])
+
+
+def test_rows_never_borrow_another_district_files_us_row() -> None:
+    """Each package divides by its own US row (#1250 review). A 22incd
+    package without one keeps no rows beside the control, even when another
+    district file at the same stamp carries a US row of the measure."""
+    measure_id = "return_count"
+    other = _cd_fact(
+        measure_id, 2_000.0, row="us", level="country", geography_id="0100000US"
+    )
+    other_set = "irs_soi.ty2023.congressional_district_2023.all_returns"
+    other["layout"]["record_set_id"] = other_set
+    other["lineage"]["source_record_id"] = f"{other_set}.us.{measure_id}"
+    registry = _compile(
+        [*_cd_facts(measure_id, us=None), other, _control_fact(measure_id)]
+    )
+    assert _cd_rows(registry, measure_id) == {}
 
 
 def test_equal_district_us_totals_name_the_smaller_record_id() -> None:

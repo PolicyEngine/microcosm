@@ -958,7 +958,27 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
             factor_band=band,
         )
 
-    before, after = surface(base), surface(shared)
+    # A bridged row re-ages its share sibling only when both age on one
+    # series; this world bridges wages through the return count (AGI series),
+    # so rebasing the return count there refuses.
+    cd_state = {
+        (spec.metadata["state_fips"], spec.metadata["source_measure_id"]): spec
+        for spec in base
+        if is_cd_file(spec) and spec.metadata["ledger_geography_level"] == "state"
+    }
+    mismatched = any(
+        _BRIDGES[measure] in factors
+        and _CD._aging_series(spec)
+        != _CD._aging_series(cd_state[(state, _BRIDGES[measure])])
+        for (state, measure), spec in cd_state.items()
+        if (state, measure) not in ht2
+    )
+    before = surface(base)
+    if mismatched:
+        with pytest.raises(ValueError, match="re-aged only like a row on its own"):
+            surface(shared)
+        return
+    after = surface(shared)
     assert [spec.name for spec in after.specs] == [spec.name for spec in before.specs]
     for old, new in zip(before.specs, after.specs, strict=True):
         assert new.value == pytest.approx(old.value, rel=1e-12), new.name
@@ -1059,49 +1079,218 @@ def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> Non
     }
 
 
-def test_a_bridge_refuses_a_share_sibling_on_another_aging_series() -> None:
-    """Re-aging a share's file level like the bridged row stands in for the
-    sibling's own aging only when both age on one series; a pair on different
-    series refuses rather than giving the bridged row its sibling's growth."""
+def test_a_share_sibling_re_ages_by_series_not_by_receipt() -> None:
+    """The series comes from the compiler's aging rule, not the receipt
+    (#1250 review). A share landed at the build year carries the no-op
+    ``source_equals_build`` receipt and still re-ages like an unrebased row
+    on its series; a pair on different series refuses."""
 
-    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
-
-    def series(spec, source: str):
+    def amount(name, measure, value, aging, source):
+        spec = _soi_spec(
+            name, measure, value, level="state", record_set=_CD_FILE, state="10"
+        )
         return dataclasses.replace(
             spec,
             metadata={
                 **spec.metadata,
+                "aging_factor": repr(aging),
                 "aging_factor_source": source,
-                "aging_factor": "1.5",
             },
         )
 
-    rows = []
-    for spec in specs:
-        if spec.metadata["ledger_layout_record_set_spec_id"] != _CD_FILE:
-            rows.append(spec)
-        elif spec.metadata["source_measure_id"] == "return_count":
-            rows.append(_as_national_share(series(spec, "cbo.series_a"), 1.25, 1.5))
-        else:
-            rows.append(series(spec, "chained:irs_soi.x+cbo.series_b"))
-    with pytest.raises(ValueError, match="ages on 'cbo.series_a'"):
-        _CD.state_cd_soi_surface(
-            rows,
-            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
-            crosswalk=crosswalk,
-            level_bridges={"charitable_amount": "return_count"},
+    agi_series = "cbo.revenue_projection.ty2024.income_by_source.agi.projected_amount"
+    charitable = amount(
+        "cdfile.10_total.charitable_amount", "charitable_amount", 11.0, 1.1, agi_series
+    )
+    sibling = _as_national_share(
+        amount(
+            "cdfile.10_total.adjusted_gross_income",
+            "adjusted_gross_income",
+            100.0,
+            1.0,
+            "x",
+        ),
+        1.25,
+        1.0,
+    )
+    sibling = dataclasses.replace(
+        sibling,
+        metadata={**sibling.metadata, "aging_factor_source": "source_equals_build"},
+    )
+    assert _CD.cd_file_level(sibling, aged_like=charitable) == pytest.approx(110.0)
+    wages = amount(
+        "cdfile.10_total.wages_salaries_amount",
+        "wages_salaries_amount",
+        50.0,
+        1.1,
+        agi_series,
+    )
+    with pytest.raises(ValueError, match="'wages_and_salaries'"):
+        _CD.cd_file_level(sibling, aged_like=wages)
+
+
+def test_a_build_year_control_keeps_state_cd_bridges() -> None:
+    """End to end (#1250 review): district itemized and charitable rows stamped
+    2023, an itemized control at the 2024 build year, and CBO AGI projections.
+    The itemized shares land at 2024 unaged while charitable ages 2023 to 2024,
+    and ``state_cd`` binds the same values as with the district pass off."""
+    import microcosm.build.us_runtime.fiscal_targets as fiscal_targets
+    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
+    from test_support.microcosm_build.us_fiscal_targets import (
+        _cbo_income_source_projection_fact,
+        _dynamic_ledger_fact,
+        packaged_reference_facts,
+    )
+
+    cd_set = "irs_soi.ty2023.congressional_district_2022.all_returns"
+
+    def fact(record_set, row, measure, value, period, level, geography, spec_id):
+        result = _dynamic_ledger_fact(
+            source_record_id=f"{record_set}.{row}.{measure}",
+            source_name="irs_soi",
+            measure_id=measure,
+            value=value,
+            period_value=period,
+            geography_level=level,
+            geography_id=geography,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=record_set,
+            groupby_dimension="irs_soi.congressional_district",
+            groupby_value_id=row,
         )
-    # The same chained series, as #1030 writes it, re-ages.
-    same = [
-        series(spec, "chained:irs_soi.x+cbo.series_a")
-        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
-        and spec.metadata["source_measure_id"] == "charitable_amount"
-        else spec
-        for spec in rows
+        result["layout"]["record_set_spec_id"] = spec_id
+        if measure == "itemized_deductions_amount":
+            result["layout"]["source_column_id"] = "A04470"
+        return result
+
+    cd_spec = "irs_soi.congressional_district_2022.all_returns.v1"
+    facts = [*packaged_reference_facts()]
+    for measure, us, states in (
+        (
+            "itemized_deductions_amount",
+            1_000.0,
+            {"15": (300.0, 200.0), "33": (150.0, 100.0)},
+        ),
+        ("charitable_amount", 100.0, {"15": (30.0, 20.0), "33": (15.0, 10.0)}),
+    ):
+        facts.append(
+            fact(cd_set, "us", measure, us, 2023, "country", "0100000US", cd_spec)
+        )
+        for fips, (first, second) in states.items():
+            facts.append(
+                fact(
+                    cd_set,
+                    f"s{fips}_total",
+                    measure,
+                    first + second,
+                    2023,
+                    "state",
+                    f"0400000US{fips}",
+                    cd_spec,
+                )
+            )
+            for index, value in ((1, first), (2, second)):
+                facts.append(
+                    fact(
+                        cd_set,
+                        f"s{fips}_0{index}",
+                        measure,
+                        value,
+                        2023,
+                        "congressional_district",
+                        f"5001700US{fips}0{index}",
+                        cd_spec,
+                    )
+                )
+    ht2_spec = "irs_soi.historic_table_2.state_broad_totals.v1"
+    facts.append(
+        fact(
+            "irs_soi.ty2022.historic_table_2.us",
+            "all",
+            "itemized_deductions_amount",
+            1_050.0,
+            2022,
+            "country",
+            "0100000US",
+            ht2_spec,
+        )
+    )
+    for fips, postal, value in (("15", "hi", 520.0), ("33", "nh", 260.0)):
+        facts.append(
+            fact(
+                f"irs_soi.ty2022.historic_table_2.state_broad.{postal}",
+                "all",
+                "itemized_deductions_amount",
+                value,
+                2022,
+                "state",
+                f"0400000US{fips}",
+                ht2_spec,
+            )
+        )
+    control = _dynamic_ledger_fact(
+        source_record_id="irs_soi.ty2024.table_1_2.all_returns.all.total_itemized_deductions_amount",
+        source_name="irs_soi",
+        measure_id="total_itemized_deductions_amount",
+        value=1_200.0,
+        period_value=2024,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id="irs_soi.ty2024.table_1_2.all_returns",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id="all",
+    )
+    facts.append(control)
+    for year, value in ((2022, 100.0), (2023, 110.0), (2024, 121.0)):
+        facts.append(
+            _cbo_income_source_projection_fact(
+                year, "adjusted_gross_income", value=value
+            )
+        )
+    crosswalk = [
+        {
+            "source_geography_id": f"5001700US{fips}0{index}",
+            "target_geography_id": f"5001900US{fips}0{index}",
+            "weight": 1.0,
+        }
+        for fips in ("15", "33")
+        for index in (1, 2)
     ]
-    _CD.state_cd_soi_surface(
-        same,
-        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
-        crosswalk=crosswalk,
-        level_bridges={"charitable_amount": "return_count"},
+
+    def surface():
+        registry = compile_us_fiscal_target_registry(
+            facts,
+            target_period=2024,
+            congressional_district_vintage_crosswalk=crosswalk,
+            age_targets=True,
+        )
+        soi = [spec for spec in registry.specs if spec.family == "irs_soi"]
+        return soi, _CD.state_cd_soi_surface(
+            soi,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=pd.DataFrame(crosswalk),
+            level_bridges={"charitable_amount": "itemized_deductions_amount"},
+            factor_band=math.inf,
+        )
+
+    soi, rebased = surface()
+    by_name = {spec.name: spec for spec in soi}
+    share = by_name[f"{cd_set}.s15_total.itemized_deductions_amount"]
+    assert share.metadata["aging_factor_source"] == "source_equals_build"
+    assert share.value == pytest.approx(600.0)
+    charitable = by_name[f"{cd_set}.s15_total.charitable_amount"]
+    assert charitable.value == pytest.approx(55.0)
+
+    original = fiscal_targets._rebase_stale_soi_district_distributions
+    try:
+        fiscal_targets._rebase_stale_soi_district_distributions = (
+            lambda registry, facts, **_: registry
+        )
+        _, levels = surface()
+    finally:
+        fiscal_targets._rebase_stale_soi_district_distributions = original
+    assert {spec.name: spec.value for spec in rebased.specs} == pytest.approx(
+        {spec.name: spec.value for spec in levels.specs}, rel=1e-12
+    )
+    assert (
+        rebased.receipt["level_bridge_factor_by_measure"]["charitable_amount"]["n"] == 2
     )
