@@ -480,64 +480,96 @@ def _evaluate_column_implication(
     capital_column = str(parameters["capital_column"])
     carrier_column = str(parameters["carrier_column"])
     sentinel = float(parameters.get("sentinel", -1.0))
-    missing_capital = sorted({capital_column, carrier_column} - set(target.columns))
+    property_shares = _declared_property_shares(parameters)
+    capital_columns = tuple(dict.fromkeys((capital_column, *property_shares)))
+    missing_capital = sorted({*capital_columns, carrier_column} - set(target.columns))
     if missing_capital:
         raise ValueError(
             f"column_implication {target_entity} capital evidence is missing "
             f"columns {missing_capital}."
         )
-    capital = pd.to_numeric(target[capital_column], errors="coerce").to_numpy(
-        dtype=float
-    )
     carrier = pd.to_numeric(target[carrier_column], errors="coerce").to_numpy(
         dtype=float
     )
-    nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
-    # The -1 contract reserves exactly one negative: a value is either the
-    # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
-    # open interval between them — the one region the contract does not
-    # define (adversarial-review verification residual 1). Sentinel equality
-    # is exact (#833): every producer writes the -1.0 literal or a
-    # nonnegative amount, and a tolerance band would silently reclassify a
-    # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
+    shares = _capital_property_shares(frame, target, property_shares)
+    # A declared tolerance admits GBP sum_tolerance plus one float32 step of
+    # the expected value, so the carrier-plus-share sum survives a float32
+    # round-trip of the export; without one the capital must equal it exactly.
+    sum_tolerance = parameters.get("sum_tolerance")
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )
-    sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
-    same_source_mismatch = (
-        np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
-    )
 
     failures = list(result.failures)
-    if nonfinite.any():
-        failures.append(
-            f"{target_entity}.{capital_column}/{carrier_column}: "
-            f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
-        )
-    if out_of_domain.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: {int(out_of_domain.sum())} "
-            f"value(s) outside the declared domain (exactly the {sentinel:g} "
-            "sentinel or >= 0)."
-        )
     if carrier_out_of_domain.any():
         failures.append(
             f"{target_entity}.{carrier_column}: "
             f"{int(carrier_out_of_domain.sum())} value(s) outside the declared "
             f"domain (exactly the {sentinel:g} sentinel or >= 0)."
         )
-    if sentinel_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: sentinel {sentinel:g} is allowed "
-            f"only where {carrier_column} has the same sentinel; "
-            f"{int(sentinel_mismatch.sum())} mismatch(es)."
+    counts: dict[str, dict[str, int]] = {}
+    for column in capital_columns:
+        capital = pd.to_numeric(target[column], errors="coerce").to_numpy(dtype=float)
+        expected = np.where(carrier >= 0.0, carrier + shares.get(column, 0.0), carrier)
+        if sum_tolerance is None:
+            tolerance = np.zeros_like(expected)
+        else:
+            tolerance = float(sum_tolerance) + np.spacing(
+                np.abs(np.nan_to_num(expected)).astype(np.float32)
+            ).astype(float)
+        nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
+        # The -1 contract reserves exactly one negative: a value is either the
+        # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
+        # open interval between them — the one region the contract does not
+        # define (adversarial-review verification residual 1). Sentinel
+        # equality is exact (#833): every producer writes the -1.0 literal or
+        # a nonnegative amount, and a tolerance band would silently reclassify
+        # a corrupted near-sentinel value as a declared absence.
+        out_of_domain = np.isfinite(capital) & ~(
+            (capital == sentinel) | (capital >= 0.0)
         )
-    if same_source_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column} must equal {carrier_column}; "
-            f"{int(same_source_mismatch.sum())} mismatch(es)."
+        sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
+        # Where the carrier is available, the capital is it plus the unit's
+        # declared property share (microcosm#1095).
+        sum_mismatch = (
+            np.isfinite(capital)
+            & np.isfinite(carrier)
+            & (carrier >= 0.0)
+            & ~(np.abs(capital - expected) <= tolerance)
         )
+        if nonfinite.any():
+            failures.append(
+                f"{target_entity}.{column}/{carrier_column}: "
+                f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
+            )
+        if out_of_domain.any():
+            failures.append(
+                f"{target_entity}.{column}: {int(out_of_domain.sum())} "
+                f"value(s) outside the declared domain (exactly the {sentinel:g} "
+                "sentinel or >= 0)."
+            )
+        if sentinel_mismatch.any():
+            failures.append(
+                f"{target_entity}.{column}: sentinel {sentinel:g} is allowed "
+                f"only where {carrier_column} has the same sentinel; "
+                f"{int(sentinel_mismatch.sum())} mismatch(es)."
+            )
+        if sum_mismatch.any():
+            share_text = (
+                " plus the unit's declared property share"
+                if column in property_shares
+                else ""
+            )
+            failures.append(
+                f"{target_entity}.{column} must equal {carrier_column}{share_text} "
+                f"where {carrier_column} >= 0; {int(sum_mismatch.sum())} mismatch(es)."
+            )
+        counts[column] = {
+            "capital_domain_violation_count": int(out_of_domain.sum()),
+            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
+            "same_source_mismatch_count": int(sum_mismatch.sum()),
+            "nonfinite_capital_count": int(nonfinite.sum()),
+        }
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -548,13 +580,88 @@ def _evaluate_column_implication(
             "capital_column": f"{target_entity}.{capital_column}",
             "carrier_column": f"{target_entity}.{carrier_column}",
             "sentinel": sentinel,
-            "capital_domain_violation_count": int(out_of_domain.sum()),
+            **counts[capital_column],
             "carrier_domain_violation_count": int(carrier_out_of_domain.sum()),
-            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
-            "same_source_mismatch_count": int(same_source_mismatch.sum()),
-            "nonfinite_capital_count": int(nonfinite.sum()),
+            "sum_tolerance": sum_tolerance,
+            "property_shares": {
+                column: dict(rule) for column, rule in property_shares.items()
+            },
+            "capital_columns": {
+                f"{target_entity}.{column}": counts[column]
+                for column in capital_columns
+            },
         },
     )
+
+
+def _declared_property_shares(
+    parameters: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """The declared property-share rules, refused unless they are the code's."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_VALUATION,
+        UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        UC_PROPERTY_CAPITAL_SOURCES,
+    )
+
+    rules = {
+        "uc_reported_capital": {
+            "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+            # A unit that reports Universal Credit keeps its receipt.
+            "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        },
+        "pension_credit_reported_capital": {
+            "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+        },
+    }
+    declared = {
+        str(column): {**dict(rule), "sources": list(rule.get("sources") or ())}
+        for column, rule in dict(parameters.get("property_shares") or {}).items()
+    }
+    drifted = sorted(
+        column for column, rule in declared.items() if rules.get(column) != rule
+    )
+    if drifted:
+        raise ValueError(
+            f"column_implication property shares for {drifted} are not the "
+            f"recorded-capital rules uc_capital_coherence applies: {rules}."
+        )
+    return declared
+
+
+def _capital_property_shares(
+    frame: Frame,
+    target: pd.DataFrame,
+    property_shares: Mapping[str, Mapping[str, Any]],
+) -> dict[str, np.ndarray]:
+    """Each declared capital column's property share, in target row order."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        pension_credit_property_capital_share,
+        uc_recorded_property_share,
+    )
+
+    shares: dict[str, np.ndarray] = {}
+    if not property_shares:
+        return shares
+    person = frame.table("person")
+    household = frame.table("household")
+    if "uc_reported_capital" in property_shares:
+        shares["uc_reported_capital"] = uc_recorded_property_share(
+            person, target, household
+        )
+    if "pension_credit_reported_capital" in property_shares:
+        shares["pension_credit_reported_capital"] = (
+            pension_credit_property_capital_share(person, target, household)
+        )
+    return shares
 
 
 def _evaluate_take_up_signal(
@@ -1840,6 +1947,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "capital_column",
                 "carrier_column",
                 "sentinel",
+                # The recorded capitals' property shares (microcosm#1095).
+                "property_shares",
+                "sum_tolerance",
             }
         ),
     ),

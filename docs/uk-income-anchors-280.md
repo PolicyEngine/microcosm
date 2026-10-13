@@ -62,11 +62,15 @@ membership carries the uprated value with its receipt.
   others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses: dividends `obr.per_capita.gdp`, savings interest
-  `ons.household_interest_income`; the state pension follows
+  uses: dividends `obr.per_capita.gdp`. Savings interest takes two legs
+  (microcosm#1095): `ons.household_interest_income`, the index of its
+  history, to the dataset's year, then `obr.per_capita.gdp`, the index the
+  engine's dataset projection applies, to the calibration year (1.1420 x
+  1.0438 = 1.1920 on the pinned engine values). The state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
   (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the
-  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and 1.1819. The compile
+  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and, for household
+  interest alone, 1.1819. The compile
   reads the values from the vendored `hmrc_uprating_engine_pins.json` (the six
   parameters at every 1 January 2019 to 2026, written from the installed engine
   by `tools/pin_uk_uprating_engine_values.py`, whose `--check` refuses drift), so
@@ -197,8 +201,9 @@ before this stage the spine, like the enhanced FRS, carried no record above
 
 Two uprating conventions sit side by side by design. The national SPI amount
 rows move by the engine's own component indices (earnings, mixed income, GDP
-per head, the private-pension index, household interest, the new State
-Pension rate), because each row is one income component and the engine uprates
+per head, the private-pension index, the new State Pension rate, and for
+savings interest household interest to the dataset's year and GDP per head
+after it), because each row is one income component and the engine uprates
 that component by that index: the target and the model then agree on what
 "2025 employment income" means. The regional Table 3.11 rows are totals and
 tax by band with no component split, so no engine index applies; they move by

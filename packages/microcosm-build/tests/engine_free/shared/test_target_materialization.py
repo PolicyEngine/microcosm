@@ -1401,3 +1401,151 @@ def test_counterfactual_skips_refuse_without_a_provider_route():
             NoRouteProvider(),
             period=2025,
         )
+
+
+def _whole_pence_award_bands(binding_extra=None, *, top_band=True):
+    labels = {
+        "award_low": "£0.01 to £100.00",
+        "award_mid": "£100.01 to £200.00",
+    }
+    if top_band:
+        labels["award_top"] = "£200.01 or over"
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="person",
+                measure=name,
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_monthly_award_amount_bands": label,
+                },
+            )
+            for name, label in labels.items()
+        ],
+        country="uk",
+    )
+    contract = {
+        "uc.award_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                    **(binding_extra or {}),
+                }
+            }
+        }
+    }
+    adapter = StubAdapter()
+    # Annual awards: none; a penny a month, exact and with float noise;
+    # GBP 100.00 a month; a sub-penny GBP 100.005 a month; GBP 100.01;
+    # GBP 200.00; GBP 200.01; a large award.
+    adapter.tables["person"] = {
+        "income": np.array(
+            [
+                0.0,
+                0.12,
+                0.12 - 1e-9,
+                1_200.0,
+                1_200.06,
+                1_200.12,
+                2_400.0,
+                2_400.12,
+                1e6,
+            ]
+        )
+    }
+    return adapter, registry, contract
+
+
+def test_whole_pence_bands_close_at_the_next_band_less_a_penny():
+    """microcosm#1095: DWP's award bands read as (lower - £0.01, next lower -
+    £0.01] in whole pence, so a penny a month lands in the bottom band."""
+
+    adapter, registry, contract = _whole_pence_award_bands(
+        {"band_semantics": "whole_pence_upper_closed"}
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+def test_undeclared_bands_keep_their_half_open_reading():
+    """Without band_semantics the same bands stay half-open [lower, upper),
+    the reading every other banded binding keeps. It is float-fragile on
+    pence edges: the penny-a-month award with float noise falls below the
+    bottom band, and GBP 100.01 a month (1,200.12 a year) stays in the bottom
+    band because 100.01 x 12 rounds just above 1,200.12."""
+
+    adapter, registry, contract = _whole_pence_award_bands()
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 0, 1, 1, 1, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 0, 0, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ({"band_semantics": "whole_pounds"}, "unknown band_semantics"),
+        (
+            {
+                "band_semantics": "whole_pence_upper_closed",
+                "band_upper_bound": 200,
+                "band_upper_bound_inclusive": True,
+            },
+            "declare no band_upper_bound_inclusive",
+        ),
+    ],
+)
+def test_whole_pence_bands_refuse_undeclared_readings(extra, message):
+    adapter, registry, contract = _whole_pence_award_bands(extra)
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert len(result.skipped) == 3
+    assert all(message in skip.reason for skip in result.skipped)
+
+
+def test_whole_pence_bands_close_the_last_bound_band_at_its_declared_top():
+    """Where the top-coded category is not bound, band_upper_bound closes the
+    last bound band, so it does not absorb the awards above it."""
+
+    semantics = {"band_semantics": "whole_pence_upper_closed"}
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 200}, top_band=False
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    # GBP 200.00 a month is the last award in the band.
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+
+    # Without the bound, the last band runs on and takes the top awards.
+    adapter, registry, contract = _whole_pence_award_bands(semantics, top_band=False)
+    materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert list(adapter.tables["person"]["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    # A bound at or below a band's lower edge is refused.
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 100}, top_band=False
+    )
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert [skip.reason for skip in result.skipped if "band_upper_bound" in skip.reason]
