@@ -328,6 +328,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Measured SPM independence role restored by exact pinned Census identity
         # through spm_role_source; a manifest stage shaped like relationship_inputs.
         "spm_independence_role.py",
+        # Release gate over a final frame: the composition check above, graded
+        # on the units the certified engine measures, with the universe read
+        # through spm_universe_source. Reads no provenance tag itself and
+        # treats no population.
+        "spm_measurement_gate.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.

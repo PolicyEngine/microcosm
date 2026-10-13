@@ -49,7 +49,10 @@ package; each is separately resumable):
                 sub-PUMA coverage), and flip the summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
-                ``microcosm.data.stored_inputs``), then
+                ``microcosm.data.stored_inputs``), or on which that engine's
+                SPM measurement would refuse a unit with no classified adult
+                (microcosm#1263;
+                ``microcosm.build.us_runtime.spm_measurement_gate``), then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -81,7 +84,9 @@ import pandas as pd
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.data.contract import (
+    US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
 )
 
@@ -3124,6 +3129,51 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_spm_measurement(frame) -> dict[str, object]:
+    """Refuse an artifact on which an SPM measurement would crash.
+
+    microcosm#1263: spm-calculator refuses a whole simulation's SPM measurement
+    when one unit it measures has no classified adult, and every US state
+    region on the 2026-09-23 release did. The gate
+    (:func:`microcosm.build.us_runtime.spm_measurement_gate.check_release_spm_measurement`)
+    grades the calibrated frame against the installed policyengine-us, the
+    engine the release records as built-with: it measures every unit unless it
+    scopes SPM by measurement universe. The gate also requires the stored SPM
+    independence role to be complete.
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.build.us_runtime import spm_measurement_gate
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the SPM measurement cannot be graded against the "
+            f"engine the release records as built-with: {error}"
+        ) from error
+    result = spm_measurement_gate.check_release_spm_measurement(
+        frame,
+        engine_scopes_universe=spm_measurement_gate.engine_scopes_spm_universe(
+            engine.variables
+        ),
+    )
+    if not result.passed:
+        raise SystemExit(
+            "Refusing to package: the SPM measurement gate failed: "
+            + "; ".join(result.failures)
+        )
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine.label,
+        "details": dict(result.details),
+    }
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
@@ -3209,7 +3259,6 @@ def do_package(args) -> dict:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
-    release_dir.mkdir(parents=True, exist_ok=True)
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -3236,9 +3285,12 @@ def do_package(args) -> dict:
             "an old simulation_ready summary is insufficient. Re-run --stage "
             "finalize."
         )
-    hours_frame = _load_staging_frame(calibrated_h5)
-    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
-    del hours_frame
+    artifact_frame = _load_staging_frame(calibrated_h5)
+    # microcosm#1263: the bytes must also be measurable by the engine the
+    # release records as built-with.
+    spm_measurement_gate = _require_spm_measurement(artifact_frame)
+    package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
         raise SystemExit(
@@ -3262,6 +3314,13 @@ def do_package(args) -> dict:
                 **stored_inputs_gate,
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": US_LOCAL_AREA_STORED_INPUTS_STAGE,
+            },
+            # microcosm#1263: the publisher requires this gate of every US
+            # local-area release too, bound to the same bytes.
+            US_SPM_MEASUREMENT_EVIDENCE_KEY: {
+                **spm_measurement_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
             },
         },
     }
@@ -3404,6 +3463,9 @@ def do_package(args) -> dict:
             "fills must ship with their evidence."
         )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # Created only after every gate above has passed, so a refused artifact
+    # leaves no release directory behind.
+    release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
     if diagnostics_status["status"] == "available":

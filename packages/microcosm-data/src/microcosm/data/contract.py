@@ -78,8 +78,10 @@ __all__ = [
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
     "US_FISCAL_STORED_INPUTS_STAGE",
+    "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
+    "US_SPM_MEASUREMENT_EVIDENCE_KEY",
     "US_STORED_INPUTS_EVIDENCE_FILE",
     "US_STORED_INPUTS_EVIDENCE_KEY",
     "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
@@ -191,6 +193,18 @@ US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION = 1
 #: grades the calibrated H5 when it packages the release.
 US_FISCAL_STORED_INPUTS_STAGE = "export frame"
 US_LOCAL_AREA_STORED_INPUTS_STAGE = "package"
+
+#: The SPM measurement composition verdict (microcosm#1263) as release
+#: evidence. The ACS local-area package stage grades the calibrated H5 it ships
+#: against the policyengine-us it records as built-with
+#: (``microcosm.build.us_runtime.spm_measurement_gate``, whose gate name a
+#: test pins equal to this key) and records the verdict as a
+#: ``gate_summary.json`` gate. The publisher requires it of every US
+#: local-area release: one SPM unit the engine measures with no classified
+#: adult makes every SPM measurement on the release raise
+#: ``SPM_COMPOSITION_REQUIRED``.
+US_SPM_MEASUREMENT_EVIDENCE_KEY = "spm_measurement_composition"
+US_LOCAL_AREA_SPM_MEASUREMENT_STAGE = "package"
 
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
@@ -4614,10 +4628,16 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         if gate_summary is not None:
             _check_local_area_gates(gate_summary, failures)
             # The shared gate check above reads only the gates a summary
-            # lists; the US lane must list this one (microcosm#1034). UK
-            # local-k and dense releases have no stored-input seam.
+            # lists; the US lane must list these two (microcosm#1034, #1263).
+            # UK local-k and dense releases have neither seam.
             if release_id.startswith("populace-us-"):
                 _check_us_local_area_stored_inputs_gate(
+                    gate_summary,
+                    release_manifest=release_manifest,
+                    build_manifest=build_manifest,
+                    failures=failures,
+                )
+                _check_us_local_area_spm_measurement_gate(
                     gate_summary,
                     release_manifest=release_manifest,
                     build_manifest=build_manifest,
@@ -5351,6 +5371,160 @@ def _check_us_local_area_stored_inputs_gate(
             )
 
 
+def _check_us_local_area_spm_measurement_gate(
+    gate_summary: Mapping,
+    *,
+    release_manifest: Mapping | None,
+    build_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Require the ACS package stage's SPM measurement gate, bound to the release.
+
+    microcosm#1263: the ACS local-area release of 2026-09-23 had 5,274 SPM
+    units with no classified adult, so every US state and district simulation
+    on it raised ``SPM_COMPOSITION_REQUIRED``. Nothing in the contract counted
+    them. The package stage now grades the calibrated H5 against its
+    built-with engine; this requires that verdict. The gate must be present
+    and green, record no failures, have been checked when the release was
+    packaged, name the built-with engine and certify the release's one
+    microdata artifact. Its details must show a complete stored SPM
+    independence role, a measured scope consistent with whether the engine
+    scopes SPM by universe, and no measured unit and no unit inside the source
+    SPM universe without a classified adult. ``build_manifest.json`` must
+    carry the same entry. Engine-free: the check reads JSON only.
+
+    No published US local-area release carries this gate; re-publishing one
+    means re-packaging it, which runs the check.
+    """
+
+    key = US_SPM_MEASUREMENT_EVIDENCE_KEY
+    gates = gate_summary.get("gates")
+    gate = gates.get(key) if isinstance(gates, Mapping) else None
+    if not isinstance(gate, Mapping):
+        failures.append(
+            f"gate_summary.json must carry the {key!r} gate for a US "
+            "non-default local-area release (microcosm#1263): package it with "
+            "tools/build_us_acs_local_release.py --stage package, which grades "
+            "the calibrated H5's SPM measurement composition against the "
+            "policyengine-us the release records as built-with."
+        )
+        return
+    owner = f"gate_summary.json gate {key!r}"
+    if gate.get("failures") != []:
+        failures.append(f"{owner} must record an empty 'failures' list.")
+    stage = gate.get("checked_at_stage")
+    if stage != US_LOCAL_AREA_SPM_MEASUREMENT_STAGE:
+        failures.append(
+            f"{owner} must be checked_at_stage "
+            f"{US_LOCAL_AREA_SPM_MEASUREMENT_STAGE!r} (the bytes the release "
+            f"ships), got {stage!r}."
+        )
+    # The stored-input check already reports a manifest without a built-with
+    # engine; repeating that line here would only duplicate it.
+    engine_label = _built_with_us_engine_label(release_manifest, [])
+    if engine_label is not None and gate.get("engine") != engine_label:
+        failures.append(
+            f"{owner} graded against {gate.get('engine')!r}, not the "
+            f"built-with engine {engine_label!r}."
+        )
+    details = gate.get("details")
+    if not isinstance(details, Mapping):
+        failures.append(f"{owner} must carry a 'details' object.")
+    else:
+        _check_spm_measurement_details(details, owner=owner, failures=failures)
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    microdata = [
+        entry
+        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    ]
+    # More or fewer than one microdata artifact is already a manifest failure.
+    if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
+        "sha256"
+    ):
+        failures.append(
+            f"{owner} certifies artifact_sha256 {gate.get('artifact_sha256')!r}, "
+            "not the release's microdata artifact "
+            f"({microdata[0].get('sha256')!r})."
+        )
+    if isinstance(build_manifest, Mapping):
+        build_gates = build_manifest.get("gates")
+        recorded = build_gates.get(key) if isinstance(build_gates, Mapping) else None
+        if recorded != gate:
+            failures.append(
+                f"build_manifest.json gates.{key} must equal the "
+                f"gate_summary.json {key!r} gate; the package stage writes "
+                "both from one entry."
+            )
+
+
+def _check_spm_measurement_details(
+    details: Mapping, *, owner: str, failures: list[str]
+) -> None:
+    """The SPM measurement gate's details describe a measurable release."""
+
+    owner = f"{owner} details"
+    if details.get("role_column_present") is not True:
+        failures.append(
+            f"{owner} must record a stored is_spm_independent_minor_role column."
+        )
+    for name in ("role_null_values", "role_non_boolean_values"):
+        if details.get(name) != 0 or type(details.get(name)) is not int:
+            failures.append(f"{owner} {name!r} must be 0, got {details.get(name)!r}.")
+    counts = {
+        name: details.get(name)
+        for name in (
+            "n_units",
+            "n_measured_units",
+            "n_measured_units_without_classified_adult",
+        )
+    }
+    if not all(type(value) is int and value >= 0 for value in counts.values()):
+        failures.append(
+            f"{owner} must record non-negative integer counts {sorted(counts)}, "
+            f"got {counts!r}."
+        )
+        return
+    if counts["n_measured_units_without_classified_adult"] != 0:
+        failures.append(
+            f"{owner} records "
+            f"{counts['n_measured_units_without_classified_adult']} measured SPM "
+            "unit(s) with no classified adult; every SPM measurement on the "
+            "release would raise SPM_COMPOSITION_REQUIRED."
+        )
+    scopes = details.get("engine_scopes_spm_universe")
+    scope = details.get("measured_scope")
+    if type(scopes) is not bool or scope != (
+        "included_units" if scopes else "all_units"
+    ):
+        failures.append(
+            f"{owner} measured_scope {scope!r} does not follow "
+            f"engine_scopes_spm_universe {scopes!r}: an engine that scopes SPM "
+            "by universe measures 'included_units', any other 'all_units'."
+        )
+    elif scope == "all_units" and counts["n_measured_units"] != counts["n_units"]:
+        failures.append(
+            f"{owner} measures {counts['n_measured_units']} of "
+            f"{counts['n_units']} units under an engine that measures every unit."
+        )
+    if counts["n_measured_units"] > counts["n_units"] or counts["n_units"] == 0:
+        failures.append(
+            f"{owner} must measure at most its {counts['n_units']} units, and "
+            "at least one."
+        )
+    by_universe = details.get("n_units_without_classified_adult_by_universe")
+    if not isinstance(by_universe, Mapping) or by_universe.get("INCLUDED") != 0:
+        failures.append(
+            f"{owner} must record 0 units inside the source SPM universe "
+            "without a classified adult (n_units_without_classified_adult_by_"
+            f"universe.INCLUDED), got {by_universe!r}."
+        )
+
+
 def stored_input_evidence_manifest_block(
     payload: Mapping, *, dataset_sha256: str
 ) -> dict[str, object]:
@@ -5799,7 +5973,8 @@ def validate_release_dir(
       source coverage, a reviewed-limitations register, an empty
       ``default_datasets`` map, and artifacts pinned to the release id; a US
       release must also carry the package stage's stored-input gate
-      (:func:`_check_us_local_area_stored_inputs_gate`). The
+      (:func:`_check_us_local_area_stored_inputs_gate`) and its SPM
+      measurement gate (:func:`_check_us_local_area_spm_measurement_gate`). The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
 

@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime import spm_measurement_gate
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -74,6 +76,42 @@ def _stored_input_contract_passes(monkeypatch):
             "register_sha256": stored_inputs.register_sha256(),
             "registered_non_variables": [],
         },
+    )
+
+
+#: The SPM measurement gate's real entry point, kept before the autouse
+#: fixture below replaces it, for the tests that grade real bytes.
+_REAL_CHECK_RELEASE_SPM_MEASUREMENT = spm_measurement_gate.check_release_spm_measurement
+#: What the stand-in gate reports: a measurable release under an engine that
+#: measures every unit, in the shape the publisher's contract requires.
+_MEASURABLE_DETAILS = {
+    "role_column_present": True,
+    "role_null_values": 0,
+    "role_non_boolean_values": 0,
+    "engine_scopes_spm_universe": False,
+    "measured_scope": "all_units",
+    "n_units": 8,
+    "n_measured_units": 8,
+    "n_measured_units_without_classified_adult": 0,
+    "n_units_without_classified_adult_by_universe": {"INCLUDED": 0, "OUTSIDE": 0},
+}
+
+
+@pytest.fixture(autouse=True)
+def _spm_measurement_gate_passes(monkeypatch):
+    """The package stage grades the calibrated frame's SPM measurement
+    (microcosm#1263). Most package tests here load a frame built for another
+    gate, so the verdict passes by default. The tests that pin it restore
+    :data:`_REAL_CHECK_RELEASE_SPM_MEASUREMENT` against real bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: GateResult(
+            name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+            passed=True,
+            details=dict(_MEASURABLE_DETAILS),
+        ),
     )
 
 
@@ -1518,6 +1556,203 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     )
     assert len(failures) == 1
     assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _write_measurable_lane_h5(path: Path, *, group_quarters_child: bool) -> None:
+    """The plausible-hours frame with the columns the SPM gate reads.
+
+    Eight one-person ACS housing units of adults; with
+    ``group_quarters_child`` the last is instead a group-quarters record of a
+    ten-year-old, whom no role can classify.
+    """
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    ages = [40.0, 38.0, 20.0, 45.0, 70.0, 67.0, 30.0, 50.0]
+    kinds = [1.0] * 8
+    if group_quarters_child:
+        ages[-1], kinds[-1] = 10.0, 2.0
+    person = frame.table("person").assign(
+        age=ages,
+        is_spm_independent_minor_role=[True] * 8,
+        person_support_clone_index=0,
+    )
+    household = frame.table("household").assign(
+        household_spine="acs_2024_1yr", TYPEHUGQ=kinds
+    )
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": household,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_package_records_the_spm_measurement_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1263: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and both manifests carry the
+    verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_SPM_MEASUREMENT_EVIDENCE_KEY
+        == spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    recorded = [
+        json.loads((release_dir / name).read_text())["gates"][
+            "spm_measurement_composition"
+        ]
+        for name in ("gate_summary.json", "build_manifest.json")
+    ]
+    assert recorded[0] == recorded[1]
+    gate = recorded[0]
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+    assert gate["engine"] == "policyengine-us 2.2.1"
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["details"]["measured_scope"] == "all_units"
+    assert gate["details"]["n_measured_units"] == 8
+    assert gate["details"]["n_measured_units_without_classified_adult"] == 0
+
+
+@requires_pytables
+def test_package_refuses_an_unmeasurable_release_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 failure in this lane: one group-quarters child makes
+    every SPM measurement on the release raise SPM_COMPOSITION_REQUIRED under
+    an engine that measures every unit. The package stage refuses it, and no
+    release directory is created."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=True)
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "1 of 8 SPM units" in message
+    assert "0 inside the source SPM universe and 1 outside it" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_refuses_an_spm_gate_without_an_importable_engine(
+    tmp_path, monkeypatch
+):
+    """The gate grades against the built-with engine, so it needs one."""
+
+    module = _load_tool_module()
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    with pytest.raises(SystemExit, match="SPM measurement cannot be graded"):
+        module._require_spm_measurement(object())
+
+
+@requires_pytables
+def test_the_spm_measurement_gate_meets_the_publisher_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1263): the gate the package
+    stage writes from real bytes passes the publisher's requirement against
+    the manifests written alongside it, and the same output with the gate
+    dropped, or recording a measured unit without an adult, is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+        == contract.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+
+    def failures_for(summary, build=build_manifest):
+        failures: list[str] = []
+        contract._check_us_local_area_spm_measurement_gate(
+            summary,
+            release_manifest=release_manifest,
+            build_manifest=build,
+            failures=failures,
+        )
+        return failures
+
+    assert failures_for(gate_summary) == []
+
+    key = contract.US_SPM_MEASUREMENT_EVIDENCE_KEY
+    dropped = json.loads(json.dumps(gate_summary))
+    del dropped["gates"][key]
+    assert len(failures_for(dropped)) == 1
+    assert (
+        "must carry the 'spm_measurement_composition' gate"
+        in (failures_for(dropped)[0])
+    )
+
+    crashing = json.loads(json.dumps(gate_summary))
+    crashing["gates"][key]["details"]["n_measured_units_without_classified_adult"] = 1
+    build = json.loads(json.dumps(build_manifest))
+    build["gates"][key] = crashing["gates"][key]
+    assert any(
+        "SPM_COMPOSITION_REQUIRED" in line for line in failures_for(crashing, build)
+    )
 
 
 def _write_lane_h5(path: Path, **person_columns) -> None:
