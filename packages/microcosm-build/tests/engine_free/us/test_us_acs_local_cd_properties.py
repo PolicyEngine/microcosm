@@ -970,7 +970,69 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
         )
 
     assert verdicts(after.receipt) == verdicts(before.receipt)
+    # Every verdict's relative gap is unchanged. Where the share ages like the
+    # file (as on the pinned feed), a sibling's recorded level ratio is too:
+    # it compares the two files' own levels. A block's rebase factor is the
+    # parent over the compiled district rows, so it moves with the share
+    # factor while its verdict does not.
+    recorded = {
+        (row["state_fips"], row["measure"], row["verdict"]): row
+        for row in before.receipt["factor_band"]["out_of_band"]
+    }
+    for row in after.receipt["factor_band"]["out_of_band"]:
+        old_row = recorded[(row["state_fips"], row["measure"], row["verdict"])]
+        keys = ["relative"]
+        if row["verdict"] == "sibling_vintage_ratio" and own_aging == control_aging:
+            keys += ["ratio", "median_ratio"]
+        for key in keys:
+            assert row[key] == pytest.approx(old_row[key], rel=1e-12, nan_ok=True)
     assert (
         after.receipt["level_bridge_factor_by_measure"]
         == before.receipt["level_bridge_factor_by_measure"]
     )
+
+
+def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> None:
+    """State 14's two return-count levels disagree 2x, so its bridge is out of
+    band. Binding the district file's return counts as national shares (x1.5)
+    leaves every bound value, the out-of-band rows and their recorded ratios
+    where they were: the sibling is still read at the file's own level."""
+
+    specs, crosswalk = _bridge_world(
+        {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0}, {}
+    )
+    base = [
+        _aged(spec, 1.0)
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+        else spec
+        for spec in specs
+    ]
+    shared = [
+        _as_national_share(spec, 1.5, 1.0)
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+        and spec.metadata["source_measure_id"] == "return_count"
+        else spec
+        for spec in base
+    ]
+    before, after = (
+        _CD.state_cd_soi_surface(
+            rows,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+        for rows in (base, shared)
+    )
+    assert {spec.name: spec.value for spec in after.specs} == pytest.approx(
+        {spec.name: spec.value for spec in before.specs}, rel=1e-12
+    )
+    rows = {
+        (row["state_fips"], row["measure"], row["verdict"]): row
+        for row in after.receipt["factor_band"]["out_of_band"]
+    }
+    vintage = rows[("14", "charitable_amount", "sibling_vintage_ratio")]
+    assert (vintage["ratio"], vintage["median_ratio"]) == pytest.approx((2.0, 1.0))
+    assert set(rows) == {
+        (row["state_fips"], row["measure"], row["verdict"])
+        for row in before.receipt["factor_band"]["out_of_band"]
+    }

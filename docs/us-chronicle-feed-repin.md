@@ -216,7 +216,10 @@ same 60 return counts move and `national_state` goes from `e1f9906bf0e0` to
 `882f4764a248` at 6,102 targets. microcosm#1243 then rebases 14 more Historic
 Table 2 state families onto their Table 1.x controls and retires 15 stale
 national rows: 33,235 compiled and 6,087 on `national_state` (`0e899cd7f893`)
-([us-soi-national-controls.md](us-soi-national-controls.md)).
+([us-soi-national-controls.md](us-soi-national-controls.md)). microcosm#1250
+takes the congressional-district rows of 11 of those columns as shares of the
+same controls and retires the district file's 11 US rows: 33,224 compiled,
+`national_state` unchanged.
 
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
