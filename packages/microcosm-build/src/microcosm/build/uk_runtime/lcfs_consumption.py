@@ -151,6 +151,13 @@ UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
     CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
 )
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
+#: The donor columns floored at zero before the imputation (microcosm#1063
+#: c9): the diary consumption columns and the bus fares summed from the
+#: c73212-c73214 diary lines, which a refund can make negative as well.
+UK_LCFS_DONOR_FLOORED_COLUMNS = (
+    *CONSUMPTION_VARIABLE_RENAMES.values(),
+    "bus_fare_spending",
+)
 #: The spend columns a price index carries from the April-to-March diary to
 #: the calendar base year (microcosm#1113). Energy and road fuel are not here:
 #: later steps set their levels for that year.
@@ -427,7 +434,7 @@ class UKLCFSConsumptionStageTransform:
             donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
         )
         donor, donor_floor_receipt = floor_negative_donor_consumption(
-            donor, floor=_donor_consumption_floor(self.stage)
+            donor, floor=donor_consumption_floor(self.stage)
         )
         ice_share, ice_share_receipt = lcfs_ice_share(self.stage)
         recipient = recipient_predictors(frame, self.engine)
@@ -1142,15 +1149,13 @@ def lcfs_other_road_fuel_share(lcfs_household: pd.DataFrame) -> float:
         household, ("weighta", "c72211", "c72212", *UK_LCFS_OTHER_ROAD_FUEL_CODES)
     )
     weight = _numeric(household["weighta"]).to_numpy(dtype=float)
-    other = sum(
-        _numeric(household[code]).to_numpy(dtype=float)
-        for code in UK_LCFS_OTHER_ROAD_FUEL_CODES
-    )
-    total = (
-        _numeric(household["c72211"]).to_numpy(dtype=float)
-        + _numeric(household["c72212"]).to_numpy(dtype=float)
-        + other
-    )
+
+    def spend(code: str) -> np.ndarray:
+        # Floored at zero, as the imputation's donor is (microcosm#1063 c9).
+        return np.maximum(_numeric(household[code]).to_numpy(dtype=float), 0.0)
+
+    other = sum(spend(code) for code in UK_LCFS_OTHER_ROAD_FUEL_CODES)
+    total = spend("c72211") + spend("c72212") + other
     denominator = float(np.dot(weight, total))
     if not np.isfinite(denominator) or denominator <= 0:
         raise ValueError("LCFS donor records no COICOP 07.2.2 road-fuel spend.")
@@ -1969,7 +1974,7 @@ def clean_lcfs_consumption_table(
     ].dropna()
 
 
-def _donor_consumption_floor(stage: SourceStageSpec) -> float:
+def donor_consumption_floor(stage: SourceStageSpec) -> float:
     """The declared floor of the donor's diary consumption columns."""
 
     parameters = _operation_parameters(stage, "derive")
@@ -2007,7 +2012,7 @@ def floor_negative_donor_consumption(
 
     floored = donor.copy()
     columns: dict[str, dict[str, int]] = {}
-    for column in CONSUMPTION_VARIABLE_RENAMES.values():
+    for column in UK_LCFS_DONOR_FLOORED_COLUMNS:
         if column not in floored.columns:
             raise ValueError(f"LCFS donor is missing consumption column {column!r}.")
         values = _numeric(floored[column]).to_numpy(dtype=float)

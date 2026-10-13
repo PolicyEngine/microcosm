@@ -27,6 +27,8 @@ from microcosm.build.uk_runtime.etb_vat import (
 )
 from microcosm.build.uk_runtime.lcfs_consumption import (
     clean_lcfs_consumption_table,
+    donor_consumption_floor,
+    floor_negative_donor_consumption,
     lcfs_donor_uprating,
     lcfs_energy_pricing,
 )
@@ -64,6 +66,11 @@ def build_lcfs_support_bounds(
         pd.read_csv(household_tab, sep="\t", low_memory=False),
         uprating=uprating,
         energy=lcfs_energy_pricing(stage),
+    )
+    # The stage floors the donor before it reads clip ranges, so the bounds
+    # start where the stage's support does.
+    donor, _floor_receipt = floor_negative_donor_consumption(
+        donor, floor=donor_consumption_floor(stage)
     )
     return _payload(
         source={

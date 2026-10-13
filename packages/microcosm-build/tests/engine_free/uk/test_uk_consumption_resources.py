@@ -93,10 +93,12 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     assert len(lcfs["bounds"]) == 12
     assert "bus_fare_spending" not in lcfs["bounds"]
     assert "petrol_spending" not in lcfs["bounds"]
+    # The tool floors the donor as the stage does, so no bound starts below 0.
     assert lcfs["bounds"]["housing_water_and_electricity_consumption"] == [
-        -20000,
+        0.0,
         300000,
     ]
+    assert all(low >= 0 for low, _high in lcfs["bounds"].values())
     assert lcfs["bounds"]["transport_consumption"] == [0.0, 200000]
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"

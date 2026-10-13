@@ -149,13 +149,18 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
     the declared floor before the clip ranges and the imputation see it."""
     from microcosm.build.uk_runtime.lcfs_consumption import (
         CONSUMPTION_VARIABLE_RENAMES,
+        UK_LCFS_DONOR_FLOORED_COLUMNS,
         floor_negative_donor_consumption,
     )
 
-    columns = list(CONSUMPTION_VARIABLE_RENAMES.values())
+    # The bus fares, summed from three diary lines, are floored too.
+    columns = list(UK_LCFS_DONOR_FLOORED_COLUMNS)
+    assert columns == [*CONSUMPTION_VARIABLE_RENAMES.values(), "bus_fare_spending"]
     donor = pd.DataFrame({column: [10.0, 20.0, 30.0] for column in columns})
     donor.loc[1, "housing_water_and_electricity_consumption"] = -50.0
     donor.loc[2, "housing_water_and_electricity_consumption"] = -1.0
+    donor.loc[0, "bus_fare_spending"] = -2.0
+    raised = {"housing_water_and_electricity_consumption", "bus_fare_spending"}
 
     floored, receipt = floor_negative_donor_consumption(donor)
 
@@ -164,20 +169,24 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
         0.0,
         0.0,
     ]
+    assert floored["bus_fare_spending"].tolist() == [0.0, 20.0, 30.0]
     for column in columns:
-        if column != "housing_water_and_electricity_consumption":
+        if column not in raised:
             assert floored[column].tolist() == [10.0, 20.0, 30.0]
     assert receipt["floor"] == 0.0
-    assert receipt["rows_raised"] == 2
+    assert receipt["rows_raised"] == 3
     assert receipt["remaining_negative_rows"] == 0
     housing = receipt["columns"]["housing_water_and_electricity_consumption"]
     # Counts only: no donor value or statistic of the raised rows.
     assert housing == {"rows_raised": 2}
+    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": 1}
     assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
         "rows_raised": 0
     }
     with pytest.raises(ValueError, match="missing consumption column"):
         floor_negative_donor_consumption(donor.drop(columns=[columns[0]]))
+    with pytest.raises(ValueError, match="bus_fare_spending"):
+        floor_negative_donor_consumption(donor.drop(columns=["bus_fare_spending"]))
 
 
 def test_support_clip_exempts_raked_energy_columns() -> None:
@@ -1273,6 +1282,9 @@ def test_other_road_fuel_share_is_the_donor_weighted_c72213_share() -> None:
         }
     )
     assert lcfs_other_road_fuel_share(donor) == pytest.approx(1.0 / 26.0)
+    # A refund netting a diary line below zero is floored, as on the donor.
+    refunded = donor.assign(C72213=[1.0, -4.0])
+    assert lcfs_other_road_fuel_share(refunded) == pytest.approx(1.0 / 26.0)
     with pytest.raises(ValueError, match="no COICOP 07.2.2"):
         lcfs_other_road_fuel_share(donor.assign(C72211=0.0, C72212=0.0, C72213=0.0))
     with pytest.raises(ValueError, match="c72213"):
