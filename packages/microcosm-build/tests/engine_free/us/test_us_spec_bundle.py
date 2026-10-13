@@ -72,14 +72,14 @@ def test_constant_derived_domain_counts_are_complete(
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
         "primary_puf_qrf": 66,
-        "late_producer_dag": 71,
+        "late_producer_dag": 72,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
     assert len(derive_primary_effective_predictor_tuples(imputation)) == 66
     itemization_batches = [
         family for family in families if "puf_tax_itemization__batch_" in family["id"]
     ]
-    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 6]
+    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 7]
     modeled_output_scopes = {
         stage: Counter(
             target["output_coverage_scope"]

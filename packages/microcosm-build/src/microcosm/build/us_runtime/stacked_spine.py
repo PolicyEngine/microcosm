@@ -5096,7 +5096,7 @@ def validate_stacked_post_puf_transfer_receipt(
         )
     # The counts come from the canonical partition and surface checked above.
     # Their sizes are pinned once, at import: 19 groups in
-    # us_late_producer_registry and 71 targets in this module's surface check.
+    # us_late_producer_registry and 72 targets in this module's surface check.
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",

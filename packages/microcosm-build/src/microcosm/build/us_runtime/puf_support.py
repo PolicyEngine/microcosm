@@ -2280,9 +2280,11 @@ def _require_signed_subset_outputs_after_their_basis(
     """Refuse a placement order that would split a subset by a stale basis.
 
     A signed-subset output is placed by its basis columns as the person table
-    holds them when its turn comes, so each basis column it is imputed with
-    must be placed first. Without one in the same pass, the placement would
-    read whatever the frame carried before the imputation.
+    holds them when its turn comes, so every basis column must be imputed in
+    the same pass and placed first. A missing one would leave the placement
+    reading whatever the frame carried before the imputation; for the passive
+    subset that is half of line 32 now that the S-corporation share is its
+    own leaf (microcosm#1258).
     """
 
     position = {column: index for index, column in enumerate(person_outputs)}
@@ -2290,12 +2292,13 @@ def _require_signed_subset_outputs_after_their_basis(
         if column not in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS:
             continue
         basis = _PERSON_OUTPUT_DISTRIBUTION_BASIS[column]
-        imputed_basis = [name for name in basis if name in position]
-        if not imputed_basis:
+        missing = [name for name in basis if name not in position]
+        if missing:
             raise ValueError(
                 f"PUF output {column!r} is a subset of {list(basis)!r}; impute "
-                "at least one of them in the same pass."
+                f"all of them in the same pass (missing {missing!r})."
             )
+        imputed_basis = list(basis)
         late = [name for name in imputed_basis if position[name] > position[column]]
         if late:
             raise ValueError(
@@ -2324,15 +2327,13 @@ def _zero_passive_partnership_s_corp_without_line_32(
     passive = "passive_partnership_s_corp_income"
     if passive not in predictions:
         return
-    totals = [
-        column
-        for column in ("partnership_income", "s_corp_income")
-        if column in predictions
-    ]
-    if not totals:
+    totals = ["partnership_income", "s_corp_income"]
+    missing = [column for column in totals if column not in predictions]
+    if missing:
         raise ValueError(
             "PUF passive partnership/S-corp draws need the line-32 total "
-            "(partnership_income and s_corp_income) in the same chain."
+            "(partnership_income and s_corp_income) in the same chain; "
+            f"missing {missing!r}."
         )
     line_32 = predictions[totals].sum(axis=1)
     predictions.loc[line_32 == 0.0, passive] = 0.0

@@ -1591,8 +1591,21 @@ def test_passive_draw_is_zero_wherever_the_unit_drew_no_line_32(
     pd.testing.assert_series_equal(after[total != 0.0], before[total != 0.0])
 
 
-def test_passive_draw_coherence_requires_the_line_32_total() -> None:
-    predictions = pd.DataFrame({"passive_partnership_s_corp_income": [1.0]})
+@pytest.mark.parametrize(
+    "present",
+    [(), ("partnership_income",), ("s_corp_income",)],
+)
+def test_passive_draw_coherence_requires_the_line_32_total(
+    present: tuple[str, ...],
+) -> None:
+    """Both entity shares make up line 32; one alone is refused (#1258)."""
+
+    predictions = pd.DataFrame(
+        {
+            "passive_partnership_s_corp_income": [1.0],
+            **{column: [0.0] for column in present},
+        }
+    )
 
     with pytest.raises(ValueError, match="line-32 total"):
         _zero_passive_partnership_s_corp_without_line_32(predictions)
@@ -1761,6 +1774,16 @@ def test_passive_placement_ignores_values_the_column_already_holds() -> None:
             "must come before it",
         ),
         (("passive_partnership_s_corp_income",), "same pass"),
+        # microcosm#1258: half a line-32 basis is a stale basis too. Without
+        # s_corp_income an S-corporation-only unit would look line-32-free.
+        (
+            ("partnership_income", "passive_partnership_s_corp_income"),
+            r"same pass \(missing \['s_corp_income'\]\)",
+        ),
+        (
+            ("s_corp_income", "passive_partnership_s_corp_income"),
+            r"same pass \(missing \['partnership_income'\]\)",
+        ),
     ],
 )
 def test_passive_placement_refuses_a_stale_line_32_basis(
