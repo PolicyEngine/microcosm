@@ -1,0 +1,5669 @@
+{
+ "inputs": {
+  "donor": {
+   "file": "puf_2024.h5",
+   "sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df"
+  },
+  "source_csv": {
+   "file": "puf_2015.csv",
+   "sha256": "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df"
+  },
+  "release_2021": {
+   "file": "puf_2021.h5",
+   "sha256": "1db51c815240ee5d41c62ae37f3bb9b815422ccc07c1790362249682f3902e45"
+  },
+  "release_2024": {
+   "file": "puf_2024.h5",
+   "sha256": "8182579ddfecaf5e5b872e2307b88f03e8e8def993171b648f701a19a847f37b"
+  },
+  "summary_json": {
+   "file": "base_populace_us_2024_puf_support.summary.json",
+   "sha256": "97a3db656a65c095aa985ed0b07969c2eb06790c1340e4d168d4d40137bcfb10"
+  }
+ },
+ "archived": {
+  "soi_targets_42ed5d45.csv.gz": "3d401450b11547d834743772d55b40c9301e85d91fe3db584ba905013270231b",
+  "uprate_puf_42ed5d45.py.txt": "ab806fdd9f4c05366e1859150b082b71ece9d1666e2d292c2266a335df105e9b",
+  "utils_uprating_42ed5d45.py.txt": "688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a"
+ },
+ "archived_soi_targets_uncompressed_sha256": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
+ "tolerance": {
+  "float64": 1e-09,
+  "float32": 1e-06
+ },
+ "release_1_8_0_2021_vs_2024": {
+  "arrays_in_2021_only": [],
+  "arrays_in_2024_only": [],
+  "arrays_identical": 74,
+  "arrays_differing": [],
+  "rows": {
+   "tax_unit_id": 207692
+  }
+ },
+ "archived_factor_table": {
+  "2021": {
+   "E00200 (employment_income)": 1.187079295246555,
+   "E01100 (capital_gains_distributions)": 1.933280146058946,
+   "E00300 (taxable_interest_income)": 1.0104614635225775,
+   "E00400 (exempt_interest)": 0.8396766287008147,
+   "E00600 (ordinary_dividends)": 1.3913542463347282,
+   "E00650 (qualified_dividends)": 1.3627673957749655,
+   "E01400 (ira_distributions)": 1.5091982531835977,
+   "E01500 (total_pension_income)": 1.2062132876732925,
+   "E01700 (taxable_pension_income)": 1.1636648594128258,
+   "E02300 (unemployment_compensation)": 7.179137050739982,
+   "E02400 (total_social_security)": 1.223392200575715,
+   "E02500 (taxable_social_security)": 1.392556998642743,
+   "E17500 (medical_expense_deductions_uncapped)": 0.7124646709805694,
+   "E18400 (itemized_state_income_tax_deductions)": 0.7009889280731973,
+   "E18500 (itemized_real_estate_tax_deductions)": 0.4960690584108681,
+   "E19200 (interest_paid_deductions)": 0.501822032581227,
+   "E19800 (charitable_contributions_deductions)": 1.1103876003691924,
+   "itemized deductions (1.02 per year)": 1.126162419264,
+   "E00900 pos_only (business_net_profits)": 1.2344267521841334,
+   "E01000 pos_only (capital_gains_gross)": 2.686644370825099,
+   "E26270 pos_only (partnership_and_s_corp_income)": 1.531276117216122,
+   "E00900 neg_only (business_net_losses)": 1.6422164932050862,
+   "E01000 neg_only (capital_gains_losses)": 0.8150960322151273,
+   "E26270 neg_only (partnership_and_s_corp_losses)": 1.9277259554240873,
+   "REMAINING_VARIABLES (adjusted_gross_income)": 1.3559989182295513,
+   "S006 weights (return count)": 1.0686481028722197,
+   "own series (estate_income)": 1.4240687190927401,
+   "own series (rent_and_royalty_net_income)": 1.1365118574530368
+  },
+  "2022": {
+   "E00200 (employment_income)": 1.277293835626433,
+   "E01100 (capital_gains_distributions)": 1.0376775014037447,
+   "E00300 (taxable_interest_income)": 1.2997078419092154,
+   "E00400 (exempt_interest)": 0.8377568259146186,
+   "E00600 (ordinary_dividends)": 1.4778284356588545,
+   "E00650 (qualified_dividends)": 1.4379736208331595,
+   "E01400 (ira_distributions)": 1.6126846883670145,
+   "E01500 (total_pension_income)": 1.2195077961840406,
+   "E01700 (taxable_pension_income)": 1.2325126002712883,
+   "E02300 (unemployment_compensation)": 1.0363358467626684,
+   "E02400 (total_social_security)": 1.3430457178272368,
+   "E02500 (taxable_social_security)": 1.5417445477920675,
+   "E17500 (medical_expense_deductions_uncapped)": 0.8435644295133302,
+   "E18400 (itemized_state_income_tax_deductions)": 0.7164624100448083,
+   "E18500 (itemized_real_estate_tax_deductions)": 0.5285801475817127,
+   "E19200 (interest_paid_deductions)": 0.5222185542854246,
+   "E19800 (charitable_contributions_deductions)": 0.9350379912308869,
+   "itemized deductions (1.02 per year)": 1.14868566764928,
+   "E00900 pos_only (business_net_profits)": 1.2935293406223662,
+   "E01000 pos_only (capital_gains_gross)": 1.6598182726198354,
+   "E26270 pos_only (partnership_and_s_corp_income)": 1.6046025249276454,
+   "E00900 neg_only (business_net_losses)": 2.064806231856619,
+   "E01000 neg_only (capital_gains_losses)": 1.4444551057425907,
+   "E26270 neg_only (partnership_and_s_corp_losses)": 1.9789692247580801,
+   "REMAINING_VARIABLES (adjusted_gross_income)": 1.3551959075485775,
+   "S006 weights (return count)": 1.0720523682179712,
+   "own series (estate_income)": 1.536949032460129,
+   "own series (rent_and_royalty_net_income)": 1.3475141635932806
+  },
+  "2023": {
+   "E00200 (employment_income)": 1.3444200494690635,
+   "E01100 (capital_gains_distributions)": 0.75695955113625,
+   "E00300 (taxable_interest_income)": 3.066922026228512,
+   "E00400 (exempt_interest)": 1.0009775389962878,
+   "E00600 (ordinary_dividends)": 1.8154943476838477,
+   "E00650 (qualified_dividends)": 1.549880970850305,
+   "E01400 (ira_distributions)": 1.6214386581626195,
+   "E01500 (total_pension_income)": 1.278380032565726,
+   "E01700 (taxable_pension_income)": 1.2658969715620647,
+   "E02300 (unemployment_compensation)": 1.064875267106305,
+   "E02400 (total_social_security)": 1.5076513731750005,
+   "E02500 (taxable_social_security)": 1.7803799287164315,
+   "E17500 (medical_expense_deductions_uncapped)": 0.8265590135080958,
+   "E18400 (itemized_state_income_tax_deductions)": 0.5845183812359033,
+   "E18500 (itemized_real_estate_tax_deductions)": 0.5395926027420196,
+   "E19200 (interest_paid_deductions)": 0.6407169005210204,
+   "E19800 (charitable_contributions_deductions)": 0.8953457286696194,
+   "itemized deductions (1.02 per year)": 1.1716593810022657,
+   "E00900 pos_only (business_net_profits)": 1.2679256577569245,
+   "E01000 pos_only (capital_gains_gross)": 1.2687171096222551,
+   "E26270 pos_only (partnership_and_s_corp_income)": 1.5495541090908027,
+   "E00900 neg_only (business_net_losses)": 2.389957339330693,
+   "E01000 neg_only (capital_gains_losses)": 1.4752186813887442,
+   "E26270 neg_only (partnership_and_s_corp_losses)": 1.9125332242235427,
+   "REMAINING_VARIABLES (adjusted_gross_income)": 1.4028823006840203,
+   "S006 weights (return count)": 1.0671714055399277,
+   "own series (estate_income)": 1.382847645118669,
+   "own series (rent_and_royalty_net_income)": 1.260296138816207
+  },
+  "2021 to 2022": {
+   "E00200 (employment_income)": 1.0759970633310898,
+   "E01100 (capital_gains_distributions)": 0.5367445083006122,
+   "E00300 (taxable_interest_income)": 1.2862517659785797,
+   "E00400 (exempt_interest)": 0.9977136403222671,
+   "E00600 (ordinary_dividends)": 1.0621510945554857,
+   "E00650 (qualified_dividends)": 1.0551863988611396,
+   "E01400 (ira_distributions)": 1.0685704710862978,
+   "E01500 (total_pension_income)": 1.0110216896519126,
+   "E01700 (taxable_pension_income)": 1.0591645784450365,
+   "E02300 (unemployment_compensation)": 0.1443538184935262,
+   "E02400 (total_social_security)": 1.0978047082490912,
+   "E02500 (taxable_social_security)": 1.1071320953431207,
+   "E17500 (medical_expense_deductions_uncapped)": 1.184008785098533,
+   "E18400 (itemized_state_income_tax_deductions)": 1.0220737894022702,
+   "E18500 (itemized_real_estate_tax_deductions)": 1.0655374259281403,
+   "E19200 (interest_paid_deductions)": 1.0406449306326462,
+   "E19800 (charitable_contributions_deductions)": 0.8420825222832066,
+   "itemized deductions (1.02 per year)": 1.02,
+   "E00900 pos_only (business_net_profits)": 1.0478785706269407,
+   "E01000 pos_only (capital_gains_gross)": 0.6178034914647399,
+   "E26270 pos_only (partnership_and_s_corp_income)": 1.0478858168602743,
+   "E00900 neg_only (business_net_losses)": 1.2573288847116446,
+   "E01000 neg_only (capital_gains_losses)": 1.7721287414651006,
+   "E26270 neg_only (partnership_and_s_corp_losses)": 1.026582237578847,
+   "REMAINING_VARIABLES (adjusted_gross_income)": 0.9994078087598903,
+   "S006 weights (return count)": 1.0031855812372679,
+   "own series (estate_income)": 1.0792660577779587,
+   "own series (rent_and_royalty_net_income)": 1.1856578132084845
+  },
+  "2021 to 2023": {
+   "E00200 (employment_income)": 1.132544434775799,
+   "E01100 (capital_gains_distributions)": 0.39154157387864175,
+   "E00300 (taxable_interest_income)": 3.035169709032635,
+   "E00400 (exempt_interest)": 1.1920988447005427,
+   "E00600 (ordinary_dividends)": 1.3048397649027486,
+   "E00650 (qualified_dividends)": 1.137304117823375,
+   "E01400 (ira_distributions)": 1.074370881852172,
+   "E01500 (total_pension_income)": 1.0598291741849724,
+   "E01700 (taxable_pension_income)": 1.0878535699710175,
+   "E02300 (unemployment_compensation)": 0.14832914590988958,
+   "E02400 (total_social_security)": 1.232353265343294,
+   "E02500 (taxable_social_security)": 1.2784969882393902,
+   "E17500 (medical_expense_deductions_uncapped)": 1.1601403510583865,
+   "E18400 (itemized_state_income_tax_deductions)": 0.8338482361519808,
+   "E18500 (itemized_real_estate_tax_deductions)": 1.087736865650474,
+   "E19200 (interest_paid_deductions)": 1.2767811274155465,
+   "E19800 (charitable_contributions_deductions)": 0.8063362094208599,
+   "itemized deductions (1.02 per year)": 1.0404,
+   "E00900 pos_only (business_net_profits)": 1.0271372161317145,
+   "E01000 pos_only (capital_gains_gross)": 0.4722311309228538,
+   "E26270 pos_only (partnership_and_s_corp_income)": 1.0119364441652172,
+   "E00900 neg_only (business_net_losses)": 1.4553241604986282,
+   "E01000 neg_only (capital_gains_losses)": 1.809871012842069,
+   "E26270 neg_only (partnership_and_s_corp_losses)": 0.9921188324731549,
+   "REMAINING_VARIABLES (adjusted_gross_income)": 1.034574793404468,
+   "S006 weights (return count)": 0.9986181631462003,
+   "own series (estate_income)": 0.9710540134605774,
+   "own series (rent_and_royalty_net_income)": 1.108915961194259
+  }
+ },
+ "archived_field_lists": {
+  "straight": [
+   "E00200",
+   "E00300",
+   "E00400",
+   "E00600",
+   "E00650",
+   "E01100",
+   "E01400",
+   "E01500",
+   "E01700",
+   "E02300",
+   "E02400",
+   "E02500",
+   "E17500",
+   "E18400",
+   "E18500",
+   "E19200",
+   "E19800"
+  ],
+  "positive_only": [
+   "E00900",
+   "E01000",
+   "E26270"
+  ],
+  "negative_only": [
+   "E00900",
+   "E01000",
+   "E26270"
+  ],
+  "remaining_agi_growth": [
+   "E00700",
+   "E00800",
+   "E00900",
+   "E01200",
+   "E03150",
+   "E03210",
+   "E03220",
+   "E03230",
+   "E03240",
+   "E03270",
+   "E03290",
+   "E03300",
+   "E03400",
+   "E03500",
+   "E07240",
+   "E07260",
+   "E07300",
+   "E07400",
+   "E07600",
+   "E09700",
+   "E09800",
+   "E09900",
+   "E11200",
+   "E20100",
+   "E20400",
+   "E20500",
+   "E24515",
+   "E24518",
+   "E25850",
+   "E25860",
+   "E26270",
+   "E26390",
+   "E26400",
+   "E27200",
+   "E32800",
+   "E58990",
+   "E62900",
+   "E87521",
+   "E87530",
+   "P08000",
+   "P22250",
+   "P23250",
+   "T27800"
+  ]
+ },
+ "donor_attrs": {
+  "qbi_simulation_version": 1
+ },
+ "donor_shape": {
+  "persons": 499045,
+  "tax_units": 211677,
+  "regular_tax_units": 207692,
+  "synthetic_tax_units": 3985,
+  "arrays": 97
+ },
+ "donor_weight": {
+  "modal_ratio_to_S006_over_100": 1.068648103,
+  "modal_ratio_share": 1.0
+ },
+ "processed_arrays": {
+  "alimony_expense": {
+   "fields": [
+    "E03500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 607,
+   "processed_nonzero_records": 607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.997077,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.997077,
+    "2015 to 2023": 0.997077
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "alimony_income": {
+   "fields": [
+    "E00800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 314,
+   "processed_nonzero_records": 314,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.998488,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.998488,
+    "2015 to 2023": 0.998488
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "casualty_loss": {
+   "fields": [
+    "E20500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 105,
+   "processed_nonzero_records": 105,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999494,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999494,
+    "2015 to 2023": 0.999494
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "cdcc_relevant_expenses": {
+   "fields": [
+    "E32800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 9474,
+   "processed_nonzero_records": 9474,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.954384,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.954384,
+    "2015 to 2023": 0.954384
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "charitable_cash_donations": {
+   "fields": [
+    "E19800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 102134,
+   "processed_nonzero_records": 102134,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.508243,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.508243,
+    "2015 to 2023": 0.508243
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "charitable_non_cash_donations": {
+   "fields": [
+    "E20100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 57586,
+   "processed_nonzero_records": 57586,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.722734,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.722734,
+    "2015 to 2023": 0.722734
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "domestic_production_ald": {
+   "fields": [
+    "E03240"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 13424,
+   "processed_nonzero_records": 13424,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.935366,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.935366,
+    "2015 to 2023": 0.935366
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "early_withdrawal_penalty": {
+   "fields": [
+    "E09900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7188,
+   "processed_nonzero_records": 7188,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.965391,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.965391,
+    "2015 to 2023": 0.965391
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "educator_expense": {
+   "fields": [
+    "E03220"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3979,
+   "processed_nonzero_records": 3979,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.980842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.980842,
+    "2015 to 2023": 0.980842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "employment_income": {
+   "fields": [
+    "E00200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 165548,
+   "processed_nonzero_records": 165548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.202916,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.202916,
+    "2015 to 2023": 0.202916
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.187079295,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "estate_income": {
+   "fields": [
+    "E26390",
+    "E26400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7434,
+   "processed_nonzero_records": 7434,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.964207,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.964207,
+    "2015 to 2023": 0.964207
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "farm_income": {
+   "fields": [
+    "T27800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1158,
+   "processed_nonzero_records": 1158,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.994424,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.994424,
+    "2015 to 2023": 0.994424
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "health_savings_account_ald": {
+   "fields": [
+    "E03290"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7109,
+   "processed_nonzero_records": 7109,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.965771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.965771,
+    "2015 to 2023": 0.965771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "long_term_capital_gains": {
+   "fields": [
+    "P23250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 83332,
+   "processed_nonzero_records": 83332,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.598771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.598771,
+    "2015 to 2023": 0.598771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "long_term_capital_gains_on_collectibles": {
+   "fields": [
+    "E24518"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1297,
+   "processed_nonzero_records": 1297,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993755,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993755,
+    "2015 to 2023": 0.993755
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "unreimbursed_business_employee_expenses": {
+   "fields": [
+    "E20400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 80099,
+   "processed_nonzero_records": 80099,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.614338,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.614338,
+    "2015 to 2023": 0.614338
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "non_qualified_dividend_income": {
+   "fields": [
+    "E00600",
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 72822,
+   "processed_nonzero_records": 96639,
+   "processed_nonzero_where_raw_zero": 23817,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.5347,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.5347,
+    "2015 to 2023": 0.5347
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_dividend_income": {
+   "fields": [
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 93111,
+   "processed_nonzero_records": 93111,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.551687,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.551687,
+    "2015 to 2023": 0.551687
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.362767396,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_tuition_expenses[max(E03230,E87530)]": {
+   "fields": [
+    "E03230",
+    "E87530"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3274,
+   "processed_nonzero_records": 1396,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 0.417532,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.984236,
+    "2015 to 2021": 0.990818,
+    "2015 to 2022": 0.984236,
+    "2015 to 2023": 0.984236
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 1907,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 1878,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_tuition_expenses[E03230]": {
+   "fields": [
+    "E03230"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1396,
+   "processed_nonzero_records": 1396,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993279,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993279,
+    "2015 to 2023": 0.993279
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "real_estate_taxes": {
+   "fields": [
+    "E18500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 106533,
+   "processed_nonzero_records": 106533,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.487063,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.487063,
+    "2015 to 2023": 0.487063
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "rental_income": {
+   "fields": [
+    "E25850",
+    "E25860"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 49409,
+   "processed_nonzero_records": 49409,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.762104,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.762104,
+    "2015 to 2023": 0.762104
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "farm_operations_income": {
+   "fields": [
+    "E02100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 8318,
+   "processed_nonzero_records": 8318,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "modal_ratio_processed_to_raw": 1.0,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [
+    "E02100"
+   ],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "farm_rent_income": {
+   "fields": [
+    "E27200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1439,
+   "processed_nonzero_records": 1439,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993071,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993071,
+    "2015 to 2023": 0.993071
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "self_employment_income+sstb_self_employment_income": {
+   "fields": [
+    "E00900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 50824,
+   "processed_nonzero_records": 50824,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.755291,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.755291,
+    "2015 to 2023": 0.755291
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.673881341,
+   "modal_ratio_share": 0.740477,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "self_employed_health_insurance_ald": {
+   "fields": [
+    "E03270"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 28104,
+   "processed_nonzero_records": 28104,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.864684,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.864684,
+    "2015 to 2023": 0.864684
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "self_employed_pension_contribution_ald": {
+   "fields": [
+    "E03300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 12277,
+   "processed_nonzero_records": 12277,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.940888,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.940888,
+    "2015 to 2023": 0.940888
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "short_term_capital_gains": {
+   "fields": [
+    "P22250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 65942,
+   "processed_nonzero_records": 65942,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.682501,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.682501,
+    "2015 to 2023": 0.682501
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "social_security": {
+   "fields": [
+    "E02400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42664,
+   "processed_nonzero_records": 42664,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.79458,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.79458,
+    "2015 to 2023": 0.79458
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.223392201,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "state_and_local_sales_or_income_tax": {
+   "fields": [
+    "E18400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 103332,
+   "processed_nonzero_records": 103332,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.502475,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.502475,
+    "2015 to 2023": 0.502475
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "student_loan_interest": {
+   "fields": [
+    "E03210"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 9341,
+   "processed_nonzero_records": 9341,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.955025,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.955025,
+    "2015 to 2023": 0.955025
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_interest_income": {
+   "fields": [
+    "E00300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 119548,
+   "processed_nonzero_records": 119548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.424398,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.424398,
+    "2015 to 2023": 0.424398
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.010461464,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_pension_income": {
+   "fields": [
+    "E01700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42428,
+   "processed_nonzero_records": 42428,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.795717,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.795717,
+    "2015 to 2023": 0.795717
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.163664859,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_unemployment_compensation": {
+   "fields": [
+    "E02300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5388,
+   "processed_nonzero_records": 5388,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.974058,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.974058,
+    "2015 to 2023": 0.974058
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 7.179137051,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_ira_distributions": {
+   "fields": [
+    "E01400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 26825,
+   "processed_nonzero_records": 26825,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.870842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.870842,
+    "2015 to 2023": 0.870842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.509198253,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "tax_exempt_interest_income": {
+   "fields": [
+    "E00400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 46071,
+   "processed_nonzero_records": 46071,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.778176,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.778176,
+    "2015 to 2023": 0.778176
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 0.839676629,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "tax_exempt_pension_income": {
+   "fields": [
+    "E01500",
+    "E01700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 25878,
+   "processed_nonzero_records": 50028,
+   "processed_nonzero_where_raw_zero": 24150,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.759124,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.759124,
+    "2015 to 2023": 0.759124
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "traditional_ira_contributions": {
+   "fields": [
+    "E03150"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5217,
+   "processed_nonzero_records": 5217,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.974881,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.974881,
+    "2015 to 2023": 0.974881
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "unrecaptured_section_1250_gain": {
+   "fields": [
+    "E24515"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 10607,
+   "processed_nonzero_records": 10607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.948929,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.948929,
+    "2015 to 2023": 0.948929
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "foreign_tax_credit": {
+   "fields": [
+    "E07300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 53577,
+   "processed_nonzero_records": 53577,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.742036,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.742036,
+    "2015 to 2023": 0.742036
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "amt_foreign_tax_credit": {
+   "fields": [
+    "E62900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 37533,
+   "processed_nonzero_records": 37533,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.819285,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.819285,
+    "2015 to 2023": 0.819285
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "miscellaneous_income": {
+   "fields": [
+    "E01200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 30921,
+   "processed_nonzero_records": 30921,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.851121,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.851121,
+    "2015 to 2023": 0.851121
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "salt_refund_income": {
+   "fields": [
+    "E00700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 53710,
+   "processed_nonzero_records": 53710,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.741396,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.741396,
+    "2015 to 2023": 0.741396
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "investment_income_elected_form_4952": {
+   "fields": [
+    "E58990"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3553,
+   "processed_nonzero_records": 3553,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.982893,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.982893,
+    "2015 to 2023": 0.982893
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "general_business_credit": {
+   "fields": [
+    "E07400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 11630,
+   "processed_nonzero_records": 11630,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.944004,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.944004,
+    "2015 to 2023": 0.944004
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "prior_year_minimum_tax_credit": {
+   "fields": [
+    "E07600"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4119,
+   "processed_nonzero_records": 4119,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.980168,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.980168,
+    "2015 to 2023": 0.980168
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "excess_withheld_payroll_tax": {
+   "fields": [
+    "E11200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 10713,
+   "processed_nonzero_records": 10713,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.948419,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.948419,
+    "2015 to 2023": 0.948419
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "non_sch_d_capital_gains": {
+   "fields": [
+    "E01100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 6219,
+   "processed_nonzero_records": 6219,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.970057,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.970057,
+    "2015 to 2023": 0.970057
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.933280146,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "american_opportunity_credit": {
+   "fields": [
+    "E87521"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 8163,
+   "processed_nonzero_records": 8163,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.960697,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.960697,
+    "2015 to 2023": 0.960697
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "energy_efficient_home_improvement_credit": {
+   "fields": [
+    "E07260"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4350,
+   "processed_nonzero_records": 4350,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.979056,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.979056,
+    "2015 to 2023": 0.979056
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "other_credits": {
+   "fields": [
+    "P08000"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 851,
+   "processed_nonzero_records": 851,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.995903,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.995903,
+    "2015 to 2023": 0.995903
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "savers_credit": {
+   "fields": [
+    "E07240"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5872,
+   "processed_nonzero_records": 5872,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.971727,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.971727,
+    "2015 to 2023": 0.971727
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "recapture_of_investment_credit": {
+   "fields": [
+    "E09700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4,
+   "processed_nonzero_records": 4,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999981,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999981,
+    "2015 to 2023": 0.999981
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "unreported_payroll_tax": {
+   "fields": [
+    "E09800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 74,
+   "processed_nonzero_records": 74,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999644,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999644,
+    "2015 to 2023": 0.999644
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "partnership_s_corp_income[E26270]": {
+   "fields": [
+    "E26270"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 69078,
+   "processed_nonzero_records": 60763,
+   "processed_nonzero_where_raw_zero": 66,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.24358,
+    "2015 to 2021": 0.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.748098,
+    "2015 to 2021": 0.667084,
+    "2015 to 2022": 0.667084,
+    "2015 to 2023": 0.667084
+   },
+   "unmatched_raw_nonzero_above_2021_value": 21595,
+   "unmatched_raw_nonzero_below_2021_value": 47483,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 5668,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "modal_ratio_processed_to_raw": 1.0,
+   "modal_ratio_share": 0.24358,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "partnership_s_corp_income[components]": {
+   "fields": [
+    "E26190",
+    "E26180",
+    "E25980",
+    "E25960"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 60763,
+   "processed_nonzero_records": 60763,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "fields_outside_every_uprate_list": [
+    "E25960",
+    "E25980",
+    "E26180",
+    "E26190"
+   ],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "home_mortgage_interest+investment_interest_expense": {
+   "fields": [
+    "E19200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 91148,
+   "processed_nonzero_records": 91148,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 0.761213,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.561139,
+    "2015 to 2021": 0.895205,
+    "2015 to 2022": 0.561139,
+    "2015 to 2023": 0.561139
+   },
+   "unmatched_raw_nonzero_above_2021_value": 21765,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162424,
+   "modal_ratio_share": 0.022612,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float32"
+   ]
+  }
+ },
+ "processed_arrays_without_source_expression": [
+  "age",
+  "business_is_sstb",
+  "estate_income_would_be_qualified",
+  "family_id",
+  "farm_operations_income_would_be_qualified",
+  "farm_rent_income_would_be_qualified",
+  "first_home_mortgage_balance",
+  "first_home_mortgage_interest",
+  "first_home_mortgage_origination_year",
+  "household_id",
+  "household_weight",
+  "is_male",
+  "is_tax_unit_dependent",
+  "is_tax_unit_head",
+  "is_tax_unit_spouse",
+  "marital_unit_id",
+  "partnership_s_corp_income_would_be_qualified",
+  "partnership_se_income",
+  "person_family_id",
+  "person_household_id",
+  "person_id",
+  "person_marital_unit_id",
+  "person_spm_unit_id",
+  "person_tax_unit_id",
+  "pre_tax_contributions",
+  "qualified_bdc_income",
+  "qualified_reit_and_ptp_income",
+  "rental_income_would_be_qualified",
+  "second_home_mortgage_balance",
+  "second_home_mortgage_interest",
+  "second_home_mortgage_origination_year",
+  "self_employment_income_would_be_qualified",
+  "spm_unit_id",
+  "sstb_self_employment_income_would_be_qualified",
+  "sstb_unadjusted_basis_qualified_property",
+  "sstb_w2_wages_from_qualified_business",
+  "tax_unit_id",
+  "unadjusted_basis_qualified_property",
+  "w2_wages_from_qualified_business"
+ ],
+ "donor_vs_release_1_8_0_puf_2024": {
+  "common_regular_tax_units": 207692,
+  "donor_tax_units": 211677,
+  "release_tax_units": 207692,
+  "columns": {
+   "age": {
+    "nonzero_records": 207692,
+    "equal_share_of_nonzero": 0.027016
+   },
+   "alimony_expense": {
+    "nonzero_records": 607,
+    "equal_share_of_nonzero": 1.0
+   },
+   "alimony_income": {
+    "nonzero_records": 314,
+    "equal_share_of_nonzero": 1.0
+   },
+   "american_opportunity_credit": {
+    "nonzero_records": 8163,
+    "equal_share_of_nonzero": 1.0
+   },
+   "amt_foreign_tax_credit": {
+    "nonzero_records": 37533,
+    "equal_share_of_nonzero": 1.0
+   },
+   "casualty_loss": {
+    "nonzero_records": 105,
+    "equal_share_of_nonzero": 1.0
+   },
+   "cdcc_relevant_expenses": {
+    "nonzero_records": 9474,
+    "equal_share_of_nonzero": 1.0
+   },
+   "charitable_cash_donations": {
+    "nonzero_records": 102134,
+    "equal_share_of_nonzero": 1.0
+   },
+   "charitable_non_cash_donations": {
+    "nonzero_records": 57586,
+    "equal_share_of_nonzero": 1.0
+   },
+   "domestic_production_ald": {
+    "nonzero_records": 13424,
+    "equal_share_of_nonzero": 1.0
+   },
+   "early_withdrawal_penalty": {
+    "nonzero_records": 7188,
+    "equal_share_of_nonzero": 1.0
+   },
+   "educator_expense": {
+    "nonzero_records": 3979,
+    "equal_share_of_nonzero": 1.0
+   },
+   "employment_income": {
+    "nonzero_records": 165548,
+    "equal_share_of_nonzero": 1.0
+   },
+   "energy_efficient_home_improvement_credit": {
+    "nonzero_records": 4350,
+    "equal_share_of_nonzero": 1.0
+   },
+   "estate_income": {
+    "nonzero_records": 7434,
+    "equal_share_of_nonzero": 1.0
+   },
+   "excess_withheld_payroll_tax": {
+    "nonzero_records": 10713,
+    "equal_share_of_nonzero": 1.0
+   },
+   "farm_income": {
+    "nonzero_records": 1158,
+    "equal_share_of_nonzero": 1.0
+   },
+   "farm_rent_income": {
+    "nonzero_records": 1439,
+    "equal_share_of_nonzero": 1.0
+   },
+   "foreign_tax_credit": {
+    "nonzero_records": 53577,
+    "equal_share_of_nonzero": 1.0
+   },
+   "general_business_credit": {
+    "nonzero_records": 11630,
+    "equal_share_of_nonzero": 1.0
+   },
+   "health_savings_account_ald": {
+    "nonzero_records": 7109,
+    "equal_share_of_nonzero": 1.0
+   },
+   "household_weight": {
+    "nonzero_records": 207692,
+    "equal_share_of_nonzero": 1.0
+   },
+   "investment_income_elected_form_4952": {
+    "nonzero_records": 3553,
+    "equal_share_of_nonzero": 1.0
+   },
+   "is_male": {
+    "nonzero_records": 195084,
+    "equal_share_of_nonzero": 0.543269
+   },
+   "is_tax_unit_dependent": {
+    "nonzero_records": 83720,
+    "equal_share_of_nonzero": 1.0
+   },
+   "is_tax_unit_head": {
+    "nonzero_records": 207692,
+    "equal_share_of_nonzero": 1.0
+   },
+   "is_tax_unit_spouse": {
+    "nonzero_records": 121171,
+    "equal_share_of_nonzero": 1.0
+   },
+   "long_term_capital_gains": {
+    "nonzero_records": 83332,
+    "equal_share_of_nonzero": 1.0
+   },
+   "long_term_capital_gains_on_collectibles": {
+    "nonzero_records": 1297,
+    "equal_share_of_nonzero": 1.0
+   },
+   "miscellaneous_income": {
+    "nonzero_records": 30921,
+    "equal_share_of_nonzero": 1.0
+   },
+   "non_qualified_dividend_income": {
+    "nonzero_records": 96639,
+    "equal_share_of_nonzero": 1.0
+   },
+   "non_sch_d_capital_gains": {
+    "nonzero_records": 6219,
+    "equal_share_of_nonzero": 1.0
+   },
+   "other_credits": {
+    "nonzero_records": 851,
+    "equal_share_of_nonzero": 1.0
+   },
+   "partnership_s_corp_income": {
+    "nonzero_records": 69144,
+    "equal_share_of_nonzero": 0.0
+   },
+   "pre_tax_contributions": {
+    "nonzero_records": 147038,
+    "equal_share_of_nonzero": 0.0
+   },
+   "prior_year_minimum_tax_credit": {
+    "nonzero_records": 4119,
+    "equal_share_of_nonzero": 1.0
+   },
+   "qualified_dividend_income": {
+    "nonzero_records": 93111,
+    "equal_share_of_nonzero": 1.0
+   },
+   "qualified_tuition_expenses": {
+    "nonzero_records": 1396,
+    "equal_share_of_nonzero": 1.0
+   },
+   "real_estate_taxes": {
+    "nonzero_records": 106533,
+    "equal_share_of_nonzero": 1.0
+   },
+   "recapture_of_investment_credit": {
+    "nonzero_records": 4,
+    "equal_share_of_nonzero": 1.0
+   },
+   "rental_income": {
+    "nonzero_records": 49409,
+    "equal_share_of_nonzero": 1.0
+   },
+   "salt_refund_income": {
+    "nonzero_records": 53710,
+    "equal_share_of_nonzero": 1.0
+   },
+   "savers_credit": {
+    "nonzero_records": 5872,
+    "equal_share_of_nonzero": 1.0
+   },
+   "self_employed_health_insurance_ald": {
+    "nonzero_records": 28104,
+    "equal_share_of_nonzero": 1.0
+   },
+   "self_employed_pension_contribution_ald": {
+    "nonzero_records": 12277,
+    "equal_share_of_nonzero": 1.0
+   },
+   "self_employment_income": {
+    "nonzero_records": 50824,
+    "equal_share_of_nonzero": 0.674662
+   },
+   "short_term_capital_gains": {
+    "nonzero_records": 65942,
+    "equal_share_of_nonzero": 1.0
+   },
+   "social_security": {
+    "nonzero_records": 42664,
+    "equal_share_of_nonzero": 1.0
+   },
+   "state_and_local_sales_or_income_tax": {
+    "nonzero_records": 103332,
+    "equal_share_of_nonzero": 1.0
+   },
+   "student_loan_interest": {
+    "nonzero_records": 9341,
+    "equal_share_of_nonzero": 1.0
+   },
+   "tax_exempt_interest_income": {
+    "nonzero_records": 46071,
+    "equal_share_of_nonzero": 1.0
+   },
+   "tax_exempt_pension_income": {
+    "nonzero_records": 50028,
+    "equal_share_of_nonzero": 1.0
+   },
+   "taxable_interest_income": {
+    "nonzero_records": 119548,
+    "equal_share_of_nonzero": 1.0
+   },
+   "taxable_ira_distributions": {
+    "nonzero_records": 26825,
+    "equal_share_of_nonzero": 1.0
+   },
+   "taxable_pension_income": {
+    "nonzero_records": 42428,
+    "equal_share_of_nonzero": 1.0
+   },
+   "taxable_unemployment_compensation": {
+    "nonzero_records": 5388,
+    "equal_share_of_nonzero": 1.0
+   },
+   "traditional_ira_contributions": {
+    "nonzero_records": 5217,
+    "equal_share_of_nonzero": 1.0
+   },
+   "unrecaptured_section_1250_gain": {
+    "nonzero_records": 10607,
+    "equal_share_of_nonzero": 1.0
+   },
+   "unreported_payroll_tax": {
+    "nonzero_records": 74,
+    "equal_share_of_nonzero": 1.0
+   },
+   "w2_wages_from_qualified_business": {
+    "nonzero_records": 74784,
+    "equal_share_of_nonzero": 0.0
+   }
+  }
+ },
+ "release_1_8_0_puf_2024_processed_arrays": {
+  "alimony_expense": {
+   "fields": [
+    "E03500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 607,
+   "processed_nonzero_records": 607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.997077,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.997077,
+    "2015 to 2023": 0.997077
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "alimony_income": {
+   "fields": [
+    "E00800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 314,
+   "processed_nonzero_records": 314,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.998488,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.998488,
+    "2015 to 2023": 0.998488
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "casualty_loss": {
+   "fields": [
+    "E20500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 105,
+   "processed_nonzero_records": 105,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999494,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999494,
+    "2015 to 2023": 0.999494
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "cdcc_relevant_expenses": {
+   "fields": [
+    "E32800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 9474,
+   "processed_nonzero_records": 9474,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.954384,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.954384,
+    "2015 to 2023": 0.954384
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "charitable_cash_donations": {
+   "fields": [
+    "E19800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 102134,
+   "processed_nonzero_records": 102134,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.508243,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.508243,
+    "2015 to 2023": 0.508243
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "charitable_non_cash_donations": {
+   "fields": [
+    "E20100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 57586,
+   "processed_nonzero_records": 57586,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.722734,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.722734,
+    "2015 to 2023": 0.722734
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "domestic_production_ald": {
+   "fields": [
+    "E03240"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 13424,
+   "processed_nonzero_records": 13424,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.935366,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.935366,
+    "2015 to 2023": 0.935366
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "early_withdrawal_penalty": {
+   "fields": [
+    "E09900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7188,
+   "processed_nonzero_records": 7188,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.965391,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.965391,
+    "2015 to 2023": 0.965391
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "educator_expense": {
+   "fields": [
+    "E03220"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3979,
+   "processed_nonzero_records": 3979,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.980842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.980842,
+    "2015 to 2023": 0.980842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "employment_income": {
+   "fields": [
+    "E00200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 165548,
+   "processed_nonzero_records": 165548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.202916,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.202916,
+    "2015 to 2023": 0.202916
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.187079295,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "estate_income": {
+   "fields": [
+    "E26390",
+    "E26400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7434,
+   "processed_nonzero_records": 7434,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.964207,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.964207,
+    "2015 to 2023": 0.964207
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "farm_income": {
+   "fields": [
+    "T27800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1158,
+   "processed_nonzero_records": 1158,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.994424,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.994424,
+    "2015 to 2023": 0.994424
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "health_savings_account_ald": {
+   "fields": [
+    "E03290"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7109,
+   "processed_nonzero_records": 7109,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.965771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.965771,
+    "2015 to 2023": 0.965771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "long_term_capital_gains": {
+   "fields": [
+    "P23250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 83332,
+   "processed_nonzero_records": 83332,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.598771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.598771,
+    "2015 to 2023": 0.598771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "long_term_capital_gains_on_collectibles": {
+   "fields": [
+    "E24518"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1297,
+   "processed_nonzero_records": 1297,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993755,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993755,
+    "2015 to 2023": 0.993755
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "non_qualified_dividend_income": {
+   "fields": [
+    "E00600",
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 72822,
+   "processed_nonzero_records": 96639,
+   "processed_nonzero_where_raw_zero": 23817,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.5347,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.5347,
+    "2015 to 2023": 0.5347
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_dividend_income": {
+   "fields": [
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 93111,
+   "processed_nonzero_records": 93111,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.551687,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.551687,
+    "2015 to 2023": 0.551687
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.362767396,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_tuition_expenses[max(E03230,E87530)]": {
+   "fields": [
+    "E03230",
+    "E87530"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3274,
+   "processed_nonzero_records": 1396,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 0.417532,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.984236,
+    "2015 to 2021": 0.990818,
+    "2015 to 2022": 0.984236,
+    "2015 to 2023": 0.984236
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 1907,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 1878,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "qualified_tuition_expenses[E03230]": {
+   "fields": [
+    "E03230"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1396,
+   "processed_nonzero_records": 1396,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993279,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993279,
+    "2015 to 2023": 0.993279
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "real_estate_taxes": {
+   "fields": [
+    "E18500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 106533,
+   "processed_nonzero_records": 106533,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.487063,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.487063,
+    "2015 to 2023": 0.487063
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "rental_income": {
+   "fields": [
+    "E25850",
+    "E25860"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 49409,
+   "processed_nonzero_records": 49409,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.762104,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.762104,
+    "2015 to 2023": 0.762104
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "farm_rent_income": {
+   "fields": [
+    "E27200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1439,
+   "processed_nonzero_records": 1439,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993071,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993071,
+    "2015 to 2023": 0.993071
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "self_employed_health_insurance_ald": {
+   "fields": [
+    "E03270"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 28104,
+   "processed_nonzero_records": 28104,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.864684,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.864684,
+    "2015 to 2023": 0.864684
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "self_employed_pension_contribution_ald": {
+   "fields": [
+    "E03300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 12277,
+   "processed_nonzero_records": 12277,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.940888,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.940888,
+    "2015 to 2023": 0.940888
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "short_term_capital_gains": {
+   "fields": [
+    "P22250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 65942,
+   "processed_nonzero_records": 65942,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.682501,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.682501,
+    "2015 to 2023": 0.682501
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "social_security": {
+   "fields": [
+    "E02400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42664,
+   "processed_nonzero_records": 42664,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.79458,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.79458,
+    "2015 to 2023": 0.79458
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.223392201,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "state_and_local_sales_or_income_tax": {
+   "fields": [
+    "E18400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 103332,
+   "processed_nonzero_records": 103332,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.502475,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.502475,
+    "2015 to 2023": 0.502475
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "student_loan_interest": {
+   "fields": [
+    "E03210"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 9341,
+   "processed_nonzero_records": 9341,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.955025,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.955025,
+    "2015 to 2023": 0.955025
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_interest_income": {
+   "fields": [
+    "E00300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 119548,
+   "processed_nonzero_records": 119548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.424398,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.424398,
+    "2015 to 2023": 0.424398
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.010461464,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_pension_income": {
+   "fields": [
+    "E01700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42428,
+   "processed_nonzero_records": 42428,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.795717,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.795717,
+    "2015 to 2023": 0.795717
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.163664859,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_unemployment_compensation": {
+   "fields": [
+    "E02300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5388,
+   "processed_nonzero_records": 5388,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.974058,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.974058,
+    "2015 to 2023": 0.974058
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 7.179137051,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "taxable_ira_distributions": {
+   "fields": [
+    "E01400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 26825,
+   "processed_nonzero_records": 26825,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.870842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.870842,
+    "2015 to 2023": 0.870842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.509198253,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "tax_exempt_interest_income": {
+   "fields": [
+    "E00400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 46071,
+   "processed_nonzero_records": 46071,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.778176,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.778176,
+    "2015 to 2023": 0.778176
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 0.839676629,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "tax_exempt_pension_income": {
+   "fields": [
+    "E01500",
+    "E01700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 25878,
+   "processed_nonzero_records": 50028,
+   "processed_nonzero_where_raw_zero": 24150,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.759124,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.759124,
+    "2015 to 2023": 0.759124
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "traditional_ira_contributions": {
+   "fields": [
+    "E03150"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5217,
+   "processed_nonzero_records": 5217,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.974881,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.974881,
+    "2015 to 2023": 0.974881
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "unrecaptured_section_1250_gain": {
+   "fields": [
+    "E24515"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 10607,
+   "processed_nonzero_records": 10607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.948929,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.948929,
+    "2015 to 2023": 0.948929
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "foreign_tax_credit": {
+   "fields": [
+    "E07300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 53577,
+   "processed_nonzero_records": 53577,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.742036,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.742036,
+    "2015 to 2023": 0.742036
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "amt_foreign_tax_credit": {
+   "fields": [
+    "E62900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 37533,
+   "processed_nonzero_records": 37533,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.819285,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.819285,
+    "2015 to 2023": 0.819285
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "miscellaneous_income": {
+   "fields": [
+    "E01200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 30921,
+   "processed_nonzero_records": 30921,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.851121,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.851121,
+    "2015 to 2023": 0.851121
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "salt_refund_income": {
+   "fields": [
+    "E00700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 53710,
+   "processed_nonzero_records": 53710,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.741396,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.741396,
+    "2015 to 2023": 0.741396
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "investment_income_elected_form_4952": {
+   "fields": [
+    "E58990"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3553,
+   "processed_nonzero_records": 3553,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.982893,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.982893,
+    "2015 to 2023": 0.982893
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "general_business_credit": {
+   "fields": [
+    "E07400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 11630,
+   "processed_nonzero_records": 11630,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.944004,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.944004,
+    "2015 to 2023": 0.944004
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "prior_year_minimum_tax_credit": {
+   "fields": [
+    "E07600"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4119,
+   "processed_nonzero_records": 4119,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.980168,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.980168,
+    "2015 to 2023": 0.980168
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "excess_withheld_payroll_tax": {
+   "fields": [
+    "E11200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 10713,
+   "processed_nonzero_records": 10713,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.948419,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.948419,
+    "2015 to 2023": 0.948419
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "non_sch_d_capital_gains": {
+   "fields": [
+    "E01100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 6219,
+   "processed_nonzero_records": 6219,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.970057,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.970057,
+    "2015 to 2023": 0.970057
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.933280146,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "american_opportunity_credit": {
+   "fields": [
+    "E87521"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 8163,
+   "processed_nonzero_records": 8163,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.960697,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.960697,
+    "2015 to 2023": 0.960697
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "energy_efficient_home_improvement_credit": {
+   "fields": [
+    "E07260"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4350,
+   "processed_nonzero_records": 4350,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.979056,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.979056,
+    "2015 to 2023": 0.979056
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "other_credits": {
+   "fields": [
+    "P08000"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 851,
+   "processed_nonzero_records": 851,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.995903,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.995903,
+    "2015 to 2023": 0.995903
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "savers_credit": {
+   "fields": [
+    "E07240"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5872,
+   "processed_nonzero_records": 5872,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.971727,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.971727,
+    "2015 to 2023": 0.971727
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "recapture_of_investment_credit": {
+   "fields": [
+    "E09700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 4,
+   "processed_nonzero_records": 4,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999981,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999981,
+    "2015 to 2023": 0.999981
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "unreported_payroll_tax": {
+   "fields": [
+    "E09800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 74,
+   "processed_nonzero_records": 74,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999644,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999644,
+    "2015 to 2023": 0.999644
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "partnership_s_corp_income[E26270]": {
+   "fields": [
+    "E26270"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 69078,
+   "processed_nonzero_records": 69078,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.667402,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.667402,
+    "2015 to 2023": 0.667402
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 2.076408758,
+   "modal_ratio_share": 0.700049,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "partnership_s_corp_income[components]": {
+   "fields": [
+    "E26190",
+    "E26180",
+    "E25980",
+    "E25960"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 60763,
+   "processed_nonzero_records": 69078,
+   "processed_nonzero_where_raw_zero": 8381,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 0.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.667084,
+    "2015 to 2021": 0.667084,
+    "2015 to 2022": 0.667084,
+    "2015 to 2023": 0.667084
+   },
+   "unmatched_raw_nonzero_above_2021_value": 41820,
+   "unmatched_raw_nonzero_below_2021_value": 18943,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 61,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "fields_outside_every_uprate_list": [
+    "E25960",
+    "E25980",
+    "E26180",
+    "E26190"
+   ],
+   "dtype": [
+    "float64"
+   ]
+  },
+  "interest_deduction": {
+   "fields": [
+    "E19200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 91148,
+   "processed_nonzero_records": 91148,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.561139,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.561139,
+    "2015 to 2023": 0.561139
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "fields_outside_every_uprate_list": [],
+   "dtype": [
+    "float64"
+   ]
+  }
+ },
+ "microcosm_donor": {
+  "columns": 82,
+  "columns_match_base_summary": true,
+  "rows": 211677,
+  "rows_match_base_summary": true
+ },
+ "microcosm_donor_columns": {
+  "alimony_expense": {
+   "fields": [
+    "E03500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 607,
+   "processed_nonzero_records": 607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.997077,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.997077,
+    "2015 to 2023": 0.997077
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "alimony_expense"
+  },
+  "alimony_income": {
+   "fields": [
+    "E00800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 314,
+   "processed_nonzero_records": 314,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.998488,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.998488,
+    "2015 to 2023": 0.998488
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "alimony_income"
+  },
+  "business_is_sstb": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "casualty_loss": {
+   "fields": [
+    "E20500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 105,
+   "processed_nonzero_records": 105,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.999494,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.999494,
+    "2015 to 2023": 0.999494
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "casualty_loss"
+  },
+  "charitable_cash_donations": {
+   "fields": [
+    "E19800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 102134,
+   "processed_nonzero_records": 102134,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.508243,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.508243,
+    "2015 to 2023": 0.508243
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "charitable_cash_donations"
+  },
+  "charitable_non_cash_donations": {
+   "fields": [
+    "E20100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 57586,
+   "processed_nonzero_records": 57586,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.722734,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.722734,
+    "2015 to 2023": 0.722734
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "charitable_non_cash_donations"
+  },
+  "dependent_count": {
+   "class": "not a dollar amount",
+   "kind": "demographic"
+  },
+  "domestic_production_ald": {
+   "fields": [
+    "E03240"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 13424,
+   "processed_nonzero_records": 13424,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.935366,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.935366,
+    "2015 to 2023": 0.935366
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "domestic_production_ald"
+  },
+  "educator_expense": {
+   "fields": [
+    "E03220"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3979,
+   "processed_nonzero_records": 3979,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.980842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.980842,
+    "2015 to 2023": 0.980842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "educator_expense"
+  },
+  "employment_income_before_lsr": {
+   "fields": [
+    "E00200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 165548,
+   "processed_nonzero_records": 165548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.202916,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.202916,
+    "2015 to 2023": 0.202916
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.187079295,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "employment_income"
+  },
+  "estate_income": {
+   "fields": [
+    "E26390",
+    "E26400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7434,
+   "processed_nonzero_records": 7434,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.964207,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.964207,
+    "2015 to 2023": 0.964207
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "class": "monetary, single source expression",
+   "processed_array": "estate_income"
+  },
+  "estate_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "farm_income": {
+   "fields": [
+    "T27800"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1158,
+   "processed_nonzero_records": 1158,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.994424,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.994424,
+    "2015 to 2023": 0.994424
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "farm_income"
+  },
+  "farm_operations_income": {
+   "fields": [
+    "E02100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 8318,
+   "processed_nonzero_records": 8318,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "modal_ratio_processed_to_raw": 1.0,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "farm_operations_income"
+  },
+  "farm_operations_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "farm_rent_income": {
+   "fields": [
+    "E27200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1439,
+   "processed_nonzero_records": 1439,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993071,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993071,
+    "2015 to 2023": 0.993071
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "farm_rent_income"
+  },
+  "farm_rent_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "filing_status_code": {
+   "class": "not a dollar amount",
+   "kind": "categorical"
+  },
+  "first_home_mortgage_balance": {
+   "class": "derived or simulated from processed amounts",
+   "note": "structural mortgage input derived from E19200"
+  },
+  "first_home_mortgage_interest": {
+   "class": "derived or simulated from processed amounts",
+   "note": "structural mortgage split of E19200"
+  },
+  "first_home_mortgage_origination_year": {
+   "class": "not a dollar amount",
+   "kind": "year"
+  },
+  "head_age": {
+   "class": "not a dollar amount",
+   "kind": "demographic"
+  },
+  "head_is_female": {
+   "class": "not a dollar amount",
+   "kind": "demographic"
+  },
+  "health_savings_account_ald": {
+   "fields": [
+    "E03290"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 7109,
+   "processed_nonzero_records": 7109,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.965771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.965771,
+    "2015 to 2023": 0.965771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "health_savings_account_ald"
+  },
+  "home_mortgage_interest": {
+   "class": "tested as part of a sum"
+  },
+  "investment_income_elected_form_4952": {
+   "fields": [
+    "E58990"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 3553,
+   "processed_nonzero_records": 3553,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.982893,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.982893,
+    "2015 to 2023": 0.982893
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "investment_income_elected_form_4952"
+  },
+  "investment_interest_expense": {
+   "class": "tested as part of a sum"
+  },
+  "long_term_capital_gains_before_response": {
+   "fields": [
+    "P23250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 83332,
+   "processed_nonzero_records": 83332,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.598771,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.598771,
+    "2015 to 2023": 0.598771
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "long_term_capital_gains"
+  },
+  "long_term_capital_gains_on_collectibles": {
+   "fields": [
+    "E24518"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1297,
+   "processed_nonzero_records": 1297,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993755,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993755,
+    "2015 to 2023": 0.993755
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "long_term_capital_gains_on_collectibles"
+  },
+  "miscellaneous_income": {
+   "fields": [
+    "E01200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 30921,
+   "processed_nonzero_records": 30921,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.851121,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.851121,
+    "2015 to 2023": 0.851121
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "miscellaneous_income"
+  },
+  "non_qualified_dividend_income": {
+   "fields": [
+    "E00600",
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 72822,
+   "processed_nonzero_records": 96639,
+   "processed_nonzero_where_raw_zero": 23817,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.5347,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.5347,
+    "2015 to 2023": 0.5347
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "class": "monetary, single source expression",
+   "processed_array": "non_qualified_dividend_income"
+  },
+  "non_sch_d_capital_gains": {
+   "fields": [
+    "E01100"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 6219,
+   "processed_nonzero_records": 6219,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.970057,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.970057,
+    "2015 to 2023": 0.970057
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.933280146,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "non_sch_d_capital_gains"
+  },
+  "partnership_income": {
+   "fields": [
+    "E26190",
+    "E26180",
+    "E25980",
+    "E25960"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 60763,
+   "processed_nonzero_records": 60763,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 1.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 1.0,
+    "2015 to 2023": 1.0
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 (raw, no uprating)",
+   "class": "monetary, single source expression",
+   "processed_array": "partnership_s_corp_income[components]"
+  },
+  "partnership_s_corp_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "partnership_self_employment_net_earnings": {
+   "class": "derived or simulated from processed amounts",
+   "note": "gross SE (E30400+E30500)/0.9235 less E00900 and E02100 where the record has partnership activity; mixes unuprated and uprated fields"
+  },
+  "puf_predictor_dependent_count": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_predictor_filing_status_code": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_predictor_has_earnings": {
+   "class": "not a dollar amount",
+   "kind": "predictor (0/1)"
+  },
+  "puf_predictor_head_age": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_predictor_head_is_female": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_predictor_income_rank_share": {
+   "class": "not a dollar amount",
+   "kind": "predictor (weighted rank, scale-free)"
+  },
+  "puf_predictor_spouse_age": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_predictor_tax_unit_person_count": {
+   "class": "not a dollar amount",
+   "kind": "predictor alias"
+  },
+  "puf_source_adjusted_gross_income": {
+   "class": "TY2015 source value by construction",
+   "equals_raw_E00100_share": 1.0
+  },
+  "qualified_bdc_income": {
+   "class": "derived or simulated from processed amounts",
+   "note": "simulate_investment_qbi_income_from_puf: beta draws scaled by uprated non-qualified dividends and partnership/S-corp income"
+  },
+  "qualified_dividend_income": {
+   "fields": [
+    "E00650"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 93111,
+   "processed_nonzero_records": 93111,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.551687,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.551687,
+    "2015 to 2023": 0.551687
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.362767396,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "qualified_dividend_income"
+  },
+  "qualified_reit_and_ptp_income": {
+   "class": "derived or simulated from processed amounts",
+   "note": "simulate_investment_qbi_income_from_puf: beta draws scaled by uprated non-qualified dividends and partnership/S-corp income"
+  },
+  "qualified_tuition_expenses": {
+   "fields": [
+    "E03230"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 1396,
+   "processed_nonzero_records": 1396,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.993279,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.993279,
+    "2015 to 2023": 0.993279
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "qualified_tuition_expenses[E03230]"
+  },
+  "real_estate_taxes": {
+   "fields": [
+    "E18500"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 106533,
+   "processed_nonzero_records": 106533,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.487063,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.487063,
+    "2015 to 2023": 0.487063
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162419,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "real_estate_taxes"
+  },
+  "rental_income": {
+   "fields": [
+    "E25850",
+    "E25860"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 49409,
+   "processed_nonzero_records": 49409,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.762104,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.762104,
+    "2015 to 2023": 0.762104
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "class": "monetary, single source expression",
+   "processed_array": "rental_income"
+  },
+  "rental_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "s_corp_income": {
+   "class": "zero by construction",
+   "note": "puf_support.py sets zeros when the file has no split leaves; partnership_income carries the combined amount",
+   "all_zero": true
+  },
+  "salt_refund_income": {
+   "fields": [
+    "E00700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 53710,
+   "processed_nonzero_records": 53710,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.741396,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.741396,
+    "2015 to 2023": 0.741396
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "salt_refund_income"
+  },
+  "second_home_mortgage_balance": {
+   "class": "derived or simulated from processed amounts",
+   "note": "structural mortgage input derived from E19200"
+  },
+  "second_home_mortgage_interest": {
+   "class": "derived or simulated from processed amounts",
+   "note": "structural mortgage split of E19200"
+  },
+  "second_home_mortgage_origination_year": {
+   "class": "not a dollar amount",
+   "kind": "year"
+  },
+  "self_employed_pension_contributions_desired": {
+   "fields": [
+    "E03300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 12277,
+   "processed_nonzero_records": 12277,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.940888,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.940888,
+    "2015 to 2023": 0.940888
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "self_employed_pension_contribution_ald"
+  },
+  "self_employment_income_before_lsr": {
+   "class": "tested as part of a sum"
+  },
+  "self_employment_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "short_term_capital_gains": {
+   "fields": [
+    "P22250"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 65942,
+   "processed_nonzero_records": 65942,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.682501,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.682501,
+    "2015 to 2023": 0.682501
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "short_term_capital_gains"
+  },
+  "social_security_dependents": {
+   "class": "zero by construction",
+   "note": "puf_support.py sets zeros (PUF has no split)",
+   "all_zero": true
+  },
+  "social_security_disability": {
+   "class": "zero by construction",
+   "note": "puf_support.py sets zeros (PUF has no split)",
+   "all_zero": true
+  },
+  "social_security_retirement": {
+   "fields": [
+    "E02400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42664,
+   "processed_nonzero_records": 42664,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.79458,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.79458,
+    "2015 to 2023": 0.79458
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.223392201,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "social_security"
+  },
+  "social_security_survivors": {
+   "class": "zero by construction",
+   "note": "puf_support.py sets zeros (PUF has no split)",
+   "all_zero": true
+  },
+  "spouse_age": {
+   "class": "not a dollar amount",
+   "kind": "demographic"
+  },
+  "sstb_self_employment_income_before_lsr": {
+   "class": "tested as part of a sum"
+  },
+  "sstb_self_employment_income_would_be_qualified": {
+   "class": "not a dollar amount",
+   "kind": "flag (simulated)"
+  },
+  "sstb_unadjusted_basis_qualified_property": {
+   "class": "derived or simulated from processed amounts",
+   "note": "SSTB share of the UBIA draw"
+  },
+  "sstb_w2_wages_from_qualified_business": {
+   "class": "derived or simulated from processed amounts",
+   "note": "SSTB share of the W-2 wage draw"
+  },
+  "student_loan_interest": {
+   "fields": [
+    "E03210"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 9341,
+   "processed_nonzero_records": 9341,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.955025,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.955025,
+    "2015 to 2023": 0.955025
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "student_loan_interest"
+  },
+  "tax_exempt_interest_income": {
+   "fields": [
+    "E00400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 46071,
+   "processed_nonzero_records": 46071,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.778176,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.778176,
+    "2015 to 2023": 0.778176
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 0.839676629,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "tax_exempt_interest_income"
+  },
+  "tax_unit_id": {
+   "class": "not a dollar amount",
+   "kind": "identifier"
+  },
+  "tax_unit_person_count": {
+   "class": "not a dollar amount",
+   "kind": "demographic"
+  },
+  "taxable_interest_income": {
+   "fields": [
+    "E00300"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 119548,
+   "processed_nonzero_records": 119548,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.424398,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.424398,
+    "2015 to 2023": 0.424398
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.010461464,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "taxable_interest_income"
+  },
+  "taxable_ira_distributions": {
+   "fields": [
+    "E01400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 26825,
+   "processed_nonzero_records": 26825,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.870842,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.870842,
+    "2015 to 2023": 0.870842
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.509198253,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "taxable_ira_distributions"
+  },
+  "taxable_private_pension_income": {
+   "fields": [
+    "E01700"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 42428,
+   "processed_nonzero_records": 42428,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.795717,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.795717,
+    "2015 to 2023": 0.795717
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.163664859,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "taxable_pension_income"
+  },
+  "traditional_ira_contributions_desired": {
+   "fields": [
+    "E03150"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 5217,
+   "processed_nonzero_records": 5217,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.974881,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.974881,
+    "2015 to 2023": 0.974881
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "traditional_ira_contributions"
+  },
+  "unadjusted_basis_qualified_property": {
+   "class": "derived or simulated from processed amounts",
+   "note": "simulate_w2_and_ubia_from_puf: draws scaled by uprated business income"
+  },
+  "unrecaptured_section_1250_gain": {
+   "fields": [
+    "E24515"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 10607,
+   "processed_nonzero_records": 10607,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.948929,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.948929,
+    "2015 to 2023": 0.948929
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "unrecaptured_section_1250_gain"
+  },
+  "unreimbursed_business_employee_expenses": {
+   "fields": [
+    "E20400"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 80099,
+   "processed_nonzero_records": 80099,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.614338,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.614338,
+    "2015 to 2023": 0.614338
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.355998918,
+   "modal_ratio_share": 1.0,
+   "class": "monetary, single source expression",
+   "processed_array": "unreimbursed_business_employee_expenses"
+  },
+  "w2_wages_from_qualified_business": {
+   "class": "derived or simulated from processed amounts",
+   "note": "simulate_w2_and_ubia_from_puf: draws scaled by uprated business income"
+  },
+  "weight": {
+   "class": "design weight",
+   "modal_ratio_to_S006_over_100": 1.068648103,
+   "modal_ratio_share": 1.0
+  },
+  "self_employment_income_before_lsr+sstb_self_employment_income_before_lsr": {
+   "fields": [
+    "E00900"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 50824,
+   "processed_nonzero_records": 50824,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.755291,
+    "2015 to 2021": 1.0,
+    "2015 to 2022": 0.755291,
+    "2015 to 2023": 0.755291
+   },
+   "unmatched_raw_nonzero_above_2021_value": 0,
+   "unmatched_raw_nonzero_below_2021_value": 0,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 0,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.673881341,
+   "modal_ratio_share": 0.740477,
+   "class": "monetary, tested as a sum",
+   "note": "SSTB split of Schedule C income"
+  },
+  "home_mortgage_interest+investment_interest_expense": {
+   "fields": [
+    "E19200"
+   ],
+   "records": 207692,
+   "raw_nonzero_records": 91148,
+   "processed_nonzero_records": 89905,
+   "processed_nonzero_where_raw_zero": 0,
+   "match_share_of_raw_nonzero": {
+    "2015 (raw, no uprating)": 0.0,
+    "2015 to 2021": 0.761213,
+    "2015 to 2022": 0.0,
+    "2015 to 2023": 0.0
+   },
+   "match_share_of_all_records": {
+    "2015 (raw, no uprating)": 0.561139,
+    "2015 to 2021": 0.895205,
+    "2015 to 2022": 0.561139,
+    "2015 to 2023": 0.561139
+   },
+   "unmatched_raw_nonzero_above_2021_value": 20522,
+   "unmatched_raw_nonzero_below_2021_value": 1243,
+   "unmatched_raw_nonzero_below_and_exactly_zero": 1243,
+   "best_hypothesis": "2015 to 2021",
+   "modal_ratio_processed_to_raw": 1.126162424,
+   "modal_ratio_share": 0.022612,
+   "class": "monetary, tested as a sum",
+   "note": "E19200 split by Microcosm into mortgage and investment interest by TY2015 SOI AGI band; field-local quarantine zeroes raw totals of $10M or more; the archived structural conversion (utils/mortgage_interest.py lines 274-283 at 42ed5d45) divides deductible interest by the deductible share where balances exceed the cap, so unmatched records sit above the uprated E19200"
+  }
+ },
+ "dividends": {
+  "records": 207692,
+  "recovered_ordinary_equals_E00600_share": 1.0,
+  "recovered_qualified_equals_E00650_share": 1.0,
+  "source_qualified_exceeds_ordinary_records": 0,
+  "source_ordinary_equals_qualified_and_positive_records": 23817,
+  "stored_non_qualified_nonzero_where_source_difference_zero": 23817,
+  "recovery_max_ulps": {
+   "ordinary": 2.0,
+   "qualified": 2.0
+  },
+  "recovery_max_whole_dollar_value": 125500000.0,
+  "synthetic": {
+   "records": 3985,
+   "with_any_dividend": 3376,
+   "stored_non_qualified_negative": 1190,
+   "stored_qualified_negative": 0,
+   "recovered_ordinary_off_whole_dollars": 3376,
+   "recovered_qualified_off_whole_dollars": 3329,
+   "recovered_ordinary_below_recovered_qualified": 1343,
+   "weight_total": 1316.9999999999998,
+   "weighted_negative_non_qualified": -1422548992.2301135,
+   "weighted_positive_non_qualified": 6169972157.925807,
+   "weighted_qualified": 25621253347.595177
+  }
+ },
+ "donor_weighted_mass": {
+  "tax_units_weighted": 161181891.72138393,
+  "columns": {
+   "alimony_expense": {
+    "positive": 10214608158.583982,
+    "negative": 0.0
+   },
+   "alimony_income": {
+    "positive": 12561190829.03997,
+    "negative": 0.0
+   },
+   "casualty_loss": {
+    "positive": 2140563372.4307394,
+    "negative": 0.0
+   },
+   "charitable_cash_donations": {
+    "positive": 196759546610.57764,
+    "negative": 0.0
+   },
+   "charitable_non_cash_donations": {
+    "positive": 105640256844.93207,
+    "negative": 0.0
+   },
+   "domestic_production_ald": {
+    "positive": 19188906907.070805,
+    "negative": 0.0
+   },
+   "educator_expense": {
+    "positive": 1379405493.8790045,
+    "negative": 0.0
+   },
+   "employment_income_before_lsr": {
+    "positive": 9078255779726.191,
+    "negative": 0.0
+   },
+   "estate_income": {
+    "positive": 47967862722.1245,
+    "negative": -7004003651.4605465
+   },
+   "farm_income": {
+    "positive": 8016778945.99015,
+    "negative": 0.0
+   },
+   "farm_operations_income": {
+    "positive": 15101800726.580772,
+    "negative": -31812522898.389236
+   },
+   "farm_rent_income": {
+    "positive": 7462364025.258285,
+    "negative": -1082037747.4107451
+   },
+   "first_home_mortgage_balance": {
+    "positive": 10542078168635.275,
+    "negative": 0.0
+   },
+   "first_home_mortgage_interest": {
+    "positive": 378352505558.4586,
+    "negative": 0.0
+   },
+   "health_savings_account_ald": {
+    "positive": 6275587493.423831,
+    "negative": 0.0
+   },
+   "home_mortgage_interest": {
+    "positive": 378352505558.4586,
+    "negative": 0.0
+   },
+   "investment_income_elected_form_4952": {
+    "positive": 5765862813.634813,
+    "negative": 0.0
+   },
+   "investment_interest_expense": {
+    "positive": 39898986612.668724,
+    "negative": 0.0
+   },
+   "long_term_capital_gains_before_response": {
+    "positive": 1112634712876.3374,
+    "negative": -70981641668.6691
+   },
+   "long_term_capital_gains_on_collectibles": {
+    "positive": 8989950062.80442,
+    "negative": 0.0
+   },
+   "miscellaneous_income": {
+    "positive": 48428560483.229645,
+    "negative": -31802734078.821156
+   },
+   "non_qualified_dividend_income": {
+    "positive": 92275982223.2536,
+    "negative": -1422548992.2301135
+   },
+   "non_sch_d_capital_gains": {
+    "positive": 24311594282.324425,
+    "negative": 0.0
+   },
+   "partnership_income": {
+    "positive": 766162292645.4902,
+    "negative": -123771039298.77885
+   },
+   "partnership_self_employment_net_earnings": {
+    "positive": 106855147459.33704,
+    "negative": -78699013542.54645
+   },
+   "puf_source_adjusted_gross_income": {
+    "positive": 11091237625510.66,
+    "negative": -232023722282.74615
+   },
+   "qualified_bdc_income": {
+    "positive": 124662245.3911809,
+    "negative": 0.0
+   },
+   "qualified_dividend_income": {
+    "positive": 297122813185.1782,
+    "negative": 0.0
+   },
+   "qualified_reit_and_ptp_income": {
+    "positive": 7875747917.434613,
+    "negative": 0.0
+   },
+   "qualified_tuition_expenses": {
+    "positive": 5705675493.808702,
+    "negative": 0.0
+   },
+   "real_estate_taxes": {
+    "positive": 227279292526.92236,
+    "negative": 0.0
+   },
+   "rental_income": {
+    "positive": 142456397714.2381,
+    "negative": -67115200032.84764
+   },
+   "s_corp_income": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "salt_refund_income": {
+    "positive": 45468745854.76796,
+    "negative": 0.0
+   },
+   "second_home_mortgage_balance": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "second_home_mortgage_interest": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "self_employed_pension_contributions_desired": {
+    "positive": 35134041067.72041,
+    "negative": 0.0
+   },
+   "self_employment_income_before_lsr": {
+    "positive": 500272500575.4542,
+    "negative": -134903142032.17824
+   },
+   "short_term_capital_gains": {
+    "positive": 55030032327.17965,
+    "negative": -116895285147.88043
+   },
+   "social_security_dependents": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "social_security_disability": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "social_security_retirement": {
+    "positive": 790662247935.0814,
+    "negative": 0.0
+   },
+   "social_security_survivors": {
+    "positive": 0.0,
+    "negative": 0.0
+   },
+   "sstb_self_employment_income_before_lsr": {
+    "positive": 198781485980.1443,
+    "negative": -3949718086.2134113
+   },
+   "sstb_unadjusted_basis_qualified_property": {
+    "positive": 376662903068.9099,
+    "negative": 0.0
+   },
+   "sstb_w2_wages_from_qualified_business": {
+    "positive": 57838709466.38254,
+    "negative": 0.0
+   },
+   "student_loan_interest": {
+    "positive": 19636364936.590668,
+    "negative": 0.0
+   },
+   "tax_exempt_interest_income": {
+    "positive": 55299819857.1012,
+    "negative": 0.0
+   },
+   "taxable_interest_income": {
+    "positive": 105659861734.69215,
+    "negative": 0.0
+   },
+   "taxable_ira_distributions": {
+    "positive": 406130987951.6224,
+    "negative": 0.0
+   },
+   "taxable_private_pension_income": {
+    "positive": 861772339481.1648,
+    "negative": 0.0
+   },
+   "traditional_ira_contributions_desired": {
+    "positive": 18813162172.95157,
+    "negative": 0.0
+   },
+   "unadjusted_basis_qualified_property": {
+    "positive": 2065792953475.9648,
+    "negative": 0.0
+   },
+   "unrecaptured_section_1250_gain": {
+    "positive": 39930592875.61032,
+    "negative": 0.0
+   },
+   "unreimbursed_business_employee_expenses": {
+    "positive": 230464373545.76993,
+    "negative": 0.0
+   },
+   "w2_wages_from_qualified_business": {
+    "positive": 235044494071.71097,
+    "negative": 0.0
+   }
+  }
+ },
+ "donor_weighted_totals_vs_soi": {
+  "donor_weight_total": 161181891.72138393,
+  "soi_returns": {
+   "2015": 150493263.0,
+   "2021": 160824340.0,
+   "2022": 161336659.0,
+   "2023": 160602107.0
+  },
+  "lines": {
+   "Wages": {
+    "donor_column": "employment_income_before_lsr",
+    "soi_variable": "employment_income",
+    "donor_weighted_total": 9078255779726.191,
+    "soi_actual": {
+     "2015": 7112222959000.0,
+     "2021": 9022352941000.0,
+     "2022": 9738950972000.0,
+     "2023": 10204095705000.0
+    }
+   },
+   "Taxable interest": {
+    "donor_column": "taxable_interest_income",
+    "soi_variable": "taxable_interest_income",
+    "donor_weighted_total": 105659861734.69215,
+    "soi_actual": {
+     "2015": 95881223000.0,
+     "2021": 103535203000.0,
+     "2022": 133596569000.0,
+     "2023": 313812674000.0
+    }
+   },
+   "Tax-exempt interest": {
+    "donor_column": "tax_exempt_interest_income",
+    "soi_variable": "exempt_interest",
+    "donor_weighted_total": 55299819857.1012,
+    "soi_actual": {
+     "2015": 61871455000.0,
+     "2021": 55518422000.0,
+     "2022": 55567941000.0,
+     "2023": 66091992000.0
+    }
+   },
+   "Qualified dividends": {
+    "donor_column": "qualified_dividend_income",
+    "soi_variable": "qualified_dividends",
+    "donor_weighted_total": 297122813185.1782,
+    "soi_actual": {
+     "2015": 203187788000.0,
+     "2021": 295906194000.0,
+     "2022": 313230845000.0,
+     "2023": 336070296000.0
+    }
+   },
+   "Capital gain distributions": {
+    "donor_column": "non_sch_d_capital_gains",
+    "soi_variable": "capital_gains_distributions",
+    "donor_weighted_total": 24311594282.324425,
+    "soi_actual": {
+     "2015": 11563203000.0,
+     "2021": 23889533000.0,
+     "2022": 12863423000.0,
+     "2023": 9340820000.0
+    }
+   },
+   "Taxable IRA distributions": {
+    "donor_column": "taxable_ira_distributions",
+    "soi_variable": "ira_distributions",
+    "donor_weighted_total": 406130987951.6224,
+    "soi_actual": {
+     "2015": 253213041000.0,
+     "2021": 408382461000.0,
+     "2022": 437775580000.0,
+     "2023": 438147938000.0
+    }
+   },
+   "Taxable pensions": {
+    "donor_column": "taxable_private_pension_income",
+    "soi_variable": "taxable_pension_income",
+    "donor_weighted_total": 861772339481.1648,
+    "soi_actual": {
+     "2015": 689991999000.0,
+     "2021": 858038339000.0,
+     "2022": 911698884000.0,
+     "2023": 932130236000.0
+    }
+   },
+   "Social Security benefits": {
+    "donor_column": "social_security_retirement",
+    "soi_variable": "total_social_security",
+    "donor_weighted_total": 790662247935.0814,
+    "soi_actual": {
+     "2015": 605152093000.0,
+     "2021": 791161174000.0,
+     "2022": 871307268000.0,
+     "2023": 973642779000.0
+    }
+   }
+  }
+ }
+}
