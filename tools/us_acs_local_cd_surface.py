@@ -86,7 +86,11 @@ STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
 #: counts bridge by ``return_count`` (counts are not aged), amounts by the
 #: closest amount Historic Table 2 carries. The factor band below applies to
 #: the sibling. The bridge is stamp-invariant: if the stamp is corrected
-#: (#1030) both levels move together.
+#: (#1030) both levels move together. A sibling the compiler binds as a share
+#: of a national control (``return_count``, ``adjusted_gross_income`` and
+#: ``itemized_deductions_amount`` are ``_SOI_HT2_NATIONAL_CONTROLS`` columns)
+#: is read at the file's own level (:func:`cd_file_level`), so the bridge
+#: still measures the file's gap and not the control's.
 STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
     "charitable_amount": "itemized_deductions_amount",
     "charitable_returns": "return_count",
@@ -194,6 +198,65 @@ def record_set_spec_id(spec) -> str:
 
 def is_cd_file_spec(spec) -> bool:
     return record_set_spec_id(spec).startswith(CD_FILE_RECORD_SET_SPEC_PREFIX)
+
+
+def cd_file_level(spec, *, aged_like=None) -> float:
+    """A district-file spec's value on the district file's own basis.
+
+    The compiler binds some district-file rows as shares of a national
+    control: such a row names its denominator
+    (``soi_share_total_source_record_id``) and its ``uprating_factor`` is
+    control / the file's US row (microcosm#1229, #1040, and the
+    ``_SOI_HT2_NATIONAL_CONTROLS`` columns). Dividing the factor out gives the
+    file's own level: what a district block's shares, its receipt and a level
+    bridge read. Other specs return their value.
+
+    A share ages from its control's period, and so does its file level. That
+    is the file's own aging while the file is stamped at the control's period
+    (the pinned feed); under #1030 the file ages from its data year, one link
+    earlier, so a block's recorded file values sit that link apart (its
+    shares, and so its bound values, do not move). With ``aged_like`` (an unrebased
+    district-file row), the level is re-aged to that row's aging factor, so
+    the two sit on one basis; they differ once #1030 ages the file from its
+    data year. That stands in for the share's own unrebased aging only when
+    both age on the same series, so a pair on different series refuses.
+
+    Raises:
+        ValueError: ``aged_like`` ages on a different series from ``spec``.
+    """
+
+    metadata = _metadata(spec)
+    value = float(spec.value)
+    if not metadata.get("soi_share_total_source_record_id"):
+        return value
+    value /= float(metadata["uprating_factor"])
+    if aged_like is not None:
+        if _aging_series(aged_like) != _aging_series(spec):
+            raise ValueError(
+                f"{spec.name} ages on {_aging_series(spec)!r} and "
+                f"{aged_like.name} on {_aging_series(aged_like)!r}; a share's "
+                "file level can be re-aged only like a row on its own series."
+            )
+        value *= float(_metadata(aged_like).get("aging_factor", "1")) / float(
+            metadata.get("aging_factor", "1")
+        )
+    return value
+
+
+def _aging_series(spec) -> str:
+    """The growth series target aging ages ``spec`` on, from the spec alone.
+
+    Read from the compiler's rule, not the receipt: a receipt can be a no-op
+    (``source_equals_build`` for a share landed at the build period) that
+    names no series. Rows that never age return why.
+    """
+
+    from microcosm.build.us_runtime import target_aging
+
+    reason = target_aging._not_ageable_reason(spec)
+    if reason is not None:
+        return reason
+    return target_aging._cbo_income_source_for_spec(spec)
 
 
 def soi_materializer_semantics(spec) -> tuple:
@@ -382,11 +445,12 @@ def state_cd_soi_surface(
         cd_file_state_by_key[key] = spec
 
     # Each state concept both files carry: its Historic Table 2 / district-file
-    # ratio, judged against the measure's median ratio across states.
+    # ratio (the file's own level, ``cd_file_level``), judged against the
+    # measure's median ratio across states.
     vintage_ratio: dict[tuple, float] = {}
     for key in ht2_by_key.keys() & cd_file_state_by_key.keys():
         ht2_value = float(ht2_by_key[key].value)
-        cd_value = float(cd_file_state_by_key[key].value)
+        cd_value = cd_file_level(cd_file_state_by_key[key])
         vintage_ratio[key] = (
             ht2_value / cd_value
             if cd_value != 0.0 and (ht2_value > 0) == (cd_value > 0)
@@ -445,11 +509,12 @@ def state_cd_soi_surface(
             kept_cd_by_key[(state, soi_concept_identity(spec))].append(spec)
 
     # Each Historic-Table-2-parented block's rebase factor (parent over its
-    # district rows' sum), judged against its concept's median across states.
+    # district rows' sum at the file's level), judged against its concept's
+    # median across states.
     block_factor: dict[tuple, float] = {}
     for key, block in kept_cd_by_key.items():
         parent = ht2_by_key.get(key)
-        child_sum = math.fsum(float(spec.value) for spec in block)
+        child_sum = math.fsum(cd_file_level(spec) for spec in block)
         if parent is not None and child_sum != 0.0:
             block_factor[key] = float(parent.value) / child_sum
     factors_by_identity: dict[tuple, list[float]] = defaultdict(list)
@@ -480,12 +545,18 @@ def state_cd_soi_surface(
         sibling_key = (state, (sibling, *identity[1:]))
         ht2_sibling = ht2_by_key.get(sibling_key)
         cd_sibling = cd_file_state_by_key.get(sibling_key)
-        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
+        # The bridged row is a district-file level, so the sibling must be
+        # too: a sibling the compiler bound as a national share is read at
+        # its own file level, aged as the bridged row is.
+        cd_sibling_level = (
+            None if cd_sibling is None else cd_file_level(cd_sibling, aged_like=spec)
+        )
+        if ht2_sibling is None or cd_sibling_level is None or cd_sibling_level == 0:
             raise ValueError(
                 f"Level bridge {measure} -> {sibling} in state {state} needs "
                 "the sibling's state total in both files."
             )
-        factor = float(ht2_sibling.value) / float(cd_sibling.value)
+        factor = float(ht2_sibling.value) / cd_sibling_level
         # A sign conflict is a data defect, not a level disagreement: refuse
         # it before the band, which only judges finite positive ratios.
         if not (math.isfinite(factor) and factor > 0.0):
@@ -495,11 +566,13 @@ def state_cd_soi_surface(
             )
         # The sibling is trusted for bridging only if both of the band's
         # verdicts on it pass: its two state levels, and (where it has district
-        # rows) the rebase of its own district block.
+        # rows) the rebase of its own district block. Re-aging scales every
+        # state's ratio alike, so the median is re-aged by the same constant.
+        reaging = factor / vintage_ratio[sibling_key]
         trusted = within_band(
             sibling_key,
             factor,
-            median_ratio.get(sibling_key[1], math.nan),
+            median_ratio.get(sibling_key[1], math.nan) * reaging,
             f"level_bridge:{measure}",
             measure,
             verdict="sibling_vintage_ratio",
@@ -581,7 +654,11 @@ def state_cd_soi_surface(
                 f"State parent {parent.name} materializes differently from "
                 f"its district rows ({identity}, state {state})."
             )
-        child_sum = math.fsum(float(spec.value) for spec in children)
+        # Shares and the receipt read the district file's own levels, so a
+        # district row the compiler bound as a national share records the
+        # file's value, as every other district row does.
+        levels = {spec.name: cd_file_level(spec) for spec in children}
+        child_sum = math.fsum(levels.values())
         parent_value = float(parent.value)
         if child_sum == 0.0:
             if parent_value != 0.0:
@@ -601,7 +678,7 @@ def state_cd_soi_surface(
         # The district file must agree with itself before its shares are used.
         cd_state = cd_file_state_by_key.get(key)
         if cd_state is not None:
-            cd_state_value = float(cd_state.value)
+            cd_state_value = cd_file_level(cd_state)
             gap = abs(cd_state_value - child_sum)
             internal_gaps.append(gap / max(abs(cd_state_value), 1.0))
             if gap > STATE_CD_INTERNAL_RTOL * max(abs(cd_state_value), 1.0):
@@ -637,12 +714,12 @@ def state_cd_soi_surface(
                     "state_cd_parent_target_name": parent.name,
                     "state_cd_parent_basis": basis,
                     "state_cd_parent_value": repr(parent_value),
-                    "state_cd_cd_file_value": repr(float(child.value)),
+                    "state_cd_cd_file_value": repr(levels[child.name]),
                     "state_cd_cd_file_state_sum": repr(child_sum),
                     "state_cd_rebase_factor": repr(factor),
                 }
             )
-            value = float(child.value) * factor
+            value = levels[child.name] * factor
             rebased[child.name] = replace(
                 child,
                 value=value,

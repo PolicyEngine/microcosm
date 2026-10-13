@@ -850,3 +850,450 @@ def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> N
         crosswalk=crosswalk,
         level_bridges={"charitable_amount": "return_count"},
     )
+
+
+#: Exact binary scales, so a share rebase and its inverse round-trip without
+#: rounding and the band's verdicts cannot flip at an edge.
+_EXACT_SCALES = st.sampled_from([0.25, 0.5, 1.0, 2.0, 4.0])
+
+
+def _aged(spec, aging: float):
+    return dataclasses.replace(
+        spec, metadata={**spec.metadata, "aging_factor": repr(aging)}
+    )
+
+
+def _as_national_share(spec, factor: float, aging: float):
+    """``spec`` as the compiler binds it as a share of a national control:
+    its value times control / the file's US row (``factor``), aged from the
+    control's period (``aging``) instead of its own (#1250, #1229, #1040)."""
+
+    own = float(spec.metadata["aging_factor"])
+    value = spec.value * factor * aging / own
+    metadata = {
+        **spec.metadata,
+        "uprating_factor": repr(factor),
+        "soi_share_total_source_record_id": (
+            f"cdfile.us.{spec.metadata['source_measure_id']}"
+        ),
+        "aging_factor": repr(aging),
+    }
+    return dataclasses.replace(spec, value=value, signed=value < 0, metadata=metadata)
+
+
+def test_cd_file_level_undoes_a_national_share_and_its_aging() -> None:
+    row = _aged(
+        _soi_spec(
+            "cdfile.10_total.return_count",
+            "return_count",
+            200.0,
+            level="state",
+            record_set=_CD_FILE,
+            state="10",
+        ),
+        1.25,
+    )
+    share = _as_national_share(row, 1.5, 1.0)
+    assert share.value == 240.0
+    # The file's level, aged as the share is (from the control's period) ...
+    assert _CD.cd_file_level(share) == 160.0
+    # ... or as an unrebased district-file row is.
+    assert _CD.cd_file_level(share, aged_like=row) == 200.0
+    assert _CD.cd_file_level(row) == _CD.cd_file_level(row, aged_like=share) == 200.0
+
+
+@_SETTINGS
+@given(_state_cd_inputs(), st.data())
+def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
+    inputs, data
+) -> None:
+    """The compiler binds the district-file rows of some concepts as shares of
+    a national control: value x control / the file's US row, aged from the
+    control's period. ``state_cd`` uses the file for within-state shares, and
+    for level-bridge siblings through ``cd_file_level``, so the rebase moves
+    no ``state_cd`` value, drop, band verdict, recorded ratio or factor, with
+    or without the band, whatever the share's aging (the bridged row and its
+    sibling share one aging series, as every registered bridge does).
+
+    Only concepts Historic Table 2 carries in every state are rebased here,
+    as the compiler's registered concepts are on the feed: a rebased concept
+    without an HT2 row in a state has no registered bridge, so it refuses."""
+
+    specs, crosswalk, _layout = inputs
+    states = {spec.metadata["state_fips"] for spec in specs}
+    ht2 = {
+        (spec.metadata["state_fips"], spec.metadata["source_measure_id"])
+        for spec in specs
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _HT2
+    }
+    carried = sorted(
+        measure
+        for measure in {spec.metadata["source_measure_id"] for spec in specs}
+        if all((state, measure) in ht2 for state in states)
+    )
+    rebased = data.draw(st.lists(st.sampled_from(carried), unique=True))
+    factors = {measure: data.draw(_EXACT_SCALES) for measure in rebased}
+    own_aging, control_aging = data.draw(_EXACT_SCALES), data.draw(_EXACT_SCALES)
+    band = data.draw(st.sampled_from([math.inf, _CD.STATE_CD_FACTOR_BAND]))
+
+    def is_cd_file(spec) -> bool:
+        return spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+
+    base = [_aged(spec, own_aging) if is_cd_file(spec) else spec for spec in specs]
+    shared = [
+        _as_national_share(
+            spec, factors[spec.metadata["source_measure_id"]], control_aging
+        )
+        if is_cd_file(spec) and spec.metadata["source_measure_id"] in factors
+        else spec
+        for spec in base
+    ]
+
+    def surface(rows):
+        return _CD.state_cd_soi_surface(
+            rows,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges=_BRIDGES,
+            factor_band=band,
+        )
+
+    # A bridged row re-ages its share sibling only when both age on one
+    # series; this world bridges wages through the return count (AGI series),
+    # so rebasing the return count there refuses.
+    cd_state = {
+        (spec.metadata["state_fips"], spec.metadata["source_measure_id"]): spec
+        for spec in base
+        if is_cd_file(spec) and spec.metadata["ledger_geography_level"] == "state"
+    }
+    mismatched = any(
+        _BRIDGES[measure] in factors
+        and _CD._aging_series(spec)
+        != _CD._aging_series(cd_state[(state, _BRIDGES[measure])])
+        for (state, measure), spec in cd_state.items()
+        if (state, measure) not in ht2
+    )
+    before = surface(base)
+    if mismatched:
+        with pytest.raises(ValueError, match="re-aged only like a row on its own"):
+            surface(shared)
+        return
+    after = surface(shared)
+    assert [spec.name for spec in after.specs] == [spec.name for spec in before.specs]
+    for old, new in zip(before.specs, after.specs, strict=True):
+        assert new.value == pytest.approx(old.value, rel=1e-12), new.name
+    for key in ("counts", "dropped"):
+        assert after.receipt[key] == before.receipt[key]
+
+    def verdicts(receipt):
+        return sorted(
+            (row["state_fips"], row["measure"], row["basis"], row["verdict"])
+            for row in receipt["factor_band"]["out_of_band"]
+        )
+
+    assert verdicts(after.receipt) == verdicts(before.receipt)
+    # The receipt reads the district file's own levels. A bridge re-ages the
+    # sibling like the bridged row, so its factor and the sibling's recorded
+    # ratio and median are unchanged whatever the aging. A block reads its
+    # shares at the file level aged as the shares are, from the control's
+    # period: where that matches the file's own aging (as on the pinned feed),
+    # its rebase factor and every district row's record of the file value,
+    # state sum and factor are unchanged too.
+    same_aging = own_aging == control_aging
+    recorded = {
+        (row["state_fips"], row["measure"], row["verdict"]): row
+        for row in before.receipt["factor_band"]["out_of_band"]
+    }
+    for row in after.receipt["factor_band"]["out_of_band"]:
+        old_row = recorded[(row["state_fips"], row["measure"], row["verdict"])]
+        keys = ["relative"]
+        if same_aging or row["verdict"] == "sibling_vintage_ratio":
+            keys += ["ratio", "median_ratio"]
+        for key in keys:
+            assert row[key] == pytest.approx(old_row[key], rel=1e-12, nan_ok=True)
+    keys = ["level_bridge_factor_by_measure"]
+    if same_aging:
+        keys.append("rebase_factor_by_measure")
+    for key in keys:
+        assert after.receipt[key].keys() == before.receipt[key].keys()
+        for measure, summary in after.receipt[key].items():
+            assert summary == pytest.approx(before.receipt[key][measure], rel=1e-12)
+    metadata_keys = ["state_cd_level_bridge_factor"]
+    if same_aging:
+        metadata_keys += [
+            "state_cd_cd_file_value",
+            "state_cd_cd_file_state_sum",
+            "state_cd_rebase_factor",
+        ]
+    for old, new in zip(before.specs, after.specs, strict=True):
+        for key in metadata_keys:
+            if key in old.metadata:
+                assert float(new.metadata[key]) == pytest.approx(
+                    float(old.metadata[key]), rel=1e-12
+                ), (new.name, key)
+
+
+@pytest.mark.parametrize("control_aging", [1.0, 2.0])
+def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios(
+    control_aging: float,
+) -> None:
+    """State 14's two return-count levels disagree 2x, so its bridge is out of
+    band. Binding the district file's return counts as national shares (x1.5)
+    leaves every bound value, the out-of-band rows and their recorded ratios
+    where they were: the sibling is still read at the file's own level."""
+
+    specs, crosswalk = _bridge_world(
+        {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0}, {}
+    )
+    base = [
+        _aged(spec, 1.0)
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+        else spec
+        for spec in specs
+    ]
+    shared = [
+        _as_national_share(spec, 1.5, control_aging)
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+        and spec.metadata["source_measure_id"] == "return_count"
+        else spec
+        for spec in base
+    ]
+    before, after = (
+        _CD.state_cd_soi_surface(
+            rows,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+        for rows in (base, shared)
+    )
+    assert {spec.name: spec.value for spec in after.specs} == pytest.approx(
+        {spec.name: spec.value for spec in before.specs}, rel=1e-12
+    )
+    rows = {
+        (row["state_fips"], row["measure"], row["verdict"]): row
+        for row in after.receipt["factor_band"]["out_of_band"]
+    }
+    vintage = rows[("14", "charitable_amount", "sibling_vintage_ratio")]
+    assert (vintage["ratio"], vintage["median_ratio"]) == pytest.approx((2.0, 1.0))
+    assert set(rows) == {
+        (row["state_fips"], row["measure"], row["verdict"])
+        for row in before.receipt["factor_band"]["out_of_band"]
+    }
+
+
+def test_a_share_sibling_re_ages_by_series_not_by_receipt() -> None:
+    """The series comes from the compiler's aging rule, not the receipt
+    (#1250 review). A share landed at the build year carries the no-op
+    ``source_equals_build`` receipt and still re-ages like an unrebased row
+    on its series; a pair on different series refuses."""
+
+    def amount(name, measure, value, aging, source):
+        spec = _soi_spec(
+            name, measure, value, level="state", record_set=_CD_FILE, state="10"
+        )
+        return dataclasses.replace(
+            spec,
+            metadata={
+                **spec.metadata,
+                "aging_factor": repr(aging),
+                "aging_factor_source": source,
+            },
+        )
+
+    agi_series = "cbo.revenue_projection.ty2024.income_by_source.agi.projected_amount"
+    charitable = amount(
+        "cdfile.10_total.charitable_amount", "charitable_amount", 11.0, 1.1, agi_series
+    )
+    sibling = _as_national_share(
+        amount(
+            "cdfile.10_total.adjusted_gross_income",
+            "adjusted_gross_income",
+            100.0,
+            1.0,
+            "x",
+        ),
+        1.25,
+        1.0,
+    )
+    sibling = dataclasses.replace(
+        sibling,
+        metadata={**sibling.metadata, "aging_factor_source": "source_equals_build"},
+    )
+    assert _CD.cd_file_level(sibling, aged_like=charitable) == pytest.approx(110.0)
+    wages = amount(
+        "cdfile.10_total.wages_salaries_amount",
+        "wages_salaries_amount",
+        50.0,
+        1.1,
+        agi_series,
+    )
+    with pytest.raises(ValueError, match="'wages_and_salaries'"):
+        _CD.cd_file_level(sibling, aged_like=wages)
+
+
+def test_a_build_year_control_keeps_state_cd_bridges() -> None:
+    """End to end (#1250 review): district itemized and charitable rows stamped
+    2023, an itemized control at the 2024 build year, and CBO AGI projections.
+    The itemized shares land at 2024 unaged while charitable ages 2023 to 2024,
+    and ``state_cd`` binds the same values as with the district pass off."""
+    import microcosm.build.us_runtime.fiscal_targets as fiscal_targets
+    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
+    from test_support.microcosm_build.us_fiscal_targets import (
+        _cbo_income_source_projection_fact,
+        _dynamic_ledger_fact,
+        packaged_reference_facts,
+    )
+
+    cd_set = "irs_soi.ty2023.congressional_district_2022.all_returns"
+
+    def fact(record_set, row, measure, value, period, level, geography, spec_id):
+        result = _dynamic_ledger_fact(
+            source_record_id=f"{record_set}.{row}.{measure}",
+            source_name="irs_soi",
+            measure_id=measure,
+            value=value,
+            period_value=period,
+            geography_level=level,
+            geography_id=geography,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=record_set,
+            groupby_dimension="irs_soi.congressional_district",
+            groupby_value_id=row,
+        )
+        result["layout"]["record_set_spec_id"] = spec_id
+        if measure == "itemized_deductions_amount":
+            result["layout"]["source_column_id"] = "A04470"
+        return result
+
+    cd_spec = "irs_soi.congressional_district_2022.all_returns.v1"
+    facts = [*packaged_reference_facts()]
+    for measure, us, states in (
+        (
+            "itemized_deductions_amount",
+            1_000.0,
+            {"15": (300.0, 200.0), "33": (150.0, 100.0)},
+        ),
+        ("charitable_amount", 100.0, {"15": (30.0, 20.0), "33": (15.0, 10.0)}),
+    ):
+        facts.append(
+            fact(cd_set, "us", measure, us, 2023, "country", "0100000US", cd_spec)
+        )
+        for fips, (first, second) in states.items():
+            facts.append(
+                fact(
+                    cd_set,
+                    f"s{fips}_total",
+                    measure,
+                    first + second,
+                    2023,
+                    "state",
+                    f"0400000US{fips}",
+                    cd_spec,
+                )
+            )
+            for index, value in ((1, first), (2, second)):
+                facts.append(
+                    fact(
+                        cd_set,
+                        f"s{fips}_0{index}",
+                        measure,
+                        value,
+                        2023,
+                        "congressional_district",
+                        f"5001700US{fips}0{index}",
+                        cd_spec,
+                    )
+                )
+    ht2_spec = "irs_soi.historic_table_2.state_broad_totals.v1"
+    facts.append(
+        fact(
+            "irs_soi.ty2022.historic_table_2.us",
+            "all",
+            "itemized_deductions_amount",
+            1_050.0,
+            2022,
+            "country",
+            "0100000US",
+            ht2_spec,
+        )
+    )
+    for fips, postal, value in (("15", "hi", 520.0), ("33", "nh", 260.0)):
+        facts.append(
+            fact(
+                f"irs_soi.ty2022.historic_table_2.state_broad.{postal}",
+                "all",
+                "itemized_deductions_amount",
+                value,
+                2022,
+                "state",
+                f"0400000US{fips}",
+                ht2_spec,
+            )
+        )
+    control = _dynamic_ledger_fact(
+        source_record_id="irs_soi.ty2024.table_1_2.all_returns.all.total_itemized_deductions_amount",
+        source_name="irs_soi",
+        measure_id="total_itemized_deductions_amount",
+        value=1_200.0,
+        period_value=2024,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id="irs_soi.ty2024.table_1_2.all_returns",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id="all",
+    )
+    facts.append(control)
+    for year, value in ((2022, 100.0), (2023, 110.0), (2024, 121.0)):
+        facts.append(
+            _cbo_income_source_projection_fact(
+                year, "adjusted_gross_income", value=value
+            )
+        )
+    crosswalk = [
+        {
+            "source_geography_id": f"5001700US{fips}0{index}",
+            "target_geography_id": f"5001900US{fips}0{index}",
+            "weight": 1.0,
+        }
+        for fips in ("15", "33")
+        for index in (1, 2)
+    ]
+
+    def surface():
+        registry = compile_us_fiscal_target_registry(
+            facts,
+            target_period=2024,
+            congressional_district_vintage_crosswalk=crosswalk,
+            age_targets=True,
+        )
+        soi = [spec for spec in registry.specs if spec.family == "irs_soi"]
+        return soi, _CD.state_cd_soi_surface(
+            soi,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=pd.DataFrame(crosswalk),
+            level_bridges={"charitable_amount": "itemized_deductions_amount"},
+            factor_band=math.inf,
+        )
+
+    soi, rebased = surface()
+    by_name = {spec.name: spec for spec in soi}
+    share = by_name[f"{cd_set}.s15_total.itemized_deductions_amount"]
+    assert share.metadata["aging_factor_source"] == "source_equals_build"
+    assert share.value == pytest.approx(600.0)
+    charitable = by_name[f"{cd_set}.s15_total.charitable_amount"]
+    assert charitable.value == pytest.approx(55.0)
+
+    original = fiscal_targets._rebase_stale_soi_district_distributions
+    try:
+        fiscal_targets._rebase_stale_soi_district_distributions = (
+            lambda registry, facts, **_: registry
+        )
+        _, levels = surface()
+    finally:
+        fiscal_targets._rebase_stale_soi_district_distributions = original
+    assert {spec.name: spec.value for spec in rebased.specs} == pytest.approx(
+        {spec.name: spec.value for spec in levels.specs}, rel=1e-12
+    )
+    assert (
+        rebased.receipt["level_bridge_factor_by_measure"]["charitable_amount"]["n"] == 2
+    )

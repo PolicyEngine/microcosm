@@ -201,6 +201,18 @@ district rows, are mostly 1.00 to 1.10.
   (#1030) would remove the aging part only.
 - **Two factors reflect known level differences:** taxable interest (2.35 to
   2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
+- **The 11 Table 1.x-controlled columns** (return count, AGI, taxable IRA
+  distributions, pensions, unemployment compensation and Social Security,
+  itemized deductions) have Historic Table 2 parents that are shares of a
+  Table 1.x control since #1247, so their factors also carry the Table 1.x /
+  HT2 gap: the return-count median is 1.023 and AGI's 1.054 (the bullets
+  above were measured before #1247), taxable Social Security amounts run
+  1.16 to 1.18. The district file's own rows of these columns are bound as
+  shares of the same controls since #1250
+  ([us-soi-national-controls.md](us-soi-national-controls.md)). `state_cd`
+  reads such a row at the file's own level (`cd_file_level`: its
+  `uprating_factor` divided out), so its shares, factors, records and bridges
+  are what they would be without that rebase.
 - **The largest single-state factors** were on qualified and ordinary
   dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
   rental income (New York, 0.72), where the two tables disagree about one
@@ -249,8 +261,8 @@ On the pinned feed the band drops eight:
 | Hawaii | `ordinary_dividends_amount` | rebase | 2.17 | 1.07 | 2.03 |
 | New York | `rental_royalty_income_amount` | rebase | 0.72 | 1.05 | 0.68 |
 | Utah | `tax_exempt_interest_amount` | rebase | 1.43 | 1.09 | 1.32 |
-| Wyoming | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.75 | 1.06 | 1.65 |
-| South Dakota | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.44 | 1.06 | 1.36 |
+| Wyoming | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.81 | 1.09 | 1.65 |
+| South Dakota | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.49 | 1.09 | 1.36 |
 
 That removes 34 district rows (Hawaii 2 x 2, New York 26, Utah 4) and four
 bridged state rows (Wyoming and South Dakota are at-large, so they had no
@@ -276,13 +288,30 @@ The bridge assumes the measure shares its sibling's Historic Table 2 /
 district-file ratio in that state: the coverage and aging gap above, plus
 whatever the two publications disagree about for the sibling. It is an
 estimate, not an identity, which is why the factor band applies to it too.
-Without it these state rows and their 2,562 district rows would sit 2–6%
+Without it these state rows and their 2,562 district rows would sit 2–10%
 below every related concept. On the pinned feed the bridge factors are
-1.00–1.03 for counts (median 1.016), 1.03–1.75 for the itemized-deduction
-amounts (median 1.062; the two above 1.25x the median are dropped) and
-1.03–1.08 for QBI amounts (median 1.049). The bridge is stamp-invariant: if #1030 corrects the
+1.006–1.032 for counts (median 1.022), 1.06–1.81 for the itemized-deduction
+amounts (median 1.095; the two above 1.25x the median are dropped) and
+1.03–1.09 for QBI amounts (median 1.053), as measured with #1247 and #1250
+applied. The bridge is stamp-invariant: if #1030 corrects the
 stamp, the sibling ratio shrinks with it. Its district rows keep their
 within-state shares, as every other district row does.
+
+All three siblings are columns the compiler binds as shares of a national
+control (#1250), so the district file's sibling row no longer sits at the
+file's level. The bridge reads it there anyway (`cd_file_level`: the share's
+`uprating_factor` divided out, re-aged as the bridged row is), and the
+sibling's band verdict compares the two files' levels, its median re-aged by
+the same constant. Re-aging like the bridged row stands in for the sibling's
+own aging only when both age on one series, as every registered bridge does
+(counts unaged, amounts on the CBO AGI series); a pair on different series
+refuses. The series comes from target aging's own rule, not the aging
+receipt, which is a no-op (`source_equals_build`) for a share landed at the
+build year. Reading the share as compiled would lift nothing: on the pinned
+feed the bridged charitable and interest-paid amounts would fall 9.07%, QBI
+amounts 5.63% and the bridged counts 2.65%. A property test checks that
+national-share district rows move no `state_cd` value, drop, verdict or
+recorded factor.
 
 Every district row records its parent (`state_cd_parent_target_name`), the
 parent's basis, the district file's own value and the rebase factor; a

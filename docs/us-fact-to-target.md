@@ -132,6 +132,15 @@ the Table 1.x column of the same Form 1040 line.
 - `test_pinned_feed_no_soi_state_family_sums_past_its_national_target`
   fails a re-pin that adds a second national value for a compared quantity,
   or a state family past its national target.
+- **The congressional-district file** carries 11 of the columns.
+  `_rebase_stale_soi_district_distributions` takes its state and district
+  rows as shares of its own US row times the same control and retires that
+  US row (#1250). Register a column only once the district documentation
+  guide defines it at the same line under the register's `source_column`;
+  a district fact that reads another column refuses the compile. On `full`,
+  `test_pinned_feed_full_surface_has_one_national_value_per_controlled_quantity`
+  fails a re-pin that leaves a second national value for a controlled
+  quantity, or a state or district family past it.
 
 ### State AGI bands bind as shares of the state total (microcosm#940)
 

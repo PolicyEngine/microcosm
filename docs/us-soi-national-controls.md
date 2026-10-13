@@ -4,6 +4,8 @@ Fourteen IRS SOI quantities reach the US target surface from two sources: the
 Historic Table 2 (HT2) state file and a Pub 1304 Table 1.x national table.
 This page records why the two count the same thing, which one supplies the
 national level, and how `fiscal_targets.py` combines them (microcosm#1243).
+The congressional-district file carries 11 of the same columns; [its
+rows](#congressional-district-rows-1250) take the same controls (#1250).
 The taxable-interest (#489, #518) and capital-gains (#1035, #1036) families
 follow the same doctrine through their own passes.
 
@@ -186,6 +188,149 @@ crosswalk, then narrowed to `national_state`. Before is `main` plus #1036.
 The diff and checks are reproduced by `scripts/diff_compiles.py` in the
 evidence folder.
 
+## Congressional-district rows (#1250)
+
+The congressional-district file (`22incd.csv`, packaged as
+`irs_soi.ty2023.congressional_district_2022.all_returns`: TY2022 data
+stamped ty2023) carries 11 of the 14 columns on the `full` surface. It has
+no wage or taxable-income rows. Each column has a US row, 51 state rows
+(`<st>_total`), and 428 district rows that the packaged crosswalk maps onto
+the 436 districts of the 119th plan; an at-large state enters as its state
+total. Before #1250 these rows were TY2022 levels, and the US row was a
+second national target beside each control.
+
+### Same columns, a narrower count
+
+`22incddocguide.docx` defines each column at the same line as the HT2
+guides, under the same IRS name. Its US row counts fewer returns than Table
+1.4 in the same tax year, because the file covers only returns processed in
+calendar 2023, drops returns whose ZIP code is missing or does not match the
+state, and drops APO/FPO, foreign and territory addresses (guide sections C
+and D). It also suppresses items with fewer than 20 returns in a district
+and items dominated by one return (section E). It is a narrower count of the
+same concept, like HT2 is of Table 1.4, but about 2% narrower again:
+
+| Column | Line | District US / Table 1.4, TY2022 | District US / HT2 US, TY2022 | Control / district US, pinned feed |
+|---|---|---:|---:|---:|
+| N1 | returns | 0.9690 | 0.9793 | 1.0272 |
+| A00100 | 11 | 0.9724 | 0.9758 | 1.0597 |
+| N01400 / A01400 | 4b | 0.9966 / 0.9767 | 0.9877 / 0.9837 | 1.0288 / 1.0247 |
+| N01700 / A01700 | 5b | 0.9827 / 0.9702 | 0.9850 / 0.9843 | 1.0014 / 1.0538 |
+| N02300 / A02300 | Schedule 1, 7 | 0.9671 / 0.9699 | 0.9839 / 0.9798 | 1.0272 / 1.0546 |
+| N02500 / A02500 | 6b | 0.9797 / 0.9831 | 0.9874 / 0.9888 | 1.0641 / 1.1692 |
+| A04470 | 12 | 0.9404 | 0.9657 | 1.0997 |
+
+The last column is what the aged control is over the aged district US row
+on the pinned feed: the coverage gap times the TY2022 to TY2023 change of the
+column. The district rows age only 2023 to 2024, because of the stamp.
+Within the file, the 51 states sum exactly to the US row and each state's
+districts sum exactly to the state, for all 11 columns. The register
+records each column's IRS name (`source_column`), and
+`test_the_register_names_each_columns_reviewed_irs_id` pins it to the names
+in the table above, read from the guide.
+`~/PolicyEngine/_reviews/cd-soi-national-controls-20261012/scripts/cd_identities.py`
+reproduces the table from the sha256-matched `22incd.csv`, `22in14ar.xls`
+and `22in55cmcsv.csv`.
+
+### How the rows combine
+
+`_rebase_stale_soi_district_distributions` runs after the HT2 pass. It uses
+the same register, the same control chooser and the same refusal
+(`AmbiguousSoiNationalControlError`). Its rule is the one #1229 (taxable
+interest) and #1040 (capital gains) use for other district families:
+
+- **Shares of the file's own US row.** Each district-file state and district
+  row becomes `value x control / district US`. The US row is the same
+  record set's national row of the same measure, filing status, universe and
+  period. One factor per measure scales the states and the districts alike,
+  so the district-to-state reconciliation that runs next keeps factor 1.
+  Every share names its denominator in `soi_share_total_source_record_id`
+  and lands at the control's period, as the HT2 shares do. An AGI slice of
+  the file takes the same factor, as #1229 and #1040 rebase district slices
+  (the current package has none).
+- **One national level.** The district US row retires.
+- **No eligible control.** With no control, one after the build period, or
+  one older than the row's period, the rows keep their levels and the US row
+  stays.
+- **No denominator.** With an eligible control but no nonzero district US
+  row, a row cannot be a share, and as a level it would be the stale second
+  value this pass removes, so it is dropped. That is the district rule of
+  #1229 and #1040. The HT2 pass keeps HT2 rows as levels in the same case.
+  Neither case occurs on the pinned feed.
+- **One denominator.** Each package divides by its own US row: the key
+  carries the record set, so another district file at the same stamp (a
+  different data year or boundary vintage) never supplies it. Two different
+  US values for one key refuse the compile; equal twins name the smaller
+  record id, so feed order never picks the denominator.
+- **Reviewed columns only.** Every source fact of a rebased row, and its US
+  row, must read the register's `source_column`. Otherwise the compile
+  refuses (`UnreviewedSoiNationalControlColumnError`), as it does for a
+  missing column. The crosswalk merges source districts into one fact with a
+  single contributor's layout, so it records each contributor's column in
+  the merged fact's lineage, and the check reads every one (facts sharing a
+  record id all count). Rows that keep their levels, and facts that compile
+  to no target (a stale AGI slice, a superseded vintage), are not checked. The
+  district package's SALT and PTC measures read the wrong columns
+  (microcosm#1038), so a re-pin could do the same here.
+- **The stamp cancels.** Row and US row carry the same stamp, so stamping the
+  file truthfully at 2022 gives the same values
+  (`test_the_share_ignores_the_package_stamp`). Under #1030's data-year
+  correction each row is a share of a restamped total of its own package,
+  which #1030 admits.
+
+### Effect on the pinned feed
+
+Compiled as the release does; before is #1247's head (`490b67181`).
+
+| Quantity | District file, 51 states, before | After | Move |
+|---|---:|---:|---:|
+| `taxable_social_security` sum | $490.09B | $573.04B | +16.92% |
+| `taxable_social_security` count | 24,167,050 | 25,716,763 | +6.41% |
+| `itemized_taxable_income_deductions` sum | $682.97B | $751.10B | +9.97% |
+| `adjusted_gross_income` sum | $15,682.85B | $16,619.16B | +5.97% |
+| `unemployment_compensation` sum | $31.89B | $33.64B | +5.46% |
+| `taxable_pension_income` sum | $961.67B | $1,013.42B | +5.38% |
+| `ira_distributions` count | 16,227,430 | 16,694,154 | +2.88% |
+| `count` | 156,342,760 | 160,602,107 | +2.72% |
+| `unemployment_compensation` count | 4,573,040 | 4,697,502 | +2.72% |
+| `ira_distributions` sum | $464.87B | $476.36B | +2.47% |
+| `taxable_pension_income` count | 29,501,160 | 29,541,284 | +0.14% |
+
+- **Retired: 11 rows**, the district US rows. **Added: none.** Compiled
+  targets go from 33,235 to 33,224; the full registry from `0bbbad9b22d1` to
+  `ce77f86efb24`. `national_state` holds no district-file row and is
+  unchanged (6,087, `0e899cd7f893`).
+- **5,357 values move** (11 x (51 + 436)), each family by its one factor
+  (the last column above). No other spec changes, in value or metadata.
+- After aging, the file's 51 states, and its 436 districts, each sum to the
+  control (relative error at most 1e-12), and every district reconciles to
+  its state with factor 1.
+- On `full`, every quantity a control of this register measures now has one
+  national value. Quantities with more than one national value go from 38 to
+  27, the 22 and 5 under "What this does not change". (Two more EITC groups
+  look like duplicates only to `_soi_national_quantity`: their Table 2.5 rows
+  take the child count from the record set, which the key does not read.)
+- **At-large districts are bound twice**, as before: the district file's
+  row, and HT2's state row standing in for the district (AK, DE, DC, ND, SD,
+  VT, WY and Montana's two districts; 99 rows). Both are now shares of the
+  same control, so the two differ only by the two files' shares of that
+  state: HT2 / district file is 0.966 to 1.072 (median 0.988), against
+  0.986 to 1.17 (median 1.037) before. The exceptions are Wyoming's and South
+  Dakota's itemized deductions (1.64 and 1.35, from 1.81 and 1.49), where the
+  two files disagree about the state. Counting both, the 445 district rows of a measure sum to 1.015 to
+  1.022 times the control; each family alone sums to at most the control.
+- **ACS-local `state_cd`.** All 26,425 values are unchanged (relative
+  difference at most 4.2e-15), as are its counts, drops, band verdicts and
+  receipt (rebase and bridge factors and recorded ratios, within 5e-15).
+  It takes district rows only as within-state shares of HT2, which a
+  national factor does not move, and it reads a district row bound as a
+  national share at the file's own level (`cd_file_level`), so its blocks,
+  bridges and per-row records see what they saw before
+  ([us-acs-local-soi-target-surface.md](us-acs-local-soi-target-surface.md)).
+
+`scripts/diff_cd.py`, `scripts/at_large_pairs.py` and
+`scripts/compare_statecd.py` in the evidence folder reproduce these figures.
+
 ## What this does not change
 
 - **Share assumption.** TY2022 HT2 state shares stand in for TY2023 shares.
@@ -195,9 +340,12 @@ evidence folder.
   ids, keeps them instead, and this pass rebases them onto the TY2023
   controls by the same-year difference alone
   (`test_a_control_at_the_hts_own_period_still_rebases`).
-- **Congressional-district rows** of these columns stay TY2022 levels on the
-  `full` surface. They are not on `national_state`; #1040, #1229 and #1231
-  reconcile other district families.
+- **Congressional-district rows of other columns.** The district file's US
+  row is still a second national value on `full` for 22 quantities whose
+  other national row is the TY2022 HT2 US row (dividends, Schedule C,
+  partnership, rental and tax-exempt income, EITC, ACTC, income tax, medical
+  deductions), and for capital gains, SALT and PTC returns, which #1040 and
+  #1224 handle.
 - **Columns without an all-returns control** keep their HT2 levels: N04470
   (itemizing returns) and N04800 (returns with taxable income) appear
   nationally only in Table 4.3, which excludes dependent filers.

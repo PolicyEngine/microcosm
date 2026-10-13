@@ -707,6 +707,10 @@ def _append_lineage_contribution(
     contributions.append(
         {
             "source_record_id": _source_record_id(source_fact),
+            # The contributor's own column: the merged fact keeps only the
+            # first contributor's layout, and the SOI district rebase checks
+            # every contributor (fiscal_targets, microcosm#1250).
+            "source_column_id": _str_at(source_fact, "layout", "source_column_id"),
             "source_geography_id": source_geography_id,
             "target_geography_id": target_geography_id,
             "share": share,

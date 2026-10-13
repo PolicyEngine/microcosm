@@ -47,6 +47,7 @@ from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
     "AmbiguousSoiCapitalGainsControlError",
+    "UnreviewedSoiNationalControlColumnError",
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_TARGET_REGISTRY",
     "US_FISCAL_TARGET_SPECS",
@@ -1073,6 +1074,11 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
+    registry = _rebase_stale_soi_district_distributions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
     registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
         registry,
@@ -1815,11 +1821,15 @@ class _SoiHt2NationalControlRule:
 
     ``concept`` names the Form 1040 line both columns report; the control is
     the latest ``control_measure_id`` fact of the ``control_family`` table.
+    ``source_column`` is the IRS column that HT2 and the congressional-district
+    file both publish under the measure id (``22incddocguide.docx`` defines it
+    at the same line).
     """
 
     control_family: str
     control_measure_id: str
     concept: str
+    source_column: str
 
 
 #: Historic Table 2 columns whose national level comes from a Pub 1304 table
@@ -1850,66 +1860,99 @@ class _SoiHt2NationalControlRule:
 #: $11,944.447B). Table 1.1 supplies the return count and AGI; Table 1.2
 #: repeats them and stays a national target of equal value. A column absent
 #: from this register keeps its HT2 level and its HT2 national row.
+#:
+#: The congressional-district file (``22incd.csv``) publishes the same
+#: columns, and ``22incddocguide.docx`` defines each at the same line, so
+#: ``_rebase_stale_soi_district_distributions`` takes its rows of these
+#: measures as shares of the same controls. Its US row is a narrower count of
+#: the same thing: TY2022 returns processed in calendar 2023 and matched to a
+#: district by ZIP code, 0.940 (itemized deductions) to 0.997 (IRA
+#: distribution returns) of Table 1.4's TY2022 cell.
+#: The district package carries no wages or taxable-income rows.
 _SOI_HT2_NATIONAL_CONTROLS: dict[str, _SoiHt2NationalControlRule] = {
     "return_count": _SoiHt2NationalControlRule(
-        "table_1_1", "return_count", "form_1040_returns"
+        "table_1_1",
+        "return_count",
+        "form_1040_returns",
+        "N1",
     ),
     "adjusted_gross_income": _SoiHt2NationalControlRule(
-        "table_1_1", "adjusted_gross_income", "form_1040_line_11_agi"
+        "table_1_1",
+        "adjusted_gross_income",
+        "form_1040_line_11_agi",
+        "A00100",
     ),
     "wages_salaries_amount": _SoiHt2NationalControlRule(
-        "table_1_4", "wages_salaries_amount", "form_1040_line_1z_wages"
+        "table_1_4",
+        "wages_salaries_amount",
+        "form_1040_line_1z_wages",
+        "A00200",
     ),
     "wages_salaries_returns": _SoiHt2NationalControlRule(
-        "table_1_4", "wages_salaries_returns", "form_1040_line_1z_wages"
+        "table_1_4",
+        "wages_salaries_returns",
+        "form_1040_line_1z_wages",
+        "N00200",
     ),
     "taxable_ira_distributions_amount": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_ira_distributions_amount",
         "form_1040_line_4b_taxable_ira_distributions",
+        "A01400",
     ),
     "taxable_ira_distributions_returns": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_ira_distributions_returns",
         "form_1040_line_4b_taxable_ira_distributions",
+        "N01400",
     ),
     "taxable_pension_income_amount": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_pension_income_amount",
         "form_1040_line_5b_taxable_pensions_and_annuities",
+        "A01700",
     ),
     "taxable_pension_income_returns": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_pension_income_returns",
         "form_1040_line_5b_taxable_pensions_and_annuities",
+        "N01700",
     ),
     "unemployment_compensation_amount": _SoiHt2NationalControlRule(
         "table_1_4",
         "unemployment_compensation_amount",
         "schedule_1_line_7_unemployment_compensation",
+        "A02300",
     ),
     "unemployment_compensation_returns": _SoiHt2NationalControlRule(
         "table_1_4",
         "unemployment_compensation_returns",
         "schedule_1_line_7_unemployment_compensation",
+        "N02300",
     ),
     "taxable_social_security_amount": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_social_security_amount",
         "form_1040_line_6b_taxable_social_security",
+        "A02500",
     ),
     "taxable_social_security_returns": _SoiHt2NationalControlRule(
         "table_1_4",
         "taxable_social_security_returns",
         "form_1040_line_6b_taxable_social_security",
+        "N02500",
     ),
     "itemized_deductions_amount": _SoiHt2NationalControlRule(
         "table_1_2",
         "total_itemized_deductions_amount",
         "form_1040_line_12_itemized_deductions",
+        "A04470",
     ),
     "taxable_income_amount": _SoiHt2NationalControlRule(
-        "table_1_2", "taxable_income_amount", "form_1040_line_15_taxable_income"
+        "table_1_2",
+        "taxable_income_amount",
+        "form_1040_line_15_taxable_income",
+        "A04800",
     ),
 }
 _SOI_HT2_MEASURE_BY_CONTROL: dict[tuple[str, str], str] = {
@@ -2211,6 +2254,245 @@ def _soi_ht2_lineage_data_year(record_set_id: str) -> str | None:
     if prefix == "state" and year.isdigit() and len(year) == 4:
         return year
     return None
+
+
+class UnreviewedSoiNationalControlColumnError(ValueError):
+    """A district fact of a registered measure reads another IRS column."""
+
+
+@dataclass(frozen=True)
+class _SoiDistrictShareTotal:
+    value: float
+    source_record_id: str
+
+
+def _rebase_stale_soi_district_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Use congressional-district rows of the registered columns as shares.
+
+    The congressional-district file publishes the columns of
+    ``_SOI_HT2_NATIONAL_CONTROLS`` at the same Form 1040 lines, for TY2022
+    returns processed in calendar 2023 and matched to a district by ZIP code
+    (the feed stamps it ty2023). Its rows shipped as levels on the ``full``
+    surface, and its US row was a second national target beside each Table
+    1.x control: on the pinned feed the control was 1.001x (taxable pension
+    returns) to 1.169x (taxable Social Security) the district US row.
+
+    Each state and district row of such a measure (and any AGI slice of the
+    file) now ships as its share of the file's own all-AGI US row at its own
+    period, times the control of
+    ``_soi_ht2_national_controls`` at or after that period, as microcosm#1229
+    does for taxable interest and #1040 for capital gains. Every share row
+    names its denominator in ``soi_share_total_source_record_id``. One factor
+    per measure scales the file's states and districts alike, so the
+    district-to-state reconciliation that runs next keeps factor 1, and
+    because the file's states and districts each sum exactly to its US row,
+    each sums to the control. The period stamp cancels in the share: the
+    value lands at the control's period, and target aging adds the remaining
+    years on the control's own link.
+
+    The US row retires once its rows are shares, because the control's row
+    owns the national level. Without an eligible control (none, after the
+    build period, or older than the row) the rows keep their levels and the
+    US row stays. With an eligible control but no nonzero US row of the
+    file's own, a row cannot be a share and is dropped; a stale level beside
+    the control is the defect this pass removes (#1229 and #1040 do the same).
+
+    A share assumes its measure id reads the register's ``source_column``. A
+    package that maps the measure id to another column (the district SALT
+    and PTC measures read the wrong columns, microcosm#1038), or names none,
+    would be rebased as the wrong concept, so every source fact of a row
+    rebased here, and its denominator, must read that column. A district
+    merged by the crosswalk keeps only its first contributor's layout, so its
+    contributors are read from the lineage, which records each one's column
+    (``_soi_district_source_columns``). Rows that keep their levels, and
+    facts that compile to no target, are not checked.
+
+    Raises:
+        UnreviewedSoiNationalControlColumnError: A rebased row or its
+            denominator reads another column, or names none.
+    """
+
+    controls = _soi_ht2_national_controls(facts, target_period=target_period)
+    us_totals = _soi_district_us_totals(facts)
+    source_columns = _soi_district_source_columns(facts)
+    unreviewed: dict[str, str] = {}
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        measure_id = _soi_district_rebase_measure(spec)
+        if measure_id is None:
+            specs.append(spec)
+            continue
+        key = _soi_ht2_control_key_from_spec(spec, measure_id)
+        source_period = spec.metadata.get("source_period", "")
+        control = controls.get(key)
+        if control is None or not _period_not_before(
+            control.period_key, _period_key_from_value(source_period)
+        ):
+            specs.append(spec)
+            continue
+        if _is_national_all_agi_spec(spec):
+            continue
+        record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
+        us_total = us_totals.get((record_set_id, *key, source_period))
+        if us_total is None or us_total.value == 0:
+            continue
+        expected = _SOI_HT2_NATIONAL_CONTROLS[measure_id].source_column
+        for checked_id in (
+            spec.metadata.get("ledger_source_record_id", ""),
+            us_total.source_record_id,
+        ):
+            for source_id, column in source_columns.get(
+                checked_id, ((checked_id, ""),)
+            ):
+                if column != expected:
+                    unreviewed[source_id] = column or "<none>"
+        concept = _SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
+        factor = control.value / us_total.value
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": f"total_{measure_id}",
+                    "uprating_from_period": source_period,
+                    # Lands at the CONTROL's period; target aging completes
+                    # the remaining links (#488).
+                    "uprating_to_period": control.source_period,
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                    "soi_source_concept": concept,
+                    "soi_control_concept": concept,
+                    "soi_share_total_source_record_id": us_total.source_record_id,
+                },
+            )
+        )
+    if unreviewed:
+        sample = dict(sorted(unreviewed.items())[:5])
+        raise UnreviewedSoiNationalControlColumnError(
+            f"{len(unreviewed)} congressional-district fact(s) behind rebased "
+            "rows read an IRS column other than the reviewed one, e.g. "
+            f"{sample}. Review the column against the district documentation "
+            "guide and _SOI_HT2_NATIONAL_CONTROLS before rebasing it."
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_district_rebase_measure(spec: TargetSpec) -> str | None:
+    """The registered measure of a congressional-district spec, else ``None``.
+
+    An AGI slice of the file is a share of the same US row, so it takes the
+    same factor (as #1229 and #1040 rebase district slices); the current
+    package publishes none.
+    """
+    if spec.family != "irs_soi":
+        return None
+    measure_id = spec.metadata.get("source_measure_id", "")
+    if measure_id not in _SOI_HT2_NATIONAL_CONTROLS:
+        return None
+    record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
+    if _soi_record_set_family(record_set_id) != "congressional_district":
+        return None
+    return measure_id
+
+
+def _soi_district_fact_key(fact: object) -> tuple[str, str, str] | None:
+    """(measure, filing status, universe) of a district fact, any AGI range."""
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if measure_id not in _SOI_HT2_NATIONAL_CONTROLS:
+        return None
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    if _soi_record_set_family(record_set_id) != "congressional_district":
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    return (measure_id, status, _soi_return_universe_from_fact(fact))
+
+
+def _soi_district_us_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str, str], _SoiDistrictShareTotal]:
+    """Each district package's all-AGI US totals.
+
+    Keyed by (record set, measure, filing status, universe, period), so a
+    package's rows divide by its own US row and never by another district
+    file's at the same stamp (another data year or boundary vintage). A total
+    is a share denominator, so feed order must not pick it: two different
+    values for one key raise, and equal values under two record ids name the
+    smaller id (as the #1229 and #1040 denominators do).
+    """
+    totals: dict[tuple[str, str, str, str, str], _SoiDistrictShareTotal] = {}
+    for fact in facts:
+        key = _soi_district_fact_key(fact)
+        if key is None or _geography_level(fact) != "country":
+            continue
+        if not _is_all_agi_range_fact(fact):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        total_key = (
+            _str_at(fact, "layout", "record_set_id"),
+            *key,
+            str(_period_value(fact)),
+        )
+        candidate = _SoiDistrictShareTotal(_numeric_value(fact), source_record_id)
+        current = totals.get(total_key)
+        if current is not None and current.value != candidate.value:
+            raise AmbiguousSoiNationalControlError(
+                "SOI congressional-district US total is ambiguous: "
+                f"{total_key} has {current.value!r} ({current.source_record_id}) "
+                f"and {candidate.value!r} ({candidate.source_record_id}). "
+                "Deduplicate them upstream; feed order must not pick a rebase "
+                "denominator."
+            )
+        if current is None or candidate.source_record_id < current.source_record_id:
+            totals[total_key] = candidate
+    return totals
+
+
+def _soi_district_source_columns(
+    facts: tuple[object, ...],
+) -> dict[str, tuple[tuple[str, str], ...]]:
+    """The (source record id, IRS column) of each source behind a district fact.
+
+    A district the crosswalk merged lists every contributor, with its own
+    column, under ``lineage.congressional_district_vintage_contributions``;
+    any other fact is its own source. Facts that share a record id all count,
+    so a duplicate cannot hide another column.
+    """
+    sources: dict[str, list[tuple[str, str]]] = {}
+    for fact in facts:
+        if _soi_district_fact_key(fact) is None:
+            continue
+        contributions = _at(
+            fact, "lineage", "congressional_district_vintage_contributions"
+        )
+        entries = (
+            [
+                (
+                    str(_at(item, "source_record_id") or ""),
+                    str(_at(item, "source_column_id") or ""),
+                )
+                for item in contributions
+            ]
+            if contributions
+            else [
+                (_source_record_id(fact), _str_at(fact, "layout", "source_column_id"))
+            ]
+        )
+        sources.setdefault(_source_record_id(fact), []).extend(entries)
+    return {record_id: tuple(entries) for record_id, entries in sources.items()}
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's
