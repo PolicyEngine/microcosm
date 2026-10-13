@@ -82,6 +82,7 @@ __all__ = [
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "US_SPM_MEASUREMENT_EVIDENCE_KEY",
+    "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
     "US_STORED_INPUTS_EVIDENCE_FILE",
     "US_STORED_INPUTS_EVIDENCE_KEY",
     "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
@@ -91,6 +92,7 @@ __all__ = [
     "release_dataset_role",
     "required_release_files",
     "stored_input_evidence_manifest_block",
+    "us_engine_scopes_spm_universe",
     "validate_evidence_release_dir",
     "validate_release_dir",
 ]
@@ -205,6 +207,17 @@ US_LOCAL_AREA_STORED_INPUTS_STAGE = "package"
 #: ``SPM_COMPOSITION_REQUIRED``.
 US_SPM_MEASUREMENT_EVIDENCE_KEY = "spm_measurement_composition"
 US_LOCAL_AREA_SPM_MEASUREMENT_STAGE = "package"
+#: The policyengine-us versions reviewed as scoping SPM measurement by
+#: ``spm_unit_spm_universe_status``: only the units a dataset declares
+#: ``INCLUDED`` reach the calculator (policyengine-us#9462, unreleased). It is
+#: empty because no released policyengine-us does. The publisher reads JSON
+#: only, so this register is how it knows which built-with engines may record
+#: an SPM measurement gate graded on ``INCLUDED`` units alone; under any other
+#: engine such a record would excuse units the engine measures. Add a version
+#: only after reading that release's scoped threshold formulas. The package
+#: stage refuses an engine whose variables disagree with this register, and an
+#: engine-scenario test holds the register to the locked engine.
+US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS: frozenset[str] = frozenset()
 
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
@@ -5371,6 +5384,22 @@ def _check_us_local_area_stored_inputs_gate(
             )
 
 
+def us_engine_scopes_spm_universe(engine_label: object) -> bool:
+    """Is ``"policyengine-us <version>"`` a reviewed universe-scoping engine?
+
+    True only for a label naming a version in
+    :data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`. Anything else, including a
+    label this function cannot read, is an engine that measures every unit.
+    """
+
+    prefix = "policyengine-us "
+    return (
+        isinstance(engine_label, str)
+        and engine_label.startswith(prefix)
+        and engine_label[len(prefix) :] in US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS
+    )
+
+
 def _check_us_local_area_spm_measurement_gate(
     gate_summary: Mapping,
     *,
@@ -5388,10 +5417,12 @@ def _check_us_local_area_spm_measurement_gate(
     and green, record no failures, have been checked when the release was
     packaged, name the built-with engine and certify the release's one
     microdata artifact. Its details must show a complete stored SPM
-    independence role, a measured scope consistent with whether the engine
-    scopes SPM by universe, and no measured unit and no unit inside the source
-    SPM universe without a classified adult. ``build_manifest.json`` must
-    carry the same entry. Engine-free: the check reads JSON only.
+    independence role, counts that agree with one another, the measured scope
+    the reviewed register assigns the built-with engine
+    (:data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`), and no measured unit and
+    no unit inside the source SPM universe without a classified adult.
+    ``build_manifest.json`` must carry the same entry. Engine-free: the check
+    reads JSON only.
 
     No published US local-area release carries this gate; re-publishing one
     means re-packaging it, which runs the check.
@@ -5431,7 +5462,9 @@ def _check_us_local_area_spm_measurement_gate(
     if not isinstance(details, Mapping):
         failures.append(f"{owner} must carry a 'details' object.")
     else:
-        _check_spm_measurement_details(details, owner=owner, failures=failures)
+        _check_spm_measurement_details(
+            details, owner=owner, engine=gate.get("engine"), failures=failures
+        )
     artifacts = (
         release_manifest.get("artifacts")
         if isinstance(release_manifest, Mapping)
@@ -5463,9 +5496,16 @@ def _check_us_local_area_spm_measurement_gate(
 
 
 def _check_spm_measurement_details(
-    details: Mapping, *, owner: str, failures: list[str]
+    details: Mapping, *, owner: str, engine: object, failures: list[str]
 ) -> None:
-    """The SPM measurement gate's details describe a measurable release."""
+    """The SPM measurement gate's details describe a measurable release.
+
+    The record is self-reported, so every count is held to the others and the
+    measured scope is held to the reviewed register of scoping engines
+    (:data:`US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`), not to the record's own
+    say-so: an ``included_units`` record under an engine that measures every
+    unit would excuse the units outside the universe.
+    """
 
     owner = f"{owner} details"
     if details.get("role_column_present") is not True:
@@ -5475,53 +5515,98 @@ def _check_spm_measurement_details(
     for name in ("role_null_values", "role_non_boolean_values"):
         if details.get(name) != 0 or type(details.get(name)) is not int:
             failures.append(f"{owner} {name!r} must be 0, got {details.get(name)!r}.")
+
+    def split(name: str) -> tuple[int, int] | None:
+        value = details.get(name)
+        if not isinstance(value, Mapping) or set(value) != {"INCLUDED", "OUTSIDE"}:
+            return None
+        pair = (value["INCLUDED"], value["OUTSIDE"])
+        return pair if all(type(v) is int and v >= 0 for v in pair) else None
+
     counts = {
         name: details.get(name)
         for name in (
             "n_units",
             "n_measured_units",
             "n_measured_units_without_classified_adult",
+            "n_units_without_classified_adult",
         )
     }
-    if not all(type(value) is int and value >= 0 for value in counts.values()):
-        failures.append(
-            f"{owner} must record non-negative integer counts {sorted(counts)}, "
-            f"got {counts!r}."
-        )
-        return
-    if counts["n_measured_units_without_classified_adult"] != 0:
-        failures.append(
-            f"{owner} records "
-            f"{counts['n_measured_units_without_classified_adult']} measured SPM "
-            "unit(s) with no classified adult; every SPM measurement on the "
-            "release would raise SPM_COMPOSITION_REQUIRED."
-        )
-    scopes = details.get("engine_scopes_spm_universe")
-    scope = details.get("measured_scope")
-    if type(scopes) is not bool or scope != (
-        "included_units" if scopes else "all_units"
+    units = split("n_units_by_universe")
+    unclassified = split("n_units_without_classified_adult_by_universe")
+    if (
+        not all(type(value) is int and value >= 0 for value in counts.values())
+        or units is None
+        or unclassified is None
     ):
         failures.append(
-            f"{owner} measured_scope {scope!r} does not follow "
-            f"engine_scopes_spm_universe {scopes!r}: an engine that scopes SPM "
-            "by universe measures 'included_units', any other 'all_units'."
+            f"{owner} must record non-negative integer counts {sorted(counts)} "
+            "and INCLUDED/OUTSIDE splits n_units_by_universe and "
+            "n_units_without_classified_adult_by_universe."
         )
-    elif scope == "all_units" and counts["n_measured_units"] != counts["n_units"]:
+        return
+    if counts["n_units"] < 1 or sum(units) != counts["n_units"]:
         failures.append(
-            f"{owner} measures {counts['n_measured_units']} of "
-            f"{counts['n_units']} units under an engine that measures every unit."
+            f"{owner} n_units_by_universe {units} must sum to its "
+            f"{counts['n_units']} units, and there must be at least one."
         )
-    if counts["n_measured_units"] > counts["n_units"] or counts["n_units"] == 0:
+    if sum(unclassified) != counts["n_units_without_classified_adult"] or any(
+        part > whole for part, whole in zip(unclassified, units, strict=True)
+    ):
         failures.append(
-            f"{owner} must measure at most its {counts['n_units']} units, and "
-            "at least one."
+            f"{owner} n_units_without_classified_adult_by_universe {unclassified} "
+            "must sum to n_units_without_classified_adult "
+            f"({counts['n_units_without_classified_adult']}) and fit inside "
+            f"n_units_by_universe {units}."
         )
-    by_universe = details.get("n_units_without_classified_adult_by_universe")
-    if not isinstance(by_universe, Mapping) or by_universe.get("INCLUDED") != 0:
+
+    scopes = details.get("engine_scopes_spm_universe")
+    reviewed = us_engine_scopes_spm_universe(engine)
+    if type(scopes) is not bool or scopes != reviewed:
         failures.append(
-            f"{owner} must record 0 units inside the source SPM universe "
-            "without a classified adult (n_units_without_classified_adult_by_"
-            f"universe.INCLUDED), got {by_universe!r}."
+            f"{owner} engine_scopes_spm_universe is {scopes!r}, but {engine!r} "
+            f"{'is' if reviewed else 'is not'} a reviewed universe-scoping engine "
+            "(US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS); the measured scope "
+            "follows the engine, not the record."
+        )
+        return
+    expected_scope = "included_units" if reviewed else "all_units"
+    expected_measured = units[0] if reviewed else counts["n_units"]
+    expected_unclassified = (
+        unclassified[0] if reviewed else counts["n_units_without_classified_adult"]
+    )
+    if details.get("measured_scope") != expected_scope:
+        failures.append(
+            f"{owner} measured_scope must be {expected_scope!r} under {engine!r}, "
+            f"got {details.get('measured_scope')!r}."
+        )
+    if counts["n_measured_units"] != expected_measured:
+        failures.append(
+            f"{owner} must measure {expected_measured} units ({expected_scope}), "
+            f"got {counts['n_measured_units']}."
+        )
+    if counts["n_measured_units_without_classified_adult"] != expected_unclassified:
+        failures.append(
+            f"{owner} n_measured_units_without_classified_adult "
+            f"({counts['n_measured_units_without_classified_adult']}) must equal "
+            f"the unclassified units in its measured scope ({expected_unclassified})."
+        )
+    if reviewed and details.get("universe_declared_in_release") is not True:
+        failures.append(
+            f"{owner} must record universe_declared_in_release: true; a scoping "
+            "engine cannot measure a release that declares no universe."
+        )
+    if expected_unclassified != 0:
+        failures.append(
+            f"{owner} records {expected_unclassified} measured SPM unit(s) with "
+            "no classified adult; every SPM measurement on the release would "
+            "raise SPM_COMPOSITION_REQUIRED."
+        )
+    if unclassified[0] != 0:
+        failures.append(
+            f"{owner} records {unclassified[0]} unit(s) inside the source SPM "
+            "universe without a classified adult; that is a housing-unit data "
+            "defect under any engine."
         )
 
 

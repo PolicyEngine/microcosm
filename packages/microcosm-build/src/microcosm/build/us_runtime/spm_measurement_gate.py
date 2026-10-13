@@ -28,12 +28,13 @@ fails under every engine.
 The universe split comes from the source producer
 (:func:`~microcosm.build.us_runtime.spm_universe_source.classify_spm_universe`).
 Under an engine that does not scope, it is reported only; it never excuses a
-unit the engine measures. The gate records aggregate counts only, never a
-unit id or a member's age.
+unit the engine measures. The gate records aggregate counts and refusal codes
+only, on a pass or a failure: never a unit id or a member's age.
 """
 
 from __future__ import annotations
 
+import numbers
 from collections.abc import Collection
 from typing import Any
 
@@ -43,12 +44,13 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.frame import Frame
 
-from .spm_composition import _spm_composition
+from .spm_composition import _assert_membership_joins, _person_ages, _sum_by_unit
 from .spm_role_source import NATIVE_SPM_ROLE, SPM_ADULT_RULE
 from .spm_universe_source import (
     INCLUDED,
     OUTSIDE,
     SPM_UNIVERSE_PROFILE_NAME,
+    SPM_UNIVERSE_REFUSALS,
     SPM_UNIVERSE_RULE,
     UNIVERSE_INPUT,
     classify_spm_universe,
@@ -79,11 +81,32 @@ def engine_scopes_spm_universe(engine_variables: Collection[str]) -> bool:
     return UNIVERSE_INPUT in engine_variables
 
 
-def _role_failures(person: pd.DataFrame) -> tuple[list[str], dict[str, Any]]:
-    """Why the stored role is not a complete Boolean source column."""
+def _is_boolean_like(value: object) -> bool:
+    """A Python or numpy Boolean, or a real number; never text or bytes."""
+
+    return isinstance(value, (bool, np.bool_, numbers.Real)) and not isinstance(
+        value, (str, bytes)
+    )
+
+
+def _validated_role(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray | None, list[str], dict[str, Any]]:
+    """The stored role as one Boolean vector, or why it is not one.
+
+    The engine and the composition check both cast a stored role to Boolean,
+    and a cast turns any non-empty text or bytes value, ``"0"`` included,
+    into ``True``. So only two encodings are accepted: an actual Boolean, or a
+    real number equal to 0 or 1, in a Boolean, numeric or object column.
+    Text, bytes and every other value are refused, as is a null: a declared
+    dataset source input may not be defaulted. The vector returned here is the
+    one the composition is graded on, so the counts and the verdict cannot
+    read the column two ways.
+    """
 
     if NATIVE_SPM_ROLE not in person.columns:
         return (
+            None,
             [
                 f"The release stores no {NATIVE_SPM_ROLE!r} column. It is the "
                 "engine's one declared dataset source input; without it the "
@@ -94,13 +117,27 @@ def _role_failures(person: pd.DataFrame) -> tuple[list[str], dict[str, Any]]:
             {"role_column_present": False},
         )
     column = person[NATIVE_SPM_ROLE]
-    nulls = int(column.isna().sum())
-    values = column.dropna()
-    if pd.api.types.is_bool_dtype(values.dtype):
-        non_boolean = 0
+    null = column.isna().to_numpy(dtype=bool)
+    dtype = column.dtype
+    if pd.api.types.is_bool_dtype(dtype):
+        valid = ~null
+        true = column.fillna(False).to_numpy(dtype=bool)
+    elif pd.api.types.is_numeric_dtype(dtype):
+        values = column.to_numpy(dtype=np.float64, na_value=np.nan)
+        valid = ~null & np.isin(values, (0.0, 1.0))
+        true = values == 1.0
+    elif pd.api.types.is_object_dtype(dtype):
+        boolean_like = column.map(_is_boolean_like).to_numpy(dtype=bool)
+        values = pd.to_numeric(column.where(boolean_like), errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        valid = ~null & boolean_like & np.isin(values, (0.0, 1.0))
+        true = values == 1.0
     else:
-        numeric = pd.to_numeric(values, errors="coerce")
-        non_boolean = int((~numeric.isin([0, 1])).sum())
+        valid = np.zeros(len(column), dtype=bool)
+        true = valid
+    nulls = int(null.sum())
+    non_boolean = int((~valid & ~null).sum())
     failures = []
     if nulls:
         failures.append(
@@ -111,14 +148,25 @@ def _role_failures(person: pd.DataFrame) -> tuple[list[str], dict[str, Any]]:
     if non_boolean:
         failures.append(
             f"{non_boolean} person row(s) store a {NATIVE_SPM_ROLE!r} value that "
-            "is not Boolean."
+            "is not a Boolean or a number equal to 0 or 1 (column dtype "
+            f"{dtype}); text and bytes cast to True whatever they spell."
         )
-    return failures, {
+    details = {
         "role_column_present": True,
         "role_null_values": nulls,
         "role_non_boolean_values": non_boolean,
-        "role_true_persons": int(pd.to_numeric(values, errors="coerce").eq(1).sum()),
     }
+    if failures:
+        return None, failures, details
+    role = np.asarray(true & valid, dtype=bool)
+    return role, [], {**details, "role_true_persons": int(role.sum())}
+
+
+def _universe_refusal_code(error: ValueError) -> str:
+    """The producer's refusal code, without the record examples it names."""
+
+    code = str(error).split(":", 1)[0]
+    return code if code in SPM_UNIVERSE_REFUSALS else "unrecognised refusal"
 
 
 def _oldest_member_bands(
@@ -165,7 +213,7 @@ def check_release_spm_measurement(
 
     schema = frame.schema
     person = frame.table(schema.person_entity)
-    failures, role_details = _role_failures(person)
+    role, failures, role_details = _validated_role(person)
     details: dict[str, Any] = {
         "rule": SPM_ADULT_RULE,
         "role_column": NATIVE_SPM_ROLE,
@@ -175,7 +223,7 @@ def check_release_spm_measurement(
         "universe_rule": SPM_UNIVERSE_RULE,
         "n_persons": int(len(person)),
     }
-    if failures:
+    if role is None:
         return GateResult(
             name=SPM_MEASUREMENT_GATE_NAME,
             passed=False,
@@ -183,17 +231,38 @@ def check_release_spm_measurement(
             details=details,
         )
 
+    unit_ids = frame.table(unit_entity)[schema.id_column(unit_entity)].to_numpy()
+    membership_column = schema.membership_column(unit_entity)
+    membership = person[membership_column].to_numpy()
     try:
-        composition = _spm_composition(frame, unit_entity=unit_entity)
-    except ValueError as error:
+        _assert_membership_joins(
+            membership,
+            unit_ids,
+            unit_entity=unit_entity,
+            membership_column=membership_column,
+        )
+        age = _person_ages(person)
+    except ValueError:
+        # The checker's message names example ids; the gate records none.
         return GateResult(
             name=SPM_MEASUREMENT_GATE_NAME,
             passed=False,
-            failures=(f"The SPM composition cannot be evaluated: {error}",),
+            failures=(
+                "The SPM composition cannot be evaluated: the person table has "
+                f"no readable age, or some {membership_column!r} value matches no "
+                f"{unit_entity} id. Run "
+                "microcosm.build.us_runtime.spm_composition.check_spm_composition "
+                "on the frame for the rows behind it.",
+            ),
             details=details,
         )
-    unit_ids = composition.unit_ids
-    unclassified = composition.offending
+    with np.errstate(invalid="ignore"):
+        aged_18_plus = age >= 18.0
+        adult = aged_18_plus | ((age >= 15.0) & role)
+    unclassified = _sum_by_unit(adult, membership, unit_ids) < 1
+    n_units_without_member_18_plus = int(
+        (_sum_by_unit(aged_18_plus, membership, unit_ids) < 1).sum()
+    )
 
     try:
         universe = classify_spm_universe(
@@ -205,14 +274,22 @@ def check_release_spm_measurement(
             unit_membership_column=schema.membership_column(unit_entity),
         )
     except ValueError as error:
+        # The producer's message names example ids; the gate records its code.
+        code = _universe_refusal_code(error)
         return GateResult(
             name=SPM_MEASUREMENT_GATE_NAME,
             passed=False,
             failures=(
                 "The source SPM measurement universe cannot be declared for "
-                f"this release: {error}",
+                f"this release ({code}). Run "
+                "microcosm.build.us_runtime.spm_universe_source."
+                "classify_spm_universe on the frame for the records behind it.",
             ),
-            details={**details, "n_units": int(len(unit_ids))},
+            details={
+                **details,
+                "n_units": int(len(unit_ids)),
+                "universe_refusal": code,
+            },
         )
     status = np.asarray(universe.status, dtype=object)
     included = status == INCLUDED
@@ -268,11 +345,9 @@ def check_release_spm_measurement(
             "n_measured_units_without_classified_adult": n_measured_unclassified,
             "n_units_without_classified_adult": int(unclassified.sum()),
             "n_units_without_classified_adult_by_universe": by_universe,
-            "n_units_without_member_aged_18_or_over": (
-                composition.n_units_without_member_18_plus
-            ),
+            "n_units_without_member_aged_18_or_over": (n_units_without_member_18_plus),
             "unclassified_units_by_oldest_member": _oldest_member_bands(
-                composition.age, composition.membership, unit_ids, unclassified
+                age, membership, unit_ids, unclassified
             ),
         }
     )

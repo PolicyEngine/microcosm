@@ -282,8 +282,10 @@ def with_acs_spm_independence_role(frame: Frame) -> AcsSpmRoleResult:
     §7 Q1). A caller applies this only where the partner spine delivers the
     role too, so the pooled column is complete on both spines.
 
-    Refuses, naming the units, rather than deriving when: the frame already
-    carries the role; ``RELSHIPP`` or ``age`` is missing, blank or off-domain;
+    Refuses rather than deriving (a refusal about units names up to five
+    example unit ids, the others give counts) when: the frame already
+    carries the role; ``RELSHIPP`` is missing, blank or outside the ACS codes
+    20 to 38; ``age`` is missing or not finite (no age range is checked);
     the SPM partition is not the household partition; a unit has other than
     exactly one head, more than one spouse, or a group-quarters person beside
     anyone else; ``TYPEHUGQ`` (when present) disagrees with ``RELSHIPP`` about

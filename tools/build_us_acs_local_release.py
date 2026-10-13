@@ -88,6 +88,7 @@ from microcosm.data.contract import (
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
+    us_engine_scopes_spm_universe,
 )
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -3139,7 +3140,9 @@ def _require_spm_measurement(frame) -> dict[str, object]:
     grades the calibrated frame against the installed policyengine-us, the
     engine the release records as built-with: it measures every unit unless it
     scopes SPM by measurement universe. The gate also requires the stored SPM
-    independence role to be complete.
+    independence role to be complete. Whether the engine scopes is read from
+    its variables and must agree with the publisher's reviewed register
+    (``microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS``).
 
     Returns the gate entry the release's gate summary records.
     """
@@ -3155,11 +3158,23 @@ def _require_spm_measurement(frame) -> dict[str, object]:
             "imported, so the SPM measurement cannot be graded against the "
             f"engine the release records as built-with: {error}"
         ) from error
+    scopes = spm_measurement_gate.engine_scopes_spm_universe(engine.variables)
+    reviewed = us_engine_scopes_spm_universe(engine.label)
+    if scopes != reviewed:
+        # The publisher reads JSON only and trusts the reviewed register, so
+        # the engine's behaviour and the register must agree before a verdict
+        # graded on either is recorded.
+        raise SystemExit(
+            f"Refusing to package: {engine.label} "
+            f"{'defines' if scopes else 'does not define'} "
+            "spm_unit_spm_universe_status, but the reviewed register "
+            "microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS "
+            f"says it {'scopes' if reviewed else 'does not scope'} SPM "
+            "measurement by universe. Read that engine's scoped threshold "
+            "formulas and update the register before packaging against it."
+        )
     result = spm_measurement_gate.check_release_spm_measurement(
-        frame,
-        engine_scopes_universe=spm_measurement_gate.engine_scopes_spm_universe(
-            engine.variables
-        ),
+        frame, engine_scopes_universe=scopes
     )
     if not result.passed:
         raise SystemExit(

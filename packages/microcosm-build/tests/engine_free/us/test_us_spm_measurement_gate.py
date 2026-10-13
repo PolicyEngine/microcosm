@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.spm_composition import check_spm_composition
@@ -165,27 +166,74 @@ def test_a_null_role_fails_rather_than_reading_as_false():
     assert result.details["role_null_values"] == 1
 
 
-def test_a_non_boolean_role_fails():
-    frame = release_frame(_MEASURABLE)
+#: An adult, and a group-quarters 16-year-old whose stored role is False. Read
+#: correctly, the teen's unit has no classified adult; read as True, it has one.
+_TEEN_WITHOUT_ROLE = [Household([(41, True)]), Household([(16, False)], kind=2)]
+
+_ACCEPTED_ROLE_ENCODINGS = {
+    "numpy_bool": lambda role: role.to_numpy(dtype=bool),
+    "nullable_boolean": lambda role: role.astype("boolean"),
+    "uint8": lambda role: role.astype(np.uint8),
+    "int64": lambda role: role.astype(np.int64),
+    "float64": lambda role: role.astype(np.float64),
+    "object_bool": lambda role: role.astype(object),
+    "object_int": lambda role: pd.Series([int(v) for v in role], dtype=object),
+}
+_REFUSED_ROLE_ENCODINGS = {
+    "text_digits": lambda role: pd.Series(["1" if v else "0" for v in role]),
+    "object_text_digits": lambda role: pd.Series(
+        ["1" if v else "0" for v in role], dtype=object
+    ),
+    "text_words": lambda role: pd.Series([str(bool(v)) for v in role], dtype=object),
+    "bytes_digits": lambda role: pd.Series(
+        [b"1" if v else b"0" for v in role], dtype=object
+    ),
+    "object_bool_and_text": lambda role: pd.Series([True, "0"], dtype=object),
+    "two_for_true": lambda role: role.astype(np.int64) * 2,
+    "fraction": lambda role: role.astype(np.float64) * 0.5,
+}
+
+
+def _with_role_encoding(encode):
+    frame = release_frame(_TEEN_WITHOUT_ROLE)
     person = frame.table("person")
-    person["is_spm_independent_minor_role"] = np.where(
-        person["is_spm_independent_minor_role"], 2, 0
+    # A Series keeps its dtype on assignment; the person index is 0..n-1.
+    person["is_spm_independent_minor_role"] = encode(
+        person["is_spm_independent_minor_role"].astype(bool)
     )
+    return frame
+
+
+@pytest.mark.parametrize("encoding", sorted(_ACCEPTED_ROLE_ENCODINGS))
+def test_every_accepted_role_encoding_reads_the_same_role(encoding):
+    """A Boolean, or a number equal to 0 or 1, in any column type that can
+    hold one: each reads the teen's False as False."""
+
+    frame = _with_role_encoding(_ACCEPTED_ROLE_ENCODINGS[encoding])
+
+    result = check_release_spm_measurement(frame, engine_scopes_universe=False)
+
+    assert result.details["role_non_boolean_values"] == 0
+    assert result.details["role_true_persons"] == 1
+    assert result.details["n_units_without_classified_adult"] == 1
+    assert not result.passed
+
+
+@pytest.mark.parametrize("encoding", sorted(_REFUSED_ROLE_ENCODINGS))
+def test_a_role_that_is_not_boolean_is_refused_before_it_can_cast_to_true(encoding):
+    """Text and bytes cast to True whatever they spell: a stored ``"0"`` would
+    hand the teen the role and the release would pass. The gate refuses the
+    column instead of grading it."""
+
+    frame = _with_role_encoding(_REFUSED_ROLE_ENCODINGS[encoding])
 
     result = check_release_spm_measurement(frame, engine_scopes_universe=False)
 
     assert not result.passed
-    assert result.details["role_non_boolean_values"] == 5
-
-
-def test_an_integer_coded_role_is_accepted():
-    frame = release_frame(_MEASURABLE)
-    person = frame.table("person")
-    person["is_spm_independent_minor_role"] = person[
-        "is_spm_independent_minor_role"
-    ].astype(np.uint8)
-
-    assert check_release_spm_measurement(frame, engine_scopes_universe=False).passed
+    assert result.details["role_non_boolean_values"] >= 1
+    # Refused, not graded: no composition was computed from the column.
+    assert "role_true_persons" not in result.details
+    assert "n_units_without_classified_adult" not in result.details
 
 
 def test_a_stored_declaration_must_equal_the_source():
@@ -205,14 +253,46 @@ def test_a_bytes_encoded_declaration_reads_as_its_member_name():
     assert check_release_spm_measurement(frame, engine_scopes_universe=True).passed
 
 
-def test_an_undeclarable_universe_fails():
+def test_an_undeclarable_universe_fails_with_the_producers_code():
     frame = release_frame(_MEASURABLE)
     frame.table("household")["household_spine"] = "puf_tax_detail"
 
     result = check_release_spm_measurement(frame, engine_scopes_universe=False)
 
     assert not result.passed
+    assert result.details["universe_refusal"] == "SPM_UNIVERSE_UNDECLARED_SPINE"
     assert "cannot be declared" in result.failures[0]
+    assert "SPM_UNIVERSE_UNDECLARED_SPINE" in result.failures[0]
+
+
+def test_a_universe_refusal_names_no_record():
+    """The producer's own message lists example household ids. The gate keeps
+    the code and drops the examples."""
+
+    crowded = [*_MEASURABLE, Household([(30, True), (31, True)], kind=2)]
+
+    result = _grade(crowded)
+
+    assert result.failures == (
+        "The source SPM measurement universe cannot be declared for this "
+        "release (SPM_UNIVERSE_GQ_MULTI_PERSON). Run "
+        "microcosm.build.us_runtime.spm_universe_source.classify_spm_universe "
+        "on the frame for the records behind it.",
+    )
+    assert result.details["universe_refusal"] == "SPM_UNIVERSE_GQ_MULTI_PERSON"
+
+
+def test_an_unjoinable_membership_fails_without_naming_an_id():
+    frame = release_frame(_MEASURABLE)
+    frame.table("person").loc[0, "person_spm_unit_id"] = 555_444_333
+
+    result = check_release_spm_measurement(frame, engine_scopes_universe=False)
+
+    assert not result.passed
+    assert "cannot be evaluated" in result.failures[0]
+    assert "555444333" not in json.dumps(
+        {"failures": result.failures, "details": result.details}
+    )
 
 
 def test_the_count_agrees_with_the_preflight_composition_check():

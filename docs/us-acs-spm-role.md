@@ -52,12 +52,19 @@ like the ASEC role it holds before the adult rule
 `age >= 18 OR (age >= 15 AND role)` is applied.
 
 `microcosm.build.us_runtime.acs_inputs.with_acs_spm_independence_role` applies
-it and refuses, naming the units, when the frame already carries the role;
-`RELSHIPP` or `age` is missing, blank or off-domain; the SPM partition is not
-the household partition; a unit has other than exactly one head, more than one
-spouse, or a group-quarters person beside anyone else; `TYPEHUGQ` disagrees
-with `RELSHIPP` about group quarters; or a housing unit is left without a
-classified adult.
+it and refuses when:
+
+- the frame already carries the role;
+- `RELSHIPP` is missing, blank or outside the ACS codes 20 to 38;
+- `age` is missing or not a finite number (the function checks no age range);
+- the SPM partition is not the household partition;
+- a unit has other than exactly one head, more than one spouse, or a
+  group-quarters person beside anyone else;
+- `TYPEHUGQ` disagrees with `RELSHIPP` about group quarters;
+- a housing unit is left without a classified adult.
+
+A refusal about units names up to five example unit ids; the others give
+counts.
 
 ## Evidence
 
@@ -149,10 +156,19 @@ release records as built-with.
   before policyengine-us#9462) measures every SPM unit. One that defines it
   measures the units a release declares `INCLUDED`, and cannot measure a
   release that declares nothing.
+- **Which engines scope.** The gate reads scoping from the engine's variables.
+  The publisher reads JSON only, so it takes scoping from a reviewed register,
+  `microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS`, which is
+  empty until a policyengine-us release that scopes has been read and added.
+  The package stage refuses an engine whose variables disagree with the
+  register.
 - **What fails the release.** The release fails when:
   - any unit that engine measures has no classified adult under
     `age >= 18 OR (age >= 15 AND is_spm_independent_minor_role)`;
-  - the stored role is missing, null or not Boolean;
+  - the stored role is missing, null, or anything but a Boolean or a number
+    equal to 0 or 1 (text and bytes cast to `True` whatever they spell, so
+    they are refused, and the composition is graded on the validated
+    vector);
   - the source universe cannot be declared
     (`spm_universe_source.classify_spm_universe`);
   - a stored declaration differs from the source's.
@@ -161,10 +177,13 @@ release records as built-with.
   classified adult fails under every engine.
 - **What it records.** The gate records counts only, split by source universe,
   under `gate_summary.json` gate `spm_measurement_composition`, bound to the
-  packaged bytes and the engine. It records no unit id and no age.
+  packaged bytes and the engine. On a pass or a failure it records no unit id
+  and no age; a universe refusal is recorded by its code alone.
 - **The publisher.** The publisher's contract
   (`microcosm.data.contract._check_us_local_area_spm_measurement_gate`) requires
-  the gate of every US local-area release.
+  the gate of every US local-area release. It holds the record's counts to one
+  another and its measured scope to the register, so a record cannot excuse
+  units by claiming its engine scopes.
 
 ## Invariants and tests
 

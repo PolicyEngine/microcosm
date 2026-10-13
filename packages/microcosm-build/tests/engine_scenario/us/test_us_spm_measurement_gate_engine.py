@@ -85,6 +85,22 @@ def test_the_installed_engine_measures_every_unit():
     assert not engine_scopes_spm_universe(system.variables)
 
 
+def test_the_publishers_register_agrees_with_the_installed_engine():
+    """The publisher reads JSON only and takes scoping from its reviewed
+    register. Hold that register to what the locked engine actually defines."""
+
+    from importlib import metadata
+
+    from policyengine_us.system import system
+
+    from microcosm.data.contract import us_engine_scopes_spm_universe
+
+    label = f"policyengine-us {metadata.version('policyengine-us')}"
+    assert us_engine_scopes_spm_universe(label) is engine_scopes_spm_universe(
+        system.variables
+    )
+
+
 @pytest.mark.parametrize("population", sorted(_POPULATIONS))
 def test_the_gate_fails_exactly_when_the_installed_engine_refuses(population):
     households = _POPULATIONS[population]

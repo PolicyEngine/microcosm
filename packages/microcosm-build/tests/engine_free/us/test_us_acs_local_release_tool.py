@@ -89,10 +89,13 @@ _MEASURABLE_DETAILS = {
     "role_null_values": 0,
     "role_non_boolean_values": 0,
     "engine_scopes_spm_universe": False,
+    "universe_declared_in_release": False,
     "measured_scope": "all_units",
     "n_units": 8,
+    "n_units_by_universe": {"INCLUDED": 8, "OUTSIDE": 0},
     "n_measured_units": 8,
     "n_measured_units_without_classified_adult": 0,
+    "n_units_without_classified_adult": 0,
     "n_units_without_classified_adult_by_universe": {"INCLUDED": 0, "OUTSIDE": 0},
 }
 
@@ -1684,6 +1687,65 @@ def test_package_refuses_an_spm_gate_without_an_importable_engine(
         module._require_spm_measurement(object())
 
 
+@pytest.mark.parametrize(
+    ("defines_declaration", "registered", "refused"),
+    [
+        (False, False, False),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_package_refuses_an_engine_whose_scoping_disagrees_with_the_register(
+    monkeypatch, defines_declaration, registered, refused
+):
+    """The publisher trusts the reviewed register of universe-scoping engines.
+    An engine that defines the declaration without being registered, or is
+    registered without defining it, has not been reviewed: no verdict graded
+    on either reading is recorded."""
+
+    from microcosm.build.us_runtime.spm_universe_source import UNIVERSE_INPUT
+    from microcosm.data import contract
+
+    variables = set(_PACKAGE_ENGINE.variables)
+    if defines_declaration:
+        variables.add(UNIVERSE_INPUT)
+    monkeypatch.setattr(
+        stored_inputs,
+        "installed_us_engine",
+        lambda: stored_inputs.CertifiedEngine(
+            label="policyengine-us 2.2.1", variables=frozenset(variables)
+        ),
+    )
+    monkeypatch.setattr(
+        contract,
+        "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
+        frozenset({"2.2.1"}) if registered else frozenset(),
+    )
+    graded_as = []
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: (
+            graded_as.append(engine_scopes_universe)
+            or GateResult(
+                name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+                passed=True,
+                details=dict(_MEASURABLE_DETAILS),
+            )
+        ),
+    )
+    module = _load_tool_module()
+
+    if refused:
+        with pytest.raises(SystemExit, match="reviewed register"):
+            module._require_spm_measurement(object())
+        assert graded_as == []
+    else:
+        module._require_spm_measurement(object())
+        assert graded_as == [defines_declaration]
+
+
 @requires_pytables
 def test_the_spm_measurement_gate_meets_the_publisher_requirement(
     tmp_path, monkeypatch
@@ -1747,7 +1809,11 @@ def test_the_spm_measurement_gate_meets_the_publisher_requirement(
     )
 
     crashing = json.loads(json.dumps(gate_summary))
-    crashing["gates"][key]["details"]["n_measured_units_without_classified_adult"] = 1
+    crashing["gates"][key]["details"].update(
+        n_measured_units_without_classified_adult=1,
+        n_units_without_classified_adult=1,
+        n_units_without_classified_adult_by_universe={"INCLUDED": 1, "OUTSIDE": 0},
+    )
     build = json.loads(json.dumps(build_manifest))
     build["gates"][key] = crashing["gates"][key]
     assert any(
