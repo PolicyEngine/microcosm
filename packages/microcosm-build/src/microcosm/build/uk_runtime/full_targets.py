@@ -153,6 +153,11 @@ def load_uk_full_target_inputs(
     # recorded below instead of blocking the build.
     national_registries = {}
     local_registries = {}
+    # The compile's full report for every period, beside the registries: the
+    # compile-parity gates classify a fixture row whose reference did not
+    # resolve as ledger_absent, and need the report to do it.
+    national_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
+    local_unsupported: dict[int, tuple[Mapping[str, object], ...]] = {}
     unsupported_validation: dict[str, dict[int, tuple[str, ...]]] = {
         "national": {},
         "local": {},
@@ -177,6 +182,7 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         national_registries[period] = compilation.registry
+        national_unsupported[period] = tuple(compilation.unsupported)
     for period in local_periods:
         compilation = compile_uk_local_target_registry(
             artifact.facts, target_period=period, crosswalk=crosswalk
@@ -191,6 +197,7 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         local_registries[period] = compilation.registry
+        local_unsupported[period] = tuple(compilation.unsupported)
     # microcosm#1123: reconcile the compiled national register across its own
     # grains before the exclusions, so a control's excluded members still
     # count, and the register the solve binds (and the frozen scoring register
@@ -280,6 +287,8 @@ def load_uk_full_target_inputs(
         },
         "uk_ledger_compiled_registries": national_registries,
         "uk_ledger_compiled_local_registries": local_registries,
+        "uk_ledger_compile_unsupported": national_unsupported,
+        "uk_ledger_compile_local_unsupported": local_unsupported,
     }
 
 

@@ -148,6 +148,8 @@ def target_inputs(monkeypatch, toy_ladder):
         "ledger_provenance": {"fixture": True},
         "uk_ledger_compiled_registries": {2026: national},
         "uk_ledger_compiled_local_registries": {2026: local},
+        "uk_ledger_compile_unsupported": {2026: ()},
+        "uk_ledger_compile_local_unsupported": {2026: ()},
     }
     monkeypatch.setattr(
         full_targets, "load_uk_full_target_inputs", lambda *args, **kwargs: inputs

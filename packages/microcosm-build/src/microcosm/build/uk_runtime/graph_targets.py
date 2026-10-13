@@ -356,6 +356,14 @@ def compile_uk_full_target_surface(
                 "uk_ledger_compiled_local_registries"
             ].items()
         },
+        "uk_ledger_compile_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_local_unsupported"].items()
+        },
         "calibration_year": period,
     }
     return payload

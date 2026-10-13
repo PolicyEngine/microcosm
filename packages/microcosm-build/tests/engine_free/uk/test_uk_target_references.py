@@ -1531,6 +1531,10 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
             compilation.registry,
             _load_ledger_compile_parity_fixture(spec.fixture_resource),
             signed_differences=expected["differences"],
+            # As the release-cut producer calls it: a reference the feed no
+            # longer resolves is signed as ledger_absent, and the gate tells
+            # it from a fixture-only row by the compile's own report.
+            unsupported=compilation.unsupported,
         )
         assert gate.passed, gate.failures
 

@@ -640,6 +640,14 @@ def _source_gate_evidence(context: KernelContext, engine):
                 "uk_ledger_compiled_local_registries"
             ].items()
         },
+        "uk_ledger_compile_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_local_unsupported"].items()
+        },
         "exclusions_evaluated_on": date.fromisoformat(
             str(context.params["review_date"])
         ),

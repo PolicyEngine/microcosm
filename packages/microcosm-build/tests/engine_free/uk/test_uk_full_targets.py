@@ -366,6 +366,16 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
     # release-cut producer keeps it; the missing references are recorded.
     assert set(result["uk_ledger_compiled_registries"]) == {2023, 2024, 2025}
     assert result["uk_ledger_compiled_registries"][2023] is partial
+    # The compile's report travels beside each registry, one entry for every
+    # compiled period, so the parity gates can classify the missing row.
+    assert result["uk_ledger_compile_unsupported"] == {
+        2023: ({"name": "obr.income_tax", "period": 2023, "reason": "no fact"},),
+        2024: (),
+        2025: (),
+    }
+    assert set(result["uk_ledger_compile_local_unsupported"]) == set(
+        result["uk_ledger_compiled_local_registries"]
+    )
     completeness = result["register_completeness"]
     assert completeness["validation_periods"] == {
         "national": [2023, 2025],

@@ -1457,6 +1457,95 @@ class TestPreflightBindings:
             is local
         )
 
+    def test_ledger_compile_parity_requires_the_compiles_unsupported_report(
+        self,
+    ) -> None:
+        # The registries alone are not the evidence. Without the compile's
+        # report of unsupported references the gate is evidence_absent, never
+        # a verdict that reads an unresolved reference as a fixture-only row.
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _ledger_compile_parity_required_artifacts,
+        )
+
+        assert _ledger_compile_parity_required_artifacts({}) == {
+            "uk_ledger_compiled_registries",
+            "uk_ledger_compile_unsupported",
+        }
+        assert _ledger_compile_parity_required_artifacts(
+            {"registry_artifact": "uk_ledger_compiled_local_registries"}
+        ) == {
+            "uk_ledger_compiled_local_registries",
+            "uk_ledger_compile_local_unsupported",
+        }
+
+    def test_ledger_compile_parity_forwards_the_compiles_unsupported_report(
+        self, monkeypatch
+    ) -> None:
+        from microcosm.build.uk_runtime import battery_bindings
+
+        fixture = TargetRegistry(
+            (
+                TargetSpec(
+                    name="ons.series",
+                    entity="household",
+                    measure="measure",
+                    value=5.0,
+                    period=2023,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        monkeypatch.setattr(
+            battery_bindings,
+            "_load_ledger_compile_parity_fixture",
+            lambda resource: fixture,
+        )
+        parameters = {
+            "fixture_resource": "synthetic.json",
+            "target_period": 2023,
+            "signed_differences": (
+                {
+                    "fixture_value": 5.0,
+                    "kind": "ledger_absent",
+                    "name": "ons.series",
+                    "period": 2023,
+                    "reason": "reviewed: the pinned feed no longer resolves it",
+                },
+            ),
+        }
+        unresolved = {"name": "ons.series", "period": 2023, "reason": "no fact"}
+
+        def evaluate(unsupported):
+            return battery_bindings._evaluate_ledger_compile_parity(
+                EvidenceContext(
+                    artifacts={
+                        "uk_ledger_compiled_registries": {
+                            2023: TargetRegistry((), country="uk")
+                        },
+                        "uk_ledger_compile_unsupported": unsupported,
+                    }
+                ),
+                parameters,
+            )
+
+        # The compile reported the reference: the signed ledger_absent row
+        # reproduces. A serialised surface keys its periods as strings.
+        assert evaluate({2023: (unresolved,)}).passed
+        assert evaluate({"2023": [unresolved]}).passed
+        # A clean compile at that period contradicts the signed row.
+        clean = evaluate({2023: ()})
+        assert not clean.passed
+        assert clean.failures == (
+            "signed ledger parity difference ons.series[2023] changed kind: "
+            "signed='ledger_absent', live='fixture_only'.",
+        )
+        # A period the producer compiled and did not report is refused.
+        with pytest.raises(KeyError, match="no entry for target period 2023"):
+            evaluate({2025: ()})
+        with pytest.raises(TypeError, match="must be mappings that name"):
+            evaluate({2023: ("ons.series",)})
+
     def test_local_default_target_surface_uses_metric_names_and_signed_deferrals(
         self, uk_gates
     ) -> None:

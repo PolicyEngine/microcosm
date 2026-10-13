@@ -374,6 +374,8 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
                         "2025": empty_registry,
                     },
                     "uk_ledger_compiled_local_registries": {"2025": empty_registry},
+                    "uk_ledger_compile_unsupported": {"2023": [], "2025": []},
+                    "uk_ledger_compile_local_unsupported": {"2025": []},
                 }
             ),
             "spine_provenance": artifact(
@@ -703,6 +705,8 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
                 ),
                 "uk_ledger_compiled_registries": {"2023": empty, "2025": empty},
                 "uk_ledger_compiled_local_registries": {"2025": empty},
+                "uk_ledger_compile_unsupported": {"2023": [], "2025": []},
+                "uk_ledger_compile_local_unsupported": {"2025": []},
             }
         ),
         "holdout": artifact(
