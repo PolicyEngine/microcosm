@@ -348,24 +348,26 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "3b6f534db79be588396d6543a8368c6251d41ae25139153ade01bdb36ac7b1a2",
+    "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "abdffaa7d6ccf23c37b9d4e4530f0f95c2b4dd821787c813cc0c06f0ddc7932c",
+    "full_checkpoint": "ffb6bc3f23a2baf359fc9d34b910f0b5c8f65a043ce8d12d66eb7081dc9e1442",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "5e5c89a0d5e00f759566b5bb025efd46f179e11faf7de4ff663ed2488c5a669b",
+    "graph_nodes": "b68a7e94940b67f65aa2b029278ef0f37b927880fae143d17c2a3ec118d0fe67",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
-    "late_families": "734080f8857f8637913a0e3ae81c59bf28b63dccc8d4bbf42009d0a80e9f1e48",
-    "late_resource_semantics": "abf95b217f6b8baa0fdf0bf8c46be67e3bff364f1adf6e98a178746f7f1c9d29",
-    "late_schedule": "6eb7556639fac5ef67bb1602c769aa01fc2070ecef42be097c6b866a05b030d0",
+    "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
+    "late_resource_semantics": "51f674be7de8b738c1a9af1331f0168e7975f43a3395f1ab1bd88f376f0f01f5",
+    "late_schedule": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
+    # #1258: puf_support's source bytes carry the S-corp leaf from the
+    # source-year rows (no zero alias); the primary chain order is unchanged.
     # #1239: puf_support's source bytes and the primary chain order gain the
     # passive partnership/S-corp leaf after s_corp_income.
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
     # both again: the protocol attests microcosm.calibrate.solve.
-    "seed_map": "a07d4a871ae13279fd6034690a763f902c968053d7481df14822824b4a7c9687",
-    "seed_protocol": "bacc551b1d800a941c25d00048193c4c9421260a5d76d26983b603ea83835997",
+    "seed_map": "3f77ffa276c93b8a4cc7500c89e7f109f3d7f3630eb3e655af18fd97351ba9b1",
+    "seed_protocol": "509517b62dbf3fb536a546571666daa56d6265d1d1f721ebfca1760542f28418",
     "source_manifest": "22763ed5676fa29876951653368cbbc866cbd2425a2394a9f191ee09e448e413",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "4641e9a919a5c7719dd6e076e1eda06c17ec021d346a2b7f205fd299870a4688",
@@ -425,16 +427,16 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "early_families": 13,
     "early_targets": 48,
     "itemization_batches": 5,
-    "itemization_targets": 38,
+    "itemization_targets": 39,
     "late_groups": 19,
-    "late_targets": 71,
+    "late_targets": 72,
     "ownership_rows": 18,
     "primary_effective_predictor_tuples": 66,
     "primary_families": 1,
     "primary_targets": 66,
     "producer_authored_outputs": 92,
-    "producer_compiled_outputs": 229,
-    "producer_inputs": 2_746,
+    "producer_compiled_outputs": 230,
+    "producer_inputs": 2_747,
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
@@ -887,7 +889,7 @@ def build_inventory_coverage(
         "late_split_ledger_exact",
         clauses={
             "late group count differs": len(late) == 19,
-            "late target count differs": late_targets == 71,
+            "late target count differs": late_targets == 72,
             "late family digest differs": sha256_json(late)
             == EXPECTED_HASHES["late_families"],
             "legacy late schedule differs": _json_equal(
@@ -903,7 +905,7 @@ def build_inventory_coverage(
         },
         expected={
             "groups": 19,
-            "targets": 71,
+            "targets": 72,
             "sha256": EXPECTED_HASHES["late_families"],
         },
     )
@@ -918,8 +920,8 @@ def build_inventory_coverage(
                 f"late/person/puf_tax_itemization__batch_{index}"
                 for index in range(1, 6)
             ],
-            "itemization batch sizes differ": itemization_sizes == [8, 8, 8, 8, 6],
-            "itemization target count differs": sum(itemization_sizes) == 38,
+            "itemization batch sizes differ": itemization_sizes == [8, 8, 8, 8, 7],
+            "itemization target count differs": sum(itemization_sizes) == 39,
             "legacy late schedule differs": _json_equal(
                 late_schedule, expected_late_schedule
             ),
@@ -930,7 +932,7 @@ def build_inventory_coverage(
             "ids": [row["id"] for row in itemization],
             "batch_sizes": itemization_sizes,
         },
-        expected={"batches": 5, "targets": 38, "batch_sizes": [8, 8, 8, 8, 6]},
+        expected={"batches": 5, "targets": 39, "batch_sizes": [8, 8, 8, 8, 7]},
     )
 
     source_node_by_id = {str(row["id"]): row for row in source_nodes}
@@ -1017,7 +1019,7 @@ def build_inventory_coverage(
         "producer_inputs_exact",
         clauses={
             "producer input rows differ": inputs_exact,
-            "input row count differs": input_count == 2746,
+            "input row count differs": input_count == 2747,
         },
         homes=("/imputation/producer_graph/nodes/*/inputs",),
         consumers=(
@@ -1025,7 +1027,7 @@ def build_inventory_coverage(
             "compiler_ir.node_slices",
         ),
         observed={"rows": input_count},
-        expected={"rows": 2746, "relation": "source rows preserved exactly"},
+        expected={"rows": 2747, "relation": "source rows preserved exactly"},
     )
     outputs_exact = set(expected_outputs) == set(compiled_by_id) and all(
         _json_equal(
@@ -1043,7 +1045,7 @@ def build_inventory_coverage(
             "compiled outputs differ from typed closure": outputs_exact,
             "authored output count differs": authored_output_count == 92,
             "compiled output count differs": compiled.producer_graph.compiled_output_count
-            == 229,
+            == 230,
         },
         homes=(
             "/imputation/producer_graph/nodes/*/outputs",
@@ -1059,7 +1061,7 @@ def build_inventory_coverage(
         },
         expected={
             "authored_rows": 92,
-            "compiled_rows": 229,
+            "compiled_rows": 230,
             "relation": "typed closure exact",
         },
     )

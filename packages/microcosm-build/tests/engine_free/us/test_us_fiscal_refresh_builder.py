@@ -1948,6 +1948,20 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
+    # microcosm#1258: Table 1.4's entity legs, net income as the positive part
+    # and net loss as the negative-part magnitude of each entity's own leaf.
+    for income, loss in (
+        ("partnership_income", "partnership_losses"),
+        ("s_corp_income", "s_corp_losses"),
+    ):
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), income),
+            np.array([0.0, 0.0, 7.0]),
+        )
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), loss),
+            np.array([5.0, -0.0, -0.0]),
+        )
 
 
 def test_export_target_audit_is_opt_in(monkeypatch) -> None:

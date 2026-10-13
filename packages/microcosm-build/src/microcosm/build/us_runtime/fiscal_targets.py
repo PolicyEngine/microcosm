@@ -161,6 +161,15 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_amount": "estate_losses",
     "other_income_net_income_amount": "miscellaneous_income",
     "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 publishes partnership and S corporation net income and net
+    # loss separately from TY2021 (Chronicle's table_1_4 measure ids; losses
+    # are positive magnitudes). Each entity leg binds that entity's own Schedule
+    # E line-32 leaf, summed to the return, positive part for net income and
+    # negative-part magnitude for net loss (microcosm#1258).
+    "partnership_net_income_amount": "partnership_income",
+    "partnership_net_loss_amount": "partnership_losses",
+    "s_corporation_net_income_amount": "s_corp_income",
+    "s_corporation_net_loss_amount": "s_corp_losses",
     # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
     # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
     # when Schedule D is not required); concept-confirmed against pe-us source.
@@ -239,6 +248,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_returns": "estate_losses",
     "other_income_net_income_returns": "miscellaneous_income",
     "other_income_net_loss_returns": "miscellaneous_losses",
+    # microcosm#1258: return counts paired with the Table 1.4 partnership and
+    # S corporation legs above.
+    "partnership_net_income_returns": "partnership_income",
+    "partnership_net_loss_returns": "partnership_losses",
+    "s_corporation_net_income_returns": "s_corp_income",
+    "s_corporation_net_loss_returns": "s_corp_losses",
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (microcosm#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
@@ -290,6 +305,12 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    # microcosm#1258: Table 1.4's entity legs read each entity's own person
+    # leaf; the materializer sums it to the tax unit before taking the part.
+    "partnership_income": "partnership_income",
+    "partnership_losses": "partnership_income",
+    "s_corp_income": "s_corp_income",
+    "s_corp_losses": "s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",

@@ -100,9 +100,11 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
-# certified combined-source semantics are carried by partnership_income, while
-# the separate S-corporation leaf is an exact-zero universe. v15 content-binds
+# v16 declared person.s_corp_income as a whole-pool primary-PUF output while
+# the donor carried Schedule E line 32 combined in partnership_income; since
+# microcosm#1258 the S-corporation share is its own donor leaf, so it is an
+# ordinary PUF-clone output that the late transfer carries to native rows
+# (a content change under the same registry schema). v15 content-binds
 # the complete late dual-producer ownership matrix and
 # validates that it exhausts the primary/source/transfer intersection. v14
 # scopes origin-exclusive raw requirements independently of their inventory
@@ -1412,11 +1414,11 @@ CANONICAL_US_LATE_TRANSFER_GROUPS = _bounded_transfer_groups(
 )
 if (
     len(CANONICAL_US_LATE_TRANSFER_GROUPS) != 19
-    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 71
+    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 72
 ):
     raise RuntimeError(
         "Canonical US late transfer must contain exactly 19 bounded groups "
-        "and 71 ordered targets."
+        "and 72 ordered targets."
     )
 _canonical_late_targets = {
     target for group in CANONICAL_US_LATE_TRANSFER_GROUPS for target in group.targets
@@ -1425,11 +1427,11 @@ if (
     len(_BOOLEAN_LATE_TARGETS) != 17
     or len(_STRING_LATE_TARGETS) != 2
     or not (_BOOLEAN_LATE_TARGETS | _STRING_LATE_TARGETS) <= _canonical_late_targets
-    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 52
+    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 53
 ):
     raise RuntimeError(
-        "Canonical US late target kinds must partition 71 targets into "
-        "52 numeric, 17 boolean, and 2 string inputs."
+        "Canonical US late target kinds must partition 72 targets into "
+        "53 numeric, 17 boolean, and 2 string inputs."
     )
 US_LATE_TRANSFER_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = (
     MappingProxyType(
@@ -1615,15 +1617,7 @@ def _build_registry() -> dict[str, ProducerContract]:
     late_keys = _target_key_rows(late_surface)
     puf_keys = _target_key_rows(pool_post_puf_puf_producer_target_families())
     declared_primary_outputs = tuple(
-        ProducerOutput(
-            entity,
-            column,
-            (
-                _WHOLE_POOL_SCOPE
-                if (entity, column) == ("person", "s_corp_income")
-                else _PUF_CLONE_SCOPE
-            ),
-        )
+        ProducerOutput(entity, column, _PUF_CLONE_SCOPE)
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
             "primary_puf_qrf"
         ].items()

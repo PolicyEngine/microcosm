@@ -457,10 +457,9 @@ def _canonical_output_coverage_scope(
 
     Family targets own modeled columns, while graph nodes own structural and
     virtual outputs.  Coverage is the one modeled-output fact that is not
-    otherwise present on a target (notably ``person.s_corp_income`` is a
-    whole-pool primary output while the other primary targets are clone-only),
-    so the migration tool transfers it onto the target before dropping the
-    duplicate graph row.
+    otherwise present on a target (primary-PUF targets are clone-only while
+    source and transfer targets cover their own roles), so the migration tool
+    transfers it onto the target before dropping the duplicate graph row.
     """
 
     canonical = json.loads(CANONICAL_US_LATE_PRODUCER_SCHEDULE.canonical_json)
@@ -2026,8 +2025,8 @@ def _split_after() -> list[dict[str, object]]:
         if group.entity == "person"
         and group.family.startswith("puf_tax_itemization__batch_")
     ]
-    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 6]:
-        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x38 split.")
+    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 7]:
+        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x39 split.")
     result = [
         {
             "family": f"late/{group.entity}/{group.family}",
@@ -2075,12 +2074,12 @@ def _assert_invariants(
     expected = {
         "gap_fill_stacked_spine": (13, 48),
         "primary_puf_qrf": (1, 66),
-        "late_producer_dag": (19, 71),
+        "late_producer_dag": (19, 72),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
         "primary_puf_qrf": {"bool": 8, "float": 56, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 51, "int": 1, "str": 2},
+        "late_producer_dag": {"bool": 17, "float": 52, "int": 1, "str": 2},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2134,7 +2133,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2746, 92, 229, 35, 0, 214)
+    expected_graph_counts = (2747, 92, 230, 35, 0, 214)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

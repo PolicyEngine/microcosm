@@ -926,10 +926,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "sources; see the archived-derivation evidence in the parity gap "
         "register (PolicyEngine/microcosm#312)."
     ),
-    "s_corp_income": (
-        "Combined partnership/S-corp income is carried in partnership_income "
-        "in pre-PUF-support bases; the S-corp leaf is constant zero there."
-    ),
     "strike_benefits": (
         "No respondent in the pinned public ASEC files reports strike benefits: "
         "OI_OFF code 12 ('strike benefits', ASEC 2024 public use data "

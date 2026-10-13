@@ -6523,3 +6523,83 @@ def test_conflicting_soi_chain_facts_fail_loudly() -> None:
 
     with pytest.raises(ValueError, match="Conflicting national SOI chain facts"):
         age_us_dollar_targets(registry, facts, target_period=2024)
+
+
+# SOI Table 1.4 partnership and S corporation legs, as Chronicle publishes them
+# from TY2021 (losses are positive magnitudes): measure id -> (concept, leaf,
+# measure mode). microcosm#1258.
+_TABLE_1_4_ENTITY_LEGS = {
+    "partnership_net_income_amount": (
+        "partnership_income",
+        "partnership_income",
+        "sum",
+    ),
+    "partnership_net_income_returns": (
+        "partnership_income",
+        "partnership_income",
+        "indicator_sum",
+    ),
+    "partnership_net_loss_amount": ("partnership_losses", "partnership_income", "sum"),
+    "partnership_net_loss_returns": (
+        "partnership_losses",
+        "partnership_income",
+        "indicator_sum",
+    ),
+    "s_corporation_net_income_amount": ("s_corp_income", "s_corp_income", "sum"),
+    "s_corporation_net_income_returns": (
+        "s_corp_income",
+        "s_corp_income",
+        "indicator_sum",
+    ),
+    "s_corporation_net_loss_amount": ("s_corp_losses", "s_corp_income", "sum"),
+    "s_corporation_net_loss_returns": (
+        "s_corp_losses",
+        "s_corp_income",
+        "indicator_sum",
+    ),
+}
+
+
+def test_table_1_4_entity_legs_bind_their_own_leaves() -> None:
+    """Each Table 1.4 entity leg binds that entity's own line-32 leaf.
+
+    The partnership legs read ``partnership_income`` and the S corporation
+    legs ``s_corp_income``; neither reads the combined
+    ``tax_unit_partnership_s_corp_income``. The ``_losses`` concepts take the
+    negative-part magnitude of the same leaf.
+    """
+
+    facts = [
+        *packaged_reference_facts(),
+        *(
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=f"irs_soi.ty2022.table_1_4.all.{measure}",
+                value=487_105_000_000 if measure.endswith("_amount") else 3_311_926,
+                measure_id=measure,
+                layout_record_set_id="irs_soi.ty2022.table_1_4",
+            )
+            for measure in _TABLE_1_4_ENTITY_LEGS
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    by_id = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    for measure, (concept, leaf, mode) in _TABLE_1_4_ENTITY_LEGS.items():
+        spec = by_id[f"irs_soi.ty2022.table_1_4.all.{measure}"]
+        assert spec.family == "irs_soi"
+        assert spec.metadata["source_variable"] == concept, measure
+        assert spec.metadata["base_variable"] == leaf, measure
+        assert spec.metadata["measure_mode"] == mode, measure
+    assert {
+        concept: fiscal_targets.SOI_VARIABLE_MAP[concept]
+        for concept, _, _ in _TABLE_1_4_ENTITY_LEGS.values()
+    } == {
+        "partnership_income": "partnership_income",
+        "partnership_losses": "partnership_income",
+        "s_corp_income": "s_corp_income",
+        "s_corp_losses": "s_corp_income",
+    }

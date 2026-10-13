@@ -1060,7 +1060,7 @@ columns:
     definition_period: year
     vintage: vintage:target_2024
     nullable: false
-    domain: primary_puf_qrf_nontransfer
+    domain: puf_tax_itemization
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
 - key: person.salt_refund_income
