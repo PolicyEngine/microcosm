@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -76,6 +77,20 @@ def prepared(monkeypatch):
     monkeypatch.setattr(runtime, "compile_uk_local_target_registry", compile_local)
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    # The national reconciliation (#1123) has its own tests; these registers
+    # carry no geography, so it passes them through here.
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (registry, {"rows_moved_by_exact_signature": 0}),
+    )
+    # Nor do they carry fact periods: the hold declarations (#1123) are
+    # checked against the real compile in test_uk_uprating_holds.
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
     )
     monkeypatch.setattr(
         runtime,
@@ -187,27 +202,28 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 1ee7dfe feed re-pinned by microcosm#1113
-    # (PolicyEngine/chronicle#322 via #323, Consumer Trends by COICOP division
-    # and DESNZ road fuel by vehicle type and fuel).
+    # The identity is the 942a1fa feed re-pinned by microcosm#1123
+    # (PolicyEngine/chronicle#313 via #314, the 2025 calibration inputs). It
+    # holds the 1ee7dfe rows microcosm#1113 pinned (PolicyEngine/chronicle#322
+    # via #323: Consumer Trends by COICOP division, DESNZ road fuel).
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d")
+        == ("a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0")
+        == ("f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "1ee7dfe257415ec0066fcf511e01fbaaec23cacd"
+        == "942a1fa0adc50d645734481c88f403ac2175e896"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 352549
+    assert national.fact_row_count == local["fact_row_count"] == 927239
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
@@ -246,6 +262,72 @@ def test_frozen_register_compares_complete_not_measure_pruned_surface(
     prepared[1].to_json(path)
     with pytest.raises(ValueError, match="full national register differs"):
         _load(register_json=path)
+
+
+def test_the_bound_and_frozen_registers_are_the_reconciled_ones(
+    prepared, monkeypatch, tmp_path
+):
+    national = prepared[0]
+    reconciled = TargetRegistry(
+        [replace(spec, value=2.0) for spec in national.specs], country="uk"
+    )
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (
+            seen.append(registry) or reconciled,
+            {"rows_moved_by_exact_signature": 2},
+        ),
+    )
+    excluded_from = []
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (
+            excluded_from.append(registry) or prepared[1],
+            {"excluded": {"reason": "reviewed"}},
+        ),
+    )
+    result = _load()
+    # Only the calibration year is reconciled; validation periods stay as
+    # compiled, since compile parity measures the facts themselves.
+    assert seen == [national]
+    assert excluded_from == [reconciled]
+    assert result["band_edge_registry"] is reconciled
+    assert result["national_reconciliation"] == {"rows_moved_by_exact_signature": 2}
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == national.version
+    assert completeness["reconciled_registry_version"] == reconciled.version
+    path = tmp_path / "register.json"
+    reconciled.to_json(path)
+    _load(register_json=path)
+    national.to_json(path)
+    with pytest.raises(ValueError, match="full national register differs"):
+        _load(register_json=path)
+
+
+def test_holds_are_checked_on_the_full_compiled_and_local_registers(
+    prepared, monkeypatch
+):
+    national, approved, local, artifact, calls = prepared
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: (
+            seen.append((kwargs["scope"], registry, kwargs["calibration_period"]))
+            or {"scope": kwargs["scope"]}
+        ),
+    )
+    result = _load()
+    # The full compiled register, not the approved one: a measure exclusion
+    # expires, and its target must re-enter already declared.
+    assert seen == [("national", national, 2024), ("local", local, 2024)]
+    assert result["uprating_holds"] == {
+        "national": {"scope": "national"},
+        "local": {"scope": "local"},
+    }
 
 
 def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
