@@ -576,6 +576,15 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "estate_income",
     ),
 }
+# Outputs that are a signed subset of their distribution basis's sum. Their
+# fallback weight is the magnitude of each person's own signed basis total, so a
+# person whose line 32 is a loss carries a share of the passive subset and a
+# person with no line 32 carries none. Clipping the basis at zero instead would
+# move a loss carrier's passive amount onto a spouse with no pass-through
+# activity (microcosm#1239).
+_PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS = frozenset(
+    {"passive_partnership_s_corp_income"}
+)
 _PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES = frozenset(
     {
         ("qualified_tuition_expenses", "is_full_time_college_student"),
@@ -2214,6 +2223,9 @@ def finalize_us_puf_tax_detail_predictions(
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
+                fallback_basis_is_signed_superset=(
+                    column in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS
+                ),
             )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
@@ -2265,8 +2277,9 @@ def _zero_passive_partnership_s_corp_without_line_32(
     on the drawn total but its sign gate can still place a passive amount on a
     zero-total unit. The donor nearly never shows that pattern: 27 of 207,692
     regular TY2015 records report a passive amount with a zero line 32 (net
-    passive and nonpassive legs cancelling), $14 million of weighted passive
-    mass (microcosm#1239). Units with a nonzero total keep their draw in full,
+    passive and nonpassive legs cancelling): 3,120 weighted returns with -$14.0
+    million of net passive amounts, $20.5 million in absolute value
+    (microcosm#1239). Units with a nonzero total keep their draw in full,
     because a passive amount larger than, or of the other sign from, the total
     is legitimate when nonpassive losses offset it.
     """
@@ -3744,6 +3757,27 @@ def _nonnegative_allocation_basis_values(
     basis_column: str,
     allow_legacy_numeric_boolean: bool = False,
 ) -> np.ndarray:
+    """Return the basis values clipped at zero (see ``_allocation_basis_values``)."""
+
+    return np.clip(
+        _allocation_basis_values(
+            values,
+            output_column=output_column,
+            basis_column=basis_column,
+            allow_legacy_numeric_boolean=allow_legacy_numeric_boolean,
+        ),
+        0.0,
+        None,
+    )
+
+
+def _allocation_basis_values(
+    values: pd.Series,
+    *,
+    output_column: str,
+    basis_column: str,
+    allow_legacy_numeric_boolean: bool = False,
+) -> np.ndarray:
     """Return temporary numeric weights without changing a basis column's dtype.
 
     PUF person outputs can be distributed using canonical boolean incidence,
@@ -3835,11 +3869,7 @@ def _nonnegative_allocation_basis_values(
                     f"{int(outside_boolean_support.sum())} numeric value(s) "
                     "outside exact {0, 1} support."
                 )
-    return np.clip(
-        numeric.to_numpy(dtype=np.float64, na_value=0.0),
-        0.0,
-        None,
-    )
+    return numeric.to_numpy(dtype=np.float64, na_value=0.0)
 
 
 def _write_person_tax_unit_boolean_counts(
@@ -3919,7 +3949,19 @@ def _write_person_tax_unit_totals(
     nonnegative: bool,
     allow_legacy_numeric_boolean_basis: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
+    fallback_basis_is_signed_superset: bool = False,
 ) -> None:
+    """Split each tax unit's total across its people.
+
+    The split follows the people's current values of ``column``; where a unit
+    has none, it follows ``fallback_basis_columns`` (clipped at zero), and
+    otherwise the unit's first person takes the total. With
+    ``fallback_basis_is_signed_superset`` the output is a subset of the basis
+    columns' signed sum: the fallback weight is the magnitude of each person's
+    own signed sum, and a unit whose people all have a zero sum gets nothing,
+    because a subset of a zero total is zero.
+    """
+
     row_ids = person.loc[mask, "person_tax_unit_id"]
     current = pd.to_numeric(person.loc[mask, column], errors="coerce").fillna(0.0)
     basis = current.clip(lower=0.0) if nonnegative else current
@@ -3937,15 +3979,28 @@ def _write_person_tax_unit_totals(
     unallocated = ~has_basis
     if fallback_basis_columns:
         fallback = np.zeros(len(row_ids), dtype=np.float64)
+        basis_values = (
+            _allocation_basis_values
+            if fallback_basis_is_signed_superset
+            else _nonnegative_allocation_basis_values
+        )
         for basis_column in fallback_basis_columns:
             if basis_column not in person.columns:
                 continue
-            fallback += _nonnegative_allocation_basis_values(
+            fallback += basis_values(
                 person.loc[mask, basis_column],
                 output_column=column,
                 basis_column=basis_column,
                 allow_legacy_numeric_boolean=allow_legacy_numeric_boolean_basis,
             )
+        if fallback_basis_is_signed_superset:
+            if not any(c in person.columns for c in fallback_basis_columns):
+                raise ValueError(
+                    f"PUF output {column!r} is a subset of "
+                    f"{list(fallback_basis_columns)!r}, none of which is on "
+                    "the person table to place it by."
+                )
+            fallback = np.abs(fallback)
         fallback_sum = (
             pd.Series(fallback, index=row_ids.index)
             .groupby(row_ids, sort=False)
@@ -3957,6 +4012,8 @@ def _write_person_tax_unit_totals(
             target[use_fallback] * fallback[use_fallback] / fallback_sum[use_fallback]
         )
         unallocated &= ~use_fallback
+        if fallback_basis_is_signed_superset:
+            unallocated[:] = False
     allocation[unallocated & first.to_numpy()] = target[unallocated & first.to_numpy()]
     person.loc[mask, column] = allocation
 

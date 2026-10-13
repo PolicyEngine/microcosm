@@ -1564,16 +1564,23 @@ def test_passive_draw_coherence_requires_the_line_32_total() -> None:
         _zero_passive_partnership_s_corp_without_line_32(predictions)
 
 
+@pytest.mark.parametrize("line_32", [6_000.0, -6_000.0])
 def test_finalize_places_passive_with_its_line_32_total(
     monkeypatch: pytest.MonkeyPatch,
+    line_32: float,
 ) -> None:
-    """The passive subset lands on the people who carry the line-32 total."""
+    """The passive subset lands on the people who carry the line-32 total.
+
+    A line-32 loss is placed the same way: the passive amount follows the
+    magnitudes of the people's own totals rather than falling to the unit's
+    first person.
+    """
 
     # As in production, s_corp_income rides the chain as an exact-zero leaf,
     # so the line-32 total sits wholly in partnership_income.
     draws = pd.DataFrame(
         {
-            "partnership_income": [6_000.0, 0.0],
+            "partnership_income": [line_32, 0.0],
             "s_corp_income": [0.0, 0.0],
             "passive_partnership_s_corp_income": [1_500.0, 800.0],
         }
@@ -1601,7 +1608,7 @@ def test_finalize_places_passive_with_its_line_32_total(
     donor = pd.DataFrame(
         {
             "filing_status_code": [1.0, 2.0],
-            "partnership_income": [6_000.0, 0.0],
+            "partnership_income": [line_32, 0.0],
             "s_corp_income": [0.0, 0.0],
             "passive_partnership_s_corp_income": [1_500.0, 0.0],
             "weight": [1.0, 1.0],
@@ -1634,6 +1641,98 @@ def test_finalize_places_passive_with_its_line_32_total(
     share_passive = first_unit["passive_partnership_s_corp_income"] / passive.iloc[0]
     np.testing.assert_allclose(share_passive.to_numpy(), share_total.to_numpy())
     assert passive.iloc[0] > 0.0
+
+
+def _place_passive(person: pd.DataFrame, totals: dict[int, float]) -> pd.Series:
+    person = person.copy()
+    person["passive_partnership_s_corp_income"] = 0.0
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="passive_partnership_s_corp_income",
+        totals=pd.Series(totals),
+        nonnegative=False,
+        fallback_basis_columns=("partnership_income", "s_corp_income"),
+        fallback_basis_is_signed_superset=True,
+    )
+    return person["passive_partnership_s_corp_income"]
+
+
+def test_passive_placement_follows_signed_line_32_magnitudes() -> None:
+    """A loss carrier takes the passive amount; a person with no line 32 none.
+
+    Clipping the basis at zero (the placement every other fallback output
+    uses) would put unit 1's passive amount on its first person, who has no
+    pass-through activity (review of microcosm#1251).
+    """
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [1, 1, 2, 2, 3, 3],
+            "partnership_income": [0.0, -100.0, 50.0, -100.0, 100.0, 0.0],
+            "s_corp_income": [0.0, 0.0, 0.0, 0.0, -100.0, 0.0],
+        }
+    )
+
+    placed = _place_passive(person, {1: 30.0, 2: 30.0, 3: 30.0})
+
+    # Unit 1: only the loss carrier has line 32.
+    np.testing.assert_allclose(placed.iloc[0:2], [0.0, 30.0])
+    # Unit 2: mixed signs split by magnitude, 50 : 100.
+    np.testing.assert_allclose(placed.iloc[2:4], [10.0, 20.0])
+    # Unit 3: the one carrier's legs cancel, so no one carries line 32 and the
+    # subset is zero rather than parked on the first person.
+    np.testing.assert_allclose(placed.iloc[4:6], [0.0, 0.0])
+
+
+def test_passive_placement_refuses_without_any_line_32_column() -> None:
+    person = pd.DataFrame({"person_tax_unit_id": [1, 1]})
+
+    with pytest.raises(ValueError, match="none of which is on the person table"):
+        _place_passive(person, {1: 30.0})
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 5),
+            st.sampled_from([0.0, 0.0, -2_500.0, -40.0, 75.0, 12_000.0]),
+            st.sampled_from([0.0, 0.0, 0.0, -300.0, 900.0]),
+        ),
+        min_size=1,
+        max_size=30,
+    ),
+    st.lists(st.floats(-1e6, 1e6, allow_nan=False), min_size=6, max_size=6),
+)
+def test_passive_placement_property(
+    people: list[tuple[int, float, float]],
+    unit_passive: list[float],
+) -> None:
+    """For any signed line-32 layout and any passive totals:
+
+    - a person whose own line 32 is zero carries no passive amount;
+    - every share has the unit total's sign (shares are nonnegative);
+    - a unit's people sum to its passive total when anyone carries line 32,
+      and to zero when no one does.
+    """
+
+    person = pd.DataFrame(
+        people, columns=["person_tax_unit_id", "partnership_income", "s_corp_income"]
+    )
+    totals = dict(enumerate(unit_passive))
+
+    placed = _place_passive(person, totals)
+
+    own_line_32 = person["partnership_income"] + person["s_corp_income"]
+    assert (placed[own_line_32 == 0.0] == 0.0).all()
+    target = person["person_tax_unit_id"].map(totals)
+    assert (placed * target >= 0.0).all()
+    by_unit = placed.groupby(person["person_tax_unit_id"]).sum()
+    carried = (own_line_32 != 0.0).groupby(person["person_tax_unit_id"]).any()
+    for unit, sum_placed in by_unit.items():
+        expected = totals[unit] if carried[unit] else 0.0
+        assert sum_placed == pytest.approx(expected, rel=1e-12, abs=1e-6)
 
 
 def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
