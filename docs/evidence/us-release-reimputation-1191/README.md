@@ -12,12 +12,22 @@ and `test_us_release_base_input_properties.py`.
 
 | File | sha256 | Built |
 |---|---|---|
-| `base_populace_us_2024_puf_support.h5` | `0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2` | `tools/build_us_puf_support_base.py` at `4b57d15a287c`, on Modal (Linux x86_64, CPython 3.14.2, uv.lock `52e3d128…`) |
-| `populace_us_2024.h5`, release `populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z` | `417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559` | `tools/build_us_fiscal_refresh_release.py --base-h5` from that base at the same commit, on macOS arm64 (free-threaded CPython 3.14.7) |
+| `base_populace_us_2024_puf_support.h5` | `0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2` | `tools/build_us_puf_support_base.py` at `4b57d15a287c`, on Modal |
+| `populace_us_2024.h5`, release `populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z` | `417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559` | `tools/build_us_fiscal_refresh_release.py --base-h5` from that base at the same commit, locally |
 | that release's `calibration_diagnostics.json` | `64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80` | records the release's population and Social Security repair factors |
 
-Both builds used numpy 2.4.6, pandas 3.0.3, scikit-learn 1.8.0 and
-quantile-forest 1.4.2. The release's `pool_frame is None` stage calls are the
+The builds' environments come from their run records
+(`build_environment.base_0fb05b67.release_417d23ae.json`, each field tied to
+the sha256 of the record it came from). The base: the Modal receipt's runner
+is CPython 3.14.2 on `Linux-4.19.0-gvisor-x86_64-with-glibc2.36` with uv.lock
+`52e3d128…`, and the stage run context records the builder as CPython 3.14.2
+(GCC 12.2.0) with numpy 2.4.6, pandas 3.0.3, scikit-learn 1.8.0 and
+quantile-forest 1.4.2. The release: its build manifest records Python 3.14.7,
+numpy 2.4.6 and pandas 3.0.3 at the same commit, unmodified; the release
+command's interpreter is a venv on `cpython-3.14+freethreaded-macos-aarch64`
+3.14.7 that holds scikit-learn 1.8.0 and quantile-forest 1.4.2 (read on
+2026-10-13); and the run log opens with the free-threaded interpreter's
+warning that it enabled the GIL to load quantile-forest. The release's `pool_frame is None` stage calls are the
 same at `4b57d15a287c` and at main `7639ef8b0`, and the four stage modules,
 `microcosm-fit`, `source_runtime.py` and `us/source_stages.json` have no diff
 between the two.
@@ -78,9 +88,11 @@ commit that built the release, loads the base with the builder's
    reproduces the release exactly. `social_security`, the sum of the four
    leaves, is one of the eight predictors of all three QRFs. A tree splits on
    a predictor's order; one common factor would keep that order, and these
-   factors change it: among base persons with Social Security, ordered by the
-   sum, 1,272 of 8,777 adjacent ASEC pairs and 6,484 of 38,079 adjacent PUF
-   pairs swap order after the repair (`social_security_reorder…json`).
+   factors change it. Ordering base persons with Social Security by the sum as
+   the stages compute it, 1,272 of the 8,777 adjacent ASEC pairs with distinct
+   sums swap order after the repair, and 12,745 of the 63,965 tied adjacent
+   ASEC pairs stop being tied; among PUF persons, 6,484 of 38,079 and 17,809
+   of 36,686 (`social_security_reorder…json`).
 3. The population mass repair alone (factor 1.0253 on every household weight)
    changes nothing, and neither does limiting BLAS/OpenMP pools, forest fit
    jobs and draw workers to four threads: each reproduces the re-run on the
@@ -175,8 +187,10 @@ and a gate classifier draws the zero-or-positive sign. Relative to the base,
 the release flips that sign for 8,006 persons; the platform alone flips none.
 Each row's quantile uniforms come from a seeded stream whose consumption
 depends only on the number of PUF rows and each target's sign regime, which
-the training rows fix. A row therefore keeps its exact value unless its forest
-leaves, its sign, or an earlier leaf in the chain changed.
+the training rows fix, so both passes give a row the same uniforms. On one
+platform, a row's value then changes only if the training values in its
+forest leaves, its sign, or an earlier leaf in the chain changed; across
+platforms the quantile computation can also round differently.
 
 **Direction and size** (`second_pass_effect…json`, PUF half, same rows, the
 base's and the release's stored values under one fixed weight vector):
@@ -227,7 +241,9 @@ release's platform.
 | `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent node | `receipts/platform_forest_probe.*.json` |
 | `scripts/platform/` | The linux/amd64 harness: a `python:3.14.2-slim-bookworm` image, the stages' third-party imports at the base build's locked versions and hashes (`req.min.txt`), and a loader that imports a stage module without the package `__init__` chains | `receipts/platform_replay*.linux_amd64.json` |
 
-Receipts name their inputs by file name and sha256.
+Receipts bind the files they read by name and sha256. The replays of weeks
+unemployed also read the Census ASEC 2023 person file, which the stage's own
+loader checks against its pinned sha256 and size.
 
 ## Reproduce
 

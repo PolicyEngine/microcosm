@@ -1,12 +1,18 @@
 """Does the release's Social Security repair reorder the QRF predictor?
 
 The childcare, energy-subsidy and retirement-contribution QRFs condition on
-``social_security``, the sum of four component leaves. The release multiplies
-each component by its own factor. A tree splits on the order of a predictor,
-so one common factor would leave every partition available to the forest
-unchanged; unequal factors change the order wherever people hold different
-components. This script applies the release's recorded factors to the base's
-stored components and counts how the order of the sum changes.
+``social_security``, built in each stage as
+``np.sum(np.column_stack([retirement, disability, dependents, survivors]),
+axis=1)``. The release multiplies each component by its own factor. A tree
+splits on the order of a predictor; mathematically, one common factor would
+keep every order and so every partition a tree can make. Unequal factors can
+change the order. This script applies the release's recorded factors to the
+base's stored components, rebuilds the sum as the stages do, and counts how
+the order changes.
+
+Pairs are adjacent persons in the base order. Ties are counted apart from
+distinct values: of the adjacent pairs whose base sums differ, how many are
+in the opposite order after the repair.
 
 Usage:
     python social_security_reorder.py BASE_H5 CALIBRATION_DIAGNOSTICS OUT_JSON
@@ -36,14 +42,23 @@ def main() -> None:
     components = json.loads(diagnostics_path.read_text())["build"][
         "support_value_repairs"
     ]["social_security_components"]["components"]
-    columns = list(components)
+    # The stages' own order; floating addition depends on it.
+    columns = [
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
+    ]
+    assert set(columns) == set(components)
     person = pd.read_hdf(
         base_path, "person", columns=["person_support_clone_index", *columns]
     )
     values = person[columns].to_numpy(dtype=np.float64)
     factors = np.array([components[column]["factor"] for column in columns])
-    before = values.sum(axis=1)
-    after = (values * factors).sum(axis=1)
+    before = np.sum(np.column_stack([values[:, i] for i in range(4)]), axis=1)
+    after = np.sum(
+        np.column_stack([values[:, i] * factors[i] for i in range(4)]), axis=1
+    )
     receipt: dict[str, object] = {
         "base_h5": Path(base_path).name,
         "base_h5_sha256": sha256(base_path),
@@ -59,8 +74,6 @@ def main() -> None:
     ):
         positive = mask & (before > 0)
         b, a = before[positive], after[positive]
-        rank_before = pd.Series(b).rank(method="dense").to_numpy()
-        rank_after = pd.Series(a).rank(method="dense").to_numpy()
         order = np.argsort(b, kind="stable")
         sorted_before, sorted_after = b[order], a[order]
         rising = sorted_before[1:] > sorted_before[:-1]
@@ -78,10 +91,14 @@ def main() -> None:
                 )
                 for index, column in enumerate(columns)
             },
-            "persons_whose_dense_rank_changes": int((rank_before != rank_after).sum()),
-            "adjacent_pairs_in_base_order": int(rising.sum()),
-            "adjacent_pairs_inverted_after_repair": int(
+            "adjacent_pairs_total": int(max(len(b) - 1, 0)),
+            "adjacent_pairs_tied_in_base": int((~rising).sum()),
+            "adjacent_pairs_with_distinct_base_sums": int(rising.sum()),
+            "distinct_adjacent_pairs_in_opposite_order_after_repair": int(
                 (rising & (sorted_after[1:] < sorted_after[:-1])).sum()
+            ),
+            "tied_adjacent_pairs_no_longer_tied_after_repair": int(
+                (~rising & (sorted_after[1:] != sorted_after[:-1])).sum()
             ),
             "spearman_rank_correlation": float(
                 np.corrcoef(

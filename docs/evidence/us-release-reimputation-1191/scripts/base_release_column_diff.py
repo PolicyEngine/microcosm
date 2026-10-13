@@ -52,12 +52,6 @@ def channel_labels(table: pd.DataFrame, entity: str) -> pd.Series:
     return channel + "/clone" + clone.astype(int).astype(str)
 
 
-def as_float(values: pd.Series) -> np.ndarray | None:
-    if values.dtype.kind in "biuf":
-        return values.to_numpy(dtype=np.float64)
-    return None
-
-
 def differs(base: pd.Series, release: pd.Series) -> np.ndarray:
     """Row-wise inequality without a lossy conversion.
 
@@ -77,11 +71,24 @@ def differs(base: pd.Series, release: pd.Series) -> np.ndarray:
     return (left != right).to_numpy()
 
 
+def numeric_values(values: pd.Series) -> np.ndarray | None:
+    """Values for magnitude and direction reporting.
+
+    Integer and boolean columns become Python integers (object dtype), so
+    differences, sums and comparisons are exact at any magnitude; floats stay
+    float64. Other dtypes return ``None``.
+    """
+
+    if values.dtype.kind in "biu":
+        return np.array([int(value) for value in values.to_numpy()], dtype=object)
+    if values.dtype.kind == "f":
+        return values.to_numpy(dtype=np.float64)
+    return None
+
+
 def compare_column(
     base: pd.Series, release: pd.Series, labels: pd.Series
 ) -> dict[str, object] | None:
-    base_float = as_float(base)
-    release_float = as_float(release)
     changed = differs(base, release)
     n_changed = int(changed.sum())
     if n_changed == 0:
@@ -93,36 +100,58 @@ def compare_column(
             str(key): int(value) for key, value in by_channel.items()
         },
     }
-    if base_float is not None and release_float is not None:
-        b = base_float[changed]
-        r = release_float[changed]
-        record["max_abs_difference"] = float(np.nanmax(np.abs(r - b)))
-        record["direction"] = {
-            "zero_to_nonzero": int(np.count_nonzero((b == 0) & (r != 0))),
-            "nonzero_to_zero": int(np.count_nonzero((b != 0) & (r == 0))),
-            "up_both_nonzero": int(np.count_nonzero((b != 0) & (r != 0) & (r > b))),
-            "down_both_nonzero": int(np.count_nonzero((b != 0) & (r != 0) & (r < b))),
-        }
+    base_values = numeric_values(base)
+    release_values = numeric_values(release)
+    if base_values is None or release_values is None:
+        return record
+    exact = base_values.dtype == object and release_values.dtype == object
+    if not exact:
+        # Mixed integer and float columns are compared as float64.
+        base_values = base_values.astype(np.float64)
+        release_values = release_values.astype(np.float64)
+    record["arithmetic"] = "exact integer" if exact else "float64"
+    b = base_values[changed]
+    r = release_values[changed]
+    difference = r - b
+    record["max_abs_difference"] = (
+        int(max(abs(value) for value in difference))
+        if exact
+        else float(np.nanmax(np.abs(difference)))
+    )
+    record["direction"] = {
+        "zero_to_nonzero": int(np.count_nonzero((b == 0) & (r != 0))),
+        "nonzero_to_zero": int(np.count_nonzero((b != 0) & (r == 0))),
+        "up_both_nonzero": int(np.count_nonzero((b != 0) & (r != 0) & (r > b))),
+        "down_both_nonzero": int(np.count_nonzero((b != 0) & (r != 0) & (r < b))),
+    }
+    if exact:
+        record["sum_base_changed_rows"] = int(sum(b))
+        record["sum_release_changed_rows"] = int(sum(r))
+    else:
         record["sum_base_changed_rows"] = float(np.nansum(b))
         record["sum_release_changed_rows"] = float(np.nansum(r))
-        nonzero = (b != 0) & (r != 0)
-        if nonzero.any():
-            ratios = r[nonzero] / b[nonzero]
-            record["ratio_min"] = float(np.min(ratios))
-            record["ratio_max"] = float(np.max(ratios))
-        unchanged = ~changed
-        record["rows_nonzero_base"] = int(np.count_nonzero(base_float != 0))
-        record["rows_nonzero_release"] = int(np.count_nonzero(release_float != 0))
-        record["rows_nonzero_base_by_channel"] = {
-            str(key): int(value)
-            for key, value in pd.Series(base_float != 0, index=labels.index)
-            .groupby(labels.to_numpy())
-            .sum()
-            .items()
-        }
-        record["rows_unchanged_nonzero"] = int(
-            np.count_nonzero(unchanged & (base_float != 0))
+    nonzero = (b != 0) & (r != 0)
+    if nonzero.any():
+        # Ratios are reported as floats for both kinds.
+        ratios = np.asarray(r[nonzero], dtype=np.float64) / np.asarray(
+            b[nonzero], dtype=np.float64
         )
+        record["ratio_min_float"] = float(np.min(ratios))
+        record["ratio_max_float"] = float(np.max(ratios))
+    unchanged = ~changed
+    base_nonzero = np.asarray(base_values != 0, dtype=bool)
+    record["rows_nonzero_base"] = int(np.count_nonzero(base_nonzero))
+    record["rows_nonzero_release"] = int(
+        np.count_nonzero(np.asarray(release_values != 0, dtype=bool))
+    )
+    record["rows_nonzero_base_by_channel"] = {
+        str(key): int(value)
+        for key, value in pd.Series(base_nonzero, index=labels.index)
+        .groupby(labels.to_numpy())
+        .sum()
+        .items()
+    }
+    record["rows_unchanged_nonzero"] = int(np.count_nonzero(unchanged & base_nonzero))
     return record
 
 

@@ -78,11 +78,17 @@ STAGES: dict[str, tuple[str, tuple[str, ...], Callable[..., Frame]]] = {
 
 @dataclass(frozen=True)
 class StageCall:
-    """One stage call in the release builder's ``_main``."""
+    """One stage call in the release builder's ``_main``.
+
+    ``path`` holds the conditions that must hold for the call to run, one per
+    enclosing ``if`` (negated for an ``else`` branch), as source text.
+    """
 
     name: str
     lineno: int
+    path: tuple[str, ...]
     pool_absent_only: bool
+    on_base_h5_path: bool | None
     constant_keywords: tuple[tuple[str, object], ...]
     other_keywords: tuple[str, ...]
 
@@ -95,33 +101,79 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
-def _pool_comparison(test: ast.expr) -> str | None:
-    """``"absent"`` / ``"present"`` when ``test`` compares ``pool_frame`` with
-    ``None`` anywhere inside it (alone or in a compound condition)."""
+# Three-valued logic: True, False, or None for "not decided by the model".
+def _and(values: list[bool | None]) -> bool | None:
+    if any(value is False for value in values):
+        return False
+    return True if all(value is True for value in values) else None
 
-    for node in ast.walk(test):
-        if (
-            isinstance(node, ast.Compare)
-            and isinstance(node.left, ast.Name)
-            and node.left.id == "pool_frame"
-            and len(node.ops) == 1
-            and isinstance(node.comparators[0], ast.Constant)
-            and node.comparators[0].value is None
-        ):
-            if isinstance(node.ops[0], ast.Is):
-                return "absent"
-            if isinstance(node.ops[0], ast.IsNot):
-                return "present"
+
+def _or(values: list[bool | None]) -> bool | None:
+    if any(value is True for value in values):
+        return True
+    return False if all(value is False for value in values) else None
+
+
+def _not(value: bool | None) -> bool | None:
+    return None if value is None else not value
+
+
+def _is_none_test(node: ast.expr) -> tuple[str, bool] | None:
+    """``("pool_frame", True)`` for ``pool_frame is None``, ``False`` for
+    ``is not None``; the same for ``args.<name>``; otherwise ``None``."""
+
+    if not (
+        isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.Is | ast.IsNot)
+        and isinstance(node.comparators[0], ast.Constant)
+        and node.comparators[0].value is None
+    ):
+        return None
+    return ast.unparse(node.left), isinstance(node.ops[0], ast.Is)
+
+
+def evaluate(test: ast.expr, known_none: dict[str, bool]) -> bool | None:
+    """Evaluate a guard given which names are known to be ``None``.
+
+    ``known_none`` maps source names (``"pool_frame"``, ``"args.base_h5"``) to
+    whether each is ``None``. ``X is None``, ``X is not None`` and a bare ``X``
+    (truthy when not ``None``) are decided for known names; ``and``, ``or``
+    and ``not`` combine them; anything else is undecided.
+    """
+
+    if isinstance(test, ast.BoolOp):
+        values = [evaluate(value, known_none) for value in test.values]
+        return _and(values) if isinstance(test.op, ast.And) else _or(values)
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        return _not(evaluate(test.operand, known_none))
+    is_none = _is_none_test(test)
+    if is_none is not None:
+        name, wants_none = is_none
+        if name in known_none:
+            return known_none[name] == wants_none
+        return None
+    name = ast.unparse(test)
+    if isinstance(test, ast.Name | ast.Attribute) and name in known_none:
+        return not known_none[name]
     return None
 
 
-def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
-    """Every stage call in ``_main``, in source order, with its guard.
+# A validated pool is present: the call must be unreachable to count as a
+# release re-run outside the pool path.
+_POOL_PRESENT = {"pool_frame": False}
+# The reviewed path: ``--base-h5`` given, no validated pool.
+_BASE_H5_PATH = {"pool_frame": True, "args.base_h5": False}
 
-    A call is ``pool_absent_only`` when it sits in the body of an ``if`` whose
-    condition contains ``pool_frame is None`` or in the ``else`` of one whose
-    condition contains ``pool_frame is not None``, at any nesting depth.
-    ``source`` defaults to the release builder's source.
+
+def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
+    """Every stage call in ``_main``, in source order, with its path condition.
+
+    ``pool_absent_only`` is true when the path condition is false whenever a
+    validated pool is present. ``on_base_h5_path`` evaluates the path on the
+    reviewed ``--base-h5`` path: true (runs), false (skipped) or ``None``
+    (decided by something this model does not know). ``source`` defaults to
+    the release builder's source.
     """
 
     tree = ast.parse(RELEASE_TOOL.read_text() if source is None else source)
@@ -132,23 +184,40 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
     )
     calls: list[StageCall] = []
 
-    def visit(node: ast.AST, pool_absent: bool) -> None:
+    def visit(node: ast.AST, path: tuple[tuple[ast.expr, bool], ...]) -> None:
         if isinstance(node, ast.If):
-            kind = _pool_comparison(node.test)
-            visit(node.test, pool_absent)
+            visit(node.test, path)
             for child in node.body:
-                visit(child, pool_absent or kind == "absent")
+                visit(child, (*path, (node.test, True)))
             for child in node.orelse:
-                visit(child, pool_absent or kind == "present")
+                visit(child, (*path, (node.test, False)))
             return
         if isinstance(node, ast.Call):
             name = _call_name(node)
             if name is not None and name.startswith(STAGE_CALL_PREFIXES):
+
+                def holds(known: dict[str, bool]) -> bool | None:
+                    return _and(
+                        [
+                            evaluate(test, known)
+                            if branch
+                            else _not(evaluate(test, known))
+                            for test, branch in path
+                        ]
+                    )
+
                 calls.append(
                     StageCall(
                         name=name,
                         lineno=node.lineno,
-                        pool_absent_only=pool_absent,
+                        path=tuple(
+                            ast.unparse(test)
+                            if branch
+                            else f"not ({ast.unparse(test)})"
+                            for test, branch in path
+                        ),
+                        pool_absent_only=holds(_POOL_PRESENT) is False,
+                        on_base_h5_path=holds(_BASE_H5_PATH),
                         constant_keywords=tuple(
                             (keyword.arg, keyword.value.value)
                             for keyword in node.keywords
@@ -162,10 +231,19 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
                     )
                 )
         for child in ast.iter_child_nodes(node):
-            visit(child, pool_absent)
+            visit(child, path)
 
-    visit(main, False)
+    visit(main, ())
     return tuple(sorted(calls, key=lambda call: call.lineno))
+
+
+class UnmodeledReleaseCallError(RuntimeError):
+    """A release stage call these tests cannot replay faithfully.
+
+    Deliberately not an ``AssertionError``: the strict expected failure must
+    not absorb a change to the release builder; the test errors instead, so
+    the change gets classified.
+    """
 
 
 def base_builder_call_names() -> frozenset[str]:
@@ -186,32 +264,50 @@ def base_stage(stage: str) -> Callable[[Frame], Frame]:
     return lambda frame: function(frame, seed=SEED, time_period=PERIOD)
 
 
-def release_stage(stage: str) -> Callable[[Frame], Frame]:
-    """The stage as the release builder's ``_main`` calls it today.
+def release_stage(
+    stage: str, calls: tuple[StageCall, ...] | None = None
+) -> Callable[[Frame], Frame]:
+    """The stage as the release builder's ``_main`` runs it on the ``--base-h5``
+    path today.
 
-    Returns the identity when ``_main`` no longer calls the stage. Constant
-    keyword arguments are passed through; ``seed`` and ``time_period`` take the
-    test's values. Any other keyword argument is refused, so a new one has to
-    be handled here.
+    Returns the identity when ``_main`` no longer calls the stage or its path
+    condition is false on the ``--base-h5`` path. Constant keyword arguments
+    are passed through; ``seed`` and ``time_period`` take the test's values.
+    Raises ``UnmodeledReleaseCallError`` for anything else: a path this model
+    cannot decide, more than one call, or another non-constant argument.
+    ``calls`` defaults to the release builder's calls.
     """
 
     function = STAGES[stage][2]
-    matches = [call for call in release_stage_calls() if call.name == function.__name__]
+    if calls is None:
+        calls = release_stage_calls()
+    matches = [call for call in calls if call.name == function.__name__]
     if not matches:
         return lambda frame: frame
     if len(matches) > 1:
-        raise AssertionError(
+        raise UnmodeledReleaseCallError(
             f"_main calls {function.__name__} {len(matches)} times; say which "
             "call the invariant tests should replay."
         )
     call = matches[0]
+    if call.on_base_h5_path is None:
+        raise UnmodeledReleaseCallError(
+            f"_main's guard for {function.__name__} ({' and '.join(call.path)}) "
+            "is not decided by the test's model of the --base-h5 path."
+        )
+    if call.on_base_h5_path is False:
+        return lambda frame: frame
     unknown = sorted(set(call.other_keywords) - {"seed", "time_period"})
     if unknown:
-        raise AssertionError(
+        raise UnmodeledReleaseCallError(
             f"_main passes {function.__name__} non-constant keyword(s) "
             f"{unknown}; the invariant tests do not know how to supply them."
         )
-    keywords = dict(call.constant_keywords)
+    keywords = {
+        key: value
+        for key, value in call.constant_keywords
+        if key not in {"seed", "time_period"}
+    }
     return lambda frame: function(frame, seed=SEED, time_period=PERIOD, **keywords)
 
 

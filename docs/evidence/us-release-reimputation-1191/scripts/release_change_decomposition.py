@@ -107,8 +107,11 @@ def main() -> None:
         )
     for stage in OTHER:
         payload = pd.read_pickle(args.other_dir / f"{stage}.pkl")
-        macos = np.load(args.other_outputs_dir / f"outputs.{stage}.macos_arm64.npz")
-        linux = np.load(args.other_outputs_dir / f"outputs.{stage}.linux_amd64.npz")
+        macos_path = args.other_outputs_dir / f"outputs.{stage}.macos_arm64.npz"
+        linux_path = args.other_outputs_dir / f"outputs.{stage}.linux_amd64.npz"
+        for path in (macos_path, linux_path):
+            receipt["inputs"][path.name] = sha256(path)
+        macos, linux = np.load(macos_path), np.load(linux_path)
         assert np.array_equal(macos["ids"], payload["ids"])
         assert np.array_equal(linux["ids"], payload["ids"])
         receipt["inputs"][f"{stage}.pkl"] = sha256(args.other_dir / f"{stage}.pkl")

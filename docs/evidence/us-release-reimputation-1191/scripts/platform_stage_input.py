@@ -226,7 +226,10 @@ def replay(args: argparse.Namespace) -> None:
     receipt: dict[str, object] = {
         "input": Path(args.input).name,
         "input_sha256": sha256(Path(args.input)),
-        "input_attrs": dict(slim.attrs),
+        "input_attrs": {
+            key: Path(value).name if key.endswith("_h5") else value
+            for key, value in slim.attrs.items()
+        },
         "seed": args.seed,
         "period": args.period,
         "weight_factor": args.weight_factor,

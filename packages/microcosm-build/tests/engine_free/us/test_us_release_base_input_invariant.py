@@ -47,10 +47,12 @@ from test_support.microcosm_build.us_release_base_input import (
     ROUTE_A_SS_FACTORS,
     STAGES,
     ReleaseScenario,
+    UnmodeledReleaseCallError,
     assert_identical,
     base_builder_call_names,
     load_release_tool,
     outputs,
+    release_stage,
     release_stage_calls,
 )
 
@@ -172,6 +174,10 @@ def test_release_calls_to_base_stages_are_pinned() -> None:
     assert [(call.name, dict(call.constant_keywords)) for call in pool_absent] == [
         (name, keywords) for name, keywords in _EXPECTED_POOL_ABSENT_CALLS
     ]
+    # Each runs under exactly ``pool_frame is None``, so on the --base-h5 path;
+    # a changed guard has to be classified here.
+    assert {call.path for call in pool_absent} == {("pool_frame is None",)}
+    assert {call.on_base_h5_path for call in pool_absent} == {True}
     assert {
         call.name for call in pool_absent if call.name not in base_calls
     } == _NOT_BASE_STAGES
@@ -186,11 +192,10 @@ def test_release_calls_to_base_stages_are_pinned() -> None:
         assert [call.name for call in calls].count(function.__name__) == 1
 
 
-def test_stage_call_reader_sees_compound_and_nested_guards() -> None:
-    source = """
+_READER_SOURCE = """
 def _main():
     if pool_frame is None:
-        frame = with_us_alpha(frame, seed=args.seed, flag=True)
+        frame = with_us_alpha(frame, seed=args.seed, flag=True, time_period=2024)
     if pool_frame is None and args.base_h5:
         frame = with_us_beta(frame)
     if pool_frame is not None:
@@ -199,16 +204,83 @@ def _main():
         if args.x:
             frame = stages.with_us_delta(frame, mode="consume")
     frame = with_us_epsilon(frame)
+    if pool_frame is None or args.base_h5:
+        frame = with_us_zeta(frame)
+    if not pool_frame is None:
+        frame = with_us_eta(frame)
+    else:
+        frame = with_us_theta(frame)
+    if pool_frame is not None and args.y:
+        frame = with_us_iota(frame)
+    else:
+        frame = with_us_kappa(frame)
+    if pool_frame is None and args.base_h5 is None:
+        frame = with_us_lambda(frame)
 """
-    calls = {call.name: call for call in release_stage_calls(source)}
 
+
+def test_stage_call_reader_evaluates_guards() -> None:
+    calls = {call.name: call for call in release_stage_calls(_READER_SOURCE)}
+
+    # Unreachable when a validated pool is present.
     assert {name: call.pool_absent_only for name, call in calls.items()} == {
         "with_us_alpha": True,
         "with_us_beta": True,
         "with_us_gamma": False,
         "with_us_delta": True,
         "with_us_epsilon": False,
+        # ``or``: runs with a pool whenever args.base_h5 is set.
+        "with_us_zeta": False,
+        "with_us_eta": False,
+        "with_us_theta": True,
+        # else of an ``and``: runs with a pool when args.y is false.
+        "with_us_iota": False,
+        "with_us_kappa": False,
+        "with_us_lambda": True,
     }
-    assert dict(calls["with_us_alpha"].constant_keywords) == {"flag": True}
+    # Runs on the --base-h5 path (True), is skipped (False), or is undecided.
+    assert calls["with_us_alpha"].on_base_h5_path is True
+    assert calls["with_us_beta"].on_base_h5_path is True
+    assert calls["with_us_gamma"].on_base_h5_path is False
+    assert calls["with_us_delta"].on_base_h5_path is None
+    assert calls["with_us_zeta"].on_base_h5_path is True
+    assert calls["with_us_theta"].on_base_h5_path is True
+    assert calls["with_us_kappa"].on_base_h5_path is True
+    assert calls["with_us_lambda"].on_base_h5_path is False
+    assert calls["with_us_lambda"].path == (
+        "pool_frame is None and args.base_h5 is None",
+    )
+    assert dict(calls["with_us_alpha"].constant_keywords) == {
+        "flag": True,
+        "time_period": 2024,
+    }
     assert calls["with_us_alpha"].other_keywords == ("seed",)
     assert dict(calls["with_us_delta"].constant_keywords) == {"mode": "consume"}
+
+
+def _calls_for(body: str):
+    return release_stage_calls("def _main():\n" + body)
+
+
+def test_replay_follows_the_release_guard() -> None:
+    name = STAGES["childcare"][2].__name__
+    frame = object()
+    call = f"        frame = {name}(frame, seed=args.seed, time_period=PERIOD"
+
+    skipped = _calls_for(
+        "    if pool_frame is None and args.base_h5 is None:\n" + call + ")\n"
+    )
+    assert release_stage("childcare", skipped)(frame) is frame
+
+    removed = _calls_for("    frame = with_us_other(frame)\n")
+    assert release_stage("childcare", removed)(frame) is frame
+
+    undecided = _calls_for(
+        "    if pool_frame is None and args.consume_base:\n" + call + ")\n"
+    )
+    with pytest.raises(UnmodeledReleaseCallError, match="not decided"):
+        release_stage("childcare", undecided)
+
+    extra_argument = _calls_for("    if pool_frame is None:\n" + call + ", mode=m)\n")
+    with pytest.raises(UnmodeledReleaseCallError, match="non-constant"):
+        release_stage("childcare", extra_argument)

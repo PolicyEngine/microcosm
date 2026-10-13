@@ -142,13 +142,15 @@
   "quantile_forest": "1.4.2",
   "sklearn": "1.8.0",
   "thread_environment": {
-   "OMP_NUM_THREADS": null,
-   "OPENBLAS_NUM_THREADS": null,
+   "OMP_NUM_THREADS": "4",
+   "OPENBLAS_NUM_THREADS": "4",
    "POPULACE_FIT_N_JOBS": null,
    "POPULACE_FIT_PREDICT_WORKERS": null,
    "PYTHONHASHSEED": "0"
   }
  },
- "seconds": 68.5,
- "seed": 0
+ "seconds": 6.4,
+ "seed": 0,
+ "threads": null,
+ "weight_factor": 1.0
 }

@@ -27,6 +27,7 @@
   "household": {
    "columns_changed": {
     "household_weight": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 270307,
       "nonzero_to_zero": 0,
@@ -34,8 +35,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 7836.8956701272145,
-     "ratio_max": 5.126515891935148,
-     "ratio_min": 0.014608847007383005,
+     "ratio_max_float": 5.126515891935148,
+     "ratio_min_float": 0.014608847007383005,
      "rows_changed": 352932,
      "rows_changed_by_channel": {
       "asec/clone0": 168852,
@@ -117,6 +118,7 @@
   "person": {
    "columns_changed": {
     "health_insurance_premiums_without_medicare_part_b": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 42100,
       "nonzero_to_zero": 71109,
@@ -124,8 +126,8 @@
       "zero_to_nonzero": 68543
      },
      "max_abs_difference": 756786.0,
-     "ratio_max": 28000.0,
-     "ratio_min": 5.441518708035394e-05,
+     "ratio_max_float": 28000.0,
+     "ratio_min_float": 5.441518708035394e-05,
      "rows_changed": 225373,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -144,6 +146,7 @@
      "sum_release_changed_rows": 543733178.7358887
     },
     "non_sch_d_capital_gains": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 10393,
       "nonzero_to_zero": 0,
@@ -151,8 +154,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 144232.3004000021,
-     "ratio_max": 0.31805332329246183,
-     "ratio_min": 0.3180533232924617,
+     "ratio_max_float": 0.31805332329246183,
+     "ratio_min_float": 0.3180533232924617,
      "rows_changed": 10393,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -171,6 +174,7 @@
      "sum_release_changed_rows": 23760572.42723887
     },
     "roth_401k_contributions_desired": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 9402,
       "nonzero_to_zero": 4042,
@@ -178,8 +182,8 @@
       "zero_to_nonzero": 3964
      },
      "max_abs_difference": 4792.093764192386,
-     "ratio_max": 6000.0,
-     "ratio_min": 0.00026881720430107527,
+     "ratio_max_float": 6000.0,
+     "ratio_min_float": 0.00026881720430107527,
      "rows_changed": 28695,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -198,6 +202,7 @@
      "sum_release_changed_rows": 22641986.247405797
     },
     "roth_ira_contributions_desired": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 9794,
       "nonzero_to_zero": 4043,
@@ -205,8 +210,8 @@
       "zero_to_nonzero": 3963
      },
      "max_abs_difference": 4524.2496,
-     "ratio_max": 3000.000000000001,
-     "ratio_min": 0.0002734481815695925,
+     "ratio_max_float": 3000.000000000001,
+     "ratio_min_float": 0.0002734481815695925,
      "rows_changed": 29223,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -225,6 +230,7 @@
      "sum_release_changed_rows": 10017864.325560294
     },
     "self_employed_pension_contributions_desired": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 309,
       "nonzero_to_zero": 273,
@@ -232,8 +238,8 @@
       "zero_to_nonzero": 391
      },
      "max_abs_difference": 1380.0,
-     "ratio_max": 33.896,
-     "ratio_min": 0.06666666666666667,
+     "ratio_max_float": 33.896,
+     "ratio_min_float": 0.06666666666666667,
      "rows_changed": 1219,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -252,6 +258,7 @@
      "sum_release_changed_rows": 286869.84863763093
     },
     "social_security_dependents": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 22539,
       "nonzero_to_zero": 0,
@@ -259,8 +266,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 5358.902419109232,
-     "ratio_max": 0.9056065944636577,
-     "ratio_min": 0.9056065944636574,
+     "ratio_max_float": 0.9056065944636577,
+     "ratio_min_float": 0.9056065944636574,
      "rows_changed": 22539,
      "rows_changed_by_channel": {
       "asec/clone0": 1110,
@@ -279,6 +286,7 @@
      "sum_release_changed_rows": 131312304.20250207
     },
     "social_security_disability": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 0,
       "nonzero_to_zero": 0,
@@ -286,8 +294,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 9829.486221016516,
-     "ratio_max": 1.1103656007127676,
-     "ratio_min": 1.1103656007127671,
+     "ratio_max_float": 1.1103656007127676,
+     "ratio_min_float": 1.1103656007127671,
      "rows_changed": 33193,
      "rows_changed_by_channel": {
       "asec/clone0": 8102,
@@ -306,6 +314,7 @@
      "sum_release_changed_rows": 373571057.7102821
     },
     "social_security_retirement": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 0,
       "nonzero_to_zero": 0,
@@ -313,8 +322,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 13962.3900276208,
-     "ratio_max": 1.1474528249656015,
-     "ratio_min": 1.147452824965601,
+     "ratio_max_float": 1.1474528249656015,
+     "ratio_min_float": 1.147452824965601,
      "rows_changed": 131652,
      "rows_changed_by_channel": {
       "asec/clone0": 62016,
@@ -333,6 +342,7 @@
      "sum_release_changed_rows": 2681198007.594402
     },
     "social_security_survivors": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 0,
       "nonzero_to_zero": 0,
@@ -340,8 +350,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 94772.0502526381,
-     "ratio_max": 2.492612968873529,
-     "ratio_min": 2.492612968873528,
+     "ratio_max_float": 2.492612968873529,
+     "ratio_min_float": 2.492612968873528,
      "rows_changed": 23302,
      "rows_changed_by_channel": {
       "asec/clone0": 1515,
@@ -360,6 +370,7 @@
      "sum_release_changed_rows": 410318135.58202076
     },
     "traditional_401k_contributions_desired": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 10249,
       "nonzero_to_zero": 4042,
@@ -367,8 +378,8 @@
       "zero_to_nonzero": 3964
      },
      "max_abs_difference": 26241.2,
-     "ratio_max": 3000.0,
-     "ratio_min": 0.0005363594160546237,
+     "ratio_max_float": 3000.0,
+     "ratio_min_float": 0.0005363594160546237,
      "rows_changed": 30442,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -387,6 +398,7 @@
      "sum_release_changed_rows": 139294507.384347
     },
     "traditional_ira_contributions_desired": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 9596,
       "nonzero_to_zero": 4044,
@@ -394,8 +406,8 @@
       "zero_to_nonzero": 3963
      },
      "max_abs_difference": 2916.9504,
-     "ratio_max": 3000.000000000001,
-     "ratio_min": 0.0005376344086021508,
+     "ratio_max_float": 3000.000000000001,
+     "ratio_min_float": 0.0005376344086021508,
      "rows_changed": 28913,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -414,6 +426,7 @@
      "sum_release_changed_rows": 6215683.743680373
     },
     "weeks_unemployed": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 6,
       "nonzero_to_zero": 0,
@@ -421,8 +434,8 @@
       "zero_to_nonzero": 0
      },
      "max_abs_difference": 10.0,
-     "ratio_max": 1.625,
-     "ratio_min": 0.6,
+     "ratio_max_float": 1.625,
+     "ratio_min_float": 0.6,
      "rows_changed": 9,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -769,6 +782,7 @@
   "spm_unit": {
    "columns_changed": {
     "spm_unit_energy_subsidy": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 391,
       "nonzero_to_zero": 1261,
@@ -776,8 +790,8 @@
       "zero_to_nonzero": 1036
      },
      "max_abs_difference": 3100.0,
-     "ratio_max": 22.5,
-     "ratio_min": 0.04,
+     "ratio_max_float": 22.5,
+     "ratio_min_float": 0.04,
      "rows_changed": 3283,
      "rows_changed_by_channel": {
       "asec/clone0": 0,
@@ -796,6 +810,7 @@
      "sum_release_changed_rows": 1451785.2243929612
     },
     "spm_unit_pre_subsidy_childcare_expenses": {
+     "arithmetic": "float64",
      "direction": {
       "down_both_nonzero": 21,
       "nonzero_to_zero": 946,
@@ -803,8 +818,8 @@
       "zero_to_nonzero": 854
      },
      "max_abs_difference": 50000.0,
-     "ratio_max": 1.1430856563784493,
-     "ratio_min": 0.9999999999999957,
+     "ratio_max_float": 1.1430856563784493,
+     "ratio_min_float": 0.9999999999999957,
      "rows_changed": 1849,
      "rows_changed_by_channel": {
       "asec/clone0": 0,

@@ -10,46 +10,52 @@
  },
  "groups": {
   "all": {
-   "adjacent_pairs_in_base_order": 46857,
-   "adjacent_pairs_inverted_after_repair": 7993,
+   "adjacent_pairs_tied_in_base": 100651,
+   "adjacent_pairs_total": 147508,
+   "adjacent_pairs_with_distinct_base_sums": 46857,
+   "distinct_adjacent_pairs_in_opposite_order_after_repair": 7993,
    "persons_by_single_component": {
     "social_security_dependents": 1480,
     "social_security_disability": 12134,
     "social_security_retirement": 110593,
     "social_security_survivors": 2243
    },
-   "persons_whose_dense_rank_changes": 147506,
    "persons_with_more_than_one_component": 21059,
    "persons_with_social_security": 147509,
-   "spearman_rank_correlation": 0.9769281813087236
+   "spearman_rank_correlation": 0.9769281813967245,
+   "tied_adjacent_pairs_no_longer_tied_after_repair": 30554
   },
   "asec (QRF training rows are drawn from these)": {
-   "adjacent_pairs_in_base_order": 8777,
-   "adjacent_pairs_inverted_after_repair": 1272,
+   "adjacent_pairs_tied_in_base": 63965,
+   "adjacent_pairs_total": 72742,
+   "adjacent_pairs_with_distinct_base_sums": 8777,
+   "distinct_adjacent_pairs_in_opposite_order_after_repair": 1272,
    "persons_by_single_component": {
     "social_security_dependents": 1110,
     "social_security_disability": 8102,
     "social_security_retirement": 62016,
     "social_security_survivors": 1515
    },
-   "persons_whose_dense_rank_changes": 72742,
    "persons_with_more_than_one_component": 0,
    "persons_with_social_security": 72743,
-   "spearman_rank_correlation": 0.980594685706092
+   "spearman_rank_correlation": 0.980594685706092,
+   "tied_adjacent_pairs_no_longer_tied_after_repair": 12745
   },
   "puf half (QRF prediction rows)": {
-   "adjacent_pairs_in_base_order": 38079,
-   "adjacent_pairs_inverted_after_repair": 6484,
+   "adjacent_pairs_tied_in_base": 36686,
+   "adjacent_pairs_total": 74765,
+   "adjacent_pairs_with_distinct_base_sums": 38079,
+   "distinct_adjacent_pairs_in_opposite_order_after_repair": 6484,
    "persons_by_single_component": {
     "social_security_dependents": 370,
     "social_security_disability": 4032,
     "social_security_retirement": 48577,
     "social_security_survivors": 728
    },
-   "persons_whose_dense_rank_changes": 74700,
    "persons_with_more_than_one_component": 21059,
    "persons_with_social_security": 74766,
-   "spearman_rank_correlation": 0.9743570985501318
+   "spearman_rank_correlation": 0.9743570992268926,
+   "tied_adjacent_pairs_no_longer_tied_after_repair": 17809
   }
  }
 }

@@ -176,6 +176,14 @@ def tree_arrays(arrays, index: int, tree: int) -> dict[str, np.ndarray]:
     return {name: arrays[f"forest_{index}_{name}"][lo:hi] for name in NODE_ARRAYS}
 
 
+def file_sha256(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 24), b""):
+            sha.update(block)
+    return sha.hexdigest()
+
+
 def digest(*arrays: np.ndarray) -> str:
     sha = hashlib.sha256()
     for array in arrays:
@@ -315,6 +323,7 @@ def run(args: argparse.Namespace) -> None:
     )
     receipt = {
         "input": Path(args.input).name,
+        "input_sha256": file_sha256(Path(args.input)),
         "platform": {
             "python": sys.version,
             "platform": platform.platform(),
@@ -340,10 +349,32 @@ def compare(args: argparse.Namespace) -> None:
     left_arrays, right_arrays = np.load(args.left_arrays), np.load(args.right_arrays)
     steps_left = [event["step"] for event in left["events"]]
     steps_right = [event["step"] for event in right["events"]]
+    # Refuse a comparison that would be incomplete or misaligned.
+    if steps_left != steps_right:
+        raise SystemExit("The two probes recorded different step sequences.")
+    if left.get("input_sha256") != right.get("input_sha256"):
+        raise SystemExit("The two probes read different inputs.")
+    for a, b in zip(left["events"], right["events"]):
+        if a["step"] == "forest" and (
+            a["columns"] != b["columns"]
+            or a["trees"] != b["trees"]
+            or a["index"] != b["index"]
+        ):
+            raise SystemExit("A forest differs in identity or tree count.")
     report: dict[str, object] = {
+        "inputs": {
+            name: {"file": path.name, "sha256": file_sha256(path)}
+            for name, path in (
+                ("left", args.left),
+                ("left_arrays", args.left_arrays),
+                ("right", args.right),
+                ("right_arrays", args.right_arrays),
+            )
+        },
+        "probed_input": {"file": left["input"], "sha256": left["input_sha256"]},
         "left": left["platform"],
         "right": right["platform"],
-        "same_step_sequence": steps_left == steps_right,
+        "same_step_sequence": True,
         "steps": [],
     }
     for index, (a, b) in enumerate(zip(left["events"], right["events"])):
