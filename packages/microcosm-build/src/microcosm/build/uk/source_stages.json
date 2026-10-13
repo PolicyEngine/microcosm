@@ -5969,7 +5969,7 @@
    "operations": [
     {
      "kind": "fit_weighted_qrf",
-     "training_population": "support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1",
+     "training_population": "support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1 and employment_income > 0",
      "target_population": "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero",
      "predictors": [
       "age",
@@ -5983,6 +5983,7 @@
      "seed": 42,
      "n_estimators": 100,
      "clamp_minimum": 0,
+     "clamp_maximum": "employment_income floored at zero; every row, reported or predicted, FRS and SPI channel",
      "preserve_asked_rows": true,
      "cache": false
     },
@@ -5992,7 +5993,8 @@
      "target": 5400000,
      "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
      "rate_cap": 0.5,
-     "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
+     "move_pay_share_cap": 0.5,
+     "move": "employee_pension_contributions, up to move_pay_share_cap of employment_income, to pension_contributions_via_salary_sacrifice; the rest stays in the source; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
      "seed": 2024,
      "salt": "salary_sacrifice_conversion",
      "receipt": "weighted_headcount",
@@ -6016,7 +6018,7 @@
     "employee_pension_contributions",
     "employment_income"
    ],
-   "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief."
+   "notes": "The QRF trains only on the 2024-25 FRS asked subset with pay. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief."
   },
   {
    "stage": "student_loans",

@@ -2474,19 +2474,23 @@ def _pre_salary_sacrifice_frame(frame):
     """The artifact with the salary-sacrifice conversion reversed.
 
     ``salary_sacrifice`` moves a converted record's employee pension
-    contribution whole into ``pension_contributions_via_salary_sacrifice``,
-    zeroes the source and lowers ``employment_income`` by the amount moved,
+    contribution, up to half its pay, into
+    ``pension_contributions_via_salary_sacrifice``, leaves the rest in the
+    source and lowers ``employment_income`` by the amount moved,
     after the capital-gains stages have banded every carrier on that pay
     (microcosm#1063: on the 2 October spine the E8 recomputes banded 2,797
     clone carriers on post-sacrifice pay and derived different anchor targets
     and a different support family). The stage keeps a converted record's
     pre-conversion pay on ``SALSAC_PRE_CONVERSION_PAY_COLUMN`` (zero for
-    everyone else), so the rewrite reverses exactly: pay back to the carrier
-    and the employee contribution back from the salary-sacrifice column,
-    which the conversion set to zero on the record it converted. The stage's
-    QRF predictions for the records it did not convert stay as stored; no
-    receipted layer before the stage reads them. An artifact without the
-    carrier is returned as it is.
+    everyone else), so the rewrite reverses: pay back to the carrier, exactly,
+    and the amount moved back from the salary-sacrifice column onto the
+    employee contribution the record kept. That sum is the contribution
+    before the conversion, to the last bit unless the contribution was above
+    the pay it came from; no receipted layer before the stage reads it. The
+    stage's QRF predictions and its limit of every amount to pay stay as
+    stored for the records it did not convert; no receipted layer before the
+    stage reads them either. An artifact without the carrier is returned as
+    it is.
     """
 
     from microcosm.build.uk_runtime.national_frame import (
@@ -2521,14 +2525,24 @@ def _pre_salary_sacrifice_frame(frame):
     sacrifice = pd.to_numeric(person[SALSAC_OUTPUT], errors="raise").to_numpy(
         dtype=float, copy=True
     )
-    if (employee[converted] != 0.0).any() or (sacrifice[converted] <= 0.0).any():
+    if (
+        (employee[converted] < 0.0).any()
+        or (sacrifice[converted] <= 0.0).any()
+        or not np.allclose(
+            pay[converted] + sacrifice[converted],
+            carrier[converted],
+            rtol=1e-12,
+            atol=0.0,
+        )
+    ):
         raise ValueError(
-            "A converted salary-sacrifice record must carry a zero employee "
-            "contribution and a positive salary sacrifice; the artifact's "
-            f"{SALSAC_PRE_CONVERSION_PAY_COLUMN} disagrees with its columns."
+            "A converted salary-sacrifice record must carry a positive salary "
+            "sacrifice that, added to its pay, gives its pay before the "
+            f"conversion; the artifact's {SALSAC_PRE_CONVERSION_PAY_COLUMN} "
+            "disagrees with its columns."
         )
     pay[converted] = carrier[converted]
-    employee[converted] = sacrifice[converted]
+    employee[converted] = employee[converted] + sacrifice[converted]
     sacrifice[converted] = 0.0
     person["employment_income"] = pay
     person["employee_pension_contributions"] = employee

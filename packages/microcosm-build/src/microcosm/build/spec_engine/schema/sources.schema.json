@@ -7226,6 +7226,9 @@
       "clamp_minimum": {
        "type": "number"
       },
+      "clamp_maximum": {
+       "type": "string"
+      },
       "preserve_asked_rows": {
        "type": "boolean"
       },
@@ -9372,6 +9375,9 @@
        "type": "string"
       },
       "rate_cap": {
+       "type": "number"
+      },
+      "move_pay_share_cap": {
        "type": "number"
       },
       "move": {
