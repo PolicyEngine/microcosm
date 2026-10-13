@@ -253,7 +253,9 @@ def test_cap_mass_is_the_most_any_donor_subpopulation_of_that_size_holds(
                 -part,
                 A_eq=np.ones((1, len(values))),
                 b_eq=[1.0],
-                bounds=[(0.0, w / take) for w in weights],
+                # The shares sum to one, so no share exceeds one; capping the
+                # bound there keeps the problem well conditioned.
+                bounds=[(0.0, min(1.0, w / take)) for w in weights],
                 method="highs",
             )
             assert result.success
