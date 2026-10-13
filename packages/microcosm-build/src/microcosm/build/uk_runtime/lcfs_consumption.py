@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.gates import FitWeightRecord
+from microcosm.build.gates import EXPLICIT_KIND, FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
     uprating_operation,
 )
 from microcosm.build.uk_runtime.energy_pricing import (
+    CONNECT_RULES,
     DISCONNECT_IDENTITY_UNIFORM_ORDER,
     DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
     ELECTRICITY_KWH,
@@ -560,6 +561,14 @@ class UKLCFSConsumptionStageTransform:
         # recomposed totals (microcosm#1113).
         drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
         energy_rake_receipt = None
+        gas_payers = None
+        if energy is not None and energy.connect_rule is not None:
+            gas_payers = gas_payer_draws(
+                donor=donor,
+                recipient=recipient,
+                household_ids=frame.table("household")["household_id"].to_numpy(),
+                energy=energy,
+            )
         if energy is not None:
             household_draws, energy_rake_receipt = rake_recipient_energy(
                 household_draws,
@@ -571,6 +580,7 @@ class UKLCFSConsumptionStageTransform:
                 weights=weights,
                 iterations=_recipient_energy_rake_iterations(self.stage),
                 identity=frame.table("household")["household_id"].to_numpy(),
+                gas_payers=gas_payers,
             )
         household_draws, bus_pricing_receipt = lcfs_bus_fare_pricing(
             self.stage, household_draws, frame
@@ -643,6 +653,7 @@ class UKLCFSConsumptionStageTransform:
             *imputation.fit_weight_records,
             *incidence.fit_weight_records,
             *(() if prepayment is None else prepayment.fit_weight_records),
+            *(() if gas_payers is None else gas_payers.fit_weight_records),
         )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
@@ -1753,6 +1764,9 @@ class LCFSEnergyPricing:
     receipt: dict[str, Any]
     disconnect_seed: int = 0
     ceilings: Mapping[str, float] | None = None
+    connect_rule: str | None = None
+    connect_salt: str | None = None
+    connect_n_estimators: int | None = None
 
 
 def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
@@ -1802,6 +1816,21 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             "integer seed."
         )
     ceilings = declared_household_kwh_ceilings(parameters)
+    connect_rule = parameters.get("connect_rule")
+    connect_salt = parameters.get("connect_salt")
+    connect_trees = parameters.get("connect_n_estimators")
+    if connect_rule is not None:
+        if connect_rule not in CONNECT_RULES:
+            raise ValueError(f"connect_rule must be one of {CONNECT_RULES!r}.")
+        if gas_connected != GAS_CONNECTED_PUBLISHED_METER_SHARE:
+            raise ValueError(
+                "connect_rule needs gas_connected: "
+                f"{GAS_CONNECTED_PUBLISHED_METER_SHARE}."
+            )
+        if not isinstance(connect_salt, str) or not connect_salt:
+            raise ValueError("connect_rule needs a declared connect_salt.")
+        if not isinstance(connect_trees, int) or connect_trees < 1:
+            raise ValueError("connect_rule needs a positive connect_n_estimators.")
     return LCFSEnergyPricing(
         prices=prices,
         margins=margins,
@@ -1811,14 +1840,115 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
         disconnect_seed=int(disconnect_seed),
         level=level,
         ceilings=ceilings,
+        connect_rule=None if connect_rule is None else str(connect_rule),
+        connect_salt=None if connect_rule is None else str(connect_salt),
+        connect_n_estimators=None if connect_rule is None else int(connect_trees),
         receipt={
             **prices_receipt,
             "need_margins": margins.receipt,
             "level": level_receipt,
             "gas_connection": connection_receipt,
             "household_kwh_ceiling": ceilings,
+            "connect_rule": connect_rule,
         },
     )
+
+
+@dataclass(frozen=True)
+class GasPayerDraws:
+    """Each recipient's probability of paying for gas and its gas if it does."""
+
+    probability: np.ndarray
+    positive_spend: np.ndarray
+    receipt: dict[str, Any]
+    fit_weight_records: tuple[FitWeightRecord, ...]
+
+
+def gas_payer_draws(
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    household_ids: np.ndarray,
+    energy: LCFSEnergyPricing,
+) -> GasPayerDraws:
+    """What the connection walk needs to connect a household the draw left at zero.
+
+    Two weighted fits on the chain's predictors (microcosm#1164). A gradient
+    boosted classifier of whether the donor pays for gas gives each recipient
+    the probability that a donor like it does, which orders the walk; a
+    regime-gated QRF of the donor's gas spend draws, from its positive forest
+    at quantiles keyed on the household id, the gas such a donor pays, which a
+    household the walk connects is given. The donor's gas is the labelled
+    split's, so households heating with oil, bottled gas or solid fuel count
+    as non-payers.
+    """
+
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    from microcosm.fit.qrf import Regime, RegimeGatedQRF
+
+    target = "gas_consumption"
+    seed = energy.disconnect_seed
+    donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+        donor, recipient
+    )
+    donor_weight = donor_encoded["household_weight"].to_numpy(dtype=float)
+    gas = donor_encoded[target].to_numpy(dtype=float)
+    payers = gas > 0
+    if payers.all() or not payers.any():
+        raise ValueError(
+            "the donor's gas spend has no zero-gas or no gas-paying household to "
+            "learn who pays for gas from."
+        )
+    features = recipient_encoded[list(predictors)].reset_index(drop=True)
+    classifier = HistGradientBoostingClassifier(random_state=seed)
+    classifier.fit(
+        donor_encoded[list(predictors)].to_numpy(dtype=float),
+        payers.astype(int),
+        sample_weight=donor_weight,
+    )
+    probability = classifier.predict_proba(features.to_numpy(dtype=float))[
+        :, list(classifier.classes_).index(1)
+    ]
+    train = donor_encoded.loc[payers, [*predictors, "household_weight"]]
+    train = train.reset_index(drop=True)
+    train[target] = gas[payers]
+    fitted = RegimeGatedQRF(
+        n_estimators=int(energy.connect_n_estimators or 0), seed=seed
+    ).fit(train, list(predictors), [target], weights="household_weight")
+    regime = str(fitted.regimes()[target])
+    if regime != Regime.POSITIVE_ONLY:
+        raise ValueError(
+            f"the donor's positive gas spend fitted regime {regime!r}, not "
+            f"{Regime.POSITIVE_ONLY!r}."
+        )
+    positive = fitted.predict_positive_from_uniforms(
+        features,
+        quantiles={
+            target: stable_identity_uniforms(
+                np.asarray(household_ids),
+                seed=seed,
+                salt=f"{energy.connect_salt}:{target}",
+            )
+        },
+    )[target].to_numpy(dtype=float)
+    receipt = {
+        "rule": energy.connect_rule,
+        "salt": energy.connect_salt,
+        "seed": seed,
+        "n_estimators": energy.connect_n_estimators,
+        "amount_regime": regime,
+        "training_rows": int(payers.sum()),
+        "donor_gas_payer_share": float(donor_weight[payers].sum())
+        / float(donor_weight.sum()),
+    }
+    records = (
+        FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:gas_payer", EXPLICIT_KIND),
+        FitWeightRecord(
+            f"{UK_LCFS_CONSUMPTION_FIT_NAME}:gas_payer_amount", fitted.weight_kind
+        ),
+    )
+    return GasPayerDraws(probability, positive, receipt, records)
 
 
 def energy_spend_to_kwh(
@@ -1872,17 +2002,25 @@ def rake_recipient_energy(
     weights: np.ndarray,
     iterations: int,
     identity: np.ndarray | None = None,
+    gas_payers: GasPayerDraws | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
     NEED shape at the DESNZ level, price back.
 
     ``identity`` (the household ids, row-aligned) keys the disconnection walk
-    when the declared rule is ``identity_uniform_order``."""
+    when the declared rule is ``identity_uniform_order``, and the connection
+    walk. ``gas_payers`` (the declared ``connect_rule``) orders the households
+    a region below its published share connects and gives each its gas."""
 
     in_kwh = energy_spend_to_kwh(household_draws, energy=energy, region=region)
     drawn_gas = in_kwh[GAS_KWH].to_numpy(dtype=float)
     weight_values = np.asarray(weights, dtype=float)
     if energy.gas_connected == GAS_CONNECTED_PUBLISHED_METER_SHARE:
+        if (energy.connect_rule is None) != (gas_payers is None):
+            raise ValueError(
+                "gas_payers must be given exactly when the stage declares a "
+                "connect_rule."
+            )
         connected, connection_receipt = impose_gas_connection(
             drawn_gas,
             frs_region=region,
@@ -1891,8 +2029,20 @@ def rake_recipient_energy(
             disconnect_rule=energy.disconnect_rule,
             identity=identity,
             seed=energy.disconnect_seed,
+            connect_probability=None if gas_payers is None else gas_payers.probability,
+            connect_salt=energy.connect_salt,
         )
         in_kwh.loc[~connected, GAS_KWH] = 0.0
+        if gas_payers is not None:
+            added = connected & ~(drawn_gas > 0)
+            in_kwh.loc[added, GAS_KWH] = spend_to_kwh(
+                gas_payers.positive_spend[added],
+                frs_region=np.asarray(region)[added],
+                fuel="gas",
+                prices=energy.prices,
+                connected=np.ones(int(added.sum()), dtype=bool),
+            )
+            connection_receipt["gas_payers"] = dict(gas_payers.receipt)
     else:
         connected = drawn_gas > 0
         share = float(np.dot(connected, weight_values)) / max(

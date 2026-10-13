@@ -626,6 +626,7 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
         spend_to_kwh,
     )
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        GasPayerDraws,
         energy_spend_to_kwh,
         lcfs_energy_pricing,
         rake_recipient_energy,
@@ -666,9 +667,16 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
         weights=weights,
         iterations=50,
         identity=np.arange(1, n + 1),
+        gas_payers=GasPayerDraws(
+            probability=np.full(n, 0.5),
+            positive_spend=np.full(n, 600.0),
+            receipt={"rule": "gas_payer_probability_order"},
+            fit_weight_records=(),
+        ),
     )
     assert receipt["gas_connection"]["disconnect_rule"] == "identity_uniform_order"
     assert receipt["gas_connection"]["seed"] == 0
+    assert receipt["gas_connection"]["connect_rule"] == "gas_payer_probability_order"
     elec = raked["electricity_consumption"].to_numpy(dtype=float)
     gas = raked["gas_consumption"].to_numpy(dtype=float)
     factor = receipt["level_factor"]
@@ -975,14 +983,17 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
     # The 18 chain targets, the road-fuel redraw's total and petrol share,
-    # then the prepayment-meter flag (microcosm#1110).
-    assert len(transform.fit_weight_records) == 21
-    assert transform.fit_weight_records[-2].fit_name.endswith(
+    # the prepayment-meter flag (microcosm#1110), then the gas-payer
+    # classifier and amount model the connection walk reads (microcosm#1164).
+    assert len(transform.fit_weight_records) == 23
+    assert transform.fit_weight_records[-4].fit_name.endswith(
         ":petrol_share_of_road_fuel"
     )
-    assert transform.fit_weight_records[-1].fit_name.endswith(
+    assert transform.fit_weight_records[-3].fit_name.endswith(
         ":uses_energy_prepayment_meter"
     )
+    assert transform.fit_weight_records[-2].fit_name.endswith(":gas_payer")
+    assert transform.fit_weight_records[-1].fit_name.endswith(":gas_payer_amount")
     assert out["uses_energy_prepayment_meter"].dtype == bool
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
@@ -2256,3 +2267,86 @@ def test_prepayment_meter_leaves_the_release_until_the_engine_reads_it() -> None
     )
     exported = uk_release_export_frame(frame)
     assert "uses_energy_prepayment_meter" not in exported.table("household")
+
+
+def test_gas_payer_draws_rank_likely_payers_and_draw_positive_gas() -> None:
+    """The connection walk's inputs come from two donor gas fits (#1164).
+
+    The classifier's probability of paying for gas follows the donor (here,
+    houses pay and flats mostly do not), and the amount model draws a positive
+    gas spend for every recipient; a donor without zero-gas households has
+    nobody to learn non-payers from and is refused.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        gas_payer_draws,
+        lcfs_energy_pricing,
+    )
+
+    energy = lcfs_energy_pricing(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    assert energy is not None and energy.connect_rule == "gas_payer_probability_order"
+    rng = np.random.default_rng(4)
+    n = 400
+
+    def table(rows: int) -> pd.DataFrame:
+        flat = np.arange(rows) % 2 == 0
+        return pd.DataFrame(
+            {
+                "household_adult_count": np.full(rows, 2.0),
+                "household_child_count": np.zeros(rows),
+                "region": np.full(rows, "LONDON", dtype=object),
+                "employment_income": rng.uniform(1e4, 6e4, rows),
+                "self_employment_income": np.zeros(rows),
+                "private_pension_income": np.zeros(rows),
+                "hbai_household_net_income": rng.uniform(1e4, 6e4, rows),
+                "tenure_type": np.full(rows, "OWNED_OUTRIGHT", dtype=object),
+                "accommodation_type": np.where(flat, "FLAT", "HOUSE_DETACHED"),
+                "num_vehicles": np.ones(rows),
+            }
+        )
+
+    donor = table(n)
+    flats = donor["accommodation_type"].eq("FLAT").to_numpy()
+    donor["household_weight"] = 1000.0
+    donor["gas_consumption"] = np.where(
+        flats & (np.arange(n) % 8 != 0), 0.0, rng.uniform(400.0, 1500.0, n)
+    )
+    for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
+        if column not in donor:
+            donor[column] = 0.0
+    recipient = table(60)
+    draws = gas_payer_draws(
+        donor=donor,
+        recipient=recipient,
+        household_ids=np.arange(60) + 1,
+        energy=energy,
+    )
+
+    recipient_flats = recipient["accommodation_type"].eq("FLAT").to_numpy()
+    assert draws.probability.shape == (60,)
+    assert (
+        draws.probability[~recipient_flats].mean()
+        > draws.probability[recipient_flats].mean() + 0.3
+    )
+    assert (draws.positive_spend > 0).all()
+    assert draws.receipt["amount_regime"] == "positive_only"
+    assert draws.receipt["salt"] == "lcfs_gas_connection"
+    assert 0.0 < draws.receipt["donor_gas_payer_share"] < 1.0
+    assert [
+        record.fit_name.rsplit(":", 1)[1] for record in draws.fit_weight_records
+    ] == [
+        "gas_payer",
+        "gas_payer_amount",
+    ]
+    assert draws.fit_weight_records[0].weight_kind == "explicit"
+    everyone = donor.assign(gas_consumption=rng.uniform(400.0, 1500.0, n))
+    with pytest.raises(ValueError, match="no zero-gas or no gas-paying"):
+        gas_payer_draws(
+            donor=everyone,
+            recipient=recipient,
+            household_ids=np.arange(60) + 1,
+            energy=energy,
+        )

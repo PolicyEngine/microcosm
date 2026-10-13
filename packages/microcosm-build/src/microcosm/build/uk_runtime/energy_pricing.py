@@ -70,6 +70,11 @@ DISCONNECT_RULES = (
     DISCONNECT_IDENTITY_UNIFORM_ORDER,
 )
 GAS_DISCONNECTION_SALT = "lcfs_consumption:gas_disconnection"
+#: The declared rule for connecting households in a region the draw leaves
+#: below its published share (microcosm#1164): zero-gas households walked in an
+#: identity-keyed order weighted by each one's probability of paying for gas.
+CONNECT_GAS_PAYER_PROBABILITY_ORDER = "gas_payer_probability_order"
+CONNECT_RULES = (CONNECT_GAS_PAYER_PROBABILITY_ORDER,)
 QEP_UNIT_COST_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.qep.domestic_electricity_variable_unit_cost",
     GAS_FUEL: "desnz.qep.domestic_gas_variable_unit_cost",
@@ -528,6 +533,8 @@ def impose_gas_connection(
     disconnect_rule: str = DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
     identity: Sequence[object] | None = None,
     seed: int = 0,
+    connect_probability: Sequence[float] | None = None,
+    connect_salt: str | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The gas-connected mask after imposing each region's published share.
 
@@ -548,11 +555,20 @@ def impose_gas_connection(
     is disconnected if that brings the share nearer the published one. The
     achieved share therefore sits within a fraction of one household weight
     of the published share; ``rows_skipped_for_weight`` counts the households
-    the walk passed over. A region below its published share keeps every
-    gas-positive household (the draw cannot create connections) and the
-    shortfall is receipted. Regions with no published share (``None``, the
+    the walk passed over. Regions with no published share (``None``, the
     stage's declared ``connection_fallback_regions``) keep the positive-gas
     rule.
+
+    A region below its published share keeps every gas-positive household.
+    Without ``connect_probability`` the draw cannot create connections and the
+    shortfall is receipted. With it (each row's probability of paying for gas,
+    the declared ``connect_rule``; microcosm#1164), the region's zero-gas
+    households are walked in a weighted identity-keyed order, ascending
+    ``-log(u) / p`` for ``u`` from ``stable_identity_uniforms(identity, seed,
+    connect_salt)``, which draws them without replacement in proportion to
+    ``p``, and connected by the same weight-fitting walk until the share is
+    met; the caller gives each connected household its gas. A shortfall then
+    remains only if the region runs out of candidates (``candidates_exhausted``).
     """
 
     if disconnect_rule not in DISCONNECT_RULES:
@@ -572,6 +588,27 @@ def impose_gas_connection(
         )
     else:
         walk_key = gas
+    connect = connect_probability is not None
+    if connect:
+        probability = np.asarray(connect_probability, dtype=float)
+        if (
+            len(probability) != len(gas)
+            or identity is None
+            or len(identity) != len(gas)
+        ):
+            raise ValueError(
+                "connect_probability needs one probability and one identity per row."
+            )
+        if not connect_salt:
+            raise ValueError("connecting households needs a declared connect_salt.")
+        connect_key = np.full(len(gas), np.inf)
+        weighted = probability > 0
+        uniforms = stable_identity_uniforms(
+            np.asarray(identity), seed=seed, salt=connect_salt
+        )
+        connect_key[weighted] = (
+            -np.log(np.maximum(uniforms[weighted], 1e-300)) / (probability[weighted])
+        )
     connected = gas > 0
     by_region: dict[str, dict[str, Any]] = {}
     for region in sorted(set(regions)):
@@ -587,6 +624,20 @@ def impose_gas_connection(
         }
         if target is None:
             entry.update({"rule": GAS_CONNECTED_POSITIVE_SPEND, "share_after": before})
+            by_region[region] = entry
+            continue
+        if before <= target and connect:
+            entry.update(
+                _connect_walk(
+                    connected,
+                    rows=rows,
+                    weight=weight,
+                    key=connect_key,
+                    total=total,
+                    before=before,
+                    target=target,
+                )
+            )
             by_region[region] = entry
             continue
         if before <= target or len(positive) == 0:
@@ -651,9 +702,72 @@ def impose_gas_connection(
         if total_weight > 0
         else 0.0,
         "rows_disconnected": int(((gas > 0) & ~connected).sum()),
+        **(
+            {
+                "connect_rule": CONNECT_GAS_PAYER_PROBABILITY_ORDER,
+                "connect_salt": connect_salt,
+                "rows_connected": int((connected & ~(gas > 0)).sum()),
+            }
+            if connect
+            else {}
+        ),
         "by_region": by_region,
     }
     return connected, receipt
+
+
+def _connect_walk(
+    connected: np.ndarray,
+    *,
+    rows: np.ndarray,
+    weight: np.ndarray,
+    key: np.ndarray,
+    total: float,
+    before: float,
+    target: float,
+) -> dict[str, Any]:
+    """Connect a region's zero-gas rows in ``key`` order until its share is met.
+
+    The disconnection walk's weight-fitting rule, mirrored: a household is
+    connected when its weight fits inside the remaining shortfall, skipped
+    when it would overshoot, and afterwards the skipped household nearest the
+    remainder is connected if that brings the share nearer the published one.
+    Rows of probability zero (an infinite key) are never candidates.
+    """
+
+    candidates = rows[~connected[rows] & np.isfinite(key[rows])]
+    order = candidates[np.argsort(key[candidates], kind="stable")]
+    remaining = (target - before) * total
+    add: list[int] = []
+    skipped: list[int] = []
+    for index in order:
+        if remaining <= 0.0:
+            break
+        if weight[index] <= remaining:
+            add.append(int(index))
+            remaining -= weight[index]
+        else:
+            skipped.append(int(index))
+    if remaining > 0.0 and skipped:
+        nearest = min(skipped, key=lambda i: abs(weight[i] - remaining))
+        if abs(weight[nearest] - remaining) < remaining:
+            add.append(nearest)
+            remaining -= weight[nearest]
+    added = np.asarray(add, dtype=int)
+    connected[added] = True
+    after = float(weight[rows[connected[rows]]].sum()) / total
+    exhausted = remaining > 0.0 and not skipped
+    return {
+        "rule": GAS_CONNECTED_PUBLISHED_METER_SHARE,
+        "share_after": after,
+        "rows_disconnected": 0,
+        "weight_disconnected": 0.0,
+        "rows_connected": int(len(added)),
+        "weight_connected": float(weight[added].sum()),
+        "rows_skipped_for_weight": int(sum(1 for i in skipped if i not in set(add))),
+        "candidates_exhausted": bool(exhausted),
+        "shortfall": max(target - after, 0.0) if exhausted else 0.0,
+    }
 
 
 def published_energy_level(

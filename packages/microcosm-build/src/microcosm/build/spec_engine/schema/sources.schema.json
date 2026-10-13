@@ -9758,6 +9758,19 @@
         "identity_uniform_order"
        ]
       },
+      "connect_rule": {
+       "enum": [
+        "gas_payer_probability_order"
+       ]
+      },
+      "connect_salt": {
+       "type": "string",
+       "minLength": 1
+      },
+      "connect_n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
       "seed": {
        "type": "integer",
        "minimum": 0

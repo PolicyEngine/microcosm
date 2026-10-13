@@ -261,7 +261,10 @@ def _energy_rake_gate(
     where the stage declares the published gas-connected share, every region
     with a published share must sit within ``maximum_connected_share_deviation``
     of it after the imposition (a region the draw could not fill records a
-    shortfall instead). The residual check then holds the maximum absolute
+    shortfall instead; with a declared ``connect_rule`` the walk connects
+    households there, the receipt must name the declared rule and salt, and a
+    shortfall stands only where the region ran out of households to connect).
+    The residual check then holds the maximum absolute
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
     IPF's cross-margin residual. That residual must be converged, not
@@ -582,6 +585,29 @@ def _energy_rake_gate(
                         f"{stage}: {region} gas-connected share {float(after):.4f} is "
                         f"not the published {target:.4f} (tolerance {share_tolerance})."
                     )
+                # With a declared connect_rule the walk fills a region below
+                # its share (microcosm#1164); a shortfall is waived only where
+                # the region ran out of households to connect.
+                if (
+                    declared.get("connect_rule") is not None
+                    and float(shortfall) > 0
+                    and entry.get("candidates_exhausted") is not True
+                ):
+                    failures.append(
+                        f"{stage}: {region} keeps a gas-connection shortfall of "
+                        f"{float(shortfall):.4f} with households left to connect."
+                    )
+            if declared.get("connect_rule") is not None and (
+                connection.get("connect_rule") != declared.get("connect_rule")
+                or connection.get("connect_salt") != declared.get("connect_salt")
+            ):
+                failures.append(
+                    f"{stage}: gas connection ran connect rule "
+                    f"{connection.get('connect_rule')!r} with salt "
+                    f"{connection.get('connect_salt')!r}, not the declared "
+                    f"{declared.get('connect_rule')!r} and "
+                    f"{declared.get('connect_salt')!r}."
+                )
     return (
         _fail(stage, check, failures, details)
         if failures

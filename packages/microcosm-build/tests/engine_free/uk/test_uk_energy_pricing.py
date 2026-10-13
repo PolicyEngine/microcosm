@@ -465,6 +465,108 @@ def test_identity_uniform_order_is_keyed_by_identity_not_row_order() -> None:
         impose_gas_connection(gas, frs_region=region, weights=weights, **kwargs)
 
 
+def test_connect_walk_fills_a_region_below_its_share_by_gas_payer_probability() -> None:
+    # microcosm#1164: a region whose draw falls short of its published share
+    # connects zero-gas households, drawn in proportion to their probability of
+    # paying for gas; a household of probability zero is never connected.
+    rng = np.random.default_rng(11)
+    n = 4000
+    region = np.array(["LONDON"] * n, dtype=object)
+    weights = rng.uniform(0.5, 1.5, n)
+    gas = np.where(np.arange(n) % 10 < 7, 5000.0, 0.0)  # 70 % drawn connected
+    likely = np.arange(n) % 10 == 7
+    never = np.arange(n) % 10 == 9
+    probability = np.where(likely, 0.9, np.where(never, 0.0, 0.1))
+    ids = np.arange(n) + 100
+    connected, receipt = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"LONDON": 0.8},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        connect_probability=probability,
+        connect_salt="lcfs_gas_connection",
+    )
+    entry = receipt["by_region"]["LONDON"]
+    assert entry["share_after"] == pytest.approx(0.8, abs=0.001)
+    assert entry["shortfall"] == 0.0 and entry["candidates_exhausted"] is False
+    assert entry["rows_connected"] == receipt["rows_connected"] > 0
+    assert connected[gas > 0].all()
+    assert not connected[never].any()
+    added = connected & ~(gas > 0)
+    # The likely payers take most of the new connections.
+    assert added[likely].sum() > 3 * added[~likely].sum()
+    assert receipt["connect_rule"] == "gas_payer_probability_order"
+    assert receipt["connect_salt"] == "lcfs_gas_connection"
+    # Too few candidates: everyone with a probability is connected and the
+    # remaining shortfall is receipted as exhausted.
+    short, exhausted = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"LONDON": 0.95},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        connect_probability=probability,
+        connect_salt="lcfs_gas_connection",
+    )
+    tail = exhausted["by_region"]["LONDON"]
+    assert tail["candidates_exhausted"] is True and tail["shortfall"] > 0
+    assert short[~never].all() and not short[never].any()
+    with pytest.raises(ValueError, match="connect_salt"):
+        impose_gas_connection(
+            gas,
+            frs_region=region,
+            weights=weights,
+            shares={"LONDON": 0.8},
+            identity=ids,
+            connect_probability=probability,
+        )
+
+
+def test_the_energy_rake_gate_holds_a_connect_rule_to_its_shortfalls() -> None:
+    # A region left short with households still to connect fails; one that
+    # ran out of candidates may stand short (microcosm#1164).
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = json.loads(
+        (
+            _TEST_PATHS.repository
+            / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    parameters = {gate["id"]: gate["parameters"] for gate in gates["gates"]}[
+        "uk_stage_lcfs_consumption_energy_rake"
+    ]
+    generous = {**parameters, "maximum_relative_deviation": 1.0}
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "energy_rake": ev},
+            stage="lcfs_consumption",
+            check="energy_rake",
+            parameters=generous,
+        )
+
+    assert run(receipt).passed
+    short = copy.deepcopy(receipt)
+    short["gas_connection"]["by_region"]["LONDON"].update(
+        shortfall=0.02, candidates_exhausted=False
+    )
+    result = run(short)
+    assert not result.passed
+    assert any("households left to connect" in f for f in result.failures)
+    short["gas_connection"]["by_region"]["LONDON"]["candidates_exhausted"] = True
+    assert run(short).passed
+    renamed = copy.deepcopy(receipt)
+    renamed["gas_connection"]["connect_salt"] = "other"
+    result = run(renamed)
+    assert not result.passed
+    assert any("connect rule" in f for f in result.failures)
+
+
 def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
     level, receipt = published_energy_level(_declared())
     quarters = period_quarters("calendar_year", 2024)
@@ -644,10 +746,18 @@ def _synthetic_rake_receipt(n: int = 1200):
     # each household a plausible kWh under the declared domestic ceilings.
     weights = rng.uniform(0.5, 2.0, n)
     weights *= 28_500_000.0 / weights.sum()
+    drawn = table[GAS_KWH].to_numpy()
     connected, connection = impose_gas_connection(
-        table[GAS_KWH].to_numpy(), frs_region=region, weights=weights, shares=shares
+        drawn,
+        frs_region=region,
+        weights=weights,
+        shares=shares,
+        identity=np.arange(n),
+        connect_probability=np.full(n, 0.5),
+        connect_salt=declared["connect_salt"],
     )
     table.loc[~connected, GAS_KWH] = 0.0
+    table.loc[connected & ~(drawn > 0), GAS_KWH] = 8000.0
     raked, receipt = rake_energy_kwh(
         table,
         margins=margins,
