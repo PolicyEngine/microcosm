@@ -329,6 +329,10 @@ build evidence, not certification. Its byte-preservation verifier lives in
 can replay it. See
 [the qualification note](us-acs-donor-receipt-qualification.md).
 
+The ACS local-area release can build its fresh staging H5 on Modal with
+`us-acs-multispine-staging`, then consume its verified H5 and summary through
+`us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
+
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
 and writes local annual H5 files without running the base graph or publishing.
