@@ -885,6 +885,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    passive = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["passive_partnership_s_corp"],
+                "passive partnership/S-corp post-transfer contract",
+            )
+        )
+    )
+    passive.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -911,6 +920,10 @@ def _normalise_transfer_execution(
             },
             "contract": schedule_base,
             "enabled_overrides": schedule_override,
+        },
+        "passive_partnership_s_corp": {
+            "activation": {"all_targets": ["passive_partnership_s_corp_income"]},
+            "contract": passive,
         },
     }
     result["profiles"] = {

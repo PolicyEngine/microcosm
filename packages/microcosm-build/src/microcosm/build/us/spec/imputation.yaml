@@ -475,6 +475,18 @@ transfer_execution:
             note: 'residual = SOCA all-route CGD minus Pub 1304 Table 1.4 direct-1040 CGD; share = residual
               / (LT net gains minus the direct route, which is not on Schedule D). CGD is entirely long-term
               (s. 852(b)(3): capital gain dividends).'
+    passive_partnership_s_corp:
+      activation:
+        all_targets:
+        - passive_partnership_s_corp_income
+      contract:
+        subset: passive_partnership_s_corp_income
+        line_32:
+        - partnership_income
+        - s_corp_income
+        tax_unit_link: person_tax_unit_id
+        rule: zero_subset_where_person_or_tax_unit_line_32_is_zero
+        mutable_rows: newly_imputed_subset_cells_only
   profiles:
     acs_transfer_default:
       derive_schedule_d: false

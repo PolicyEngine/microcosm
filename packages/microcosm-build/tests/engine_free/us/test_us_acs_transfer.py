@@ -2978,3 +2978,149 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 
     with pytest.raises(ValueError, match=missing_column):
         acs_adult_care_qualifying_rows(person)
+
+
+# ---------------------------------------------------------------------------
+# Passive partnership/S-corp coherence after the late transfer (microcosm#1239)
+# ---------------------------------------------------------------------------
+
+
+def _passive_people(**columns: list[float]) -> pd.DataFrame:
+    base = {
+        "person_tax_unit_id": [1, 1, 2, 3, 3, 4],
+        "partnership_income": [500.0, 0.0, 0.0, -200.0, 0.0, 300.0],
+        "s_corp_income": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "passive_partnership_s_corp_income": [
+            900.0,  # passive above a positive total: lawful, kept
+            40.0,  # no own line 32, unit has one: cleared
+            25.0,  # no line 32 anywhere: cleared
+            150.0,  # passive gain under a net loss: lawful, kept
+            0.0,
+            10.0,  # immutable below: kept even though it is only checked
+        ],
+    }
+    base.update(columns)
+    return pd.DataFrame(base)
+
+
+def test_passive_reconciliation_clears_only_newly_imputed_subsets_without_line_32() -> (
+    None
+):
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people()
+    mutable = np.asarray([True, True, True, True, True, False])
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=mutable
+    )
+
+    assert passive.tolist() == [900.0, 0.0, 0.0, 150.0, 0.0, 10.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 2,
+        "remaining_nonzero_subset_rows": 2,
+    }
+
+    # A pre-existing (immutable) subset is preserved even with no line 32.
+    person.loc[5, "partnership_income"] = 0.0
+    passive, _ = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=mutable
+    )
+    assert passive.iloc[5] == 10.0
+
+
+@pytest.mark.parametrize("missing", ["partnership_income", "person_tax_unit_id"])
+def test_passive_reconciliation_refuses_missing_structure(missing: str) -> None:
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people().drop(columns=[missing])
+    with pytest.raises(ValueError, match=missing):
+        reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=np.ones(len(person), dtype=bool)
+        )
+
+
+def test_passive_reconciliation_property_holds_for_random_draws() -> None:
+    """For every draw: no imputed subset survives without a line-32 total."""
+
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    amount = st.sampled_from([0.0, 0.0, -300.0, 75.0, 1_250.0])
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        st.lists(
+            st.tuples(
+                st.integers(min_value=1, max_value=6),
+                amount,
+                amount,
+                st.floats(-5e5, 5e5, allow_nan=False),
+                st.booleans(),
+            ),
+            min_size=1,
+            max_size=30,
+        )
+    )
+    def check(rows) -> None:
+        person = pd.DataFrame(
+            rows,
+            columns=[
+                "person_tax_unit_id",
+                "partnership_income",
+                "s_corp_income",
+                "passive_partnership_s_corp_income",
+                "mutable",
+            ],
+        )
+        mutable = person.pop("mutable").to_numpy()
+        before = person["passive_partnership_s_corp_income"].copy()
+        passive, _ = reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=mutable
+        )
+        own = person["partnership_income"] + person["s_corp_income"]
+        unit = own.groupby(person["person_tax_unit_id"]).transform("sum")
+        has_line_32 = (own != 0) & (unit != 0)
+        # Immutable cells and imputed cells under a line-32 total are untouched.
+        untouched = ~mutable | has_line_32.to_numpy()
+        pd.testing.assert_series_equal(
+            passive[untouched], before[untouched], check_names=False
+        )
+        # No imputed subset survives without a line-32 total under it.
+        assert (passive[mutable & ~has_line_32.to_numpy()] == 0.0).all()
+
+    check()
+
+
+def test_passive_reconciliation_is_bound_into_transfer_execution_identity() -> None:
+    enabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("partnership_income", "passive_partnership_s_corp_income"),
+        derive_schedule_d=False,
+    )
+    disabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("partnership_income",),
+        derive_schedule_d=False,
+    )
+
+    contract = enabled["post_transfer_structure"]["passive_partnership_s_corp"]
+    assert contract == {
+        "enabled": True,
+        "subset": "passive_partnership_s_corp_income",
+        "line_32": ["partnership_income", "s_corp_income"],
+        "tax_unit_link": "person_tax_unit_id",
+        "rule": "zero_subset_where_person_or_tax_unit_line_32_is_zero",
+        "mutable_rows": "newly_imputed_subset_cells_only",
+    }
+    assert (
+        disabled["post_transfer_structure"]["passive_partnership_s_corp"]["enabled"]
+        is False
+    )
+    assert enabled["sha256"] != disabled["sha256"]
