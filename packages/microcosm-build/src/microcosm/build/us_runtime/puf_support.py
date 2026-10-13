@@ -321,8 +321,13 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "farm_operations_income",
     "farm_rent_income",
     "miscellaneous_income",
+    # Schedule E line 32 (microcosm#1239): the combined partnership and
+    # S-corporation total is carried by partnership_income (s_corp_income is
+    # an exact-zero universe), and its section 469 passive subset follows it
+    # in the chain so the passive draw conditions on the drawn total.
     "partnership_income",
     "s_corp_income",
+    "passive_partnership_s_corp_income",
     "partnership_self_employment_net_earnings",
     *US_QBI_OUTPUT_COLUMNS,
 )
@@ -414,6 +419,9 @@ _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
     {
         "farm_operations_income",
         "partnership_self_employment_net_earnings",
+        # Two percent of donor returns carry a passive amount, of both signs
+        # (microcosm#1239), the same sparse sign-mixed shape as the others.
+        "passive_partnership_s_corp_income",
     }
 )
 
@@ -517,6 +525,11 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
     "farm_operations_income_would_be_qualified": ("farm_operations_income",),
     "farm_rent_income_would_be_qualified": ("farm_rent_income",),
     "partnership_s_corp_income_would_be_qualified": (
+        "partnership_income",
+        "s_corp_income",
+    ),
+    # The passive subset belongs to whoever carries the line-32 total.
+    "passive_partnership_s_corp_income": (
         "partnership_income",
         "s_corp_income",
     ),
@@ -1313,6 +1326,7 @@ def puf_tax_unit_donor_from_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
     adjusted_gross_income: Sequence[Any] | None = None,
+    schedule_e_partnership_s_corp: Mapping[str, Sequence[Any]] | None = None,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     donor_build_summary: dict[str, object] | None = None,
@@ -1329,6 +1343,13 @@ def puf_tax_unit_donor_from_arrays(
         adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
             published TY2015 SOI Table 2.1 component share for each record.
             Required whenever the processed PUF carries nonzero E19200.
+        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32
+            (``partnership_income``) and its passive subset
+            (``passive_partnership_s_corp_income``) aligned to
+            ``tax_unit_id``, from
+            :func:`~microcosm.build.us_runtime.puf_source_schedule_e.source_year_puf_partnership_s_corp_income`.
+            The processed artifact has no line 32, so a processed donor that
+            requests either leaf must supply it (microcosm#1239).
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
@@ -1460,6 +1481,13 @@ def puf_tax_unit_donor_from_arrays(
         if values is not None:
             tax_unit[output] = values
 
+    if schedule_e_partnership_s_corp is not None:
+        _attach_schedule_e_partnership_s_corp(
+            tax_unit,
+            schedule_e_partnership_s_corp,
+            person_outputs=person_outputs,
+        )
+
     required_outputs = [*person_outputs, *tax_unit_outputs]
     missing = [column for column in required_outputs if column not in tax_unit.columns]
     if missing:
@@ -1501,6 +1529,51 @@ def puf_tax_unit_donor_from_arrays(
     )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
+
+
+_SCHEDULE_E_DONOR_OUTPUTS = (
+    "partnership_income",
+    "passive_partnership_s_corp_income",
+)
+
+
+def _attach_schedule_e_partnership_s_corp(
+    tax_unit: pd.DataFrame,
+    schedule_e: Mapping[str, Sequence[Any]],
+    *,
+    person_outputs: Sequence[str],
+) -> None:
+    """Carry source-year Schedule E line 32 and its passive subset.
+
+    Both leaves must be supplied together, aligned to ``tax_unit_id`` and
+    finite. A leaf the arrays already derived (a stored leaf or raw Schedule E
+    fields) is a second source for the same value and is refused rather than
+    silently overwritten.
+    """
+
+    supplied = set(schedule_e)
+    if supplied != set(_SCHEDULE_E_DONOR_OUTPUTS):
+        raise ValueError(
+            "Schedule E donor supplement must carry exactly "
+            f"{list(_SCHEDULE_E_DONOR_OUTPUTS)}; got {sorted(supplied)}."
+        )
+    for output in _SCHEDULE_E_DONOR_OUTPUTS:
+        values = np.asarray(schedule_e[output], dtype=np.float64)
+        if values.ndim != 1 or len(values) != len(tax_unit):
+            raise ValueError(
+                f"Schedule E donor supplement {output!r} must align one-for-one "
+                "with tax_unit_id."
+            )
+        if not np.isfinite(values).all():
+            raise ValueError(f"Schedule E donor supplement {output!r} must be finite.")
+        if output not in person_outputs:
+            continue
+        if output in tax_unit.columns:
+            raise ValueError(
+                f"PUF arrays already derive {output!r}; the Schedule E donor "
+                "supplement would be a second source for it."
+            )
+        tax_unit[output] = values
 
 
 def _quarantine_us_puf_mortgage_fields(
@@ -2039,6 +2112,7 @@ def finalize_us_puf_tax_detail_predictions(
                 donor[column],
             )
 
+    _zero_passive_partnership_s_corp_without_line_32(predictions)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
     _reconcile_puf_social_security_components(
@@ -2162,6 +2236,39 @@ def finalize_us_puf_tax_detail_predictions(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _zero_passive_partnership_s_corp_without_line_32(
+    predictions: pd.DataFrame,
+) -> None:
+    """Zero a drawn passive subset whose unit drew no line-32 total.
+
+    The passive amount is a subset of Schedule E line 32, so a unit with no
+    partnership or S-corporation activity has none. The chained draw conditions
+    on the drawn total but its sign gate can still place a passive amount on a
+    zero-total unit. The donor nearly never shows that pattern: 27 of 207,692
+    regular TY2015 records report a passive amount with a zero line 32 (net
+    passive and nonpassive legs cancelling), $14 million of weighted passive
+    mass (microcosm#1239). Units with a nonzero total keep their draw in full,
+    because a passive amount larger than, or of the other sign from, the total
+    is legitimate when nonpassive losses offset it.
+    """
+
+    passive = "passive_partnership_s_corp_income"
+    if passive not in predictions:
+        return
+    totals = [
+        column
+        for column in ("partnership_income", "s_corp_income")
+        if column in predictions
+    ]
+    if not totals:
+        raise ValueError(
+            "PUF passive partnership/S-corp draws need the line-32 total "
+            "(partnership_income) in the same chain."
+        )
+    line_32 = predictions[totals].sum(axis=1)
+    predictions.loc[line_32 == 0.0, passive] = 0.0
 
 
 def _clone_entity_table(
@@ -4301,6 +4408,43 @@ def _reconcile_puf_social_security_components(
         predictions[component] = shares[:, index] * total
 
 
+# Schedule E line 28 column fields by entity (2014 SOI PUF General Description
+# Booklet, annotated Schedule E Part II): (g) passive income, (j) nonpassive
+# income, (f) passive loss allowed, (h) nonpassive loss, (i) section 179.
+_RAW_SCHEDULE_E_ENTITY_LEGS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "partnership_income": (("E25940", "E25980"), ("E25920", "E25960", "E26110")),
+    "s_corp_income": (("E26170", "E26190"), ("E26160", "E26180", "E26100")),
+    "passive_partnership_s_corp_income": (("E25940", "E26170"), ("E25920", "E26160")),
+}
+
+
+def _raw_schedule_e_line_32_values(
+    arrays: Mapping[str, Sequence[Any]],
+    output: str,
+) -> np.ndarray | None:
+    """Derive a line-32 leaf from raw Schedule E Part II column fields.
+
+    ``partnership_income`` and ``s_corp_income`` are each entity's share of
+    line 32, (g) + (j) - (f) - (h) - (i); together they equal E26270 to within
+    the PUF's per-field rounding. ``passive_partnership_s_corp_income`` is the
+    passive subset (g) - (f) of both entities. Every field of the leaf is
+    required, so a raw source missing one derives nothing.
+    """
+
+    legs = _RAW_SCHEDULE_E_ENTITY_LEGS.get(output)
+    if legs is None:
+        return None
+    income, losses = legs
+    if not set((*income, *losses)).issubset(arrays):
+        return None
+    values = np.zeros_like(_numeric_array(arrays[income[0]]))
+    for field in income:
+        values = values + _numeric_array(arrays[field])
+    for field in losses:
+        values = values - _numeric_array(arrays[field])
+    return values
+
+
 def _person_source_values(
     arrays: Mapping[str, Sequence[Any]],
     output: str,
@@ -4320,18 +4464,20 @@ def _person_source_values(
     for source in source_aliases.get(output, ()):
         if source in arrays:
             return _numeric_array(arrays[source])
-    if output == "partnership_income" and "partnership_s_corp_income" in arrays:
-        return _numeric_array(arrays["partnership_s_corp_income"])
+    raw_schedule_e = _raw_schedule_e_line_32_values(arrays, output)
+    if raw_schedule_e is not None:
+        return raw_schedule_e
+    # The processed artifact's partnership_s_corp_income is the archived
+    # nonpassive-only sum, not Schedule E line 32, so it never stands for
+    # partnership_income; puf_tax_unit_donor_from_arrays takes line 32 from
+    # the source-year rows instead (microcosm#1239). Its presence still marks
+    # the combined-leaf convention under which s_corp_income is exactly zero.
     if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
         return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
     if output == "partnership_self_employment_net_earnings" and (
         "partnership_se_income" in arrays
     ):
         return _numeric_array(arrays["partnership_se_income"])
-    if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
-        return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
-    if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
-        return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
     if output == "partnership_self_employment_net_earnings" and {
         "E25960",
         "E26180",
