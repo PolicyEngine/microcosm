@@ -5202,9 +5202,10 @@ def _check_us_local_area_stored_inputs_gate(
     Engine-free: the check reads JSON only.
 
     No published release is exempt. The four US local-area releases on the Hub
-    predate the gate, and nothing re-validates a published release (only a
-    fresh publish of a local directory runs this), so re-publishing one of
-    them means re-packaging it, which runs the check. One of them
+    predate the gate. Nothing re-validates a published release automatically,
+    and a local-area release cannot be an annual-projection base, so only a
+    fresh publish of a local directory runs this; re-publishing one of them
+    means re-packaging it, which runs the check. One of them
     (``populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z``) stores
     two columns the check refuses.
     """
@@ -5284,8 +5285,8 @@ def stored_input_evidence_manifest_block(
     release is refused.
 
     Raises:
-        KeyError, TypeError: ``payload`` is not a stored-input evidence
-            payload; the publisher reports the file's shape first.
+        KeyError, TypeError, ValueError: ``payload`` is not a stored-input
+            evidence payload; the publisher reports the file's shape first.
     """
 
     gate = payload[US_STORED_INPUTS_EVIDENCE_KEY]
@@ -5457,9 +5458,12 @@ def _check_us_stored_input_evidence(
 
     Engine-free: JSON and one file hash. No published release is exempt: none
     of the US national calibration releases on the Hub carries gate evidence
-    (it was first bound on 2026-09-24), nothing re-validates a published
-    release, and re-certifying one (a publish retry or an annual-projection
-    extension of its directory) now means rebuilding it with a tool that runs
+    (it was first bound on 2026-09-24). Nothing re-validates a published
+    release automatically. The paths that run the contract on one again, a
+    publish retry of its directory or an annual-projection cut on it as a
+    base, are re-certifications, and every published US national base already
+    fails the unchanged calibration-diagnostics schema rule (Build P records
+    schema 5), so re-certifying one means rebuilding it with a tool that runs
     the gate.
     """
 

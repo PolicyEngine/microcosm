@@ -7005,7 +7005,7 @@ def _stored_input_gate_failures(
                 "stored tables cannot be listed, so its columns cannot be "
                 f"checked against the engine: {error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     try:
         engine = installed_us_engine()
@@ -7017,7 +7017,7 @@ def _stored_input_gate_failures(
                 "checked against the engine it is certified against: "
                 f"{error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     columns = {column for names in stored.values() for column in names}
     details: dict[str, object] = {

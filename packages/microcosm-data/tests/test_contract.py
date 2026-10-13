@@ -6286,19 +6286,31 @@ MALFORMED_VERDICTS = {
     ),
     "too few stored columns": (_payload_with(stored_columns=1), "'stored_columns'"),
     "stored columns a bool": (
-        _payload_with(stored_columns=True),
+        # No registered columns, so only the type check can refuse True (1).
+        _payload_with(stored_columns=True, registered_non_variables=[]),
         "'stored_columns'",
     ),
     "a line per column": (
         _payload_with(refused=["would_claim_wic"], passed=True, failures=[]),
         "one failure line per refused column",
     ),
+    "lines that quote no column": (
+        _payload_with(
+            refused=["would_claim_wic"],
+            passed=False,
+            failures=["Stored model inputs failed (export frame): something"],
+        ),
+        "one failure line per refused column",
+    ),
     "passed disagrees": (_payload_with(passed=False), "'passed' must be true"),
     "schema": (_payload_with(schema_version=2), "schema_version must be 1"),
     "schema a string": (_payload_with(schema_version="1"), "schema_version must be 1"),
+    "schema a bool": (_payload_with(schema_version=True), "schema_version must be 1"),
     "waived": (_payload_with(enforced=False), "enforced: true"),
+    "enforced truthy": (_payload_with(enforced=1), "enforced: true"),
     "stage": (_payload_with(checked_at_stage="package"), "checked_at_stage"),
     "evaluated not a bool": (_payload_with(evaluated="yes"), "'evaluated'"),
+    "evaluated one": (_payload_with(evaluated=1), "'evaluated'"),
 }
 
 

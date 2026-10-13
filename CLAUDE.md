@@ -158,11 +158,11 @@ certification and on every replay, and the ACS local-area chain's package
 stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
-name. A new US lane that writes a release H5 must run the check where it
-records `build.built_with_model_package`, and bind the verdict into the
-release: the publisher runs no engine, so it requires the fiscal-refresh
-tool's `stored_inputs.json` and manifest `stored_inputs` block, and the ACS
-local-area `stored_inputs` gate, each naming the built-with engine
+name. A new US lane that writes a release H5 must run the check where it records
+`build.built_with_model_package`, and bind the verdict into the release: the
+publisher runs no engine for a calibration release, so it requires the
+fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
+and the ACS local-area `stored_inputs` gate, each naming the built-with engine
 (microcosm#1034). A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.

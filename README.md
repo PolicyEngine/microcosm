@@ -215,7 +215,13 @@ records as built-with:
   directory.
 
 A refusal names each column: rename it to its live input, or add a reviewed
-register entry.
+register entry. The published default, its reported-receipt child and the
+2026-09-23 ACS local-area release built on that child all store two retired
+engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
+`takes_up_wic_if_eligible` and `medicare_part_b_premiums_reported`), so each
+would now be refused.
+Check local files from HDF metadata alone with
+`uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
 
 The publisher cannot run the check without the engine, so it requires each
 lane's verdict as release evidence instead (microcosm#1034), from JSON alone. A
@@ -227,21 +233,22 @@ and an evidence release must carry each refusal line verbatim in
 `known_failures`. A US local-area release must list the package stage's
 `stored_inputs` gate, naming the built-with engine and the microdata sha256 the
 release ships. No release already on the Hub carries this evidence, and none is
-exempt: nothing re-validates a published release, so publishing one again means
-rebuilding or re-packaging it, which runs the check.
+exempt. Nothing re-validates a published release automatically. The two paths
+that run the contract on one again are re-certifications: a publish retry of
+its local directory, and an annual-projection cut on a national base. Every
+published US national base already fails the unchanged calibration-diagnostics
+schema rule, and local-area releases cannot be annual bases. So publishing one
+again means rebuilding or re-packaging it, which runs the check. An
+evidence-tier run that ships a stored-input refusal needs a per-run
+`--evidence-failure-owners` entry naming its owner; the standing owner register
+covers none.
 
 Each check grades one engine version, the built-with one. A source-enrichment
 bundle certified with a publisher compatibility range admits versions no check
 measured, later ones and possibly earlier ones; the bundle records the version
 that was measured as `compatibility.claim_measurement`, and the SPM-role
 runbook says how to grade a candidate against another released version before
-declaring a range. The published default, its reported-receipt child and the
-2026-09-23 ACS local-area release built on that child all store two retired
-engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
-`takes_up_wic_if_eligible` and `medicare_part_b_premiums_reported`), so each
-would now be refused.
-Check local files from HDF metadata alone with
-`uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+declaring a range.
 
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`

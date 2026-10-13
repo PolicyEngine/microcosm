@@ -297,10 +297,11 @@ entity tables this release writes, or the SPM path that consumes them.
 - **Speculative headroom.** `>=2.0.1,<2.1` because 2.0.2 is expected is
   defensible; `>=2.0.1,<3` because a major bump seems far off is not.
 - **A stored input the range renames or removes.** If any version inside the
-  range renames or drops a column the candidate stores, or starts reading a
-  column the stored-input register lists as a non-variable, consumers on that
-  version get the microcosm#1026 failure: the engine ignores the column. No
-  check catches it for that version (see below).
+  range renames or drops a column the candidate stores, consumers on that
+  version get the microcosm#1026 failure: the engine ignores the column. If a
+  version starts defining a column the stored-input register lists as a
+  non-variable, the engine reads that column as an input nobody reviewed. No
+  check catches either for that version (see below).
 
 Consumers record which basis they used. Measured against policyengine.py's
 installed provenance code, a manifest declaring `>=2.0.1,<2.1` over `built_with`
@@ -345,8 +346,9 @@ measured, `{"model": {"specifier": ">=2.0.1,<2.1", "measured_versions":
 ["2.0.1"]}}`. Validation and the publisher recompute it from the version the
 replayed probe tested and refuse a report that records anything else, a record
 with no claim, or a pending candidate that carries one. The validation and
-`--preflight-only` JSON and the publisher's stderr print it for a declared
-bundle, so the operator at each later gate sees what the range rests on.
+`--preflight-only` JSON, the certify JSON and the publisher's stderr print it
+for a declared bundle, so the operator at each later gate sees what the range
+rests on.
 
 Before declaring a range, grade the candidate H5 against each released version
 you intend it to cover: run `python -m microcosm.data.stored_inputs

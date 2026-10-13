@@ -2008,7 +2008,9 @@ def test_producer_validation_is_not_the_tamper_control(
     claims existed, one who rewrote the exact pin did. What stands between an
     edited bundle and the Hub is :func:`_check_producer_source_identity`, the
     publish preflight, and the human publication decision. Pinned here so a
-    later reader does not mistake the cross-check for a seal.
+    later reader does not mistake the cross-check for a seal. The claim
+    measurement (microcosm#1034) is no seal either: it is derived from the
+    claim and the tested version, so the forger writes it too.
     """
     output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
     _, parent, root = candidate
@@ -2021,6 +2023,7 @@ def test_producer_validation_is_not_the_tamper_control(
     report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
     report = json.loads(report_path.read_text())
     report["compatibility"]["publisher_claims"] = {"model": widened}
+    report["compatibility"]["claim_measurement"] = MEASURED_RECORD
     _write(report_path, report)
     manifest_path = output / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -2107,6 +2110,12 @@ def test_an_undeclared_certification_records_no_measurement(
         ),
         (
             lambda c: c["claim_measurement"]["model"].update(
+                measured_versions=["1.999.1"]
+            ),
+            "measured_versions must be exactly",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(
                 measured_versions="1.999.0"
             ),
             "measured_versions must be exactly",
@@ -2129,6 +2138,7 @@ def test_an_undeclared_certification_records_no_measurement(
         "other-specifier",
         "extra-version",
         "no-version",
+        "other-version",
         "version-not-a-list",
         "extra-field",
         "core-field",

@@ -908,3 +908,37 @@ def test_property_evidence_names_another_engine_and_is_refused(
         assert (verdict == []) == (graded == built_with)
 
     check()
+
+
+@pytest.mark.parametrize("error", [ImportError(), ValueError("")])
+def test_an_ungraded_gate_names_its_reason_even_without_a_message(
+    builder, tmp_path, error
+):
+    """A gate that cannot evaluate records the exception's type with its
+    message, so an empty message still leaves evidence the evidence-tier
+    contract accepts (it requires a non-empty reason) rather than a release
+    refused on its own evidence."""
+
+    def fail(*args, **kwargs):
+        raise error
+
+    with pytest.MonkeyPatch.context() as patch:
+        if isinstance(error, ImportError):
+            patch.setattr(builder, "installed_us_engine", fail)
+            patch.setattr(builder, "_export_stored_tables", lambda frame: {})
+        else:
+            patch.setattr(builder, "_export_stored_tables", fail)
+        failures, details = builder._stored_input_gate_failures(
+            None, stage=US_FISCAL_STORED_INPUTS_STAGE
+        )
+    payload = builder._record_stored_inputs_gate_evidence(
+        tmp_path, failures=failures, details=details, telemetry=_Telemetry()
+    )
+
+    assert details == {"evaluated": False, "error": f"{type(error).__name__}: "}
+    assert (
+        contract._stored_input_evidence_payload_failures(
+            payload, engine_label="policyengine-us 2.2.1", evidence_tier=True
+        )
+        == []
+    )
