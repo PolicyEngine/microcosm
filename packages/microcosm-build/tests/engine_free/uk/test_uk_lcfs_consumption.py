@@ -457,22 +457,29 @@ def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
         ice_share_from_licensed_cars({**declared, "period_value": 1999})
 
 
-def test_recipient_need_band_income_is_the_engines_gross_income() -> None:
-    # microcosm#1164: the donor bands on gross p344p, so the recipient must not
-    # fall back to its (lower) HBAI net income.
+def test_recipient_need_band_income_is_hbai_gross_income() -> None:
+    # microcosm#1164: the donor bands on gross p344p, so the recipient bands on
+    # its HBAI net income with the engine's HBAI deductions added back, neither
+    # the (lower) net income nor the engine's household_gross_income, which
+    # counts capital gains and in-kind NHS and education spending.
     from types import SimpleNamespace
 
+    from microcosm.build.uk_runtime.household_income import (
+        UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    )
     from microcosm.build.uk_runtime.lcfs_consumption import recipient_predictors
 
     class _Engine:
         def materialize(self, frame, variables, period):
-            assert "household_gross_income" in variables
-            return {
-                name: np.array([30_000.0, 80_000.0])
-                if name == "household_gross_income"
-                else np.array([20_000.0, 50_000.0])
-                for name in variables
+            assert "household_gross_income" not in variables
+            assert set(UK_HBAI_GROSS_INCOME_DEDUCTIONS) <= set(variables)
+            values = {
+                "hbai_household_net_income": np.array([20_000.0, 50_000.0]),
+                "income_tax": np.array([3_000.0, 20_000.0]),
+                "council_tax": np.array([1_500.0, 2_500.0]),
+                "national_insurance": np.array([500.0, 7_500.0]),
             }
+            return {name: values.get(name, np.array([0.0, 0.0])) for name in variables}
 
         def variable_metadata(self, name):
             return SimpleNamespace(entity="household")
@@ -499,13 +506,17 @@ def test_recipient_need_band_income_is_the_engines_gross_income() -> None:
 
     predictors = recipient_predictors(frame, _Engine())
 
-    assert predictors["household_gross_income"].tolist() == [30_000.0, 80_000.0]
+    assert predictors["household_gross_income"].tolist() == [25_000.0, 80_000.0]
     assert predictors["hbai_household_net_income"].tolist() == [20_000.0, 50_000.0]
+    assert not set(UK_HBAI_GROSS_INCOME_DEDUCTIONS) & set(predictors.columns)
 
 
 def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
     from types import SimpleNamespace
 
+    from microcosm.build.uk_runtime.household_income import (
+        UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    )
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
         recipient_predictors,
@@ -546,7 +557,11 @@ def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
 
     assert predictors["num_vehicles"].tolist() == [0, 3, 5]
     assert predictors["num_vehicles"].dtype == np.int64
-    assert set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS) <= set(predictors.columns)
+    # The HBAI deductions only build the NEED band's gross income.
+    assert (
+        set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS)
+        - set(UK_HBAI_GROSS_INCOME_DEDUCTIONS)
+    ) | {"household_gross_income"} <= set(predictors.columns)
     without = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
@@ -940,12 +955,13 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
                     "household_gross_income"
                 ].to_numpy()
                 * 0.8,
-                # The NEED band reads the engine's gross income (microcosm#1164).
-                "household_gross_income": frame.table("household")[
+                # The NEED band adds the HBAI deductions back (microcosm#1164).
+                "income_tax": frame.table("household")[
                     "household_gross_income"
-                ].to_numpy(),
+                ].to_numpy()
+                * 0.2,
             }
-            return {name: values[name] for name in variables}
+            return {name: values.get(name, np.zeros(rows)) for name in variables}
 
     donor_person, donor_household = _synthetic_lcfs_donor()
     transform = UKLCFSConsumptionStageTransform(

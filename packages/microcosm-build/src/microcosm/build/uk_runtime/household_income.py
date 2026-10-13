@@ -1,0 +1,75 @@
+"""Household gross income on the survey concept, from the engine's HBAI income.
+
+The surveys whose income bands the UK stages match recipients to (LCFS p344p,
+NEED's modelled gross household income, the NTS household income band) band
+households on gross cash income: earnings, self-employment, investment and
+pension income and cash benefits, before income tax, National Insurance,
+council tax and pension contributions. policyengine-uk's
+``household_gross_income`` is not that concept: it adds capital gains and the
+imputed value of NHS, education and transport spending that its
+``household_benefits`` counts (microcosm#1164). The engine's HBAI net income
+with the deductions it takes to reach it added back is.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from microcosm.frame import Frame
+
+#: The deductions policyengine-uk takes from HBAI income to reach
+#: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``;
+#: an engine-lane test fails if the two lists part).
+UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
+    "council_tax",
+    "domestic_rates",
+    "income_tax",
+    "national_insurance",
+    "student_loan_repayments",
+    "employee_pension_contributions",
+    "personal_pension_contributions",
+    "maintenance_expenses",
+    "external_child_payments",
+    "LVT",
+)
+#: The engine variables a stage materializes to build the gross income.
+UK_HBAI_GROSS_INCOME_VARIABLES = (
+    "hbai_household_net_income",
+    *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+)
+
+
+def household_level(
+    frame: Frame, engine: object, variable: str, values: Any
+) -> np.ndarray:
+    """One materialized engine variable at household grain, persons summed."""
+
+    household = frame.table("household")
+    person = frame.table("person")
+    declared = str(engine.variable_metadata(variable).entity)
+    array = np.asarray(values)
+    if declared == "household":
+        return array.astype(float)
+    if declared == "person":
+        summed = (
+            pd.Series(array.astype(float))
+            .groupby(person["person_household_id"].to_numpy())
+            .sum()
+        )
+        return summed.reindex(household["household_id"]).fillna(0.0).to_numpy()
+    raise ValueError(f"unsupported entity {declared!r} for {variable}.")
+
+
+def hbai_gross_income(frame: Frame, engine: object, materialized: Any) -> np.ndarray:
+    """Household gross income: HBAI net income plus the engine's HBAI deductions.
+
+    ``materialized`` holds every ``UK_HBAI_GROSS_INCOME_VARIABLES`` entry.
+    """
+
+    return sum(
+        household_level(frame, engine, variable, materialized[variable])
+        for variable in UK_HBAI_GROSS_INCOME_VARIABLES
+    )

@@ -53,6 +53,11 @@ from microcosm.build.uk_runtime.energy_pricing import (
     spend_to_kwh,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    hbai_gross_income,
+    household_level,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
@@ -319,15 +324,15 @@ UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT = frozenset(
 UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE = 18
 UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS = ("household_adult_count", "household_child_count")
 #: The engine variables the stage materializes on the recipient: the four
-#: QRF income predictors and ``household_gross_income``, which only bands the
-#: NEED energy rake, on the concept the donor bands on (LCFS p344p, gross;
-#: microcosm#1164). Before it the recipient fell back to its HBAI net income.
+#: QRF income predictors and the HBAI deductions that, added back to the HBAI
+#: net income, give the recipient's gross income. That only bands the NEED
+#: energy rake, on the concept the donor bands on (LCFS p344p; microcosm#1164).
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "hbai_household_net_income",
-    "household_gross_income",
+    *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
     "household_adult_count",
@@ -2467,7 +2472,12 @@ def assign_recipient_has_fuel(frame: Frame, *, rate: float, seed: int) -> np.nda
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
-    """Materialize LCFS recipient predictors at household grain."""
+    """Materialize LCFS recipient predictors at household grain.
+
+    ``household_gross_income``, the NEED band's income, is the HBAI net
+    income with the engine's HBAI deductions added back (``hbai_gross_income``);
+    the deductions are not kept.
+    """
 
     materialized = engine.materialize(
         frame, UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS, uk_time_period(frame)
@@ -2476,21 +2486,11 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     person = frame.table("person")
     result = pd.DataFrame(index=household.index)
     for predictor in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS:
-        declared = str(engine.variable_metadata(predictor).entity)
-        values = np.asarray(materialized[predictor])
-        if declared == "household":
-            result[predictor] = values
-        elif declared == "person":
-            summed = (
-                pd.Series(values.astype(float))
-                .groupby(person["person_household_id"].to_numpy())
-                .sum()
+        if predictor not in UK_HBAI_GROSS_INCOME_DEDUCTIONS:
+            result[predictor] = household_level(
+                frame, engine, predictor, materialized[predictor]
             )
-            result[predictor] = (
-                summed.reindex(household["household_id"]).fillna(0.0).to_numpy()
-            )
-        else:
-            raise ValueError(f"unsupported LCFS predictor entity {declared!r}.")
+    result["household_gross_income"] = hbai_gross_income(frame, engine, materialized)
     age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)
     adult = age >= UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE
     for predictor, members in zip(
@@ -2585,8 +2585,10 @@ def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]
 
     Levelled columns carry no bounds. The housing and transport totals keep
     theirs although the stage writes them back around levelled components
-    (microcosm#1113): the terminal support check then holds the emitted totals
-    to the diary's own range, which a stage-time receipt check cannot do.
+    (microcosm#1113): the recomposition holds each to the donor's maximum of
+    it (microcosm#1164), and the terminal support check holds the emitted
+    totals to the diary's own range, which a stage-time receipt check cannot
+    do.
     """
 
     ranges: dict[str, tuple[float, float]] = {}
