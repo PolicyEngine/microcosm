@@ -1445,11 +1445,11 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         for output in contract.outputs
         if (key := (output.entity, output.column)) in by_column
     ]
-    assert len(registered_occurrences) == 165
+    assert len(registered_occurrences) == 167
     assert Counter(
         metric for _producer, _entity, _column, metric in registered_occurrences
     ) == {
-        "monetary_sign_separated": 122,
+        "monetary_sign_separated": 124,
         "boolean_incidence": 37,
         "categorical_tvd": 6,
     }
@@ -1457,9 +1457,9 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for _producer, entity, column, metric in registered_occurrences
     }
-    assert len(unique_late_targets) == 91
+    assert len(unique_late_targets) == 92
     assert Counter(unique_late_targets.values()) == {
-        "monetary_sign_separated": 68,
+        "monetary_sign_separated": 69,
         "boolean_incidence": 20,
         "categorical_tvd": 3,
     }

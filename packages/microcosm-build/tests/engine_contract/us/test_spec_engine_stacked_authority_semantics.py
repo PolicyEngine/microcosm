@@ -76,7 +76,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
         name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
-            "cac089496f92c43799ff3218ba21377ccead7b9df7849f46c1412bd55f4846c5"
+            "36cddcc06b6307ce1ccfa8aeaf502a7769d72f70dd4ac969fc5e9a45be2d6178"
         ),
         "gap_fill_plan": (
             "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
@@ -85,13 +85,13 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "d6f141c0824c6cbb0640dfa3020902e655e60ddd4a5f516341f139467939044f"
+            "80321bdcd6b2278da993ac6156b97b5b7532ed671e19caddc6cea19f1ace8816"
         ),
         "metric_registry": (
-            "368d758579172c3f81be12810343102dabbdc317d97585ab77b1479cdaf0947a"
+            "832245589a8ec5a33fc151e60662a245d411a636ef62debb884d65abcad3024a"
         ),
         "post_puf_transfer_surface": (
-            "4cd00185059bf89c3448bf96bcae6a22336b709729888c30e44006fe4d28b26d"
+            "ce501bf1978a164d71338cfa46fb3ec354cb1afa4809cf05f280afdf12cbb27e"
         ),
         "post_transfer_calibration": (
             "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"

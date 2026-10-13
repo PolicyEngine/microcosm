@@ -1807,11 +1807,16 @@ def test_passive_placement_refuses_a_stale_line_32_basis(
         ("partnership_income", "passive_partnership_s_corp_income"),
     ],
 )
-def test_finalize_refuses_passive_placed_before_its_line_32(
+def test_entry_points_refuse_a_stale_line_32_basis_before_any_other_work(
     monkeypatch: pytest.MonkeyPatch,
     columns: tuple[str, ...],
 ) -> None:
-    """A misordered or partial line-32 basis is refused before any QRF fit."""
+    """A misordered or partial line-32 basis is refused first, before any fit.
+
+    The fit raises if it is ever reached, and the donor deliberately lacks
+    every requested output: were the basis check to drift below donor
+    validation, the missing-donor-column error would surface instead.
+    """
 
     draws = pd.DataFrame(
         {
@@ -1838,13 +1843,7 @@ def test_finalize_refuses_passive_placed_before_its_line_32(
             return draws.set_axis(features.index)
 
     monkeypatch.setattr(puf_support_module, "QRF", FixedQRF)
-    donor = pd.DataFrame(
-        {
-            "filing_status_code": [1.0, 2.0],
-            **{column: draws[column].to_numpy() for column in draws},
-            "weight": [1.0, 1.0],
-        }
-    )
+    donor = pd.DataFrame({"filing_status_code": [1.0, 2.0], "weight": [1.0, 1.0]})
 
     with pytest.raises(ValueError, match="must come before it|same pass"):
         impute_us_puf_tax_detail_support(

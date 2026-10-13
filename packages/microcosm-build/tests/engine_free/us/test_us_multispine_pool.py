@@ -606,7 +606,7 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert len(target_names) == 120
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "b5c3b20cbb6aefdc358774fc5104924d8d38a8888cdf2b5e54a7bcbae685f779"
+        == "8b234f9ad808407d2fc6ff889f7f43be371f4df07c21c65f63f85205f31003e9"
     )
 
 
@@ -629,7 +629,7 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     assert len(late) == 72
     assert early.isdisjoint(late)
     assert early | late == full
-    assert len(puf_producers) == 44
+    assert len(puf_producers) == 45
     assert len(source_producers) == 29
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
@@ -1172,7 +1172,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 73
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 122
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 123
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2

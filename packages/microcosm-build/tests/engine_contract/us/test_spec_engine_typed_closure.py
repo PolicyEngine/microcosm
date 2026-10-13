@@ -63,7 +63,7 @@ def test_us_typed_closure_has_exact_inventory_counts(
     graph = typed_resources["imputation"]["producer_graph"]
     assert sum(len(node["outputs"]) for node in graph["nodes"]) == 92
     compiled_outputs = compile_producer_outputs(typed_resources)
-    assert sum(len(rows) for rows in compiled_outputs.values()) == 229
+    assert sum(len(rows) for rows in compiled_outputs.values()) == 230
     assert sum(len(node["virtual_resources"]) for node in graph["nodes"]) == 75
     column_keys = {column.key for column in typed_result.columns}
     output_artifact_ids = {
