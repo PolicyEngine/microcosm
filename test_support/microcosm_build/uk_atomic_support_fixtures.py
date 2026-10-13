@@ -11,6 +11,7 @@ No publisher file or country engine is involved.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -133,6 +134,81 @@ def write_toy_supports(directory: Path) -> tuple[dict[str, bytes], dict[str, Pat
 def toy_support_sources(paths: dict[str, Path]) -> dict[str, Path]:
     """Graph source bindings for the three toy supports."""
     return {SOURCES[system]: path for system, path in paths.items()}
+
+
+def toy_property_resources() -> dict[str, dict]:
+    """The microcosm#1240 knots and band-mix resources over the toy areas.
+
+    Every toy constituency carries one straight-line distribution from
+    100,000 to 2,000,000 (so a uniform ``u`` reads ``100000 + 1900000 u``),
+    winsorised at 2,000,000; every toy LSOA splits bands A to H equally.
+    """
+    from microcosm.build.uk_runtime.property_localisation import COUNCIL_TAX_BANDS
+
+    grid = [0.0, 0.25, 0.5, 0.75, 1.0]
+    seats = {}
+    lsoas = {}
+    for rows in toy_support_frames().values():
+        for row in rows:
+            seat = str(row["constituency_code"])
+            if seat[0] in "EW":
+                seats[seat] = {
+                    "count": 100,
+                    "weight": 100.0,
+                    "quantiles": [100_000.0 + 1_900_000.0 * p for p in grid],
+                }
+            lsoa = str(row["lsoa_code"])
+            if lsoa[0] in "EW":
+                cumulative = [(i + 1) / 8 for i in range(8)] + [1.0]
+                lsoas[lsoa] = {"all_properties": 800, "cumulative": cumulative}
+    knots = {
+        "schema_version": 1,
+        "kind": "uk_high_value_home_value_knots",
+        "resource": "toy-knots.json",
+        "built_on": "2026-10-13",
+        "inputs_sha256": "toy",
+        "method": "toy",
+        "basis_year": 2024,
+        "cap": 2_000_000,
+        "minimum_count": 1,
+        "weight": "toy",
+        "grid": grid,
+        "levels": {"constituency": seats},
+        "suppressed": {"constituency": []},
+    }
+    band_mix = {
+        "schema_version": 1,
+        "kind": "uk_voa_council_tax_band_mix_lsoa",
+        "resource": "toy-band-mix.json",
+        "built_on": "2026-10-13",
+        "method": "toy",
+        "description": "toy",
+        "source": {"sha256": "toy", "as_at": "2025-03-31"},
+        "bands": list(COUNCIL_TAX_BANDS),
+        "receipts": {},
+        "lsoa": lsoas,
+    }
+    return {"knots": knots, "band_mix": band_mix}
+
+
+def write_toy_property_resources(directory: Path) -> dict[str, Path]:
+    """Write the toy knots and band mix as graph sources named by the nodes."""
+    from microcosm.build.uk_runtime.property_localisation import (
+        BAND_MIX_SOURCE,
+        QUANTILES_SOURCE,
+    )
+
+    directory.mkdir(parents=True, exist_ok=True)
+    resources = toy_property_resources()
+    paths = {
+        QUANTILES_SOURCE: directory / "toy-knots.json",
+        BAND_MIX_SOURCE: directory / "toy-band-mix.json",
+    }
+    paths[QUANTILES_SOURCE].write_text(json.dumps(resources["knots"]), encoding="utf-8")
+    paths[BAND_MIX_SOURCE].write_text(
+        json.dumps(resources["band_mix"]), encoding="utf-8"
+    )
+    return paths
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

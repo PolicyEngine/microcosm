@@ -44,6 +44,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_support_sources,
+    write_toy_property_resources,
     write_toy_supports,
 )
 from test_support.microcosm_build.uk_full_population_graph import (
@@ -165,6 +166,7 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         "uk_ladder": ladder_path,
         "uk_ledger_facts": ladder_path,
         **toy_support_sources(support_paths),
+        **write_toy_property_resources(tmp_path / "property"),
     }
     store = ContentStore(tmp_path / "store")
     checkpoint = compile_graph(_through(graph, "uk.full.gates.preflight"))

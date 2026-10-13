@@ -44,6 +44,7 @@ import uuid
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -139,7 +140,7 @@ from .graph_national import (
     replay_uk_national_gate_battery,
     uk_national_graph,
 )
-from .graph_population import GEOGRAPHY_ASSIGNMENTS
+from .graph_population import GEOGRAPHY_ASSIGNMENTS, PROPERTY_LOCALISATION_MODES
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
@@ -170,6 +171,14 @@ from .national_frame import (
 )
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .orrery_contract import persist_uk_run_evidence, save_uk_graph_schema
+from .property_localisation import (
+    BAND_MIX_SOURCE,
+    QUANTILES_SOURCE,
+    SUPPORT_STRATUM_LOWER,
+)
+from .property_localisation import (
+    METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
+)
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -459,6 +468,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             dest=f"atomic_support_sha256_{label}",
         )
     parser.add_argument(
+        "--property-localisation",
+        choices=PROPERTY_LOCALISATION_MODES,
+        default="price_paid",
+        help=(
+            "Dense role: price_paid (default) reads each owner clone's home value "
+            "off its assigned constituency's uprated Land Registry sale distribution "
+            "and its council-tax band off its LSOA's VOA mix (microcosm#1240); none "
+            "keeps the spine's values and bands on every clone, for measurement "
+            "builds only."
+        ),
+    )
+    for name, label in _PROPERTY_RESOURCE_ARGUMENTS.items():
+        parser.add_argument(
+            f"--{label}",
+            type=Path,
+            dest=label.replace("-", "_"),
+            default=None,
+            help=(
+                f"Resource bytes for the graph source {name!r} (default: the "
+                "committed UK package resource)."
+            ),
+        )
+        parser.add_argument(
+            f"--{label}-sha256",
+            type=sha256_argument,
+            dest=f"{label.replace('-', '_')}_sha256",
+        )
+    parser.add_argument(
         "--ledger-facts",
         type=Path,
         help="Complete Chronicle artifact directory matching the committed feed pins.",
@@ -741,6 +778,61 @@ def _input_record(path: Path, pin: dict, *, pinned: bool) -> dict:
     }
 
 
+#: Graph source name to command-line label of the two property-localisation
+#: resources (microcosm#1240). Both default to the committed package files.
+_PROPERTY_RESOURCE_ARGUMENTS = {
+    QUANTILES_SOURCE: "price-paid-quantiles",
+    BAND_MIX_SOURCE: "voa-band-mix",
+}
+_PROPERTY_RESOURCE_FILES = {
+    QUANTILES_SOURCE: "high_value_home_value_knots.json",
+    BAND_MIX_SOURCE: "voa_council_tax_band_mix_lsoa.json",
+}
+
+
+def _packaged_property_resource(name: str) -> Path:
+    return Path(
+        str(files("microcosm.build.uk").joinpath(_PROPERTY_RESOURCE_FILES[name]))
+    )
+
+
+def _prepare_property_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the knots and band-mix resources and record the localisation binding.
+
+    Each resource enters ``pins`` under its graph source name, so the Logbook
+    input-pins digest, the candidate identity digest and the size-checkpoint
+    identity all bind it. A release candidate must build on the committed
+    package resources, whatever path the operator named: the committed bytes
+    are the reviewed ones. ``none`` binds nothing here.
+    """
+    mode = getattr(args, "property_localisation", "none")
+    if mode == "none":
+        return {"mode": "none"}
+    resource_pins = {}
+    for name, label in _PROPERTY_RESOURCE_ARGUMENTS.items():
+        attribute = label.replace("-", "_")
+        path = getattr(args, attribute, None) or _packaged_property_resource(name)
+        pin = _pin(path, getattr(args, f"{attribute}_sha256", None))
+        if getattr(args, "release_candidate", False):
+            committed = _pin(_packaged_property_resource(name))
+            if pin != committed:
+                raise ValueError(
+                    f"--release-candidate requires the committed {name!r} resource: "
+                    f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+                )
+        pins[name] = pin
+        resource_pins[name] = pin
+        sources[name] = path
+    return {
+        "mode": mode,
+        "method": PROPERTY_LOCALISATION_METHOD,
+        "support_stratum_lower": SUPPORT_STRATUM_LOWER,
+        "resource_pins": resource_pins,
+    }
+
+
 def _prepare_geography(
     args: argparse.Namespace, pins: dict, sources: dict[str, Path]
 ) -> tuple[dict | None, dict]:
@@ -951,6 +1043,7 @@ def prepare_full_build(
     # The atomic-area supports are admitted after the spine so a spine
     # refusal (sidecar, digest) is reported before a support one.
     definition, geography_binding = _prepare_geography(args, pins, sources)
+    property_binding = _prepare_property_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -978,6 +1071,7 @@ def prepare_full_build(
         source_lineage_modulus=args.source_lineage_modulus,
         geography_assignment=args.geography_assignment,
         source_vintage=release.vintage,
+        property_localisation=args.property_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1098,6 +1192,7 @@ def prepare_full_build(
             "paired_ladder_sha256": pins["ladder"]["sha256"],
         },
         "geography": geography_binding,
+        "property_localisation": property_binding,
     }
     graph = add_uk_export_preparation(
         graph,
