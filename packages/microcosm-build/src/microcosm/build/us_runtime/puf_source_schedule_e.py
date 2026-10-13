@@ -1,15 +1,16 @@
-"""Recover Schedule E line 32 and its passive subset for the processed PUF donor.
+"""Recover Schedule E line 32 by entity, and its passive subset, for the PUF donor.
 
 PolicyEngine-US 2.2.1 reads ``partnership_income`` plus ``s_corp_income`` as
 Schedule E line 32, total partnership and S corporation income or (loss), and
 ``passive_partnership_s_corp_income`` as its section 469 passive subset (the
 net investment income leg of section 1411(c)(1)(A)(ii)).
 
-The processed 2024 PUF does not carry line 32. Its ``partnership_s_corp_income``
-array is the archived pipeline's nonpassive-only sum ``(E25980 - E25960) +
-(E26190 - E26180)`` in TY2015 dollars. This module therefore reads line 32 and
-the passive columns from the pinned TY2015 source rows and aligns them to the
-processed tax units the same way :mod:`puf_source_agi` aligns E00100.
+The processed 2024 PUF does not carry line 32 or its entity split. Its
+``partnership_s_corp_income`` array is the archived pipeline's nonpassive-only
+sum ``(E25980 - E25960) + (E26190 - E26180)`` in TY2015 dollars. This module
+therefore reads the Schedule E Part II column fields from the pinned TY2015
+source rows and aligns them to the processed tax units the same way
+:mod:`puf_source_agi` aligns E00100.
 
 Field meanings come from the IRS SOI General Description Booklet for the 2014
 Public Use Tax File, whose annotated Schedule E Part II maps line 28 columns to
@@ -26,22 +27,36 @@ col   Schedule E line 28 column                   partnership  S corp
 ====  ==========================================  ===========  ===========
 
 Line 32 (E26270) combines line 30, columns (g) plus (j), with line 31, columns
-(f), (h) and (i). The passive subset is (g) minus (f), which already applies
+(f), (h) and (i). Each line 28 row is one partnership or one S corporation, so
+the entity shares of line 32 are the entity's own columns:
+
+* ``partnership_income`` = E25940 + E25980 - E25920 - E25960 - E26110;
+* ``s_corp_income`` = E26170 + E26190 - E26160 - E26180 - E26100.
+
+The passive subset is (g) minus (f) of both entities, which already applies
 the section 469 limitation because column (f) is the loss *allowed*. Section
 179 sits under the form's "Nonpassive Income and Loss" heading, so it belongs
-to the nonpassive remainder.
+to the nonpassive remainder. The entity shares and the passive/nonpassive
+split are two partitions of the same ten fields, so ``partnership_income +
+s_corp_income`` equals passive plus nonpassive exactly.
 
 The IRS rounds every PUF amount independently (booklet disclosure step 9), so
-E26270 equals the sum of the ten column fields only to within the documented
-rounding of each field. :func:`schedule_e_line_32_rounding_bound` encodes that
-bound and the alignment refuses any regular record outside it.
+the stored E26270 equals the sum of the ten column fields only to within the
+documented rounding of each field. :func:`schedule_e_line_32_rounding_bound`
+encodes that bound and the alignment refuses any regular record outside it.
+The donor carries the entity shares, not E26270: no field says which entity a
+rounding residual belongs to, and moving it onto either entity would put a
+residual of a few dollars on returns with none of that entity's income. On the
+pinned TY2015 file the stored E26270 differs from the field sum on 18.5% of
+regular records, by $0.135 billion weighted in absolute value of $621.9
+billion net (microcosm#1258 evidence).
 
 The four IRS disclosure aggregate rows were replaced by synthetic records whose
 amount columns the archive calibrated one at a time to each row's totals. No
-per-record line 32 exists for them, so each aggregate row's line-32 and passive
-totals are allocated over its synthetic records in proportion to their
-processed nonpassive amounts. That preserves every bucket's published totals
-and each record's sign pattern.
+per-record line 28 columns exist for them, so each aggregate row's partnership,
+S-corporation and passive totals are allocated over its synthetic records in
+proportion to their processed nonpassive amounts. That preserves every bucket's
+published totals by entity and each record's combined sign pattern.
 """
 
 from __future__ import annotations
@@ -98,9 +113,34 @@ PUF_SOURCE_YEAR_SCHEDULE_E_REQUIRED_COLUMNS = (
     *PUF_SCHEDULE_E_PART_II_LEGS,
 )
 
+#: Schedule E line 28 column fields of each entity's share of line 32, as
+#: (income columns, loss columns): (g) and (j) add, (f), (h) and (i) subtract.
+PUF_SCHEDULE_E_PARTNERSHIP_LEGS = (
+    (PUF_PARTNERSHIP_PASSIVE_INCOME, PUF_PARTNERSHIP_NONPASSIVE_INCOME),
+    (
+        PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED,
+        PUF_PARTNERSHIP_NONPASSIVE_LOSS,
+        PUF_PARTNERSHIP_SECTION_179,
+    ),
+)
+PUF_SCHEDULE_E_S_CORP_LEGS = (
+    (PUF_S_CORP_PASSIVE_INCOME, PUF_S_CORP_NONPASSIVE_INCOME),
+    (
+        PUF_S_CORP_PASSIVE_LOSS_ALLOWED,
+        PUF_S_CORP_NONPASSIVE_LOSS,
+        PUF_S_CORP_SECTION_179,
+    ),
+)
+
 #: Donor output names this module supplies, at tax-unit grain.
-SCHEDULE_E_LINE_32_OUTPUT = "partnership_income"
+SCHEDULE_E_PARTNERSHIP_OUTPUT = "partnership_income"
+SCHEDULE_E_S_CORP_OUTPUT = "s_corp_income"
 SCHEDULE_E_PASSIVE_OUTPUT = "passive_partnership_s_corp_income"
+SCHEDULE_E_DONOR_OUTPUTS = (
+    SCHEDULE_E_PARTNERSHIP_OUTPUT,
+    SCHEDULE_E_S_CORP_OUTPUT,
+    SCHEDULE_E_PASSIVE_OUTPUT,
+)
 
 
 def schedule_e_line_32_rounding_bound(values: Any) -> np.ndarray:
@@ -129,17 +169,20 @@ def schedule_e_line_32_rounding_bound(values: Any) -> np.ndarray:
 def schedule_e_partnership_s_corp_columns(
     frame: pd.DataFrame,
 ) -> dict[str, np.ndarray]:
-    """Return line 32, its passive subset and nonpassive remainder per record.
+    """Return line 32 by entity, its passive subset and remainder per record.
 
     Args:
         frame: Source rows carrying E26270 and the ten line 28 column fields.
 
     Returns:
-        ``line_32`` (E26270 as stored), ``passive`` ((g) minus (f) for both
-        entity types), ``nonpassive`` ((j) minus (h) minus (i) for both entity
-        types, which is what the processed artifact's archived column omits
-        only by (i)), ``archived_nonpassive`` (the processed artifact's
-        ``(E25980 - E25960) + (E26190 - E26180)``) and ``rounding_bound``.
+        ``partnership`` and ``s_corp`` ((g) + (j) - (f) - (h) - (i) of each
+        entity's columns), ``line_32`` (E26270 as stored), ``passive`` ((g)
+        minus (f) for both entity types), ``nonpassive`` ((j) minus (h) minus
+        (i) for both entity types, which is what the processed artifact's
+        archived column omits only by (i)), ``archived_nonpassive`` (the
+        processed artifact's ``(E25980 - E25960) + (E26190 - E26180)``) and
+        ``rounding_bound``. ``partnership + s_corp`` and ``passive +
+        nonpassive`` partition the same ten fields, so they are equal.
 
     Raises:
         ValueError: If a field is missing or nonfinite, a line 28 column field
@@ -186,13 +229,15 @@ def schedule_e_partnership_s_corp_columns(
         - values[PUF_PARTNERSHIP_SECTION_179]
         - values[PUF_S_CORP_SECTION_179]
     )
+    partnership = _entity_share(values, PUF_SCHEDULE_E_PARTNERSHIP_LEGS)
+    s_corp = _entity_share(values, PUF_SCHEDULE_E_S_CORP_LEGS)
     line_32 = values[PUF_SCHEDULE_E_LINE_32]
     rounding_bound = schedule_e_line_32_rounding_bound(line_32)
     for column in PUF_SCHEDULE_E_PART_II_LEGS:
         rounding_bound = rounding_bound + schedule_e_line_32_rounding_bound(
             values[column]
         )
-    outside = np.abs(line_32 - (passive + nonpassive)) > rounding_bound
+    outside = np.abs(line_32 - (partnership + s_corp)) > rounding_bound
     if outside.any():
         raise ValueError(
             "TY2015 PUF E26270 differs from its Schedule E line 28 column "
@@ -200,12 +245,29 @@ def schedule_e_partnership_s_corp_columns(
             f"{int(outside.sum())} record(s)."
         )
     return {
+        "partnership": partnership,
+        "s_corp": s_corp,
         "line_32": line_32,
         "passive": passive,
         "nonpassive": nonpassive,
         "archived_nonpassive": archived_nonpassive,
         "rounding_bound": rounding_bound,
     }
+
+
+def _entity_share(
+    values: Mapping[str, np.ndarray],
+    legs: tuple[tuple[str, ...], tuple[str, ...]],
+) -> np.ndarray:
+    """Return one entity's line-32 share: its income columns less its losses."""
+
+    income, losses = legs
+    share = np.zeros_like(values[income[0]])
+    for column in income:
+        share = share + values[column]
+    for column in losses:
+        share = share - values[column]
+    return share
 
 
 def _schedule_e_source_frame(
@@ -285,7 +347,7 @@ def source_year_puf_partnership_s_corp_income(
     processed_nonpassive_partnership_s_corp_income: Sequence[Any],
     receipt: dict[str, object] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Return Schedule E line 32 and its passive subset per processed tax unit.
+    """Return Schedule E line 32 by entity and its passive subset per tax unit.
 
     Args:
         source: The pinned TY2015 PUF CSV, or a table with the same columns.
@@ -300,9 +362,10 @@ def source_year_puf_partnership_s_corp_income(
             allocation ratios.
 
     Returns:
-        ``partnership_income`` (Schedule E line 32) and
-        ``passive_partnership_s_corp_income`` (its passive subset), both in
-        TY2015 dollars, the dollar basis of the processed column they replace.
+        ``partnership_income`` and ``s_corp_income`` (each entity's share of
+        Schedule E line 32) and ``passive_partnership_s_corp_income`` (the
+        passive subset of their sum), all in TY2015 dollars, the dollar basis
+        of the processed column they replace.
 
     Raises:
         ValueError: If the layout does not align, the processed column departs
@@ -338,10 +401,16 @@ def source_year_puf_partnership_s_corp_income(
             "cannot replace it with TY2015 Schedule E line 32."
         )
 
-    line_32 = np.empty(len(weights), dtype=np.float64)
-    passive = np.empty(len(weights), dtype=np.float64)
-    line_32[:regular_count] = regular_columns["line_32"]
-    passive[:regular_count] = regular_columns["passive"]
+    leaves = {
+        SCHEDULE_E_PARTNERSHIP_OUTPUT: "partnership",
+        SCHEDULE_E_S_CORP_OUTPUT: "s_corp",
+        SCHEDULE_E_PASSIVE_OUTPUT: "passive",
+    }
+    aligned = {
+        output: np.empty(len(weights), dtype=np.float64) for output in leaves
+    }
+    for output, column in leaves.items():
+        aligned[output][:regular_count] = regular_columns[column]
 
     aggregate_columns = schedule_e_partnership_s_corp_columns(
         layout.aggregate.loc[list(PUF_AGGREGATE_RECIDS)]
@@ -357,8 +426,6 @@ def source_year_puf_partnership_s_corp_income(
                 "do not preserve the aggregate-row population."
             )
         per_return_nonpassive = float(aggregate_columns["archived_nonpassive"][index])
-        per_return_line_32 = float(aggregate_columns["line_32"][index])
-        per_return_passive = float(aggregate_columns["passive"][index])
         bucket_nonpassive = processed_nonpassive[rows]
         processed_total = float(bucket_weights @ bucket_nonpassive)
         expected_total = population * per_return_nonpassive
@@ -373,26 +440,34 @@ def source_year_puf_partnership_s_corp_income(
                 "do not carry the aggregate row's nonpassive total, so its "
                 "line-32 and passive totals cannot be allocated over them."
             )
-        line_32_ratio = per_return_line_32 / per_return_nonpassive
-        passive_ratio = per_return_passive / per_return_nonpassive
-        line_32[rows] = bucket_nonpassive * line_32_ratio
-        passive[rows] = bucket_nonpassive * passive_ratio
-        synthetic_receipt[str(recid)] = {
+        bucket_receipt: dict[str, float] = {
             "records": float(rows.stop - rows.start),
             "population": population,
-            "line_32_per_return": per_return_line_32,
-            "passive_per_return": per_return_passive,
+            "line_32_per_return": float(aggregate_columns["line_32"][index]),
             "archived_nonpassive_per_return": per_return_nonpassive,
-            "line_32_to_nonpassive_ratio": line_32_ratio,
-            "passive_to_nonpassive_ratio": passive_ratio,
         }
+        for output, column in leaves.items():
+            per_return = float(aggregate_columns[column][index])
+            ratio = per_return / per_return_nonpassive
+            aligned[output][rows] = bucket_nonpassive * ratio
+            bucket_receipt[f"{column}_per_return"] = per_return
+            bucket_receipt[f"{column}_to_nonpassive_ratio"] = ratio
+        synthetic_receipt[str(recid)] = bucket_receipt
 
-    if not (np.isfinite(line_32).all() and np.isfinite(passive).all()):
+    if not all(np.isfinite(values).all() for values in aligned.values()):
         raise ValueError("Recovered TY2015 Schedule E values must be finite.")
     if receipt is not None:
+        partnership = aligned[SCHEDULE_E_PARTNERSHIP_OUTPUT]
+        s_corp = aligned[SCHEDULE_E_S_CORP_OUTPUT]
+        passive = aligned[SCHEDULE_E_PASSIVE_OUTPUT]
+        line_32 = partnership + s_corp
+        regular_weights = weights[:regular_count]
+        stored_residual = regular_columns["line_32"] - (
+            regular_columns["partnership"] + regular_columns["s_corp"]
+        )
         receipt.update(
             {
-                "source": "TY2015 PUF E26270 and Schedule E line 28 columns",
+                "source": "TY2015 PUF Schedule E line 28 columns f-j by entity",
                 "dollar_basis": "TY2015 (the processed column's basis)",
                 "weighted_line_32": float(weights @ line_32),
                 "weighted_passive": float(weights @ passive),
@@ -405,12 +480,48 @@ def source_year_puf_partnership_s_corp_income(
                 "weighted_processed_nonpassive_nonzero_count": float(
                     weights[processed_nonpassive != 0].sum()
                 ),
+                "entities": {
+                    output: _signed_legs(weights, aligned[output])
+                    for output in (
+                        SCHEDULE_E_PARTNERSHIP_OUTPUT,
+                        SCHEDULE_E_S_CORP_OUTPUT,
+                    )
+                },
+                "regular_stored_e26270_residual": {
+                    "records_differing": int((stored_residual != 0).sum()),
+                    "weighted_signed": float(regular_weights @ stored_residual),
+                    "weighted_absolute": float(
+                        regular_weights @ np.abs(stored_residual)
+                    ),
+                    "max_share_of_rounding_bound": float(
+                        np.max(
+                            np.abs(stored_residual)
+                            / np.where(
+                                regular_columns["rounding_bound"] > 0,
+                                regular_columns["rounding_bound"],
+                                1.0,
+                            ),
+                            initial=0.0,
+                        )
+                    ),
+                },
                 "synthetic_buckets": synthetic_receipt,
             }
         )
+    return aligned
+
+
+def _signed_legs(weights: np.ndarray, values: np.ndarray) -> dict[str, float]:
+    """Weighted net, income and loss amounts and returns of one signed leaf."""
+
+    positive = values > 0
+    negative = values < 0
     return {
-        SCHEDULE_E_LINE_32_OUTPUT: line_32,
-        SCHEDULE_E_PASSIVE_OUTPUT: passive,
+        "weighted_net": float(weights @ values),
+        "weighted_income": float(weights[positive] @ values[positive]),
+        "weighted_income_returns": float(weights[positive].sum()),
+        "weighted_loss": float(-(weights[negative] @ values[negative])),
+        "weighted_loss_returns": float(weights[negative].sum()),
     }
 
 
@@ -419,9 +530,13 @@ __all__ = [
     "PUF_SCHEDULE_E_LINE_32",
     "PUF_SCHEDULE_E_LOSS_LEGS",
     "PUF_SCHEDULE_E_PART_II_LEGS",
+    "PUF_SCHEDULE_E_PARTNERSHIP_LEGS",
+    "PUF_SCHEDULE_E_S_CORP_LEGS",
     "PUF_SOURCE_YEAR_SCHEDULE_E_REQUIRED_COLUMNS",
-    "SCHEDULE_E_LINE_32_OUTPUT",
+    "SCHEDULE_E_DONOR_OUTPUTS",
+    "SCHEDULE_E_PARTNERSHIP_OUTPUT",
     "SCHEDULE_E_PASSIVE_OUTPUT",
+    "SCHEDULE_E_S_CORP_OUTPUT",
     "schedule_e_line_32_rounding_bound",
     "processed_puf_tax_unit_partnership_s_corp_income",
     "schedule_e_partnership_s_corp_columns",

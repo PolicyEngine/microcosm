@@ -35,6 +35,15 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
 from microcosm.build.us_runtime.puf_interest_components import (
     split_us_puf_e19200_by_agi_band,
 )
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    PUF_PARTNERSHIP_PASSIVE_INCOME,
+    PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED,
+    PUF_S_CORP_PASSIVE_INCOME,
+    PUF_S_CORP_PASSIVE_LOSS_ALLOWED,
+    PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    PUF_SCHEDULE_E_S_CORP_LEGS,
+    SCHEDULE_E_DONOR_OUTPUTS,
+)
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -321,9 +330,8 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "farm_operations_income",
     "farm_rent_income",
     "miscellaneous_income",
-    # Schedule E line 32 (microcosm#1239): the combined partnership and
-    # S-corporation total is carried by partnership_income (s_corp_income is
-    # an exact-zero universe), and its section 469 passive subset follows it
+    # Schedule E line 32 by entity (microcosm#1239, #1258): each entity's
+    # share is its own leaf, and their section 469 passive subset follows both
     # in the chain so the passive draw conditions on the drawn total.
     "partnership_income",
     "s_corp_income",
@@ -1343,13 +1351,14 @@ def puf_tax_unit_donor_from_arrays(
         adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
             published TY2015 SOI Table 2.1 component share for each record.
             Required whenever the processed PUF carries nonzero E19200.
-        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32
-            (``partnership_income``) and its passive subset
-            (``passive_partnership_s_corp_income``) aligned to
+        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32 by
+            entity (``partnership_income`` and ``s_corp_income``) and their
+            passive subset (``passive_partnership_s_corp_income``) aligned to
             ``tax_unit_id``, from
             :func:`~microcosm.build.us_runtime.puf_source_schedule_e.source_year_puf_partnership_s_corp_income`.
-            The processed artifact has no line 32, so a processed donor that
-            requests either leaf must supply it (microcosm#1239).
+            The processed artifact has neither line 32 nor its entity split,
+            so a processed donor that requests any of these leaves must supply
+            it (microcosm#1239, #1258).
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
@@ -1531,10 +1540,7 @@ def puf_tax_unit_donor_from_arrays(
     return tax_unit
 
 
-_SCHEDULE_E_DONOR_OUTPUTS = (
-    "partnership_income",
-    "passive_partnership_s_corp_income",
-)
+_SCHEDULE_E_DONOR_OUTPUTS = SCHEDULE_E_DONOR_OUTPUTS
 
 
 def _attach_schedule_e_partnership_s_corp(
@@ -1543,9 +1549,9 @@ def _attach_schedule_e_partnership_s_corp(
     *,
     person_outputs: Sequence[str],
 ) -> None:
-    """Carry source-year Schedule E line 32 and its passive subset.
+    """Carry source-year Schedule E line 32 by entity and its passive subset.
 
-    Both leaves must be supplied together, aligned to ``tax_unit_id`` and
+    The three leaves must be supplied together, aligned to ``tax_unit_id`` and
     finite. A leaf the arrays already derived (a stored leaf or raw Schedule E
     fields) is a second source for the same value and is refused rather than
     silently overwritten.
@@ -2258,7 +2264,7 @@ def _zero_passive_partnership_s_corp_without_line_32(
     if not totals:
         raise ValueError(
             "PUF passive partnership/S-corp draws need the line-32 total "
-            "(partnership_income) in the same chain."
+            "(partnership_income and s_corp_income) in the same chain."
         )
     line_32 = predictions[totals].sum(axis=1)
     predictions.loc[line_32 == 0.0, passive] = 0.0
@@ -4345,9 +4351,12 @@ def _reconcile_puf_social_security_components(
 # Booklet, annotated Schedule E Part II): (g) passive income, (j) nonpassive
 # income, (f) passive loss allowed, (h) nonpassive loss, (i) section 179.
 _RAW_SCHEDULE_E_ENTITY_LEGS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
-    "partnership_income": (("E25940", "E25980"), ("E25920", "E25960", "E26110")),
-    "s_corp_income": (("E26170", "E26190"), ("E26160", "E26180", "E26100")),
-    "passive_partnership_s_corp_income": (("E25940", "E26170"), ("E25920", "E26160")),
+    "partnership_income": PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    "s_corp_income": PUF_SCHEDULE_E_S_CORP_LEGS,
+    "passive_partnership_s_corp_income": (
+        (PUF_PARTNERSHIP_PASSIVE_INCOME, PUF_S_CORP_PASSIVE_INCOME),
+        (PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED, PUF_S_CORP_PASSIVE_LOSS_ALLOWED),
+    ),
 }
 
 
@@ -4401,12 +4410,10 @@ def _person_source_values(
     if raw_schedule_e is not None:
         return raw_schedule_e
     # The processed artifact's partnership_s_corp_income is the archived
-    # nonpassive-only sum, not Schedule E line 32, so it never stands for
-    # partnership_income; puf_tax_unit_donor_from_arrays takes line 32 from
-    # the source-year rows instead (microcosm#1239). Its presence still marks
-    # the combined-leaf convention under which s_corp_income is exactly zero.
-    if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
-        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+    # nonpassive-only sum of both entities, not Schedule E line 32, so it
+    # stands for neither partnership_income nor s_corp_income;
+    # puf_tax_unit_donor_from_arrays takes both entity shares from the
+    # source-year rows instead (microcosm#1239, #1258).
     if output == "partnership_self_employment_net_earnings" and (
         "partnership_se_income" in arrays
     ):
