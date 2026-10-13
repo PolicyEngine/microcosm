@@ -2,8 +2,9 @@
 
 A PUF-clone recipient whose weight is the share ``s`` of the recipient
 population stands for ``s`` of the population. The bound limits its raw draw
-to the weighted mean of the donor slice holding the same share at that end of
-the distribution, so ``w_r * value <= (W_r / W_d) * mass(slice)``.
+to the same-sign mass, per unit of slice weight, of the donor slice holding the
+same share at that end of the distribution, so
+``w_r * value <= (W_r / W_d) * mass(slice)``.
 """
 
 from __future__ import annotations
@@ -31,18 +32,28 @@ _amounts = st.floats(
 _positive_weights = st.floats(
     min_value=1e-3, max_value=1e4, allow_nan=False, allow_infinity=False
 )
+# Zero weights occur on both sides: the donor fill is fillna(0.0), and a
+# recipient household can carry no weight.
+_weights = st.one_of(st.just(0.0), _positive_weights)
+
+
+def _with_positive_mass(weights: list[float]) -> np.ndarray:
+    array = np.asarray(weights, dtype=np.float64)
+    if not (array > 0.0).any():
+        array[0] = 1.0
+    return array
 
 
 @st.composite
 def _donor_and_recipients(draw: st.DrawFn) -> tuple[np.ndarray, ...]:
     donors = draw(st.integers(min_value=1, max_value=40))
     values = np.asarray(draw(st.lists(_amounts, min_size=donors, max_size=donors)))
-    weights = np.asarray(
-        draw(st.lists(_positive_weights, min_size=donors, max_size=donors))
+    weights = _with_positive_mass(
+        draw(st.lists(_weights, min_size=donors, max_size=donors))
     )
     recipients = draw(st.integers(min_value=1, max_value=25))
-    recipient_weights = np.asarray(
-        draw(st.lists(_positive_weights, min_size=recipients, max_size=recipients))
+    recipient_weights = _with_positive_mass(
+        draw(st.lists(_weights, min_size=recipients, max_size=recipients))
     )
     return values, weights, recipient_weights
 
@@ -52,7 +63,12 @@ def _reference_slice_mean(
 ) -> float:
     """One slice's same-sign mass per unit weight, donor by donor."""
 
-    order = sorted(range(len(values)), key=lambda i: -values[i] if top else values[i])
+    weighted = [i for i in range(len(values)) if weights[i] > 0.0]
+    order = sorted(weighted, key=lambda i: -values[i] if top else values[i])
+    if take <= 0.0:
+        # An empty slice reads the most extreme weighted value on its side.
+        extreme = values[order[0]]
+        return max(extreme, 0.0) if top else min(extreme, 0.0)
     remaining = take
     mass = 0.0
     for index in order:
@@ -91,6 +107,8 @@ def _close(actual: np.ndarray, expected: np.ndarray) -> None:
 def _top_slice_edge(values: np.ndarray, weights: np.ndarray, take: float) -> float:
     """The value at the inner edge of the top slice holding ``take`` weight."""
 
+    weighted = weights > 0.0
+    values, weights = values[weighted], weights[weighted]
     order = np.argsort(-values, kind="stable")
     cumulative = np.cumsum(weights[order])
     edge = min(int(np.searchsorted(cumulative, take, side="left")), len(values) - 1)
@@ -98,7 +116,8 @@ def _top_slice_edge(values: np.ndarray, weights: np.ndarray, take: float) -> flo
 
 
 def test_bound_is_the_slice_mean_on_a_worked_example() -> None:
-    # Donor population of weight 1,000: 990 at 10, 9 at 1,000, 1 at 100,000.
+    # Donor population of weight 1,000: 980 at 10, 9 at 1,000, 1 at 100,000
+    # and 10 at -50.
     values = np.asarray([10.0, 1_000.0, 100_000.0, -50.0])
     weights = np.asarray([980.0, 9.0, 1.0, 10.0])
     # Recipients of share 0.001, 0.01 and 0.989 of their own population.
@@ -201,11 +220,17 @@ def test_vectorized_bound_matches_the_donor_by_donor_reference(
     _close(floor, expected_floor)
 
 
-@_PROPERTY_SETTINGS
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(_donor_and_recipients())
-def test_one_record_never_carries_more_than_its_slice_mass(
+def test_cap_mass_is_the_most_any_donor_subpopulation_of_that_size_holds(
     case: tuple[np.ndarray, ...],
 ) -> None:
+    # Independent of the slice construction: a linear program picks any
+    # fractional subpopulation of donor weight `take` (0 <= x_d <= w_d) to
+    # maximize its positive mass (or minimize its negative mass). The bound's
+    # mass, w_r * cap scaled to donor weight, must equal that optimum.
+    from scipy.optimize import linprog
+
     values, weights, recipient_weights = case
     donor_total = weights.sum()
     recipient_total = recipient_weights.sum()
@@ -214,13 +239,25 @@ def test_one_record_never_carries_more_than_its_slice_mass(
 
     for index, weight in enumerate(recipient_weights):
         take = weight / recipient_total * donor_total
-        scale = recipient_total / donor_total
-        if np.isfinite(cap[index]):
-            top_mass = take * _reference_slice_mean(values, weights, take, top=True)
-            assert weight * cap[index] == pytest.approx(scale * top_mass, rel=1e-9)
-        if np.isfinite(floor[index]):
-            bottom_mass = take * _reference_slice_mean(values, weights, take, top=False)
-            assert weight * floor[index] == pytest.approx(scale * bottom_mass, rel=1e-9)
+        if take <= 0.0:
+            continue
+        for side, bound in ((1.0, cap[index]), (-1.0, floor[index])):
+            part = np.maximum(side * values, 0.0)
+            if not (part[weights > 0.0] > 0.0).any():
+                assert np.isinf(bound)
+                continue
+            result = linprog(
+                -part,
+                A_eq=np.ones((1, len(values))),
+                b_eq=[take],
+                bounds=[(0.0, w) for w in weights],
+                method="highs",
+            )
+            assert result.success
+            best_mass = -result.fun
+            assert side * bound * take == pytest.approx(
+                best_mass, rel=1e-7, abs=1e-6 * max(1.0, best_mass)
+            )
 
 
 @_PROPERTY_SETTINGS
@@ -236,13 +273,14 @@ def test_bound_stays_inside_the_donor_support_and_slice(
 
     for index, weight in enumerate(recipient_weights):
         take = weight / recipient_total * donor_total
+        weighted_values = values[weights > 0.0]
         if np.isfinite(cap[index]):
-            assert 0.0 < cap[index] <= values.max()
+            assert 0.0 < cap[index] <= weighted_values.max()
             # The mean of the slice is at least its inner edge, exactly.
             edge = _top_slice_edge(values, weights, take)
             assert cap[index] >= edge
         if np.isfinite(floor[index]):
-            assert values.min() <= floor[index] < 0.0
+            assert weighted_values.min() <= floor[index] < 0.0
             edge = -_top_slice_edge(-values, weights, take)
             assert floor[index] <= edge
 
@@ -262,10 +300,11 @@ def test_heavier_recipients_get_tighter_bounds(case: tuple[np.ndarray, ...]) -> 
     assert (np.diff(ordered_floor[np.isfinite(ordered_floor)]) >= -tolerance).all()
     # A side applies to every recipient or to none: it is infinite only when
     # the donor has no value of that sign.
-    assert np.isfinite(cap).all() == bool((values > 0.0).any())
-    assert np.isinf(cap).all() == (not (values > 0.0).any())
-    assert np.isfinite(floor).all() == bool((values < 0.0).any())
-    assert np.isinf(floor).all() == (not (values < 0.0).any())
+    weighted_values = values[weights > 0.0]
+    assert np.isfinite(cap).all() == bool((weighted_values > 0.0).any())
+    assert np.isinf(cap).all() == (not (weighted_values > 0.0).any())
+    assert np.isfinite(floor).all() == bool((weighted_values < 0.0).any())
+    assert np.isinf(floor).all() == (not (weighted_values < 0.0).any())
 
 
 @_PROPERTY_SETTINGS
@@ -445,12 +484,14 @@ def _finalize(
     raw: dict[str, np.ndarray],
     *,
     diagnostics: list[dict[str, object]] | None,
+    tax_unit_raw: dict[str, np.ndarray] | None = None,
     **kwargs: object,
 ) -> Frame:
+    tax_unit_raw = tax_unit_raw or {}
     predictions = pd.DataFrame(
         {
             column: np.asarray(values, dtype=np.float64)
-            for column, values in raw.items()
+            for column, values in {**raw, **tax_unit_raw}.items()
         },
         index=_recipient_index(frame),
     )
@@ -459,10 +500,18 @@ def _finalize(
         donor,
         predictions,
         person_outputs=tuple(raw),
-        tax_unit_outputs=(),
+        tax_unit_outputs=tuple(tax_unit_raw),
         tail_bound_diagnostics=diagnostics,
         **kwargs,
     )
+
+
+def _puf_tax_unit_values(frame: Frame, column: str) -> np.ndarray:
+    tax_unit = frame.table("tax_unit")
+    puf = tax_unit[
+        tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ].sort_values(support_source_id_column("tax_unit"))
+    return puf[column].to_numpy(dtype=np.float64)
 
 
 def _heavy_tail_donor(column: str, *, losses: bool = True) -> pd.DataFrame:
@@ -675,7 +724,7 @@ def test_sparsification_rescales_bounded_draws_by_one_common_factor() -> None:
     )
 
 
-def test_signed_mass_calibration_still_pins_both_legs_after_the_bound() -> None:
+def test_signed_mass_calibration_rescales_each_bounded_leg_by_one_factor() -> None:
     frame = _recipient_frame([20.0, 400.0, 600.0, 980.0, 300.0])
     donor = _heavy_tail_donor(_CALIBRATED)
     raw = np.asarray([150.0, 2.0e8, -40_000.0, 4_000.0, -100.0])
@@ -683,10 +732,20 @@ def test_signed_mass_calibration_still_pins_both_legs_after_the_bound() -> None:
     finalized = _finalize(frame, donor, {_CALIBRATED: raw}, diagnostics=[])
 
     weights = _recipient_weights(frame)
+    floor, cap = _bounds(donor[_CALIBRATED], donor["weight"], weights)
+    bounded = np.minimum(np.maximum(raw, floor), cap)
+    assert bounded[1] < raw[1]
     actual = _puf_values(finalized, _CALIBRATED)
     values = donor[_CALIBRATED].to_numpy()
     donor_weights = donor["weight"].to_numpy()
-    for leg, donor_leg in ((actual > 0.0, values > 0.0), (actual < 0.0, values < 0.0)):
+    for leg, donor_leg in (
+        (bounded > 0.0, values > 0.0),
+        (bounded < 0.0, values < 0.0),
+    ):
+        # Each leg is the bounded draws times one factor ...
+        factors = actual[leg] / bounded[leg]
+        np.testing.assert_allclose(factors, factors[0], rtol=1e-12)
+        # ... chosen so the leg's mass per unit weight is the donor's.
         assert float((actual[leg] * weights[leg]).sum()) / weights.sum() == (
             pytest.approx(
                 float((values[donor_leg] * donor_weights[donor_leg]).sum())
@@ -694,11 +753,6 @@ def test_signed_mass_calibration_still_pins_both_legs_after_the_bound() -> None:
                 rel=1e-9,
             )
         )
-    # The calibration rescales whole legs, so the bound's effect survives it:
-    # the extreme draw no longer holds nearly all of the positive leg.
-    positive = actual > 0.0
-    leg_mass = actual[positive] * weights[positive]
-    assert leg_mass.max() < 0.99 * leg_mass.sum()
 
 
 def test_boolean_outputs_are_not_bounded() -> None:
@@ -748,19 +802,168 @@ def test_explicit_narrowing_is_validated_and_can_empty_the_bound() -> None:
             )
 
 
-def test_bound_identity_is_exact_and_names_its_rule() -> None:
-    identity = puf_support_module.puf_tax_detail_recipient_share_bound_identity()
-    assert identity["rule"] == (
-        puf_support_module.PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE
-    )
-    assert (
-        identity == puf_support_module.puf_tax_detail_recipient_share_bound_identity()
-    )
+def test_bound_identity_is_pinned() -> None:
+    assert puf_support_module.puf_tax_detail_recipient_share_bound_identity() == {
+        "rule": "recipient_share_slice_mass",
+        "schema_version": 1,
+        "scope": "every_amount_output_of_the_invocation",
+        "excluded_output_classes": [
+            "boolean_person_outputs",
+            "discrete_tax_unit_outputs",
+        ],
+        "recipient_share": "household_design_weight_over_puf_recipient_total",
+        "cap": "top_slice_positive_mass_per_slice_weight",
+        "floor": "bottom_slice_negative_mass_per_slice_weight",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_grid",
+        "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
+    }
+
+
+def test_every_canonical_amount_output_is_bounded_and_nothing_else() -> None:
     canonical = (
         *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
         *puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
     bounded = puf_support_module._recipient_share_bound_amount_outputs(canonical)
+    excluded = set(canonical) - set(bounded)
+    assert excluded == set(puf_support_module.US_QBI_BOOLEAN_OUTPUT_COLUMNS) | {
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
+    }
     assert "partnership_income" in bounded
-    assert "first_home_mortgage_origination_year" not in bounded
-    assert not set(bounded) & set(puf_support_module.US_QBI_BOOLEAN_OUTPUT_COLUMNS)
+    assert "first_home_mortgage_balance" in bounded
+    assert list(bounded) == [output for output in canonical if output in bounded]
+
+
+def test_realistic_weight_ratios_cap_a_forbes_tail_draw() -> None:
+    # The production geometry: ~10^5 donors including 3,900 synthetic records
+    # of weight 0.13 with Pareto values, and recipients of weight ~600 among
+    # ~9e7 of recipient weight. Vectorized bounds match the donor-by-donor
+    # reference, and a 218.9M draw on a weight-644.7 unit is capped at the
+    # mass of the slice it stands for.
+    rng = np.random.default_rng(1259)
+    regular = 100_000
+    values = np.concatenate(
+        [
+            np.where(
+                rng.random(regular) < 0.06, rng.lognormal(10.0, 2.0, regular), 0.0
+            ),
+            (rng.pareto(1.2, 3_900) + 1.0) * 2.0e6,
+        ]
+    )
+    values[-1] = 2.189e8
+    weights = np.concatenate(
+        [rng.uniform(200.0, 2_400.0, regular), np.full(3_900, 0.13)]
+    )
+    recipient_weights = np.concatenate(
+        [rng.uniform(300.0, 1_000.0, 4_000), [644.7], [8.97e7]]
+    )
+
+    floor, cap = _bounds(values, weights, recipient_weights)
+
+    probe = np.r_[np.arange(0, 4_000, 400), 4_000, 4_001]
+    reference_cap = np.asarray(
+        [
+            _reference_slice_mean(
+                values,
+                weights,
+                recipient_weights[i] / recipient_weights.sum() * weights.sum(),
+                top=True,
+            )
+            for i in probe
+        ]
+    )
+    np.testing.assert_allclose(cap[probe], reference_cap, rtol=1e-9)
+    assert np.isinf(floor).all()
+    heavy = 4_000
+    assert cap[heavy] < 2.189e8
+    take = recipient_weights[heavy] / recipient_weights.sum() * weights.sum()
+    assert recipient_weights[heavy] * cap[heavy] == pytest.approx(
+        recipient_weights.sum() / weights.sum() * take * reference_cap[-2], rel=1e-9
+    )
+
+
+def test_non_finite_bounded_draws_are_refused_before_any_write() -> None:
+    frame = _recipient_frame([20.0, 400.0])
+    raw = np.asarray([np.nan, 1.0])
+    predictions_before = raw.copy()
+    with pytest.raises(ValueError, match="must be finite"):
+        _finalize(
+            frame,
+            _heavy_tail_donor(_PASSTHROUGH),
+            {_PASSTHROUGH: raw},
+            diagnostics=[],
+        )
+    np.testing.assert_array_equal(raw, predictions_before)
+
+
+def test_tax_unit_amount_outputs_are_bounded_on_the_tax_unit_table() -> None:
+    # A passthrough tax-unit amount (mortgage balance) and a snapped,
+    # sparsified one (domestic production ALD) through the tax-unit write path.
+    frame = _recipient_frame([20.0, 400.0, 600.0, 980.0])
+    balance = "first_home_mortgage_balance"
+    dpad = "domestic_production_ald"
+    donor = pd.DataFrame(
+        {
+            balance: [200_000.0, 900_000.0, 5.0e7, 0.0],
+            dpad: [0.0, 1_000.0, 3.0e6, 0.0],
+            "weight": [900.0, 9.0, 0.13, 90.87],
+        }
+    )
+    raw_balance = np.asarray([150_000.0, 5.0e7, 0.0, 300_000.0])
+    raw_dpad = np.asarray([0.0, 3.0e6, 0.0, 0.0])
+    diagnostics: list[dict[str, object]] = []
+
+    finalized = _finalize(
+        frame,
+        donor,
+        {},
+        tax_unit_raw={balance: raw_balance, dpad: raw_dpad},
+        diagnostics=diagnostics,
+    )
+
+    weights = _recipient_weights(frame)
+    _, balance_cap = _bounds(donor[balance], donor["weight"], weights)
+    actual_balance = _puf_tax_unit_values(finalized, balance)
+    np.testing.assert_array_equal(actual_balance, np.minimum(raw_balance, balance_cap))
+    assert actual_balance[1] < raw_balance[1]
+    _, dpad_cap = _bounds(
+        puf_support_module._snap_grid_values(donor[dpad]), donor["weight"], weights
+    )
+    actual_dpad = _puf_tax_unit_values(finalized, dpad)
+    assert actual_dpad[1] < raw_dpad[1]
+    assert actual_dpad[1] <= dpad_cap[1]
+    assert [record["output"] for record in diagnostics] == [balance, dpad]
+
+
+def test_social_security_reconciliation_keeps_the_bounded_total() -> None:
+    # The four components are re-split by CPS shares after the bound, so a
+    # component can move, but each unit's total is the bounded draws' total.
+    frame = _recipient_frame([20.0, 980.0, 300.0])
+    components = puf_support_module.PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+    donor = pd.DataFrame(
+        {
+            "social_security_retirement": [20_000.0, 60_000.0, 4.0e6, 0.0],
+            "social_security_disability": [0.0, 15_000.0, 0.0, 0.0],
+            "social_security_dependents": [0.0, 0.0, 0.0, 0.0],
+            "social_security_survivors": [0.0, 0.0, 0.0, 0.0],
+            "weight": [600.0, 300.0, 0.13, 99.87],
+        }
+    )
+    raw = {
+        "social_security_retirement": np.asarray([20_000.0, 4.0e6, 60_000.0]),
+        "social_security_disability": np.asarray([0.0, 15_000.0, 0.0]),
+        "social_security_dependents": np.zeros(3),
+        "social_security_survivors": np.zeros(3),
+    }
+
+    finalized = _finalize(frame, donor, raw, diagnostics=[])
+
+    weights = _recipient_weights(frame)
+    bounded_total = np.zeros(3)
+    for component in components:
+        floor, cap = _bounds(donor[component], donor["weight"], weights)
+        bounded_total += np.minimum(np.maximum(raw[component], floor), cap)
+    finalized_total = sum(_puf_values(finalized, component) for component in components)
+    np.testing.assert_allclose(finalized_total, bounded_total, rtol=1e-12)
+    assert finalized_total[1] < 4.0e6 + 15_000.0

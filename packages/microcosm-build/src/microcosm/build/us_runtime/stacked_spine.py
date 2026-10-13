@@ -5395,6 +5395,12 @@ def _late_virtual_resource_kind(column: str) -> str:
         ) from exc
 
 
+#: The primary PUF execution config's payload schema. Schema 6 adds the
+#: recipient-share bound (#1259). The builder, the late-resource validator,
+#: stacked publication and the pool loader all read this one value.
+PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION = 6
+
+
 def _late_resource_binding_schema_version(
     column: str,
     *,
@@ -5407,7 +5413,7 @@ def _late_resource_binding_schema_version(
     kind = _late_virtual_resource_kind(column)
     versions = {
         "acs_pums_earnings_universe_execution_config": 2,
-        "primary_puf_execution_config": 6,
+        "primary_puf_execution_config": PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         "post_clone_source_execution_config": 3,
         "source_finalizer_execution_config": 2,
         "late_transfer_model_config": 3,
@@ -6122,7 +6128,7 @@ def _late_primary_execution_config_binding(
     )
     return {
         "resource_kind": "primary_puf_execution_config",
-        "schema_version": 6,
+        "schema_version": PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         "clone_attachment": {
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,

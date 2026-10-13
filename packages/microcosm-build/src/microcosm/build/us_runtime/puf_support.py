@@ -403,10 +403,18 @@ def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
 # carries it. The bound caps each raw amount draw at the positive mass, per
 # unit of slice weight, of the donor's top slice of the recipient's own share
 # (and floors losses from the bottom slice), so no record carries more mass
-# than the most extreme slice of the population it could stand for. Tail
-# support below pool resolution is the pool's job (DESIGN.md); this keeps the
-# fit from delivering it. Discrete and boolean outputs are not amounts and
-# are left alone.
+# than the most extreme slice of the population it could stand for. It limits
+# a record to its slice; it does not remove concentration the slice itself
+# has, and the mass it clips from passthrough columns is dropped. It is an
+# interim censor at the finalize seam, like the quantile map above: tail
+# support below pool resolution is the pool's job (DESIGN.md), and the root
+# fix is a tail stratum carrying PUF donors at their own weights (#958, #964),
+# with weight-aware draws (#481) as a complement. Each column is bounded on
+# its own, so a clipped record's links to other columns (mortgage balance and
+# interest, gains and their subsets) loosen further. Shares depend on the
+# recipient population, so a smaller sample rung, whose records stand for
+# more of it, is bounded more tightly. Discrete and boolean outputs are not
+# amounts and are left alone.
 PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE = "recipient_share_slice_mass"
 _PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_SCHEMA_VERSION = 1
 
@@ -1979,11 +1987,13 @@ def finalize_us_puf_tax_detail_predictions(
     explicit ``recipient_share_bound_outputs`` narrows it for tests and must
     name amount outputs of this invocation. It writes one diagnostics record
     per bounded output, including outputs it leaves unchanged. It holds on the
-    raw tax-unit draws and, for snapped outputs, after snapping. Two later
-    steps rescale a whole column to the donor instrument and so lift every
-    kept value by one common factor: the donor-rate sparsification of sparse
-    outputs restores the column's mass after zeroing carriers, and the
-    signed-mass calibration scales each leg of its outputs.
+    raw tax-unit draws and, for snapped outputs, after snapping. Three later
+    steps move bounded values without adding mass. The donor-rate
+    sparsification of sparse outputs restores the column's mass after zeroing
+    carriers, and the signed-mass calibration scales each leg of its outputs;
+    both lift every kept value of the column or leg by one common factor. The
+    Social Security reconciliation re-splits the four components' bounded
+    total by the CPS shares, keeping the total.
 
     ``absent_cells`` selects the finalization policy for cells outside the PUF
     clone arm (microcosm#578 audit item 1).  The legacy default reproduces the
@@ -2088,6 +2098,10 @@ def finalize_us_puf_tax_detail_predictions(
     )
     resolved_share_bounds: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for output in share_bound_outputs:
+        if not np.isfinite(predictions[output].to_numpy(dtype=np.float64)).all():
+            raise ValueError(
+                f"PUF raw predictions for bounded output {output!r} must be finite."
+            )
         if output in snapped_outputs:
             # A snapped output lives on its snap grid, so it is bounded on the
             # donor's grid values: a slice inside one grid value caps at that
@@ -2118,6 +2132,7 @@ def finalize_us_puf_tax_detail_predictions(
             tail_bound_diagnostics.append(
                 {
                     "output": output,
+                    "rule": "weighted_positive_donor_quantile",
                     "quantile": quantile,
                     "bound_value": bound,
                     "clipped_row_count": int(clipped.sum()),
@@ -2846,9 +2861,11 @@ def _recipient_share_slice_bounds(
     share ``s`` of donor weight at the top of the column, so a positive value
     is capped at that mass per unit of slice weight; losses are floored the
     same way from the bottom slice. Within the positive donors the cap is the
-    slice's weighted mean, and it falls as the share grows. A side is infinite
-    only when the donor has no value of that sign. Shares make the bound
-    independent of either population's weight scale.
+    slice's weighted mean, and it falls as the share grows. Only donors with
+    positive weight count. A side is infinite only when no such donor has a
+    value of that sign, and a zero-weight recipient's cap is the largest
+    weighted donor value, which binds nothing a weighted draw can reach.
+    Shares make the bound independent of either population's weight scale.
     """
 
     values = pd.to_numeric(pd.Series(donor_values), errors="coerce").to_numpy(
@@ -2878,6 +2895,12 @@ def _recipient_share_slice_bounds(
     if donor_total <= 0.0 or recipient_total <= 0.0:
         raise ValueError("Recipient-share bound weights must have positive mass.")
     slice_weights = recipients / recipient_total * donor_total
+    # Only donors with weight stand for anyone, and a zero-weight donor cannot
+    # be drawn (the forests resample by weight), so slices and the largest
+    # value come from the weighted donors alone.
+    weighted = weights > 0.0
+    values = values[weighted]
+    weights = weights[weighted]
     # Ordering by the positive part orders the top slice exactly as the values
     # do; donors at or below zero tie at zero and add no positive mass.
     top = _top_slice_means(np.maximum(values, 0.0), weights, slice_weights)

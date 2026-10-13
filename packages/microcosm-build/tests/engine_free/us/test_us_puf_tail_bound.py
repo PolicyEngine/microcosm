@@ -154,6 +154,7 @@ def test_finalizer_clips_tail_without_changing_participation_or_lower_bits() -> 
     np.testing.assert_array_equal(actual[:2].view(np.uint64), raw[:2].view(np.uint64))
     assert diagnostics[0] == {
         "output": _TARGET,
+        "rule": "weighted_positive_donor_quantile",
         "quantile": 0.999,
         "bound_value": 100.0,
         "clipped_row_count": 2,
