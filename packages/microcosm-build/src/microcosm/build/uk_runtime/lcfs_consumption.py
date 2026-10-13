@@ -2265,15 +2265,22 @@ def floor_negative_donor_consumption(
 
 
 def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
-    """Split LCFS domestic energy into electricity and gas weekly amounts."""
+    """Split LCFS domestic energy into electricity and gas weekly amounts.
+
+    b226 is electricity paid by direct debit or quarterly bill, b489 the
+    prepayment-meter energy payment and b490 its gas part. A refund can make
+    any of them negative; they are read floored at zero, so every household
+    falls in one of the four cases below (microcosm#1164: a negative b489, or a
+    negative b490 beside a positive b489, matched none and lost its energy).
+    """
 
     for column in ("p537", "b226", "b489", "b490"):
         if column not in household:
             raise ValueError(f"LCFS household donor is missing {column!r}.")
     p537 = _numeric(household["p537"])
-    b226 = _numeric(household["b226"])
-    b489 = _numeric(household["b489"])
-    b490 = _numeric(household["b490"])
+    b226 = _numeric(household["b226"]).clip(lower=0.0)
+    b489 = _numeric(household["b489"]).clip(lower=0.0)
+    b490 = _numeric(household["b490"]).clip(lower=0.0)
     dd_mask = (b226 > 0) & (p537 > 0)
     mean_elec_share = (b226[dd_mask] / p537[dd_mask]).clip(0, 1).mean()
     if np.isnan(mean_elec_share):

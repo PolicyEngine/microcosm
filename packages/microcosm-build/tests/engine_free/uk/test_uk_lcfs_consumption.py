@@ -183,6 +183,24 @@ def test_energy_split_exercises_four_cases_fallback_and_clamp() -> None:
     np.testing.assert_allclose(split["gas_consumption"], [4.8, 9.6, 14.4, 19.2])
 
 
+def test_energy_split_reads_negative_payments_as_zero() -> None:
+    # microcosm#1164: a refund through the meter (negative b489) or a negative
+    # gas part beside a positive b489 matched none of the four cases, so the
+    # household lost its electricity and gas.
+    household = _household()
+    household["b226"] = [0.0, 0.0, 0.0, -3.0]
+    household["b489"] = [-5.0, 9.0, 0.0, 0.0]
+    household["b490"] = [0.0, -1.0, 0.0, 0.0]
+    household["p537"] = [10.0, 20.0, 30.0, 40.0]
+
+    split = derive_energy_from_lcfs(household)
+
+    energy = split["electricity_consumption"] + split["gas_consumption"]
+    # Row 0 (b489 refund) and rows 2-3 split p537; row 1 splits b489 alone.
+    np.testing.assert_allclose(energy, [10.0, 9.0, 30.0, 40.0])
+    assert (split["electricity_consumption"] > 0).all()
+
+
 def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() -> None:
     frame = uk_national_frame(
         person=pd.DataFrame(
