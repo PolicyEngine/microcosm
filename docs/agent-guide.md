@@ -152,6 +152,15 @@ Move fixtures and helper functions shared by those files to
 instead of deriving them from a test module's `__file__`. Keep fixture data in
 the package's root `tests/fixtures/` or `tests/golden/` directory.
 
+A test that commits to a throwaway git repository passes
+`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE` to that `git commit`
+(`["git", *NO_BACKGROUND_MAINTENANCE, ...]`; a shared helper may pass it to
+every command). When the code under test runs the git (a fetch, say), the test
+sets `NO_BACKGROUND_MAINTENANCE_ENV` in the environment instead. Without them,
+`git commit` and `git fetch` can leave a detached maintenance process that
+removes `.git/objects/maintenance.lock` after the command has returned, and a
+test that lists or hashes `.git` then fails now and then.
+
 `tools/ci_test_plan.py` recursively enumerates and validates this layout. Run
 `python3 tools/ci_test_plan.py verify` after adding, moving, or splitting tests,
 and use `python3 tools/ci_test_plan.py describe` to inspect the generated group,

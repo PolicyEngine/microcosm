@@ -1648,7 +1648,9 @@ class TestAxiomEngineRefGitCheckout:
         trace = tmp_path / "trace2-events"
         monkeypatch.setitem(_GIT_ENV, "GIT_TRACE2_EVENT", str(trace))
         _git(root, "commit", "-q", "--allow-empty", "-m", "traced")
-        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        events = [
+            json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()
+        ]
         started = [
             event["argv"]
             for event in events

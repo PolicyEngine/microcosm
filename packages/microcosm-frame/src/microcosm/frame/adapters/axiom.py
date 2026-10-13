@@ -829,8 +829,8 @@ class AxiomEngine:
 
         Raises:
             ValueError: If the module path resolves to another file, the root
-                holds a symbolic link, or its digest moved since the
-                reference.
+                holds a symbolic link, its digest moved since the reference,
+                or a file under it is removed while it is hashed.
         """
         module = self._module.resolve()
         if module != self._pinned_module:
@@ -1147,10 +1147,11 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
         except FileNotFoundError as exc:
             raise ValueError(
                 f"RuleSpec root {path} changed while it was being hashed: "
-                f"{relative.decode('utf-8')} was listed and then removed. A git "
-                "process still working in a checkout does this (its background "
-                "maintenance holds a lock file under .git); wait for it to "
-                "finish, or reference a git archive export instead."
+                f"{relative.decode('utf-8')} was listed and then removed. Hash "
+                "the tree once nothing is writing to it. If the root is a git "
+                "checkout, a git process still working in it does this (its "
+                "background maintenance holds a lock file under .git); wait "
+                "for it to finish, or reference a git archive export instead."
             ) from exc
         digest.update(len(relative).to_bytes(8, "little"))
         digest.update(relative)
@@ -1218,8 +1219,10 @@ def axiom_engine_ref(
     commit all give different references, and any later git operation in the
     checkout moves it. That includes the maintenance git starts in the
     background after a commit: until it finishes, its lock file under ``.git``
-    is part of the tree, and the reference is refused if the lock is removed
-    while the tree is hashed. Prefer the export.
+    is part of the tree. A reference taken then is refused if the lock is
+    removed between the digest's listing and its read; otherwise it names a
+    tree that holds the lock, and the adapter's next compile or reference
+    refuses the root once the lock is gone. Prefer the export.
 
     The first call pins the adapter to the tree digest it names and to the
     file its module path resolves to: it refuses an adapter that has already
