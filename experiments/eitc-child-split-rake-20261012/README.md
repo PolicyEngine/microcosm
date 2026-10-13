@@ -63,8 +63,8 @@ substitution, then `_select_target_surface`). Source:
 | What moves | nothing | 8 total rows, ×0.864–1.052 | 224 bins, ×0.857–1.226 (total rows keep their values) | 8 total rows removed |
 | Total row = Σ its bins | no (0.951–1.157) | yes | yes | n/a |
 | Implied childless share of EITC (amount / returns) | 3.71% / 27.73% (totals), 3.21% / 26.11% (bins) | 3.21% / 26.11% | 3.71% / 27.73% | 3.21% / 26.11% |
-| national_state | 6,102 at 3fad14f85468 | 6,102 at a211cbec63ec | 6,102 at 1aafec44dbfa | 6,094 at 41a1fa2b013f |
-| full | 33,250 at c3aaea9c1e8c | 33,250 at a83fc4bad02f | 33,250 at ec807d77a746 | 33,242 at 469b8ed2c5db |
+| national_state | 6,102 at 3fad14f85468 | 6,102 at a211cbec63ec | 6,102 at f96aac657fa6 | 6,094 at 41a1fa2b013f |
+| full | 33,250 at c3aaea9c1e8c | 33,250 at a83fc4bad02f | 33,250 at cb0eaa0418f2 | 33,242 at 469b8ed2c5db |
 | Table 2.5 share of loss weight, national_state / full | 1.555% / 0.605% | 1.555% / 0.605% | 1.548% / 0.603% | 1.272% / 0.494% |
 | Table 2.5 rows' weights vs (a) | — | ×0.930–1.026 | ×0.926–1.101 | ×1.0003–1.0029 |
 | Largest weight move of any other row | — | 8×10⁻⁶ | 1.5×10⁻⁴ | 2.9×10⁻³ |

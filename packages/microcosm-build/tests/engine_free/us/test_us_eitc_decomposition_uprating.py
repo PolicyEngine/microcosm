@@ -341,6 +341,53 @@ def test_an_ill_conditioned_decomposition_is_raked() -> None:
         ) == pytest.approx(value, rel=1e-11)
 
 
+def test_strict_slack_below_rounding_is_raked() -> None:
+    """microcosm#1235 review round 2: the one-child split's total falls short
+    of the low group by less than 1e-12 of the total. That is strict slack,
+    which the two-child split's $1,000 bin there fills; it used to be taken
+    for an exact (infeasible) fill and refused."""
+
+    measure, _, _ = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 1_048_575_000, _HIGH: 0},
+        "two_qualifying_children": {_LOW: 1_000, _HIGH: 1_048_576_000},
+    }
+    active = {_LOW: 1_048_576_000, _HIGH: 1_048_578_000}
+    by_name = _compile(
+        _decomposition_facts(kind="amount", source=source, active=active)
+    )
+
+    for split, rows in source.items():
+        total = by_name[_total_name(split, measure)].value
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for bounds in rows
+        ) == pytest.approx(total, rel=1e-12)
+    for bounds, value in active.items():
+        assert sum(
+            by_name[_bin_name(split, measure, bounds)].value for split in source
+        ) == pytest.approx(value, rel=1e-11)
+
+
+def test_a_zero_subtotal_over_positive_bins_is_refused() -> None:
+    """microcosm#1235 review round 2: a published $25,000-and-over subtotal of
+    zero over bins of $1 and $1 contradicts itself; the per-row uprating
+    found no source EITC in that group, so no factor it records is true."""
+
+    measure, _, _ = _KINDS["amount"]
+    source = {
+        "one_qualifying_child": {_LOW: 100, _MIDDLE: 1, _TOP: 1},
+        "two_qualifying_children": {_LOW: 100, _MIDDLE: 1, _TOP: 1},
+    }
+    facts = _decomposition_facts(
+        kind="amount", source=source, active={_LOW: 500, _HIGH: 10}
+    )
+    for split in source:
+        facts.append(_child_fact(measure, split, _HIGH, 0))
+
+    with pytest.raises(ValueError, match="sum to zero"):
+        _compile(facts)
+
+
 def test_the_adjustment_is_relative_to_the_recorded_group_factor() -> None:
     """microcosm#1235 review: a published subtotal ($301) can differ from its
     bins ($200 + $100) by rounding. The per-row factor of the $25,000-and-over
@@ -481,6 +528,25 @@ def test_overlapping_decomposition_rows_are_refused(rows) -> None:
         # Split two reaches only group two and fills it exactly, so split
         # one's positive bin in group two would have to be zero.
         ([[1.0, 1.0], [0.0, 1.0]], [1.0, 1.0], [1.0, 1.0], "meets both margins"),
+        # Seventeen splits: checked over the two groups instead. Group two
+        # holds only split one's bin and fills split one exactly, so split
+        # one's bin in group one would have to be zero.
+        (
+            [[1.0, 1.0], *([[1.0, 0.0]] * 16)],
+            [1.0] * 17,
+            [16.0, 1.0],
+            "AGI groups \\[1\\] total 1.0",
+        ),
+        # Seventeen splits and seventeen groups: too many to check exactly.
+        (
+            [
+                [1.0 if i == j or (i, j) == (1, 0) else 0.0 for j in range(17)]
+                for i in range(17)
+            ],
+            [1.0] * 17,
+            [1.0] * 17,
+            "at most 16 child splits or AGI groups",
+        ),
     ],
 )
 def test_rake_refuses_margins_it_cannot_meet(seed, rows, columns, message) -> None:
@@ -500,6 +566,20 @@ def test_rake_refuses_margins_it_cannot_meet(seed, rows, columns, message) -> No
         ([[1.0, 0.0], [0.0, 1.0]], [2.0, 1.0], [2.0, 1.0]),
         # A group with no EITC in either year.
         ([[1.0, 1.0, 0.0], [2.0, 1.0, 0.0]], [3.0, 4.0], [5.0, 2.0, 0.0]),
+        # Review round 2: split one's 1,048,575,999.999 sits below group one's
+        # 1,048,576,000 by less than 1e-12 of the total; it is strict slack,
+        # filled by split two's bin there, not an exact (infeasible) fill.
+        (
+            [[1_048_575_000.0, 0.0], [1_000.0, 1_048_576_000.0]],
+            [1_048_575_000.0 * (1 + 2**-20), 1_048_577_000.0 * (1 + 2**-20)],
+            [1_048_576_000.0, 1_048_578_000.0],
+        ),
+        # Review round 2: rounding makes the Newton system singular.
+        ([[1e16, 1.0], [1.0, 1e16]], [1.0, 1.0], [1.01, 0.99]),
+        # Review round 2: the seed's sum overflows.
+        ([[1e308, 1e308], [1e308, 1e308]], [1.0, 1.0], [1.0, 1.0]),
+        # Seventeen splits, checked over the two groups.
+        ([[1.0, 1.0]] * 17, [1.0] * 17, [10.0, 7.0]),
     ],
 )
 def test_rake_meets_feasible_ill_conditioned_margins(seed, rows, columns) -> None:
