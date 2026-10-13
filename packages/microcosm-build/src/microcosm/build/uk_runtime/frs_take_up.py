@@ -49,12 +49,13 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.123.0's ``is_uc_eligible``
-# (capital aside) needs a member with ``is_uc_claimant`` who meets UC's minimum
-# age and has not reached Pension Credit qualifying age. The draw's population
-# is therefore the units with a UC claimant or partner aged 18 or over and
-# under that age; any other unit is never drawn (#882, microcosm#867,
-# microcosm#1095). The bounds come from the engine at the build instant through
+# partner meets its age conditions: policyengine-uk 2.127.0's ``is_uc_eligible``
+# (capital aside) needs a single or joint claimant, taken from
+# ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
+# Credit qualifying age. The draw's population is therefore the units with a
+# UC claimant or partner aged 18 or over and under that age; any other unit is
+# never drawn (#882, microcosm#867, microcosm#1095). The bounds come from the
+# engine at the build instant through
 # ``uk_take_up_population_policy``: the qualifying age is the State Pension age
 # the ``gov.dwp.state_pension.age`` timetable sets for the cohort reaching it
 # in the build year, which equals the engine's Pension Credit qualifying age at
