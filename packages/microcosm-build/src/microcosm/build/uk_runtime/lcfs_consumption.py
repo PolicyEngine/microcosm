@@ -222,6 +222,19 @@ UK_LCFS_ROAD_FUEL_REDRAW_RULE = "positive_total_then_petrol_share"
 #: diesel-only household).
 UK_LCFS_ROAD_FUEL_TOTAL = "road_fuel_total"
 UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
+#: The household input policyengine-uk 2.123.3 reads for the Energy Price
+#: Guarantee prepayment discount, July 2023 to March 2024
+#: (PolicyEngine/policyengine-uk#2098; microcosm#1110, uk-data#539).
+UK_LCFS_PREPAYMENT_METER_COLUMN = "uses_energy_prepayment_meter"
+IMPUTE_PREPAYMENT_METER_KIND = "impute_prepayment_meter"
+#: LCFS b489 is the household's weekly energy payment through a prepayment
+#: meter (electricity, and gas with it when b490 is present) and b490 the gas
+#: part; b226 is electricity paid by direct debit or quarterly bill. A
+#: household paying either fuel by prepayment meter has b489 or b490 nonzero (a
+#: negative entry is a refund through the meter). One with neither pays
+#: another way or did not say, and counts as not prepaying.
+UK_LCFS_PREPAYMENT_CODES = ("b489", "b490")
+UK_LCFS_PREPAYMENT_RULE = "b489_or_b490_nonzero"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
 #: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
@@ -328,6 +341,7 @@ UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
+    UK_LCFS_PREPAYMENT_METER_COLUMN,
 )
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2023_24_consumption"
@@ -342,6 +356,7 @@ class UKLCFSConsumptionResult:
     support_clip: UKSupportClipReceipt
     donor_uprating: Mapping[str, Any] | None = None
     fuel_flag: Mapping[str, Any] | None = None
+    prepayment_meter: Mapping[str, Any] | None = None
     bus_pricing: Mapping[str, Any] | None = None
     energy_pricing: Mapping[str, Any] | None = None
     energy_rake: Mapping[str, Any] | None = None
@@ -361,6 +376,8 @@ class UKLCFSConsumptionResult:
             evidence["donor_uprating"] = dict(self.donor_uprating)
         if self.fuel_flag is not None:
             evidence["has_fuel_consumption"] = dict(self.fuel_flag)
+        if self.prepayment_meter is not None:
+            evidence[UK_LCFS_PREPAYMENT_METER_COLUMN] = dict(self.prepayment_meter)
         if self.bus_pricing is not None:
             evidence["bus_pricing"] = dict(self.bus_pricing)
         if self.energy_pricing is not None:
@@ -466,6 +483,13 @@ class UKLCFSConsumptionStageTransform:
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
         household_draws = clip_result.clipped
+        prepayment = lcfs_prepayment_meter(
+            self.stage,
+            donor=donor,
+            recipient=recipient,
+            household_ids=frame.table("household")["household_id"].to_numpy(),
+            weights=weights,
+        )
         # The chain's own draws of the parts later steps re-level, for the
         # recomposed totals (microcosm#1113).
         drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
@@ -531,6 +555,8 @@ class UKLCFSConsumptionStageTransform:
         household["has_fuel_consumption"] = recipient["has_fuel_consumption"].to_numpy(
             dtype=bool
         )
+        if prepayment is not None:
+            household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment.flags
         result = uk_national_frame(
             person=frame.table("person").copy(),
             benunit=frame.table("benunit").copy(),
@@ -549,12 +575,14 @@ class UKLCFSConsumptionStageTransform:
         self.last_fit_weight_records = (
             *imputation.fit_weight_records,
             *incidence.fit_weight_records,
+            *(() if prepayment is None else prepayment.fit_weight_records),
         )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
             support_clip=clip_result.receipt,
             donor_uprating=uprating_receipt,
             fuel_flag=fuel_flag_receipt,
+            prepayment_meter=None if prepayment is None else prepayment.receipt,
             bus_pricing=bus_pricing_receipt,
             energy_pricing=None if energy is None else energy.receipt,
             energy_rake=energy_rake_receipt,
@@ -1091,6 +1119,156 @@ def redraw_zero_road_fuel(
         "weighted_total_after": float(np.dot(weight, after)),
     }
     return RoadFuelIncidence(redrawn, receipt, records)
+
+
+def prepayment_meter_from_lcfs(household: pd.DataFrame) -> np.ndarray:
+    """1.0 where the LCFS household pays energy through a prepayment meter.
+
+    The rule is ``UK_LCFS_PREPAYMENT_RULE`` (microcosm#1110, the field reading
+    of uk-data#539): b489 or b490 nonzero. A household paying only electricity
+    by prepayment meter counts; one with no prepayment amount, which includes
+    any that did not answer, does not.
+    """
+
+    _require_columns(household, UK_LCFS_PREPAYMENT_CODES)
+    nonzero = np.zeros(len(household), dtype=bool)
+    for code in UK_LCFS_PREPAYMENT_CODES:
+        nonzero |= _numeric(household[code]).to_numpy(dtype=float) != 0.0
+    return nonzero.astype(float)
+
+
+@dataclass(frozen=True)
+class PrepaymentMeterDraw:
+    """The recipient prepayment flags, their receipt and fit record."""
+
+    flags: np.ndarray
+    receipt: Mapping[str, Any]
+    fit_weight_records: tuple[FitWeightRecord, ...]
+
+
+def prepayment_meter_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``impute_prepayment_meter`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == IMPUTE_PREPAYMENT_METER_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def impute_prepayment_meter(
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+    parameters: Mapping[str, Any],
+) -> PrepaymentMeterDraw:
+    """Draw ``uses_energy_prepayment_meter`` from the LCFS donor (microcosm#1110).
+
+    A weighted regime-gated QRF on the chain's predictors (household counts,
+    region, incomes, tenure, accommodation, vehicles) fits the donor's
+    prepayment flag; each recipient's draw takes uniforms keyed on its household
+    id, so the flag does not depend on row order and no other draw moves. The
+    flag is the regime the draw lands in: prepaying or not.
+    """
+
+    from microcosm.fit.qrf import RegimeGatedQRF
+
+    if parameters.get("output") != UK_LCFS_PREPAYMENT_METER_COLUMN:
+        raise ValueError(
+            f"{IMPUTE_PREPAYMENT_METER_KIND} must write "
+            f"{UK_LCFS_PREPAYMENT_METER_COLUMN!r}."
+        )
+    codes = tuple(str(code) for code in parameters.get("codes", ()))
+    if codes != UK_LCFS_PREPAYMENT_CODES:
+        raise ValueError(
+            f"{IMPUTE_PREPAYMENT_METER_KIND} must read {UK_LCFS_PREPAYMENT_CODES}, "
+            f"not {codes}."
+        )
+    rule = str(parameters.get("rule") or "")
+    if rule != UK_LCFS_PREPAYMENT_RULE:
+        raise ValueError(f"unsupported {IMPUTE_PREPAYMENT_METER_KIND} rule {rule!r}.")
+    seed = parameters.get("seed")
+    n_estimators = parameters.get("n_estimators")
+    salt = parameters.get("salt")
+    if not isinstance(seed, int) or not isinstance(n_estimators, int):
+        raise ValueError(
+            f"{IMPUTE_PREPAYMENT_METER_KIND} needs integer seed and trees."
+        )
+    if not isinstance(salt, str) or not salt:
+        raise ValueError(f"{IMPUTE_PREPAYMENT_METER_KIND} needs a declared salt.")
+    donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+        donor, recipient
+    )
+    target = UK_LCFS_PREPAYMENT_METER_COLUMN
+    train = donor_encoded[[*predictors, "household_weight"]].reset_index(drop=True)
+    donor_flag = donor[target].to_numpy(dtype=float)
+    train[target] = donor_flag
+    fitted = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
+        train, list(predictors), [target], weights="household_weight"
+    )
+    ids = np.asarray(household_ids)
+    drawn = fitted.predict_from_uniforms(
+        recipient_encoded[list(predictors)].reset_index(drop=True),
+        quantiles={target: stable_identity_uniforms(ids, seed=seed, salt=salt)},
+        sign_uniforms={
+            target: stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign")
+        },
+    )
+    flags = drawn[target].to_numpy(dtype=float) > 0.5
+    donor_weight = donor["household_weight"].to_numpy(dtype=float)
+    weight = np.asarray(weights, dtype=float)
+    regions = recipient["region"].astype(str).to_numpy()
+    great_britain = regions != "NORTHERN_IRELAND"
+
+    def share(values: np.ndarray, mass: np.ndarray) -> float | None:
+        total = float(mass.sum())
+        return float(np.dot(mass, values)) / total if total > 0 else None
+
+    receipt = {
+        "operation": IMPUTE_PREPAYMENT_METER_KIND,
+        "output": target,
+        "codes": list(codes),
+        "rule": rule,
+        "seed": seed,
+        "salt": salt,
+        "n_estimators": n_estimators,
+        "regime": str(fitted.regimes()[target]),
+        "donor_share": share(donor_flag, donor_weight),
+        "recipient_share": share(flags.astype(float), weight),
+        "recipient_share_great_britain": share(
+            flags[great_britain].astype(float), weight[great_britain]
+        ),
+        "recipient_households_great_britain": float(
+            weight[great_britain & flags].sum()
+        ),
+    }
+    records = (
+        FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", fitted.weight_kind),
+    )
+    return PrepaymentMeterDraw(flags, receipt, records)
+
+
+def lcfs_prepayment_meter(
+    stage: SourceStageSpec,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+) -> PrepaymentMeterDraw | None:
+    """Apply the declared ``impute_prepayment_meter`` step (none if undeclared)."""
+
+    parameters = prepayment_meter_operation(stage)
+    if parameters is None:
+        return None
+    return impute_prepayment_meter(
+        donor=donor,
+        recipient=recipient,
+        household_ids=household_ids,
+        weights=weights,
+        parameters=parameters,
+    )
 
 
 def lcfs_road_fuel_incidence(
@@ -1933,6 +2111,7 @@ def clean_lcfs_consumption_table(
         _lowercase(lcfs_household)["a121"], LCFS_ACCOMM_MAP, column="a121"
     )
     household = derive_energy_from_lcfs(household)
+    household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment_meter_from_lcfs(household)
     household = household.rename(columns=CONSUMPTION_VARIABLE_RENAMES)
     for code in BUS_FARE_LCFS_CODES:
         if code not in household:
@@ -1976,6 +2155,7 @@ def clean_lcfs_consumption_table(
         [
             *UK_LCFS_CONSUMPTION_PREDICTORS,
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            UK_LCFS_PREPAYMENT_METER_COLUMN,
             "household_gross_income",
             "household_weight",
         ]

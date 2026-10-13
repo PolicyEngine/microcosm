@@ -417,6 +417,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
     from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_PREPAYMENT_METER_COLUMN,
+    )
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -431,6 +434,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
+        # The LCFS prepayment-meter flag waits for an engine that reads it
+        # (microcosm#1110); it is no reference column, so no reviewed exclusion.
+        | {f"household.{UK_LCFS_PREPAYMENT_METER_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported

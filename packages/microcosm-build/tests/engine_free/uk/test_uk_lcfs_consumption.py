@@ -871,11 +871,16 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
-    # The 18 chain targets, then the road-fuel redraw's total and petrol share.
-    assert len(transform.fit_weight_records) == 20
-    assert transform.fit_weight_records[-1].fit_name.endswith(
+    # The 18 chain targets, the road-fuel redraw's total and petrol share,
+    # then the prepayment-meter flag (microcosm#1110).
+    assert len(transform.fit_weight_records) == 21
+    assert transform.fit_weight_records[-2].fit_name.endswith(
         ":petrol_share_of_road_fuel"
     )
+    assert transform.fit_weight_records[-1].fit_name.endswith(
+        ":uses_energy_prepayment_meter"
+    )
+    assert out["uses_energy_prepayment_meter"].dtype == bool
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
     )
@@ -1890,3 +1895,165 @@ def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:
     assert result["household_adult_count"].tolist() == [2.0, 1.0]
     assert result["household_child_count"].tolist() == [1.0, 1.0]
     assert not {"is_adult", "is_child"} & set(requested)
+
+
+def test_prepayment_meter_donor_rule_reads_b489_or_b490() -> None:
+    # microcosm#1110: b489 is the prepayment-meter energy payment and b490 its
+    # gas part; electricity-only prepayment and refunds through the meter count.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        prepayment_meter_from_lcfs,
+    )
+
+    household = pd.DataFrame(
+        {
+            "b489": [9.0, 0.0, -2.0, 0.0, None],
+            "b490": [4.0, 3.0, 0.0, 0.0, None],
+        }
+    )
+    assert prepayment_meter_from_lcfs(household).tolist() == [1.0, 1.0, 1.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="b490"):
+        prepayment_meter_from_lcfs(household.drop(columns="b490"))
+
+
+def _prepayment_donor_and_recipient() -> tuple[pd.DataFrame, pd.DataFrame]:
+    rng = np.random.default_rng(7)
+    n = 400
+    tenure = rng.choice(["RENT_FROM_COUNCIL", "RENT_PRIVATELY", "OWNED_OUTRIGHT"], n)
+    donor = pd.DataFrame(
+        {
+            "household_adult_count": rng.integers(1, 4, n),
+            "household_child_count": rng.integers(0, 3, n),
+            "region": rng.choice(["LONDON", "WALES", "NORTHERN_IRELAND"], n),
+            "employment_income": rng.uniform(0, 6e4, n),
+            "self_employment_income": rng.uniform(0, 1e4, n),
+            "private_pension_income": rng.uniform(0, 2e4, n),
+            "hbai_household_net_income": rng.uniform(5e3, 8e4, n),
+            "tenure_type": tenure,
+            "accommodation_type": rng.choice(["FLAT", "HOUSE_TERRACED"], n),
+            "num_vehicles": rng.integers(0, 3, n),
+            "household_weight": rng.uniform(500, 1500, n),
+        }
+    )
+    # Renters prepay more often, so the flag depends on the predictors.
+    renter = tenure != "OWNED_OUTRIGHT"
+    donor["uses_energy_prepayment_meter"] = (
+        rng.random(n) < np.where(renter, 0.4, 0.05)
+    ).astype(float)
+    recipient = donor.drop(
+        columns=["household_weight", "uses_energy_prepayment_meter"]
+    ).iloc[:120]
+    return donor, recipient.reset_index(drop=True)
+
+
+def _prepayment_parameters(**changes) -> dict:
+    return {
+        "kind": "impute_prepayment_meter",
+        "output": "uses_energy_prepayment_meter",
+        "codes": ["b489", "b490"],
+        "rule": "b489_or_b490_nonzero",
+        "seed": 0,
+        "salt": "lcfs_prepayment_meter",
+        "n_estimators": 8,
+        **changes,
+    }
+
+
+def test_prepayment_meter_draw_is_keyed_on_the_household() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import impute_prepayment_meter
+
+    donor, recipient = _prepayment_donor_and_recipient()
+    ids = np.arange(1001, 1001 + len(recipient))
+    weights = np.full(len(recipient), 250.0)
+
+    first = impute_prepayment_meter(
+        donor=donor,
+        recipient=recipient,
+        household_ids=ids,
+        weights=weights,
+        parameters=_prepayment_parameters(),
+    )
+    order = np.random.default_rng(3).permutation(len(recipient))
+    permuted = impute_prepayment_meter(
+        donor=donor,
+        recipient=recipient.iloc[order].reset_index(drop=True),
+        household_ids=ids[order],
+        weights=weights[order],
+        parameters=_prepayment_parameters(),
+    )
+
+    assert first.flags.dtype == bool
+    assert 0 < first.flags.sum() < len(recipient)
+    assert (permuted.flags == first.flags[order]).all()
+    receipt = first.receipt
+    assert receipt["operation"] == "impute_prepayment_meter"
+    assert receipt["donor_share"] == pytest.approx(
+        np.average(
+            donor["uses_energy_prepayment_meter"], weights=donor["household_weight"]
+        )
+    )
+    assert receipt["recipient_share"] == pytest.approx(first.flags.mean())
+    gb = recipient["region"].to_numpy() != "NORTHERN_IRELAND"
+    assert receipt["recipient_share_great_britain"] == pytest.approx(
+        first.flags[gb].mean()
+    )
+    assert receipt["recipient_households_great_britain"] == pytest.approx(
+        250.0 * first.flags[gb].sum()
+    )
+    assert first.fit_weight_records[0].fit_name.endswith(
+        ":uses_energy_prepayment_meter"
+    )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"output": "prepays"}, "must write"),
+        ({"codes": ["b489"]}, "must read"),
+        ({"rule": "b489_only"}, "unsupported"),
+        ({"salt": ""}, "declared salt"),
+        ({"seed": "0"}, "integer seed"),
+    ],
+)
+def test_prepayment_meter_step_refuses_a_different_declaration(
+    changes, message
+) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import impute_prepayment_meter
+
+    donor, recipient = _prepayment_donor_and_recipient()
+    with pytest.raises(ValueError, match=message):
+        impute_prepayment_meter(
+            donor=donor,
+            recipient=recipient,
+            household_ids=np.arange(len(recipient)),
+            weights=np.ones(len(recipient)),
+            parameters=_prepayment_parameters(**changes),
+        )
+
+
+def test_prepayment_meter_leaves_the_release_until_the_engine_reads_it() -> None:
+    # policyengine-uk reads uses_energy_prepayment_meter from 2.123.3; until the
+    # lock reaches it the release boundary drops the column (microcosm#1110).
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_release_export_frame,
+    )
+
+    assert (
+        "uses_energy_prepayment_meter" in UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {"person_id": [1], "person_benunit_id": [1], "person_household_id": [10]}
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [10],
+                "household_weight": [1.0],
+                "uses_energy_prepayment_meter": [True],
+            }
+        ),
+        time_period="2024",
+    )
+    exported = uk_release_export_frame(frame)
+    assert "uses_energy_prepayment_meter" not in exported.table("household")
