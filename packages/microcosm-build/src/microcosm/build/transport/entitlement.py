@@ -65,6 +65,9 @@ _KERNELS = SKELETON_KERNELS | frozenset(
         "takeup.cell_diagnostics@1",
         "takeup.compare@1",
         "transport.scenario_override@1",
+        "reporting.income_decile@1",
+        "reporting.carry_income_decile@1",
+        "reporting.receipt_group@1",
     }
 )
 _FIELDS = frozenset(
