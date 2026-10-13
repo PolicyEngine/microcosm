@@ -175,9 +175,17 @@ def test_all_agi_total_row_counts_each_child_split_once(kind: str) -> None:
     assert one.value + two.value == 1_400
 
 
-def test_overlapping_decomposition_rows_are_refused() -> None:
-    """A split whose AGI rows cross can't be summed without counting some
-    returns twice, so the compile refuses it rather than guess."""
+@pytest.mark.parametrize(
+    "rows",
+    [
+        pytest.param(((None, 30_000.0), (20_000.0, None)), id="crossing"),
+        pytest.param(((None, 25_000.0), (None, 25_000.0)), id="identical"),
+    ],
+)
+def test_overlapping_decomposition_rows_are_refused(rows) -> None:
+    """A split whose AGI rows cross, or repeat one interval under two ids,
+    can't be summed without counting some returns twice, so the compile
+    refuses it rather than guess."""
 
     measure, _, _ = _KINDS["amount"]
     low, high = (None, 25_000.0), (25_000.0, None)
@@ -186,9 +194,8 @@ def test_overlapping_decomposition_rows_are_refused() -> None:
         source={"one_qualifying_child": {low: 100, high: 300}},
         active={low: 500, high: 900},
     )
-    for (lower, upper), income_range in (
-        ((None, 30_000.0), "crossing_low"),
-        ((20_000.0, None), "crossing_high"),
+    for (lower, upper), income_range in zip(
+        rows, ("overlap_a", "overlap_b"), strict=True
     ):
         facts.append(
             _soi_eitc_child_fact(
