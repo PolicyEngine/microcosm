@@ -1040,6 +1040,16 @@ class TestUsSources:
             "docs/evidence/uk-poverty-968/scripts/measure_968_basis_swap.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_poverty_audit.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_tail_profile.py",
+            # The microcosm#1248 PUF donor audit names the retired data package
+            # only as the archived generator under audit: its README and
+            # scripts cite archived commit paths, and the scripts stub the
+            # package's storage module so a byte-exact archived copy of one
+            # file can run. Nothing is imported or installed from it.
+            "docs/evidence/us-puf-donor-uprating/README.md",
+            "docs/evidence/us-puf-donor-uprating/proposal/rebase_reference.py",
+            "docs/evidence/us-puf-donor-uprating/proposal/test_rebase_properties.py",
+            "docs/evidence/us-puf-donor-uprating/scripts/puf_donor_factor_audit.py",
+            "docs/evidence/us-puf-donor-uprating/scripts/run_archived_uprating_loop.py",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []
