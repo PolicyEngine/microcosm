@@ -236,7 +236,8 @@ def _support_clip_gate(
                         f"{stage}: {column!r} clip range starts at {lower}, below "
                         f"the donor floor {level}."
                     )
-        details["donor_floor_rows_raised"] = int(floor.get("rows_raised", 0))
+        # Banded in the receipt (receipt_counts.extreme_count): passed through.
+        details["donor_floor_rows_raised"] = floor.get("rows_raised", 0)
     return (
         _fail(stage, check, failures, details)
         if failures

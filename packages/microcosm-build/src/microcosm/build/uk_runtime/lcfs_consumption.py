@@ -67,6 +67,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import extreme_count, rounded_count
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
@@ -1178,7 +1179,7 @@ def redraw_zero_road_fuel(
         "n_estimators": n_estimators,
         "columns": list(columns),
         "regimes": regimes,
-        "training_rows": training_rows,
+        "training_rows": rounded_count(training_rows),
         "flagged_households": int(flagged.sum()),
         "flagged_zero_before": int(zero.sum()),
         "flagged_zero_share_before": (
@@ -1938,7 +1939,7 @@ def gas_payer_draws(
         "seed": seed,
         "n_estimators": energy.connect_n_estimators,
         "amount_regime": regime,
-        "training_rows": int(payers.sum()),
+        "training_rows": rounded_count(int(payers.sum())),
         "donor_gas_payer_share": float(donor_weight[payers].sum())
         / float(donor_weight.sum()),
     }
@@ -2301,7 +2302,7 @@ def fuel_flag_evidence(
     return {
         "ice_share": dict(ice_share_receipt),
         "donor": {
-            "households": int(len(donor)),
+            "households": rounded_count(len(donor)),
             "with_vehicles_share": _weighted_share(donor_vehicles, donor_weights),
             "positive_fuel_share": _weighted_share(donor_fuel, donor_weights),
             "positive_fuel_share_among_vehicle_households": _weighted_share(
@@ -2520,26 +2521,29 @@ def floor_negative_donor_consumption(
     build, because the support clip takes its floor from the donor's realised
     range. The release surface declares these columns non-negative, so the
     donor is floored before the imputation, the clip ranges and the rake see
-    it. The receipt counts, per consumption column, the rows raised; columns
-    without a negative row are listed with zeros so the receipt names the
-    whole surface. It records no donor value and no statistic of the raised
-    rows, which are few: a stage receipt is UKDS output (CD171 §5.2.1).
+    it. The receipt counts, per consumption column, the rows raised, in the
+    bands of ``receipt_counts.extreme_count``; columns without a negative row
+    are listed with zeros so the receipt names the whole surface. It records
+    no donor value and no statistic of the raised rows, which are few: a
+    stage receipt is UKDS output (CD171 §5.2.1).
     """
 
     floored = donor.copy()
-    columns: dict[str, dict[str, int]] = {}
+    columns: dict[str, dict[str, int | str]] = {}
+    raised = 0
     for column in UK_LCFS_DONOR_FLOORED_COLUMNS:
         if column not in floored.columns:
             raise ValueError(f"LCFS donor is missing consumption column {column!r}.")
         values = _numeric(floored[column]).to_numpy(dtype=float)
         negative = np.isfinite(values) & (values < floor)
-        columns[column] = {"rows_raised": int(negative.sum())}
+        raised += int(negative.sum())
+        columns[column] = {"rows_raised": extreme_count(int(negative.sum()))}
         if negative.any():
             floored[column] = np.where(negative, floor, values)
     receipt = {
         "floor": float(floor),
         "columns": columns,
-        "rows_raised": int(sum(entry["rows_raised"] for entry in columns.values())),
+        "rows_raised": extreme_count(raised),
         "remaining_negative_rows": int(
             sum(
                 int((_numeric(floored[column]).to_numpy(dtype=float) < floor).sum())

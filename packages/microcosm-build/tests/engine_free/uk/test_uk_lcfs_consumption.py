@@ -310,12 +310,13 @@ def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
         if column not in raised:
             assert floored[column].tolist() == [10.0, 20.0, 30.0]
     assert receipt["floor"] == 0.0
-    assert receipt["rows_raised"] == 3
+    # Counts of rows picked out by a negative spend are banded (microcosm#1164).
+    assert receipt["rows_raised"] == "<10"
     assert receipt["remaining_negative_rows"] == 0
     housing = receipt["columns"]["housing_water_and_electricity_consumption"]
     # Counts only: no donor value or statistic of the raised rows.
-    assert housing == {"rows_raised": 2}
-    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": 1}
+    assert housing == {"rows_raised": "<10"}
+    assert receipt["columns"]["bus_fare_spending"] == {"rows_raised": "<10"}
     assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
         "rows_raised": 0
     }
@@ -595,7 +596,7 @@ def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
     )
     assert evidence["ice_share"] == {"rate": 0.9}
     assert evidence["donor"] == {
-        "households": 3,
+        "households": "<10",
         "with_vehicles_share": 0.75,
         "positive_fuel_share": 0.5,
         "positive_fuel_share_among_vehicle_households": pytest.approx(2 / 3),

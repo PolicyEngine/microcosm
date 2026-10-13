@@ -31,6 +31,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import extreme_count
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
@@ -256,9 +257,10 @@ def clean_etb_vat_table(
     train = train.dropna()
     train.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT] = {
         "rate_bounds": [lower, upper],
-        "rows_dropped_no_expenditure_after_vat": int(no_expenditure_after_vat.sum()),
-        "rows_capped_at_upper_bound": int(above.sum()),
-        "donor_rows": int(len(train)),
+        "rows_dropped_no_expenditure_after_vat": extreme_count(
+            int(no_expenditure_after_vat.sum())
+        ),
+        "rows_capped_at_upper_bound": extreme_count(int(above.sum())),
     }
     return train
 
