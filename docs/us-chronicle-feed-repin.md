@@ -202,6 +202,31 @@ compiled register goes from 32,867 to 32,843 targets, and the
 count, the only change: 32,842 compiled targets and 5,694 in
 `national_state` (`d315c75804ef`).
 
+**Erratum (27 September 2026, microcosm#1035).** Row order changed too. The
+new feed is sorted by the re-derived `aggregate_fact_key`s, and the
+capital-gains rebase kept the first of two equal-period controls. The
+congressional-district US row (TY2022 data stamped ty2023) now sorted ahead of
+Table 1.4 ty2023. It took over the returns control and raised the 51 Historic
+Table 2 state return counts from 12,289,836 to 29,599,604. The control is now
+chosen by concept and period alone
+([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)). The
+counts are unchanged and `national_state` is `65e4dde11c83` on this feed. On
+the 2026-10-04 `51aa40f` re-pin, whose capital-gains cells are identical, the
+same 60 return counts move and `national_state` goes from `e1f9906bf0e0` to
+`882f4764a248` at 6,102 targets.
+
+**Follow-up (microcosm#1038).** On the `full` surface, the
+congressional-district file's capital-gains rows are shares of its US row
+scaled to the same control, and the US row retires (#1040). The package's
+four mislabeled columns are dropped (#1224): N18425/A18425 (state and local
+income taxes), read as the limited SALT deduction, and N85530/A85530
+(additional Medicare tax), read as the premium tax credit. On the `51aa40f`
+feed that leaves 31,784 compiled targets, all of them on `full`
+(`6e1ac91262bc`). `national_state` keeps its 6,102 targets and values and
+moves from `882f4764a248` to `84504a7afd57` only because its 102 Historic
+Table 2 capital-gains rows now name their share denominator in
+`soi_share_total_source_record_id`.
+
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
 substituted spec by cloning a neighbouring state's spec and kept that state's

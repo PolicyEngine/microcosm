@@ -18,6 +18,7 @@ from microcosm.build.us_runtime import (
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
     US_FISCAL_TARGET_REFERENCES,
+    US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
@@ -160,12 +161,37 @@ def _w2_tips_return_count_fact(tax_year: int) -> dict[str, object]:
     )
 
 
-def _four_rule_synthetic_feed(monkeypatch):
+def _cd_column_fact(
+    measure_id: str,
+    source_column_id: str,
+    *,
+    groupby_value_id: str = "us",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    value: float = 1_000_000.0,
+) -> dict[str, object]:
+    """A congressional-district fact read from IRS column ``source_column_id``,
+    as every pinned-feed fact records in ``layout.source_column_id``."""
+    fact = _soi_congressional_district_fact(
+        measure_id,
+        value,
+        groupby_value_id=groupby_value_id,
+        geography_level=geography_level,
+        geography_id=geography_id,
+    )
+    fact["layout"]["source_column_id"] = source_column_id
+    return fact
+
+
+def _exclusion_rule_synthetic_feed(monkeypatch):
     """Synthetic facts that exercise every receipt rule, and each rule's ids.
 
     The register holds no bypass since d179, so this reviews a synthetic one:
     a taxable-interest cell excluded at ty2023 with its ty2020 vintage
-    allowlisted.
+    allowlisted. The congressional-district SALT facts read the income-tax
+    column N18425/A18425 that the pinned feed labels as the limited deduction,
+    and one reads N18460, the column a corrected package would read, which
+    must compile.
     """
     tanf = (
         "hhs_acf_tanf.fy2024.cash_assistance.ar."
@@ -217,8 +243,30 @@ def _four_rule_synthetic_feed(monkeypatch):
             )
         ),
     ]
+    salt_excluded = [
+        _cd_column_fact("limited_state_local_taxes_returns", "N18425"),
+        _cd_column_fact("limited_state_local_taxes_amount", "A18425"),
+        _cd_column_fact(
+            "limited_state_local_taxes_amount",
+            "A18425",
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+    salt_kept = _cd_column_fact(
+        "limited_state_local_taxes_returns",
+        "N18460",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    facts = [*facts, *salt_excluded, salt_kept]
     expected = {
         "reviewed_exclusion": sorted([tanf, interest_excluded]),
+        "source_column_concept_exclusion": sorted(
+            fact["lineage"]["source_record_id"] for fact in salt_excluded
+        ),
         "all_vintage_reviewed_exclusion": sorted(
             [
                 *(

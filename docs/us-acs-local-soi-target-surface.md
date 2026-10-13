@@ -79,6 +79,20 @@ their role is `soi_fiscal_distribution`, so `totals` is unchanged:
 | **Admin specs** | **4,380** | **760** | **31,474** |
 
 With the 487 population marginals `state` now calibrates to 4,867 targets.
+
+**Since microcosm#1038** the compiler drops the district file's facts read
+from the wrong IRS column (`US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS` in
+`us_runtime/fiscal_targets.py`): the SALT rows read from N18425/A18425
+(state and local income taxes) and the premium-tax-credit rows read from
+N85530/A85530 (additional Medicare tax). `state` and `state_cd` are
+unchanged. `totals` loses the 487 district-file premium-tax-credit return
+rows and `full` loses those and the 974 district-file SALT rows:
+
+| Family | `state` | `totals` | `full` |
+|---|---:|---:|---:|
+| `irs_soi` | 4,227 | 120 | 29,860 |
+| **Admin specs** | **4,380** | **273** | **30,013** |
+
 The rest of this section describes the 2026-09-22 measurement.
 
 The 487 population marginals (51 states and 436 congressional districts) are
@@ -104,8 +118,12 @@ congressional-district file. The feed-gated test
 
 ### What `totals` contains, and what it does not
 
-All 607 SOI specs that `totals` keeps are ACA premium tax credit measures (547
-returns, 60 amounts), 454 of them at congressional-district geography.
+All 607 SOI specs that `totals` kept on 2026-09-22 are ACA premium tax credit
+measures (547 returns, 60 amounts), 454 of them at congressional-district
+geography. Since microcosm#1038 it keeps 120 (60 returns and 60 amounts,
+all Historic Table 2: the 51 states and the 9 at-large district copies), 18
+of them at district geography: the 487 district-file return rows read
+N85530, additional Medicare tax, not the premium tax credit.
 `_soi_target_role` in `us_runtime/fiscal_targets.py` gives named roles only to
 country-level all-income-range facts, the all-income-range PTC measures and
 the W-2 tip items; every other SOI fact gets `soi_fiscal_distribution`,
@@ -199,8 +217,11 @@ district rows, are mostly 1.00 to 1.10.
   chained SOI and CBO series (about 1.120). The smallest amount factor,
   1.03, is that aging ratio alone. Correcting the district file's stamp
   (#1030) would remove the aging part only.
-- **Two factors reflect known level differences:** taxable interest (2.35 to
-  2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
+- **Taxable interest reflects a known level difference** (2.35 to 2.70, the
+  Table 4.3 rebase). Capital-gains factors sit near 1: since microcosm#1038
+  (#1040) both files' capital-gains rows are shares of the same Table 1.4
+  control (amounts 0.93 to 1.20, median 0.98; before, 0.77 to 1.00; returns
+  0.98 to 1.00).
 - **The largest single-state factors** were on qualified and ordinary
   dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
   rental income (New York, 0.72), where the two tables disagree about one
@@ -292,8 +313,8 @@ bridged state row records its sibling and bridge factor.
 
 | Rows | Specs on the pinned feed | Why |
 |---|---:|---|
-| District-file `limited_state_local_taxes_*`, both geographies | 974 | Column A18425/N18425 is state and local income taxes, not the limited SALT deduction (microcosm#1038) |
-| District-file `premium_tax_credit_returns`, both geographies | 487 | Column N85530 is the additional Medicare tax, not the premium tax credit (microcosm#1038) |
+| District-file `limited_state_local_taxes_*`, both geographies | 974 | Column A18425/N18425 is state and local income taxes, not the limited SALT deduction (microcosm#1038). Since #1038 the compiler drops them first; `STATE_CD_DEFECTIVE_CD_FILE_MEASURES` stays as a second fence |
+| District-file `premium_tax_credit_returns`, both geographies | 487 | Column N85530 is the additional Medicare tax, not the premium tax credit (microcosm#1038); dropped first by the compiler, as above |
 | District `tax_filer_individual_count` | 436 | No state parent in either vintage, so it could not nest in a bound state target |
 | District rows of states with one district on the 117th plan (AK, DE, DC, MT, ND, SD, VT, WY) | 459 | The SOI file has no sub-state rows there. These rows are the state total copied, or for Montana split by population, so they carry no district information |
 | Historic Table 2 rows copied to at-large districts | 360 | The same copies from the other vintage |
@@ -301,12 +322,14 @@ bridged state row records its sibling and bridge factor.
 | District rows of the four out-of-band rebase blocks | 34 | The factor band (above) |
 | Bridged state rows whose sibling ratio is out of band | 4 | The factor band (above) |
 
-PR #1040 (awaiting a ruling) excludes the same SALT and PTC columns in the
-compiler and rescales the district file's capital-gains rows by one national
-factor. `state_cd` already takes district capital gains as within-state
-shares of Historic Table 2, which a national factor does not move, so their
-level changes only when Historic Table 2's own capital-gains rows do
-(#1036).
+Since microcosm#1038 the compiler excludes the same SALT and PTC columns
+(`US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`, #1224) and rescales the
+district file's capital-gains rows by one national factor per measure
+(#1040). `state_cd` takes district capital gains as within-state shares of
+Historic Table 2, which a national factor does not move, so their level
+changes only when Historic Table 2's own capital-gains rows do (#1036). Its
+capital-gains rebase factors move by the reciprocal of that factor, and no
+factor-band verdict or contract count changes.
 
 North Carolina's district rows are bound. Before #1043 the packaged
 117th→119th crosswalk was built from NC's 2016 plan rather than the 2019 plan
@@ -556,7 +579,10 @@ record one of the four modes, before any release directory exists.
   calibrate stage's peak is the artifact write.
 - A checkpoint written before the sparse matrix (measures as dense H5
   columns) is refused by `--stage calibrate`; re-run `--stage materialize`.
-- To reproduce the 2026-09-22 hours rebuild (#974), pass `--soi-mode totals`.
+- To reproduce the 2026-09-22 hours rebuild (#974), pass `--soi-mode totals`
+  on a compiler from before microcosm#1038; after it, `totals` no longer
+  carries the 487 district-file premium-tax-credit return rows that run
+  calibrated to.
   To reproduce a build that ran as `full` after `b7922b089`, pass
   `--soi-mode full`.
 - A checkpoint materialized under an earlier default records its own mode and
