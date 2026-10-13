@@ -299,7 +299,11 @@ name. A new US lane that writes a release H5 must run the check where it records
 publisher runs no engine for a calibration release, so it requires the
 fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
 and the ACS local-area `stored_inputs` gate, each naming the built-with engine
-(microcosm#1034). A source-enrichment publisher claim widens the range
+(microcosm#1034). The ACS local-area package stage also refuses a calibrated H5
+on which an SPM unit the built-with engine measures has no classified adult,
+and binds the `spm_measurement_composition` gate the publisher requires
+(microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
 

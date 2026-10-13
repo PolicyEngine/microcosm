@@ -26,7 +26,7 @@ rebuilt staging would have listed the role, and `fill_reviewed_nulls` fills a
 registered column with the raw engine default, `False`. That default is
 exactly what the engine forbids. It also strips the only classified adult from
 the ACS housing units whose oldest member is a 15-to-17-year-old reference
-person (__HU_ROLE_ONLY__ in the 2024 PUMS), so any SPM measurement of the
+person (117 in the 2024 PUMS), so any SPM measurement of the
 population would fail. A Modal smoke run on 2026-09-30 reached this state: its
 staging summary registered the role, and the engine pass filled it `False` on
 ACS rows. It was a smoke run, not a release.
@@ -69,11 +69,22 @@ public files and records aggregate counts only
 - **ASEC.** In households that are one SPM unit, the SPM head is the reference
   person in every household of every pinned vintage, and "reference person or
   spouse" (`A_EXPRRP` 1-4, the CPS encoding of the rule above) reproduces
-  Census's own `SPM_NUMADULTS` and `SPM_NUMKIDS` in __ASEC_MATCH__. It is never
+  Census's own `SPM_NUMADULTS` and `SPM_NUMKIDS` in 215,342 of 215,343 units
+  across the four pinned vintages (income years 2022 to 2025). It is never
   true where the ASEC rule is false. The cases it misses are reference persons
   and spouses of unrelated subfamilies, almost all adults.
-- **ACS.** The derivation run on the full pinned 2024 1-year PUMS:
-  __ACS_SUMMARY__
+- **ACS.** The derivation run on the full pinned 2024 1-year PUMS (3,422,888
+  persons in 1,531,614 one-household SPM units, 183,206 of them
+  group-quarters records) gives the role to 2,216,180 persons:
+  - 1,348,408 reference persons;
+  - 684,566 spouses of the reference person;
+  - 183,206 group-quarters sole persons.
+
+  3,570 of the 122,658 persons aged 15 to 17 hold it. The role is the only
+  classified adult in 117 housing units, and no housing unit is left without
+  one. The 1,946 units left without a classified adult are all
+  group-quarters children under 15, and the independent composition check
+  counts the same 1,946.
 
 ## What the ACS spine cannot see
 
@@ -89,10 +100,13 @@ public files and records aggregate counts only
   any non-household partition rather than guess.
 - **Group-quarters children.** A group-quarters person under 15 is a
   one-person unit with no classified adult under any role
-  (__GQ_CHILDREN__ units). The source places ACS group quarters outside the SPM
-  universe ([`docs/us-spm-measurement-universe.md`](us-spm-measurement-universe.md));
-  until that universe is wired into a build, the derivation counts these units
-  in its receipt instead of refusing the spine.
+  (1,946 units in the 2024 PUMS). The source places ACS group quarters outside the SPM
+  universe ([`docs/us-spm-measurement-universe.md`](us-spm-measurement-universe.md)).
+  The derivation counts these units in its receipt instead of refusing the
+  spine, because they are not a housing-unit defect. An engine that does not
+  scope SPM by universe still measures them, so the release gate below refuses
+  any release that keeps them under such an engine. How they leave SPM
+  measurement is recorded on microcosm#1263.
 
 ## Where it runs, and where it does not
 
@@ -122,6 +136,36 @@ arm carries no role and whose ACS-row rule is the open question Q1 in
 [`docs/us-spm-role-stage.md`](us-spm-role-stage.md) §7. A test pins that the
 shared mapping never emits it.
 
+## The release gate
+
+The derivation checks the ACS spine before the transfer. The package stage of
+`tools/build_us_acs_local_release.py` checks the bytes it ships:
+`microcosm.build.us_runtime.spm_measurement_gate.check_release_spm_measurement`
+grades the calibrated H5 against the installed policyengine-us, the engine the
+release records as built-with.
+
+- **What the engine measures.** An engine that does not define
+  `spm_unit_spm_universe_status` (policyengine-us 2.2.1, and every release
+  before policyengine-us#9462) measures every SPM unit. One that defines it
+  measures the units a release declares `INCLUDED`, and cannot measure a
+  release that declares nothing.
+- **What fails the release.** The release fails when:
+  - any unit that engine measures has no classified adult under
+    `age >= 18 OR (age >= 15 AND is_spm_independent_minor_role)`;
+  - the stored role is missing, null or not Boolean;
+  - the source universe cannot be declared
+    (`spm_universe_source.classify_spm_universe`);
+  - a stored declaration differs from the source's.
+- **Every engine.** The measured set always contains every unit the source
+  places inside the SPM universe. So a housing-unit SPM unit with no
+  classified adult fails under every engine.
+- **What it records.** The gate records counts only, split by source universe,
+  under `gate_summary.json` gate `spm_measurement_composition`, bound to the
+  packaged bytes and the engine. It records no unit id and no age.
+- **The publisher.** The publisher's contract
+  (`microcosm.data.contract._check_us_local_area_spm_measurement_gate`) requires
+  the gate of every US local-area release.
+
 ## Invariants and tests
 
 For every valid ACS spine
@@ -138,7 +182,24 @@ For every valid ACS spine
 
 For every frame and register
 (`test_us_acs_local_reviewed_nulls_properties.py`), the engine-pass fill never
-defaults the role and never changes a role value. The example and refusal
+defaults the role and never changes a role value.
+
+For every release-shaped frame
+(`packages/microcosm-build/tests/engine_free/us/test_us_spm_measurement_gate_properties.py`),
+the release gate:
+
+- passes exactly when every unit the engine measures has a classified adult,
+  restated independently of the implementation;
+- splits its counts exactly into the two universes;
+- measures, under a scoping engine, a subset that contains every in-universe
+  unit;
+- does not depend on the order of person rows;
+- ignores a role carried by anyone under 15;
+- agrees with the preflight composition check.
+
+`tests/engine_scenario/us/test_us_spm_measurement_gate_engine.py` requires the
+gate to fail exactly when the installed engine's SPM threshold raises
+`SPM_COMPOSITION_REQUIRED`. The example and refusal
 tests sit beside them, and
 `tests/engine_contract/us/test_us_declared_dataset_source_inputs.py` pins the
 refused set to the installed engine's declaration.

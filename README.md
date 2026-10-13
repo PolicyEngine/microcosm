@@ -442,6 +442,19 @@ evidence-tier run that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.
 
+The ACS local-area package stage also grades the calibrated H5's SPM
+measurement composition (microcosm#1263;
+`microcosm.build.us_runtime.spm_measurement_gate`). spm-calculator refuses a
+whole simulation's SPM measurement when one unit it measures has no classified
+adult (`age >= 18 or (age >= 15 and is_spm_independent_minor_role)`), and an
+engine that does not scope SPM by measurement universe, such as
+policyengine-us 2.2.1, measures every unit. The stage refuses an artifact on
+which any unit the built-with engine measures has no classified adult, or
+whose stored role is missing, null or not Boolean. It records the counts,
+split by source SPM universe, as the `spm_measurement_composition` gate,
+bound to the microdata sha256. The publisher requires that gate of every US
+local-area release. See [the ACS SPM role page](docs/us-acs-spm-role.md#the-release-gate).
+
 Each check grades one engine version, the built-with one. A source-enrichment
 bundle certified with a publisher compatibility range admits versions no check
 measured, later ones and possibly earlier ones; the bundle records the version

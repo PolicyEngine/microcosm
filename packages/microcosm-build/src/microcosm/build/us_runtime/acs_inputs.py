@@ -271,9 +271,10 @@ def with_acs_spm_independence_role(frame: Frame) -> AcsSpmRoleResult:
     of a group-quarters record, and its family branch is the reference
     person's spouse, so the rule is read off ``RELSHIPP``
     (:data:`ACS_SPM_ROLE_RULE`). On the pinned ASEC files, in households that
-    are one SPM unit, this reading reproduces Census's own SPM adult counts in
-    every unit but one across three vintages
-    (``experiments/acs-spm-role-asec-validation.md``).
+    are one SPM unit, this reading reproduces Census's own SPM adult and child
+    counts in 215,342 of 215,343 units across the four pinned vintages
+    (income years 2022 to 2025;
+    ``experiments/acs-spm-role-asec-validation.md``).
 
     This is deliberately not part of :func:`map_acs_native_inputs`. That
     mapping also feeds the stacked pool, whose ASEC arm carries no role and

@@ -432,8 +432,9 @@ This remains local source qualification on the pinned dependency set.
 > Dated note (2026-10-10): the local-release staging lane now derives the ACS
 > rows' role ([`docs/us-acs-spm-role.md`](us-acs-spm-role.md)). Its measurement
 > bears on Q1: on the pinned ASEC files, in households that are one SPM unit,
-> the ACS reading of the rule reproduces Census's SPM adult counts in every
-> unit but one per vintage at most. Q1 itself is unchanged: the stacked pool's
+> the ACS reading of the rule reproduces Census's SPM adult and child counts in
+> 215,342 of 215,343 units across the four pinned vintages (income years 2022
+> to 2025). Q1 itself is unchanged: the stacked pool's
 > ASEC arm still carries no role, so a stacked pool still fails closed.
 
 **Q1 — ACS-origin rows in the production stacked pool.** The stage refuses a
