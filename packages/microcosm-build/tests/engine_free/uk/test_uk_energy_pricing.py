@@ -1112,6 +1112,43 @@ def test_cap_household_kwh_keeps_the_total_and_caps_every_household() -> None:
     assert receipt["feasible"] is True
 
 
+def test_cap_household_kwh_hands_the_excess_to_the_capped_households_cells() -> None:
+    # microcosm#1164: with the rake's cells, what a capped household gives up
+    # goes to the households below the ceiling in its own cells, so the cell
+    # means stay at their targets where proportional handing-out moves them.
+    band = np.array(["a", "a", "a", "b", "b", "b"])
+    values = np.array([9.0, 2.0, 1.0, 2.0, 2.0, 2.0])
+    weights = np.ones(6)
+    population = np.ones(6, dtype=bool)
+    cells = [(band, {"a": 4.0, "b": 2.0})]
+
+    proportional, _ = cap_household_kwh(
+        values, weights=weights, population=population, ceiling=6.0
+    )
+    raked, receipt = cap_household_kwh(
+        values,
+        weights=weights,
+        population=population,
+        ceiling=6.0,
+        cells=cells,
+        sweeps=20,
+    )
+
+    def mean(x, key):
+        return float(x[band == key].mean())
+
+    # Proportional handing-out moves both cells off their targets ...
+    assert mean(proportional, "a") < 4.0 - 0.1 and mean(proportional, "b") > 2.0
+    # ... the re-rake keeps both, with the capped household at the ceiling.
+    assert mean(raked, "a") == pytest.approx(4.0)
+    assert mean(raked, "b") == pytest.approx(2.0)
+    assert raked[0] == 6.0 and (raked <= 6.0 + 1e-9).all()
+    assert float(raked.sum()) == pytest.approx(float(values.sum()))
+    assert receipt["households_capped"] == 1
+    assert receipt["households_above_after"] == 0
+    assert receipt["feasible"] is True
+
+
 def test_declared_household_ceilings_are_the_domestic_meter_limits() -> None:
     ceilings = declared_household_kwh_ceilings(_declared())
     assert ceilings == {ELECTRICITY_KWH: 50_000.0, GAS_KWH: 73_200.0}

@@ -913,6 +913,8 @@ def cap_household_kwh(
     population: np.ndarray,
     ceiling: float,
     max_rounds: int = 100,
+    cells: Sequence[tuple[np.ndarray, Mapping[str, float]]] = (),
+    sweeps: int = 0,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Cap one fuel's household kWh at ``ceiling`` and keep its weighted total.
 
@@ -922,6 +924,14 @@ def cap_household_kwh(
     capped in the next round. The receipt counts the households drawn above
     the ceiling and the share of the total they gave up, and records no
     household's value.
+
+    With ``cells`` (each margin's row labels and levelled cell-mean targets,
+    as the rake fitted them) and ``sweeps``, the households below the ceiling
+    are first re-raked to those targets with the capped ones held at it, so
+    what a capped household gives up goes to its own NEED cells; the
+    proportional step then only restores the total (microcosm#1164: handed to
+    every household at once, the kWh moved the cells that hold most capped
+    households, detached and high-income ones, off their NEED means).
     """
 
     capped_values = np.asarray(values, dtype=float).copy()
@@ -940,6 +950,15 @@ def cap_household_kwh(
         rounds += 1
         at_ceiling |= over
         capped_values[over] = ceiling
+        if cells and sweeps:
+            _rake_below_ceiling(
+                capped_values,
+                weights=weight,
+                population=members,
+                held=at_ceiling,
+                cells=cells,
+                sweeps=sweeps,
+            )
         free = members & ~at_ceiling & (capped_values > 0)
         free_total = float(np.dot(weight[free], capped_values[free]))
         shortfall = total - float(np.dot(weight[members], capped_values[members]))
@@ -969,6 +988,43 @@ def cap_household_kwh(
         "feasible": feasible,
         "frame_kwh_after": after,
     }
+
+
+def _rake_below_ceiling(
+    values: np.ndarray,
+    *,
+    weights: np.ndarray,
+    population: np.ndarray,
+    held: np.ndarray,
+    cells: Sequence[tuple[np.ndarray, Mapping[str, float]]],
+    sweeps: int,
+) -> None:
+    """Re-rake, in place, the rows not ``held`` to the cell-mean targets.
+
+    Each sweep visits the margins in order; within a cell the held rows keep
+    their value and the others are scaled so the cell's weighted mean over its
+    population rows is the target, where the held mass leaves room for it.
+    """
+
+    margins = [
+        [
+            (np.flatnonzero(population & (labels == key)), float(target))
+            for key, target in targets.items()
+        ]
+        for labels, targets in cells
+    ]
+    for _ in range(sweeps):
+        for margin in margins:
+            for rows, target in margin:
+                if rows.size == 0:
+                    continue
+                fixed = held[rows]
+                wanted = target * float(weights[rows].sum())
+                fixed_mass = float(np.dot(weights[rows][fixed], values[rows][fixed]))
+                free = rows[~fixed]
+                current = float(np.dot(weights[free], values[free]))
+                if current > 0 and wanted > fixed_mass:
+                    values[free] *= (wanted - fixed_mass) / current
 
 
 def rake_energy_kwh(
@@ -1007,8 +1063,10 @@ def rake_energy_kwh(
     and the levelled ``target``).
 
     ``ceilings`` (kWh per fuel column, after the level) caps each household
-    and hands what it loses to the fuel's other households, so the total holds
-    (``cap_household_kwh``; microcosm#1164). The fit is read after the cap.
+    and hands what it loses to the households below the ceiling in its own
+    NEED cells, re-raking them to the levelled targets with the capped ones
+    held, then restores the published total (``cap_household_kwh``;
+    microcosm#1164). The fit is read after the cap.
     """
 
     frame = table.copy()
@@ -1161,6 +1219,18 @@ def rake_energy_kwh(
                 weights=weight_values,
                 population=population,
                 ceiling=float(ceilings[column]),
+                cells=[
+                    (
+                        frame[spec.column].to_numpy().astype(str),
+                        {
+                            key: float(cell[column]) * level_factor[column]
+                            for key, cell in spec.targets.items()
+                            if key in fitted[margin]
+                        },
+                    )
+                    for margin, spec in zip(fitted, specs, strict=True)
+                ],
+                sweeps=int(iterations),
             )
             raked[column] = capped
     fit = _rake_fit(raked, margins, fitted, connected, weight_values, level_factor)
