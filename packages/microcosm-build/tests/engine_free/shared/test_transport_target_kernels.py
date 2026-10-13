@@ -20,6 +20,7 @@ any country's data.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.artifact_types import (
     COMPARISON_TYPE,
     TARGET_SURFACE_TYPE,
@@ -35,6 +37,7 @@ from microcosm.build.transport.target_kernels import (
     TAKEUP_COMPARE,
     TARGETS_COMPILE,
     TARGETS_PROBLEM,
+    compile_target_surface,
     decode_target_surface,
     parse_reference_document,
 )
@@ -50,6 +53,7 @@ from microcosm.graph import (
     Slice,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_graph import (
     CALIBRATION_TARGETS,
     COUNTRY,
@@ -179,6 +183,54 @@ def test_compile_values_are_the_fact_values(tmp_path) -> None:
     facts = {fact["label"]: fact["value"] for fact in toy_facts(CALIBRATION_TARGETS)}
     for spec in surface.registry.specs:
         assert spec.value == facts[f"Toy fact {spec.name}"]
+
+
+def test_target_compiler_passes_full_feed_pin_to_loader(tmp_path) -> None:
+    facts, pin = write_pinned_artifact(tmp_path / "artifact", toy_facts(ALL_TARGETS))
+    document = references_for(CALIBRATION_TARGETS)
+    payload, registry = compile_target_surface(
+        facts,
+        document,
+        country=COUNTRY,
+        references_sha256=SHA,
+        expected_facts_sha256=pin["facts_sha256"],
+        feed_pin=pin,
+    )
+    assert len(registry.specs) == len(CALIBRATION_TARGETS)
+    assert (
+        decode_target_surface(payload).facts["manifest_sha256"]
+        == pin["manifest_sha256"]
+    )
+    altered = {**pin, "manifest_sha256": "0" * 64}
+    with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
+        compile_target_surface(
+            facts,
+            document,
+            country=COUNTRY,
+            references_sha256=SHA,
+            expected_facts_sha256=pin["facts_sha256"],
+            feed_pin=altered,
+        )
+
+
+@pytest.mark.parametrize(
+    "kernel", [TARGETS_COMPILE, TAKEUP_COMPARE], ids=lambda k: k.ref
+)
+def test_target_kernels_enforce_full_feed_pin(tmp_path, kernel) -> None:
+    facts, pin = write_pinned_artifact(tmp_path / "artifact", toy_facts(ALL_TARGETS))
+    original = (
+        _compile_node(references_for(CALIBRATION_TARGETS))
+        if kernel is TARGETS_COMPILE
+        else _compare_node()
+    )
+    node = replace(
+        original, params={**original.params, "chronicle_feed_pin": canonical_text(pin)}
+    )
+    kernel.run(_context(node, facts=facts, frame=toy_frame()))
+    manifest_path = facts / "manifest.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+    with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
+        kernel.run(_context(node, facts=facts, frame=toy_frame()))
 
 
 def test_compile_refuses_unmatched_duplicate_and_noncanonical_input(tmp_path) -> None:
