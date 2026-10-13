@@ -307,9 +307,9 @@ Compiled as the release does; before is #1247's head (`490b67181`).
   VT, WY and Montana's two districts; 99 rows). Both are now shares of the
   same control, so the two differ only by the two files' shares of that
   state: HT2 / district file is 0.966 to 1.072 (median 0.988), against
-  0.986 to 1.17 (median 1.037) before, except Wyoming's and South Dakota's
-  itemized deductions (1.64 and 1.35), where the two files disagree about the
-  state. Counting both, the 445 district rows of a measure sum to 1.015 to
+  0.986 to 1.17 (median 1.037) before. The exceptions are Wyoming's and South
+  Dakota's itemized deductions (1.64 and 1.35, from 1.81 and 1.49), where the
+  two files disagree about the state. Counting both, the 445 district rows of a measure sum to 1.015 to
   1.022 times the control; each family alone sums to at most the control.
 - **ACS-local `state_cd`.** All 26,425 values are unchanged (relative
   difference at most 4.2e-15), as are its counts, drops and band verdicts.
