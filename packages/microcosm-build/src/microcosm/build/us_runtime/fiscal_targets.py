@@ -2275,7 +2275,7 @@ def _rebase_stale_soi_district_distributions(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-    source_columns: Mapping[str, str] | None = None,
+    source_columns: Mapping[str, str],
 ) -> TargetRegistry:
     """Use congressional-district rows of the registered columns as shares.
 
@@ -2313,10 +2313,10 @@ def _rebase_stale_soi_district_distributions(
     would be rebased as the wrong concept, so every source fact of a row
     rebased here, and its denominator, must read that column.
     ``source_columns`` maps each district fact's record id to its column as
-    the feed carries it, before the crosswalk merges source districts into
-    one fact with a single contributor's layout; without it the columns are
-    read from ``facts``. Rows that keep their levels, and facts that compile
-    to no target, are not checked.
+    the feed carries it, read before the crosswalk merges source districts
+    into one fact with a single contributor's layout
+    (``_soi_district_source_columns``). Rows that keep their levels, and
+    facts that compile to no target, are not checked.
 
     Raises:
         UnreviewedSoiNationalControlColumnError: A rebased row or its
@@ -2325,8 +2325,6 @@ def _rebase_stale_soi_district_distributions(
 
     controls = _soi_ht2_national_controls(facts, target_period=target_period)
     us_totals = _soi_district_us_totals(facts)
-    if source_columns is None:
-        source_columns = _soi_district_source_columns(facts)
     contributors = _soi_district_contributors(facts)
     unreviewed: dict[str, str] = {}
     specs: list[TargetSpec] = []

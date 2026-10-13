@@ -457,9 +457,39 @@ def test_the_column_guard_sees_each_source_district_before_the_crosswalk() -> No
             "target_geography_id": "5001900US1501",
             "weight": 1.0,
         },
+        {
+            "source_geography_id": "5001700US1502",
+            "target_geography_id": "5001900US1502",
+            "weight": 1.0,
+        },
     ]
-    with pytest.raises(fiscal_targets.UnreviewedSoiNationalControlColumnError):
+    with pytest.raises(
+        fiscal_targets.UnreviewedSoiNationalControlColumnError, match="hi_02"
+    ):
         _compile([*facts, _control_fact(measure_id)], crosswalk=crosswalk)
+    # With both contributors reviewed, the merged district is rebased.
+    hi_02["layout"]["source_column_id"] = "A01700"
+    specs = _compile([*facts, _control_fact(measure_id)], crosswalk=crosswalk).specs
+    (merged,) = [
+        spec
+        for spec in specs
+        if spec.metadata.get("congressional_district_geoid") == "1501"
+        and spec.metadata.get("source_measure_id") == measure_id
+    ]
+    # 300 + 200 / 2 of the file's districts, times 1,100 / 1,000.
+    assert merged.value == pytest.approx(440.0, rel=1e-12)
+
+
+def test_the_column_guard_checks_the_denominator() -> None:
+    """A share divides by the US row, so a US row read from another column
+    refuses even when every state and district row is reviewed."""
+    measure_id = "unemployment_compensation_amount"
+    facts = _cd_facts(measure_id)
+    facts[0]["layout"]["source_column_id"] = "A02310"
+    with pytest.raises(
+        fiscal_targets.UnreviewedSoiNationalControlColumnError, match=r"\.us\."
+    ):
+        _compile([*facts, _control_fact(measure_id)])
 
 
 def _cd_agi_slice_fact(
