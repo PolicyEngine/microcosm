@@ -145,6 +145,10 @@
     {
       "definition": "dependent child (LMS7234, limbs a(i), a(ii), and a(iii))",
       "omission": "Primary responsibility, maintenance and financial dependency are represented by household and parent placement rather than observed care or support. Oranga Tamariki payments and placements, and a young parent payment to a caregiver who is not the child's parent or step-parent, are not identifiable; their statutory distinctions are not applied."
+    },
+    {
+      "definition": "single (DLM6784713) and in a relationship (DLM6784537), as used in child (LMS6902); section 8 (DLM6783126)",
+      "omission": "Statutory single status is approximated by the co-resident partner pointer (partner_person_id). A married, civil-union or de facto young person whose spouse or partner does not live in the household is treated as single and can be placed as a dependent child. Legal marital status is not recovered by the donor decoder, and MSD determinations under section 8 that a person is or is not single are not observable; neither is applied."
     }
   ],
   "unit_construction_diagnostics": {

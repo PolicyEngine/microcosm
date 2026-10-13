@@ -122,8 +122,11 @@ _ID_COLUMNS = {
 class UnparentedChildPlacement(StrEnum):
     """Where a candidate child with no co-resident parent goes.
 
-    A candidate child who is the household's reference person heads their
-    own unit whatever the placement: they cannot be their own caregiver.
+    A reference person is never their own caregiver. Under earlier rules a
+    candidate child who is the household's reference person heads their own
+    unit whatever the placement; a strict reference rule
+    (``refuse_dependent_reference_person``) keeps them dependent and refuses
+    a parentless child whose reference person is a dependent child.
     """
 
     #: Into the unit that contains the household's reference person.
