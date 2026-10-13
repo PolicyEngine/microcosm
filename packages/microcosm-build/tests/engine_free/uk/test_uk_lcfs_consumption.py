@@ -2240,16 +2240,18 @@ def test_prepayment_meter_step_refuses_a_different_declaration(
         )
 
 
-def test_prepayment_meter_leaves_the_release_until_the_engine_reads_it() -> None:
-    # policyengine-uk reads uses_energy_prepayment_meter from 2.123.3; until the
-    # lock reaches it the release boundary drops the column (microcosm#1110).
+def test_prepayment_meter_is_exported_for_the_engines_that_read_it() -> None:
+    # policyengine-uk reads uses_energy_prepayment_meter from 2.123.3 for the
+    # Energy Price Guarantee prepayment discount; an older engine ignores a
+    # column it does not know, so the release carries it now (microcosm#1110).
     from microcosm.build.uk_runtime.national_frame import (
         UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         uk_release_export_frame,
     )
 
     assert (
-        "uses_energy_prepayment_meter" in UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
+        "uses_energy_prepayment_meter"
+        not in UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
     )
     frame = uk_national_frame(
         person=pd.DataFrame(
@@ -2266,7 +2268,9 @@ def test_prepayment_meter_leaves_the_release_until_the_engine_reads_it() -> None
         time_period="2024",
     )
     exported = uk_release_export_frame(frame)
-    assert "uses_energy_prepayment_meter" not in exported.table("household")
+    assert exported.table("household")["uses_energy_prepayment_meter"].tolist() == [
+        True
+    ]
 
 
 def test_gas_payer_draws_rank_likely_payers_and_draw_positive_gas() -> None:

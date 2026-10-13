@@ -948,6 +948,7 @@
           "household.gas_consumption",
           "household.geography_household_key",
           "household.has_fuel_consumption",
+          "household.uses_energy_prepayment_meter",
           "household.household_is_capital_gains_clone",
           "household.household_is_cgt_support_copy",
           "household.household_is_spi_income_band_donor",
@@ -1080,7 +1081,7 @@
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses), with household.uses_energy_prepayment_meter added for microcosm#1110 (the LCFS prepayment-meter flag policyengine-uk reads from 2.123.3 for the Energy Price Guarantee prepayment discount; an older engine ignores it, and the incumbent does not carry it until uk-data#539) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",

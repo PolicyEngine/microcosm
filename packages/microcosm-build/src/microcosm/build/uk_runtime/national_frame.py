@@ -475,15 +475,6 @@ def _write_uk_single_year_tables(
 #: ``other_property_value`` remainder the engine sum leaves out. The spine
 #: keeps it (the WAS stage's identity gate, donor-range cap and later
 #: segments read it); the engine derives it from the persisted components.
-#:
-#: ``household.uses_energy_prepayment_meter`` (microcosm#1110) is the LCFS
-#: stage's prepayment-meter flag, the input policyengine-uk reads for the
-#: Energy Price Guarantee prepayment discount from 2.123.3
-#: (PolicyEngine/policyengine-uk#2098). The locked engine is older and does
-#: not know the variable, so the release keeps it off until the lock reaches
-#: a release that does; the engine-lane test
-#: ``test_prepayment_meter_is_dropped_until_the_engine_reads_it`` fails then,
-#: and the bump removes it here.
 UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "incapacity_benefit_reported",
@@ -502,7 +493,7 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # no engine input.
         "reports_rent_from_other_property",
     ),
-    "household": ("property_wealth", "uses_energy_prepayment_meter"),
+    "household": ("property_wealth",),
 }
 
 

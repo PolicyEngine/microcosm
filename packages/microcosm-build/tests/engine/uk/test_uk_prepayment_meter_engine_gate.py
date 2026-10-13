@@ -1,11 +1,10 @@
-"""The LCFS prepayment-meter flag waits for the engine (microcosm#1110).
+"""The released LCFS prepayment-meter flag is the engine's input (microcosm#1110).
 
 policyengine-uk reads the household input ``uses_energy_prepayment_meter``
 from 2.123.3 (PolicyEngine/policyengine-uk#2098), for the Energy Price
-Guarantee prepayment discount. The LCFS stage draws it, and the release
-boundary drops it while the locked engine does not know the variable. Once
-the lock reaches a release that reads it, this test fails: export the column
-by removing it from ``UK_RELEASE_EXPORT_DROPPED_COLUMNS``.
+Guarantee prepayment discount, and the release exports the LCFS stage's flag.
+An engine older than that ignores a dataset column it does not know; one that
+reads it must read a household-level boolean, the shape the stage writes.
 """
 
 from __future__ import annotations
@@ -18,21 +17,15 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 
 
-def test_prepayment_meter_is_dropped_until_the_engine_reads_it() -> None:
+def test_prepayment_meter_is_exported_in_the_engines_shape() -> None:
     from policyengine_uk import CountryTaxBenefitSystem
 
-    engine_reads_it = (
-        UK_LCFS_PREPAYMENT_METER_COLUMN in CountryTaxBenefitSystem().variables
-    )
-    dropped = (
+    assert (
         UK_LCFS_PREPAYMENT_METER_COLUMN
-        in (UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"])
+        not in (UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"])
     )
-    assert dropped != engine_reads_it, (
-        "The locked policyengine-uk now reads uses_energy_prepayment_meter: "
-        "remove it from UK_RELEASE_EXPORT_DROPPED_COLUMNS so the release "
-        "exports the LCFS stage's flag (microcosm#1110)."
-        if engine_reads_it
-        else "The release must drop uses_energy_prepayment_meter while the "
-        "locked policyengine-uk does not read it."
-    )
+    variables = CountryTaxBenefitSystem().variables
+    if UK_LCFS_PREPAYMENT_METER_COLUMN in variables:
+        variable = variables[UK_LCFS_PREPAYMENT_METER_COLUMN]
+        assert variable.entity.key == "household"
+        assert variable.value_type is bool
