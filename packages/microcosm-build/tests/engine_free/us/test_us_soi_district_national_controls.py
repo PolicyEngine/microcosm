@@ -417,6 +417,23 @@ def test_a_district_fact_under_an_unreviewed_column_refuses(column) -> None:
     assert rows["hi_total"].value == 500.0
 
 
+@pytest.mark.parametrize("control_period", [2022, 2025], ids=["older", "future"])
+def test_the_column_guard_ignores_rows_without_an_eligible_control(
+    control_period: int,
+) -> None:
+    """The guard checks exactly the rows the pass would rebase: beside an
+    older or a future control the rows keep their levels, so an unreviewed
+    column is not refused."""
+    measure_id = "taxable_social_security_returns"
+    facts = _cd_facts(measure_id, column="N02510")
+    rows = _cd_rows(
+        _compile([*facts, _control_fact(measure_id, period=control_period)]),
+        measure_id,
+    )
+    assert rows["us"].value == 1_000.0
+    assert rows["hi_total"].value == 500.0
+
+
 def test_the_column_guard_sees_each_source_district_before_the_crosswalk() -> None:
     """The crosswalk merges source districts into one fact that keeps the
     first contributor's layout, so a mislabeled second contributor would hide
@@ -443,6 +460,64 @@ def test_the_column_guard_sees_each_source_district_before_the_crosswalk() -> No
     ]
     with pytest.raises(fiscal_targets.UnreviewedSoiNationalControlColumnError):
         _compile([*facts, _control_fact(measure_id)], crosswalk=crosswalk)
+
+
+def _cd_agi_slice_fact(
+    measure_id: str, value: float, *, stamp: int, column: object = _REVIEWED
+) -> dict[str, object]:
+    """Hawaii's $50,000-$75,000 AGI slice of the district file (agi_stub 5)."""
+    row = "hi_total_50k_to_75k"
+    fact = _dynamic_ledger_fact(
+        source_record_id=f"{_record_set(stamp)}.{row}.{measure_id}",
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=stamp,
+        geography_level="state",
+        geography_id="0400000US15",
+        dimensions={"income_range": "50k_to_75k", "filing_status": "all"},
+        universe_constraints=[
+            {"variable": "adjusted_gross_income", "operator": ">=", "value": 50_000},
+            {"variable": "adjusted_gross_income", "operator": "<", "value": 75_000},
+        ],
+        layout_record_set_id=_record_set(stamp),
+        groupby_dimension="irs_soi.congressional_district",
+        groupby_value_id=row,
+    )
+    fact["layout"]["source_column_id"] = (
+        REGISTER[measure_id].source_column if column is _REVIEWED else column
+    )
+    return fact
+
+
+def test_an_agi_slice_of_the_file_takes_the_same_factor() -> None:
+    """A district-file AGI slice is a share of the same all-AGI US row, so it
+    takes the measure's one factor (as #1229 and #1040 rebase district
+    slices) and the column guard checks it. The pinned package has no
+    slices, and a slice compiles only at its own period (here 2024)."""
+    measure_id = "adjusted_gross_income"
+
+    def facts(column: object = _REVIEWED) -> list[dict[str, object]]:
+        return [
+            *_cd_facts(measure_id, stamp=2024),
+            _cd_agi_slice_fact(measure_id, 120.0, stamp=2024, column=column),
+            _control_fact(measure_id, period=2024),
+        ]
+
+    (slice_spec,) = [
+        spec
+        for spec in _compile(facts()).specs
+        if spec.metadata["ledger_source_record_id"].endswith(
+            f"hi_total_50k_to_75k.{measure_id}"
+        )
+    ]
+    assert slice_spec.metadata["agi_lower_bound"] == "50000.0"
+    assert slice_spec.value == pytest.approx(132.0, rel=1e-12)
+    assert slice_spec.metadata["soi_share_total_source_record_id"] == _us_id(
+        measure_id, stamp=2024
+    )
+    with pytest.raises(fiscal_targets.UnreviewedSoiNationalControlColumnError):
+        _compile(facts(column="A00101"))
 
 
 # --------------------------------------------------------------------------

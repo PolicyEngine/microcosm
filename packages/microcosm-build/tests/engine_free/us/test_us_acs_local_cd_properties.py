@@ -911,7 +911,9 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
     a national control: value x control / the file's US row, aged from the
     control's period. ``state_cd`` uses the file for within-state shares, and
     for level-bridge siblings through ``cd_file_level``, so the rebase moves
-    no ``state_cd`` value, drop or band verdict, with or without the band.
+    no ``state_cd`` value, drop, band verdict, recorded ratio or factor, with
+    or without the band, whatever the share's aging (the bridged row and its
+    sibling share one aging series, as every registered bridge does).
 
     Only concepts Historic Table 2 carries in every state are rebased here,
     as the compiler's registered concepts are on the feed: a rebased concept
@@ -970,11 +972,14 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
         )
 
     assert verdicts(after.receipt) == verdicts(before.receipt)
-    # Every verdict's relative gap is unchanged. Where the share ages like the
-    # file (as on the pinned feed), a sibling's recorded level ratio is too:
-    # it compares the two files' own levels. A block's rebase factor is the
-    # parent over the compiled district rows, so it moves with the share
-    # factor while its verdict does not.
+    # The receipt reads the district file's own levels. A bridge re-ages the
+    # sibling like the bridged row, so its factor and the sibling's recorded
+    # ratio and median are unchanged whatever the aging. A block reads its
+    # shares at the file level aged as the shares are, from the control's
+    # period: where that matches the file's own aging (as on the pinned feed),
+    # its rebase factor and every district row's record of the file value,
+    # state sum and factor are unchanged too.
+    same_aging = own_aging == control_aging
     recorded = {
         (row["state_fips"], row["measure"], row["verdict"]): row
         for row in before.receipt["factor_band"]["out_of_band"]
@@ -982,14 +987,30 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
     for row in after.receipt["factor_band"]["out_of_band"]:
         old_row = recorded[(row["state_fips"], row["measure"], row["verdict"])]
         keys = ["relative"]
-        if row["verdict"] == "sibling_vintage_ratio" and own_aging == control_aging:
+        if same_aging or row["verdict"] == "sibling_vintage_ratio":
             keys += ["ratio", "median_ratio"]
         for key in keys:
             assert row[key] == pytest.approx(old_row[key], rel=1e-12, nan_ok=True)
-    assert (
-        after.receipt["level_bridge_factor_by_measure"]
-        == before.receipt["level_bridge_factor_by_measure"]
-    )
+    keys = ["level_bridge_factor_by_measure"]
+    if same_aging:
+        keys.append("rebase_factor_by_measure")
+    for key in keys:
+        assert after.receipt[key].keys() == before.receipt[key].keys()
+        for measure, summary in after.receipt[key].items():
+            assert summary == pytest.approx(before.receipt[key][measure], rel=1e-12)
+    metadata_keys = ["state_cd_level_bridge_factor"]
+    if same_aging:
+        metadata_keys += [
+            "state_cd_cd_file_value",
+            "state_cd_cd_file_state_sum",
+            "state_cd_rebase_factor",
+        ]
+    for old, new in zip(before.specs, after.specs, strict=True):
+        for key in metadata_keys:
+            if key in old.metadata:
+                assert float(new.metadata[key]) == pytest.approx(
+                    float(old.metadata[key]), rel=1e-12
+                ), (new.name, key)
 
 
 def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> None:
@@ -1036,3 +1057,51 @@ def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> Non
         (row["state_fips"], row["measure"], row["verdict"])
         for row in before.receipt["factor_band"]["out_of_band"]
     }
+
+
+def test_a_bridge_refuses_a_share_sibling_on_another_aging_series() -> None:
+    """Re-aging a share's file level like the bridged row stands in for the
+    sibling's own aging only when both age on one series; a pair on different
+    series refuses rather than giving the bridged row its sibling's growth."""
+
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
+
+    def series(spec, source: str):
+        return dataclasses.replace(
+            spec,
+            metadata={
+                **spec.metadata,
+                "aging_factor_source": source,
+                "aging_factor": "1.5",
+            },
+        )
+
+    rows = []
+    for spec in specs:
+        if spec.metadata["ledger_layout_record_set_spec_id"] != _CD_FILE:
+            rows.append(spec)
+        elif spec.metadata["source_measure_id"] == "return_count":
+            rows.append(_as_national_share(series(spec, "cbo.series_a"), 1.25, 1.5))
+        else:
+            rows.append(series(spec, "chained:irs_soi.x+cbo.series_b"))
+    with pytest.raises(ValueError, match="ages on 'cbo.series_a'"):
+        _CD.state_cd_soi_surface(
+            rows,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+    # The same chained series, as #1030 writes it, re-ages.
+    same = [
+        series(spec, "chained:irs_soi.x+cbo.series_a")
+        if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
+        and spec.metadata["source_measure_id"] == "charitable_amount"
+        else spec
+        for spec in rows
+    ]
+    _CD.state_cd_soi_surface(
+        same,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+        level_bridges={"charitable_amount": "return_count"},
+    )

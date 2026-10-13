@@ -2285,8 +2285,9 @@ def _rebase_stale_soi_district_distributions(
     1.x control: on the pinned feed the control was 1.001x (taxable pension
     returns) to 1.169x (taxable Social Security) the district US row.
 
-    Each state and district row of such a measure now ships as its share of
-    the file's own US row at its own period, times the control of
+    Each state and district row of such a measure (and any AGI slice of the
+    file) now ships as its share of the file's own all-AGI US row at its own
+    period, times the control of
     ``_soi_ht2_national_controls`` at or after that period, as microcosm#1229
     does for taxable interest and #1040 for capital gains. Every share row
     names its denominator in ``soi_share_total_source_record_id``. One factor
@@ -2353,7 +2354,12 @@ def _rebase_stale_soi_district_distributions(
 
 
 def _soi_district_rebase_measure(spec: TargetSpec) -> str | None:
-    """The registered measure of an all-AGI congressional-district spec."""
+    """The registered measure of a congressional-district spec, else ``None``.
+
+    An AGI slice of the file is a share of the same US row, so it takes the
+    same factor (as #1229 and #1040 rebase district slices); the current
+    package publishes none.
+    """
     if spec.family != "irs_soi":
         return None
     measure_id = spec.metadata.get("source_measure_id", "")
@@ -2362,13 +2368,11 @@ def _soi_district_rebase_measure(spec: TargetSpec) -> str | None:
     record_set_id = spec.metadata.get("ledger_layout_record_set_id", "")
     if _soi_record_set_family(record_set_id) != "congressional_district":
         return None
-    if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
-        return None
     return measure_id
 
 
 def _soi_district_fact_key(fact: object) -> tuple[str, str, str] | None:
-    """(measure, filing status, universe) of an all-AGI district fact."""
+    """(measure, filing status, universe) of a district fact, any AGI range."""
     if _source_name(fact) != "irs_soi":
         return None
     measure_id = _measure_id(fact)
@@ -2376,8 +2380,6 @@ def _soi_district_fact_key(fact: object) -> tuple[str, str, str] | None:
         return None
     record_set_id = _str_at(fact, "layout", "record_set_id")
     if _soi_record_set_family(record_set_id) != "congressional_district":
-        return None
-    if not _is_all_agi_range_fact(fact):
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
     if status is None:
@@ -2400,6 +2402,8 @@ def _soi_district_us_totals(
     for fact in facts:
         key = _soi_district_fact_key(fact)
         if key is None or _geography_level(fact) != "country":
+            continue
+        if not _is_all_agi_range_fact(fact):
             continue
         source_record_id = _source_record_id(fact)
         if not source_record_id:

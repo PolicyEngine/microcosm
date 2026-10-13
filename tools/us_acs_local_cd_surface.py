@@ -208,11 +208,21 @@ def cd_file_level(spec, *, aged_like=None) -> float:
     (``soi_share_total_source_record_id``) and its ``uprating_factor`` is
     control / the file's US row (microcosm#1229, #1040, and the
     ``_SOI_HT2_NATIONAL_CONTROLS`` columns). Dividing the factor out gives the
-    file's own level, which is what a level bridge compares with Historic
-    Table 2. A share ages from its control's period; with ``aged_like``, the
-    level is re-aged to that spec's aging factor, so it sits on the same
-    basis as an unrebased district-file row (the two differ once #1030 ages
-    the file from its data year). Other specs return their value.
+    file's own level: what a district block's shares, its receipt and a level
+    bridge read. Other specs return their value.
+
+    A share ages from its control's period, and so does its file level. That
+    is the file's own aging while the file is stamped at the control's period
+    (the pinned feed); under #1030 the file ages from its data year, one link
+    earlier, so a block's recorded file values sit that link apart (its
+    shares, and so its bound values, do not move). With ``aged_like`` (an unrebased
+    district-file row), the level is re-aged to that row's aging factor, so
+    the two sit on one basis; they differ once #1030 ages the file from its
+    data year. That stands in for the share's own unrebased aging only when
+    both age on the same series, so a pair on different series refuses.
+
+    Raises:
+        ValueError: ``aged_like`` ages on a different series from ``spec``.
     """
 
     metadata = _metadata(spec)
@@ -221,10 +231,24 @@ def cd_file_level(spec, *, aged_like=None) -> float:
         return value
     value /= float(metadata["uprating_factor"])
     if aged_like is not None:
-        value *= float(_metadata(aged_like).get("aging_factor", "1")) / float(
+        other = _metadata(aged_like)
+        if _aging_series(other) != _aging_series(metadata):
+            raise ValueError(
+                f"{spec.name} ages on {_aging_series(metadata)!r} and "
+                f"{aged_like.name} on {_aging_series(other)!r}; a share's file "
+                "level can be re-aged only like a row on its own series."
+            )
+        value *= float(other.get("aging_factor", "1")) / float(
             metadata.get("aging_factor", "1")
         )
     return value
+
+
+def _aging_series(metadata: Mapping[str, str]) -> str:
+    """The growth series a spec's aging ends on (its last link, if chained)."""
+
+    source = str(metadata.get("aging_factor_source", "not_dollar_amount"))
+    return source.removeprefix("chained:").rsplit("+", 1)[-1]
 
 
 def soi_materializer_semantics(spec) -> tuple:
@@ -477,11 +501,12 @@ def state_cd_soi_surface(
             kept_cd_by_key[(state, soi_concept_identity(spec))].append(spec)
 
     # Each Historic-Table-2-parented block's rebase factor (parent over its
-    # district rows' sum), judged against its concept's median across states.
+    # district rows' sum at the file's level), judged against its concept's
+    # median across states.
     block_factor: dict[tuple, float] = {}
     for key, block in kept_cd_by_key.items():
         parent = ht2_by_key.get(key)
-        child_sum = math.fsum(float(spec.value) for spec in block)
+        child_sum = math.fsum(cd_file_level(spec) for spec in block)
         if parent is not None and child_sum != 0.0:
             block_factor[key] = float(parent.value) / child_sum
     factors_by_identity: dict[tuple, list[float]] = defaultdict(list)
@@ -533,11 +558,13 @@ def state_cd_soi_surface(
             )
         # The sibling is trusted for bridging only if both of the band's
         # verdicts on it pass: its two state levels, and (where it has district
-        # rows) the rebase of its own district block.
+        # rows) the rebase of its own district block. Re-aging scales every
+        # state's ratio alike, so the median is re-aged by the same constant.
+        reaging = factor / vintage_ratio[sibling_key]
         trusted = within_band(
             sibling_key,
-            vintage_ratio[sibling_key],
-            median_ratio.get(sibling_key[1], math.nan),
+            factor,
+            median_ratio.get(sibling_key[1], math.nan) * reaging,
             f"level_bridge:{measure}",
             measure,
             verdict="sibling_vintage_ratio",
@@ -619,7 +646,11 @@ def state_cd_soi_surface(
                 f"State parent {parent.name} materializes differently from "
                 f"its district rows ({identity}, state {state})."
             )
-        child_sum = math.fsum(float(spec.value) for spec in children)
+        # Shares and the receipt read the district file's own levels, so a
+        # district row the compiler bound as a national share records the
+        # file's value, as every other district row does.
+        levels = {spec.name: cd_file_level(spec) for spec in children}
+        child_sum = math.fsum(levels.values())
         parent_value = float(parent.value)
         if child_sum == 0.0:
             if parent_value != 0.0:
@@ -639,7 +670,7 @@ def state_cd_soi_surface(
         # The district file must agree with itself before its shares are used.
         cd_state = cd_file_state_by_key.get(key)
         if cd_state is not None:
-            cd_state_value = float(cd_state.value)
+            cd_state_value = cd_file_level(cd_state)
             gap = abs(cd_state_value - child_sum)
             internal_gaps.append(gap / max(abs(cd_state_value), 1.0))
             if gap > STATE_CD_INTERNAL_RTOL * max(abs(cd_state_value), 1.0):
@@ -675,12 +706,12 @@ def state_cd_soi_surface(
                     "state_cd_parent_target_name": parent.name,
                     "state_cd_parent_basis": basis,
                     "state_cd_parent_value": repr(parent_value),
-                    "state_cd_cd_file_value": repr(float(child.value)),
+                    "state_cd_cd_file_value": repr(levels[child.name]),
                     "state_cd_cd_file_state_sum": repr(child_sum),
                     "state_cd_rebase_factor": repr(factor),
                 }
             )
-            value = float(child.value) * factor
+            value = levels[child.name] * factor
             rebased[child.name] = replace(
                 child,
                 value=value,
