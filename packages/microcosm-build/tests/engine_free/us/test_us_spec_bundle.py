@@ -90,8 +90,8 @@ def test_constant_derived_domain_counts_are_complete(
         for stage in ("primary_puf_qrf", "late_producer_dag")
     }
     assert modeled_output_scopes == {
-        "primary_puf_qrf": {"puf_clone": 65, "whole_pool": 1},
-        "late_producer_dag": {"whole_pool": 71},
+        "primary_puf_qrf": {"puf_clone": 66},
+        "late_producer_dag": {"whole_pool": 72},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -199,7 +199,7 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 135
+    assert len(battery["metric_registry"]) == 136
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
@@ -208,7 +208,7 @@ def test_constant_derived_domain_counts_are_complete(
     assert battery_views["metric_counts"] == {
         "boolean_incidence": 51,
         "categorical_tvd": 4,
-        "monetary_sign_separated": 80,
+        "monetary_sign_separated": 81,
     }
     assert set(calibration["targets"]) == {
         "cd_policy",
