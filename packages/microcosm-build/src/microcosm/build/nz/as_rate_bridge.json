@@ -429,7 +429,7 @@
     },
     "predicate_citation": {
       "item": "A2",
-      "source": "/Users/maxghenis/reviews/nz-hub/notes/1011/g8-method-addendum.md"
+      "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"
     },
     "predicate_note": "MC11 exclude-and-count and reporting must select this one assigned-member receipt predicate. A bridge implementation must resolve the reference rather than infer superannuitants from entitlement or age."
   },

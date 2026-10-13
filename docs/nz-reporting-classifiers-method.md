@@ -69,7 +69,11 @@ who share a home and moving those units upward in the income ranking.
 ## A2 Receipt group
 
 The legal basis is the Social Security Regulations 2018 (LI 2018/202), read for
-this method as at 5 April 2026. [Regulation 17, PCO
+this method as at 5 April 2026. The text read is the PCO XML pinned in
+`TheAxiomFoundation/axiom-corpus` release `nz-rulespec-2026-07-25`, at
+`data/corpus/sources/nz/regulation/2026-06-16-rulespec-nz-pco/regulation/public/2018/0202/wholeof.xml`
+(sha256 `5f1250b903ce1b618eebd6370d6db8c51cb377b9fdb5cf4d171e259cd0e85d8f`). The
+legislation.govt.nz links below open the latest version. [Regulation 17, PCO
 LMS96264](https://www.legislation.govt.nz/regulation/public/2018/0202/latest/LMS96264.html)
 defines a beneficiary by payment of a main benefit, New Zealand Superannuation,
 or a veteran's pension. Everyone else is a non-beneficiary for that regulation.

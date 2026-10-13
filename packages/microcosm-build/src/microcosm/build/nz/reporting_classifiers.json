@@ -191,7 +191,7 @@
   "tie_key_evidence": {
     "stability": "Same pinned donor and unit rule preserve person ids across rebuilds; each family id is its head person id. Units sharing source household lineage remain distinct units.",
     "implementation": [
-      "packages/microcosm-frame/src/microcosm/frame/unit_construction.py:388-409",
+      "packages/microcosm-frame/src/microcosm/frame/unit_construction.py build_benefit_units (each family id is its head person's id)",
       "packages/microcosm-build/src/microcosm/build/transport/population_kernels.py:209-228",
       "packages/microcosm-frame/src/microcosm/frame/transport.py:843-856"
     ],
