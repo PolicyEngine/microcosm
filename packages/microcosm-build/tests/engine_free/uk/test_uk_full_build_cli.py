@@ -689,7 +689,7 @@ def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatc
     monkeypatch.setattr(
         cli,
         "start_telemetry_emitter",
-        lambda requested, *, build_id, run_kind: (
+        lambda requested, *, build_id, run_kind, close_service_on_finish: (
             events.append(("start", build_id, run_kind)) or FakeEmitter()
         ),
     )
@@ -733,7 +733,7 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
     monkeypatch.setattr(
         cli,
         "start_telemetry_emitter",
-        lambda requested, *, build_id, run_kind: (
+        lambda requested, *, build_id, run_kind, close_service_on_finish: (
             events.append(("start", build_id, run_kind)) or FakeEmitter()
         ),
     )

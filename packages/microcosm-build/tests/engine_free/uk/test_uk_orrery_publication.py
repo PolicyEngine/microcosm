@@ -12,6 +12,7 @@ from microcosm.build.uk_runtime import (
 )
 from microcosm.build.uk_runtime.orrery_contract import save_uk_graph_schema
 from microcosm.graph import Graph, Node, Owned, SourceRef, StructuralDelta
+from test_support.microcosm_build.telemetry import fake_publication_inventory
 
 
 def fixture(tmp_path, **options):
@@ -78,6 +79,8 @@ def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
     events = []
 
     class Emitter:
+        publication_inventory = staticmethod(fake_publication_inventory)
+
         def publish_graph(self, directory, inventory, *, wait_seconds):
             assert not (args.out / "orrery.publication.json").exists()
             events.append("publication_attempt")
@@ -166,6 +169,8 @@ def test_interrupt_preserves_local_evidence_without_waiting_or_staging(
     waits = []
 
     class Emitter:
+        publication_inventory = staticmethod(fake_publication_inventory)
+
         def publish_graph(self, directory, inventory, *, wait_seconds):
             waits.append(wait_seconds)
             return {
@@ -211,6 +216,24 @@ def test_failure_evidence_error_does_not_replace_the_build_error(
     )
 
 
+def test_no_emitter_delegates_publication_without_a_run_id(tmp_path, monkeypatch):
+    args = fixture(tmp_path)
+    args.publish_orrery = True
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
+    calls = []
+
+    def publish(directory, inventory, **options):
+        assert "run_id" not in inventory
+        assert options == {"wait_seconds": 0}
+        calls.append(directory)
+        return {"status": "pending", "error_code": "credential_missing"}
+
+    monkeypatch.setattr(orrery_publication, "publish_graph", publish)
+    receipt = orrery_publication.finalize_graph(args, manifest=None).receipt
+    assert receipt["status"] == "pending"
+    assert calls == [args.attempt_evidence / "orrery-publication"]
+
+
 @pytest.mark.parametrize(
     "explicit,local,disabled,expected",
     [
@@ -228,3 +251,75 @@ def test_publication_has_explicit_local_only_and_opt_out_controls(
         publish_orrery=explicit, staging_local_only=local, no_staging=disabled
     )
     assert orrery_publication.publication_enabled(args) is expected
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_unavailable_inventory_preserves_graph_without_claiming_a_queued_job(
+    tmp_path, monkeypatch, active
+):
+    args = fixture(tmp_path)
+    args.publish_orrery = True
+    calls = []
+
+    def unavailable(directory, roles):
+        calls.append(directory)
+        return None
+
+    def must_not_publish(*args, **options):
+        pytest.fail("publication attempted without a measured inventory")
+
+    if active:
+        from types import SimpleNamespace
+
+        emitter = SimpleNamespace(
+            publication_inventory=unavailable, publish_graph=must_not_publish
+        )
+        monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+        monkeypatch.setattr(
+            orrery_publication,
+            "publication_inventory",
+            lambda *a, **k: pytest.fail("started another inventory service"),
+        )
+    else:
+        monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
+        monkeypatch.setattr(orrery_publication, "publication_inventory", unavailable)
+    monkeypatch.setattr(orrery_publication, "publish_graph", must_not_publish)
+    manifest = {"outputs": {}}
+    result = orrery_publication.finalize_graph(args, manifest=manifest)
+    assert result.receipt["status"] == "failed"
+    assert result.receipt["publication_id"] is None
+    assert result.receipt["error_code"] == "local_service_unavailable"
+    preserved = args.attempt_evidence / "orrery-publication"
+    assert calls == [preserved]
+    for name in ("graph.schema.json", "graph.orrery.json"):
+        assert (preserved / name).read_bytes() == (args.out / name).read_bytes()
+        assert f"orrery/{name}" in manifest["outputs"]
+    assert "orrery.upload.json" not in result.files
+    assert "orrery/orrery.publication.json" in manifest["outputs"]
+
+
+def test_enqueue_failure_is_recorded_without_replacing_graph_exports(
+    tmp_path, monkeypatch
+):
+    args = fixture(tmp_path)
+    args.publish_orrery = True
+
+    class Emitter:
+        publication_inventory = staticmethod(fake_publication_inventory)
+
+        def publish_graph(self, directory, inventory, *, wait_seconds):
+            return {
+                "version": 1,
+                "publication_id": inventory["publication_id"],
+                "status": "failed",
+                "error_code": "local_service_unavailable",
+            }
+
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
+    result = orrery_publication.finalize_graph(args, manifest=None)
+    assert result.receipt["status"] == "failed"
+    assert result.receipt["error_code"] == "local_service_unavailable"
+    assert result.receipt["publication_id"]
+    assert (args.out / "graph.orrery.json").is_file()
+    assert (args.out / "orrery.upload.json").is_file()
+    assert (args.out / "orrery.evidence-manifest.json").is_file()

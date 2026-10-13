@@ -15,7 +15,7 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the existing local service and a durable queue;
+an independent worker inside the external `microcosm-emitter` service and a durable queue;
 see [configuration and retry](orrery-publication.md). No new producer secret or
 environment variable is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
@@ -97,11 +97,17 @@ uses the same pinned parser for groups, statuses, activities and artifacts.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths and blocks collector
-HTTP requests outside loopback. Tests of actual emitter startup must request
-`real_local_telemetry` and supply an explicit loopback development collector;
-that opt-in retains credential isolation. Other build tests can inspect
-`fake_telemetry_emitters` without creating sockets or service processes.
+fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
+emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
+and HTTP-delivery tests belong in microcosm-emitter; do not copy them
+into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
+sockets or service processes.
+
+The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
+leaves the graph worker available, and that caller's existing `finally` cleanup
+closes the combined service. Other callers close automatically when they finish.
+Keep validation-refused outcomes and structured
+failure codes intact when changing the adapter.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs

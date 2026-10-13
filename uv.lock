@@ -800,12 +800,11 @@ name = "microcosm-build"
 version = "0.1.0"
 source = { editable = "packages/microcosm-build" }
 dependencies = [
-    { name = "alembic" },
-    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "jsonschema" },
     { name = "microcosm-calibrate" },
     { name = "microcosm-diagnostics" },
+    { name = "microcosm-emitter" },
     { name = "microcosm-fit" },
     { name = "microcosm-frame" },
     { name = "microcosm-graph" },
@@ -815,7 +814,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "referencing" },
     { name = "scipy" },
-    { name = "sqlalchemy" },
 ]
 
 [package.optional-dependencies]
@@ -842,16 +840,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.13.3,<2" },
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
-    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-calibrate", editable = "packages/microcosm-calibrate" },
     { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
+    { name = "microcosm-emitter", git = "https://github.com/PolicyEngine/microcosm-emitter?rev=12624a118db255405a0ce7397d53b3181deaf49a" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
@@ -866,7 +863,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "referencing", specifier = ">=0.35,<1" },
     { name = "scipy", specifier = ">=1.13" },
-    { name = "sqlalchemy", specifier = ">=2,<3" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
 ]
@@ -966,6 +962,18 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.10,<3" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "microcosm-emitter"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?rev=12624a118db255405a0ce7397d53b3181deaf49a#12624a118db255405a0ce7397d53b3181deaf49a" }
+dependencies = [
+    { name = "alembic" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "psutil" },
+    { name = "sqlalchemy" },
+]
 
 [[package]]
 name = "microcosm-fit"
