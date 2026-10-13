@@ -1033,7 +1033,10 @@ def test_national_share_district_rows_leave_the_state_cd_surface_unchanged(
                 ), (new.name, key)
 
 
-def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> None:
+@pytest.mark.parametrize("control_aging", [1.0, 2.0])
+def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios(
+    control_aging: float,
+) -> None:
     """State 14's two return-count levels disagree 2x, so its bridge is out of
     band. Binding the district file's return counts as national shares (x1.5)
     leaves every bound value, the out-of-band rows and their recorded ratios
@@ -1049,7 +1052,7 @@ def test_a_national_share_sibling_keeps_its_bridges_and_recorded_ratios() -> Non
         for spec in specs
     ]
     shared = [
-        _as_national_share(spec, 1.5, 1.0)
+        _as_national_share(spec, 1.5, control_aging)
         if spec.metadata["ledger_layout_record_set_spec_id"] == _CD_FILE
         and spec.metadata["source_measure_id"] == "return_count"
         else spec

@@ -1036,9 +1036,6 @@ def compile_us_fiscal_target_registry(
             ``period_contract_waiver`` metadata in diagnostics.
     """
     materialized_facts = tuple(facts)
-    # Read before the crosswalk merges source districts into one fact that
-    # keeps a single contributor's layout.
-    district_source_columns = _soi_district_source_columns(materialized_facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -1081,7 +1078,6 @@ def compile_us_fiscal_target_registry(
         registry,
         materialized_facts,
         target_period=target_period,
-        source_columns=district_source_columns,
     )
     registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
@@ -2275,7 +2271,6 @@ def _rebase_stale_soi_district_distributions(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-    source_columns: Mapping[str, str],
 ) -> TargetRegistry:
     """Use congressional-district rows of the registered columns as shares.
 
@@ -2311,10 +2306,9 @@ def _rebase_stale_soi_district_distributions(
     package that maps the measure id to another column (the district SALT
     and PTC measures read the wrong columns, microcosm#1038), or names none,
     would be rebased as the wrong concept, so every source fact of a row
-    rebased here, and its denominator, must read that column.
-    ``source_columns`` maps each district fact's record id to its column as
-    the feed carries it, read before the crosswalk merges source districts
-    into one fact with a single contributor's layout
+    rebased here, and its denominator, must read that column. A district
+    merged by the crosswalk keeps only its first contributor's layout, so its
+    contributors are read from the lineage, which records each one's column
     (``_soi_district_source_columns``). Rows that keep their levels, and
     facts that compile to no target, are not checked.
 
@@ -2325,7 +2319,7 @@ def _rebase_stale_soi_district_distributions(
 
     controls = _soi_ht2_national_controls(facts, target_period=target_period)
     us_totals = _soi_district_us_totals(facts)
-    contributors = _soi_district_contributors(facts)
+    source_columns = _soi_district_source_columns(facts)
     unreviewed: dict[str, str] = {}
     specs: list[TargetSpec] = []
     for spec in registry.specs:
@@ -2347,15 +2341,16 @@ def _rebase_stale_soi_district_distributions(
         us_total = us_totals.get((record_set_id, *key, source_period))
         if us_total is None or us_total.value == 0:
             continue
-        record_id = spec.metadata.get("ledger_source_record_id", "")
         expected = _SOI_HT2_NATIONAL_CONTROLS[measure_id].source_column
-        for source_id in (
-            *contributors.get(record_id, (record_id,)),
+        for checked_id in (
+            spec.metadata.get("ledger_source_record_id", ""),
             us_total.source_record_id,
         ):
-            column = source_columns.get(source_id, "")
-            if column != expected:
-                unreviewed[source_id] = column or "<none>"
+            for source_id, column in source_columns.get(
+                checked_id, ((checked_id, ""),)
+            ):
+                if column != expected:
+                    unreviewed[source_id] = column or "<none>"
         concept = _SOI_HT2_NATIONAL_CONTROLS[measure_id].concept
         factor = control.value / us_total.value
         specs.append(
@@ -2466,46 +2461,38 @@ def _soi_district_us_totals(
     return totals
 
 
-def _soi_district_source_columns(facts: tuple[object, ...]) -> dict[str, str]:
-    """Each registered district fact's IRS column, by source record id."""
-    return {
-        _source_record_id(fact): _str_at(fact, "layout", "source_column_id")
-        for fact in facts
-        if _soi_district_fact_key(fact) is not None
-    }
-
-
-def _soi_district_contributors(
+def _soi_district_source_columns(
     facts: tuple[object, ...],
-) -> dict[str, tuple[str, ...]]:
-    """The source facts behind each crosswalk-merged district fact.
+) -> dict[str, tuple[tuple[str, str], ...]]:
+    """The (source record id, IRS column) of each source behind a district fact.
 
-    The crosswalk lists a translated fact's contributions under
-    ``lineage.congressional_district_vintage_contributions``. A contributor
-    that proxies a state total for an at-large district names its origin
-    before ``.state_total_proxy_cd.``. Untranslated facts are their own
-    source and are not listed.
+    A district the crosswalk merged lists every contributor, with its own
+    column, under ``lineage.congressional_district_vintage_contributions``;
+    any other fact is its own source. Facts that share a record id all count,
+    so a duplicate cannot hide another column.
     """
-    contributors: dict[str, tuple[str, ...]] = {}
+    sources: dict[str, list[tuple[str, str]]] = {}
     for fact in facts:
         if _soi_district_fact_key(fact) is None:
             continue
         contributions = _at(
             fact, "lineage", "congressional_district_vintage_contributions"
         )
-        if not contributions:
-            continue
-        contributors[_source_record_id(fact)] = tuple(
-            sorted(
-                {
-                    str(_at(item, "source_record_id")).split(".state_total_proxy_cd.")[
-                        0
-                    ]
-                    for item in contributions
-                }
-            )
+        entries = (
+            [
+                (
+                    str(_at(item, "source_record_id") or ""),
+                    str(_at(item, "source_column_id") or ""),
+                )
+                for item in contributions
+            ]
+            if contributions
+            else [
+                (_source_record_id(fact), _str_at(fact, "layout", "source_column_id"))
+            ]
         )
-    return contributors
+        sources.setdefault(_source_record_id(fact), []).extend(entries)
+    return {record_id: tuple(entries) for record_id, entries in sources.items()}
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's

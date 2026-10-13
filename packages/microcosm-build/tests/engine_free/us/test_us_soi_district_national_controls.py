@@ -480,6 +480,61 @@ def test_the_column_guard_sees_each_source_district_before_the_crosswalk() -> No
     assert merged.value == pytest.approx(440.0, rel=1e-12)
 
 
+def _identity_crosswalk() -> list[dict[str, object]]:
+    return [
+        {
+            "source_geography_id": f"5001700US{geoid}",
+            "target_geography_id": f"5001900US{geoid}",
+            "weight": 1.0,
+        }
+        for _, _, geoids in STATES[:2]
+        for geoid in geoids
+    ]
+
+
+@pytest.mark.parametrize("duplicate_first", [True, False], ids=["first", "last"])
+def test_a_duplicate_record_id_cannot_hide_another_column(duplicate_first) -> None:
+    """Two facts with one record id both count (#1250 review). Without a
+    crosswalk the compile already refuses the duplicate id; the crosswalk
+    merges the copies into one district, and a copy of Hawaii's first district
+    read from N2 then refuses in either feed order."""
+    measure_id = "return_count"
+    facts = _cd_facts(measure_id)
+    original = next(
+        fact
+        for fact in facts
+        if fact["lineage"]["source_record_id"].endswith(f"hi_01.{measure_id}")
+    )
+    duplicate = {**original, "layout": {**original["layout"], "source_column_id": "N2"}}
+    index = facts.index(original)
+    facts.insert(index if duplicate_first else index + 1, duplicate)
+    with pytest.raises(ValueError, match="matched multiple Ledger facts"):
+        _compile([*facts, _control_fact(measure_id)])
+    with pytest.raises(
+        fiscal_targets.UnreviewedSoiNationalControlColumnError, match="'N2'"
+    ):
+        _compile([*facts, _control_fact(measure_id)], crosswalk=_identity_crosswalk())
+
+
+def test_translated_facts_compile_as_the_crosswalk_compile_does() -> None:
+    """The translator's output is itself a valid feed: each merged district
+    carries its contributors' columns, so compiling translated facts gives
+    the same registry as compiling the source facts with the crosswalk."""
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        translate_congressional_district_facts_to_current_vintage,
+    )
+
+    measure_id = "taxable_social_security_returns"
+    facts = [*_cd_facts(measure_id), _control_fact(measure_id)]
+    crosswalk = _identity_crosswalk()
+    direct = _compile(facts, crosswalk=crosswalk)
+    translated = _compile(
+        translate_congressional_district_facts_to_current_vintage(facts, crosswalk)
+    )
+    assert translated.version == direct.version
+    assert _cd_rows(translated, measure_id)["hi_total"].value == 550.0
+
+
 def test_the_column_guard_checks_the_denominator() -> None:
     """A share divides by the US row, so a US row read from another column
     refuses even when every state and district row is reviewed."""
