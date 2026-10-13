@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "5bb70e74a30e5a648b8cbd910501e2419dec8e7f2a0ea4f520d2cd34e1f17d97",
+  "fingerprint": "9dbec94ad8adc301129436ce33add8c285d7a339bd2be3660ba54bf5d4b317d1",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -41,7 +41,7 @@
     "as_rate_bridge.json": "2dad25ba1ed46f37b2ca4fb75f0d99d6e8d36a46b40233ca51fce762e3655d0d",
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
-    "benefit_unit_rule.json": "b4ed95161177668964ffcc39556c14600e2e08bda350be9ea5f52e83cc3afd41",
+    "benefit_unit_rule.json": "5c1cf16daaae482ea3ec53495f4c2e4ae452d928c6240a5284dbbf30cd2dfe37",
     "country_package.json": "d1059312ee47721961978394aa3a754d55fbc8e6c2802ddc755b4a1dcfee920d",
     "currency_bridge.json": "aa6a4b286a6a1a015088f32ac013148553422c3d45eeef7d7a15af08388857ca",
     "export_contract.json": "2c7414fefe395c4f5822643dcd3bb3544ebb2040259aa007b828a99bd01ae210",
