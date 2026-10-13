@@ -225,8 +225,9 @@ on the pinned feed: the coverage gap times the TY2022 to TY2023 change of the
 column. The district rows age only 2023 to 2024, because of the stamp.
 Within the file, the 51 states sum exactly to the US row and each state's
 districts sum exactly to the state, for all 11 columns. The register
-records each column's IRS name (`source_column`), so the guide check is a
-test (`test_the_register_names_each_columns_reviewed_irs_id`).
+records each column's IRS name (`source_column`), and
+`test_the_register_names_each_columns_reviewed_irs_id` pins it to the names
+in the table above, read from the guide.
 `~/PolicyEngine/_reviews/cd-soi-national-controls-20261012/scripts/cd_identities.py`
 reproduces the table from the sha256-matched `22incd.csv`, `22in14ar.xls`
 and `22in55cmcsv.csv`.
@@ -244,7 +245,9 @@ interest) and #1040 (capital gains) use for other district families:
   period. One factor per measure scales the states and the districts alike,
   so the district-to-state reconciliation that runs next keeps factor 1.
   Every share names its denominator in `soi_share_total_source_record_id`
-  and lands at the control's period, as the HT2 shares do.
+  and lands at the control's period, as the HT2 shares do. An AGI slice of
+  the file takes the same factor, as #1229 and #1040 rebase district slices
+  (the current package has none).
 - **One national level.** The district US row retires.
 - **No eligible control.** With no control, one after the build period, or
   one older than the row's period, the rows keep their levels and the US row
@@ -312,13 +315,13 @@ Compiled as the release does; before is #1247's head (`490b67181`).
   two files disagree about the state. Counting both, the 445 district rows of a measure sum to 1.015 to
   1.022 times the control; each family alone sums to at most the control.
 - **ACS-local `state_cd`.** All 26,425 values are unchanged (relative
-  difference at most 4.2e-15), as are its counts, drops and band verdicts.
+  difference at most 4.2e-15), as are its counts, drops, band verdicts and
+  receipt (rebase and bridge factors and recorded ratios, within 5e-15).
   It takes district rows only as within-state shares of HT2, which a
-  national factor does not move. Its level bridges read a rebased sibling
-  at the file's own level ([us-acs-local-soi-target-surface.md](us-acs-local-soi-target-surface.md)).
-  Only the receipt's per-measure rebase factors for these columns move, to
-  0.975 to 1.063 (medians 0.995 to 1.009): what is left is where the two
-  files disagree about a state's share.
+  national factor does not move, and it reads a district row bound as a
+  national share at the file's own level (`cd_file_level`), so its blocks,
+  bridges and per-row records see what they saw before
+  ([us-acs-local-soi-target-surface.md](us-acs-local-soi-target-surface.md)).
 
 `scripts/diff_cd.py`, `scripts/at_large_pairs.py` and
 `scripts/compare_statecd.py` in the evidence folder reproduce these figures.

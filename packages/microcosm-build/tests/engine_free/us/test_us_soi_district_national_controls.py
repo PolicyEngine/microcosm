@@ -463,18 +463,24 @@ def test_the_column_guard_sees_each_source_district_before_the_crosswalk() -> No
 
 
 def _cd_agi_slice_fact(
-    measure_id: str, value: float, *, stamp: int, column: object = _REVIEWED
+    measure_id: str,
+    value: float,
+    *,
+    stamp: int,
+    column: object = _REVIEWED,
+    national: bool = False,
 ) -> dict[str, object]:
-    """Hawaii's $50,000-$75,000 AGI slice of the district file (agi_stub 5)."""
-    row = "hi_total_50k_to_75k"
+    """The district file's $50,000-$75,000 AGI slice (agi_stub 5), for Hawaii
+    or for the US row."""
+    row = "us_50k_to_75k" if national else "hi_total_50k_to_75k"
     fact = _dynamic_ledger_fact(
         source_record_id=f"{_record_set(stamp)}.{row}.{measure_id}",
         source_name="irs_soi",
         measure_id=measure_id,
         value=value,
         period_value=stamp,
-        geography_level="state",
-        geography_id="0400000US15",
+        geography_level="country" if national else "state",
+        geography_id="0100000US" if national else "0400000US15",
         dimensions={"income_range": "50k_to_75k", "filing_status": "all"},
         universe_constraints=[
             {"variable": "adjusted_gross_income", "operator": ">=", "value": 50_000},
@@ -501,21 +507,23 @@ def test_an_agi_slice_of_the_file_takes_the_same_factor() -> None:
         return [
             *_cd_facts(measure_id, stamp=2024),
             _cd_agi_slice_fact(measure_id, 120.0, stamp=2024, column=column),
+            _cd_agi_slice_fact(measure_id, 240.0, stamp=2024, national=True),
             _control_fact(measure_id, period=2024),
         ]
 
-    (slice_spec,) = [
-        spec
-        for spec in _compile(facts()).specs
-        if spec.metadata["ledger_source_record_id"].endswith(
-            f"hi_total_50k_to_75k.{measure_id}"
-        )
-    ]
-    assert slice_spec.metadata["agi_lower_bound"] == "50000.0"
-    assert slice_spec.value == pytest.approx(132.0, rel=1e-12)
-    assert slice_spec.metadata["soi_share_total_source_record_id"] == _us_id(
-        measure_id, stamp=2024
+    specs = _by_record(_compile(facts()))
+    state_slice = specs[f"{_record_set(2024)}.hi_total_50k_to_75k.{measure_id}"]
+    us_slice = specs[f"{_record_set(2024)}.us_50k_to_75k.{measure_id}"]
+    assert state_slice.metadata["agi_lower_bound"] == "50000.0"
+    # The US slice is a share too, never a second denominator.
+    assert (state_slice.value, us_slice.value) == pytest.approx(
+        (132.0, 264.0), rel=1e-12
     )
+    for spec in (state_slice, us_slice):
+        assert spec.metadata["soi_share_total_source_record_id"] == _us_id(
+            measure_id, stamp=2024
+        )
+    assert _us_id(measure_id, stamp=2024) not in specs
     with pytest.raises(fiscal_targets.UnreviewedSoiNationalControlColumnError):
         _compile(facts(column="A00101"))
 

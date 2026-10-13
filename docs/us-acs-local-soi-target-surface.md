@@ -203,13 +203,16 @@ district rows, are mostly 1.00 to 1.10.
   2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
 - **The 11 Table 1.x-controlled columns** (return count, AGI, taxable IRA
   distributions, pensions, unemployment compensation and Social Security,
-  itemized deductions) are compiled on both sides as shares of the same
-  national control: Historic Table 2's since #1247, the district file's since
-  #1250 ([us-soi-national-controls.md](us-soi-national-controls.md)). Their
-  factors therefore carry neither the coverage nor the aging gap, only where
-  the two files disagree about a state's share: 0.975 to 1.063 (medians
-  0.995 to 1.009). The two bullets above describe the files before those
-  rebases.
+  itemized deductions) have Historic Table 2 parents that are shares of a
+  Table 1.x control since #1247, so their factors also carry the Table 1.x /
+  HT2 gap: the return-count median is 1.023 and AGI's 1.054 (the bullets
+  above were measured before #1247), taxable Social Security amounts run
+  1.16 to 1.18. The district file's own rows of these columns are bound as
+  shares of the same controls since #1250
+  ([us-soi-national-controls.md](us-soi-national-controls.md)). `state_cd`
+  reads such a row at the file's own level (`cd_file_level`: its
+  `uprating_factor` divided out), so its shares, factors, records and bridges
+  are what they would be without that rebase.
 - **The largest single-state factors** were on qualified and ordinary
   dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
   rental income (New York, 0.72), where the two tables disagree about one
@@ -298,11 +301,15 @@ All three siblings are columns the compiler binds as shares of a national
 control (#1250), so the district file's sibling row no longer sits at the
 file's level. The bridge reads it there anyway (`cd_file_level`: the share's
 `uprating_factor` divided out, re-aged as the bridged row is), and the
-sibling's band verdict compares the two files' levels. Reading the share as
-compiled would lift nothing: on the pinned feed the bridged charitable and
-interest-paid amounts would fall 9.07%, QBI amounts 5.63% and the bridged
-counts 2.65%. A property test checks that national-share district rows move
-no `state_cd` value, drop or verdict.
+sibling's band verdict compares the two files' levels, its median re-aged by
+the same constant. Re-aging like the bridged row stands in for the sibling's
+own aging only when both age on one series, as every registered bridge does
+(counts unaged, amounts on the CBO AGI series); a pair on different series
+refuses. Reading the share as compiled would lift nothing: on the pinned
+feed the bridged charitable and interest-paid amounts would fall 9.07%, QBI
+amounts 5.63% and the bridged counts 2.65%. A property test checks that
+national-share district rows move no `state_cd` value, drop, verdict or
+recorded factor.
 
 Every district row records its parent (`state_cd_parent_target_name`), the
 parent's basis, the district file's own value and the rebase factor; a
