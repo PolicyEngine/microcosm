@@ -67,10 +67,12 @@ def load_uk_local_chronicle_pin() -> dict[str, Any]:
     return dict(_LEDGER_FACT_FEED_PIN)
 
 
-#: Historical target periods compiled beside the calibration year so the
-#: terminal surface and the certifier can compare against them; skipped, not
-#: fatal, when the pinned feed no longer carries their facts.
-_VALIDATION_PERIODS: frozenset[int] = frozenset({2023, 2025})
+#: Target periods compiled beside the calibration year so the terminal
+#: surface and the certifier can compare against them; skipped, not fatal,
+#: when the pinned feed no longer carries their facts. The 2023 production
+#: surface left this set with its gate (María's ruling of 2026-10-13): no
+#: build reads a 2023 target.
+_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 _LOCAL_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 
 

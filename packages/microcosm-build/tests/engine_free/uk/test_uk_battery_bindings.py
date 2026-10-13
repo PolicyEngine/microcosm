@@ -1364,7 +1364,6 @@ class TestPreflightBindings:
         assert statuses == {
             "uk_release_input_coverage_manifest_current": GateStatus.PASSED,
             "uk_release_family_build_stages": GateStatus.PASSED,
-            "uk_ledger_compile_parity_production_2023": (GateStatus.EVIDENCE_ABSENT),
             "uk_ledger_compile_parity_incumbent_2025": GateStatus.EVIDENCE_ABSENT,
             "uk_ledger_compile_parity_local_incumbent_2025": (
                 GateStatus.EVIDENCE_ABSENT

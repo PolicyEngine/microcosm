@@ -369,12 +369,9 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
             "surface": artifact(
                 {
                     "national_registry": empty_registry,
-                    "uk_ledger_compiled_registries": {
-                        "2023": empty_registry,
-                        "2025": empty_registry,
-                    },
+                    "uk_ledger_compiled_registries": {"2025": empty_registry},
                     "uk_ledger_compiled_local_registries": {"2025": empty_registry},
-                    "uk_ledger_compile_unsupported": {"2023": [], "2025": []},
+                    "uk_ledger_compile_unsupported": {"2025": []},
                     "uk_ledger_compile_local_unsupported": {"2025": []},
                 }
             ),
@@ -395,7 +392,7 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
     )
     report, enforcement = decode_full_gate_report(result.artifacts["gate_report"])
     assert report.phase == "preflight"
-    assert len(report.outcomes) == 6
+    assert len(report.outcomes) == 5
     assert enforcement["artifact_permitted"] is False
     assert "uk_release_family_build_stages" in enforcement["structural_failures"]
     document = json.loads(result.artifacts["gate_report"])
@@ -703,9 +700,9 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
                 "national_registry": registry_payload(
                     TargetRegistry(specs[:1], country="uk")
                 ),
-                "uk_ledger_compiled_registries": {"2023": empty, "2025": empty},
+                "uk_ledger_compiled_registries": {"2025": empty},
                 "uk_ledger_compiled_local_registries": {"2025": empty},
-                "uk_ledger_compile_unsupported": {"2023": [], "2025": []},
+                "uk_ledger_compile_unsupported": {"2025": []},
                 "uk_ledger_compile_local_unsupported": {"2025": []},
             }
         ),

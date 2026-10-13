@@ -39,11 +39,6 @@ class ParityReceiptSpec:
 
 RECEIPTS = (
     ParityReceiptSpec(
-        fixture_resource="parity_fixture_production_2023.json",
-        output_resource="ledger_compile_parity_production_2023_signed_differences.json",
-        target_period=2023,
-    ),
-    ParityReceiptSpec(
         fixture_resource="registry_parity_fixture_2025.json",
         output_resource="ledger_compile_parity_incumbent_2025_signed_differences.json",
         target_period=2025,
@@ -620,21 +615,13 @@ def _add_signed_rationale_notes(
     *,
     fixture_resource: str,
 ) -> None:
-    if fixture_resource not in {
-        "registry_parity_fixture_2025.json",
-        "parity_fixture_production_2023.json",
-    }:
+    if fixture_resource != "registry_parity_fixture_2025.json":
         return
     for row in report.get("differences", ()):
         if not isinstance(row, dict):
             continue
         name = str(row.get("name", ""))
         if name in _UC_PAID_WINDOW_NAMES:
-            baseline = (
-                "2023 production"
-                if fixture_resource == "parity_fixture_production_2023.json"
-                else "2025 incumbent"
-            )
             inherited_change = (
                 "PR #891 contract with #892 source-window averaging"
                 if name.startswith("dwp.uc.households_children_")
@@ -643,8 +630,8 @@ def _add_signed_rationale_notes(
             row["reason"] = (
                 f"Inherited {inherited_change}: current paid-UC counts use the "
                 "explicit January-December 2025 source windows on the ec7169 "
-                f"national feed. This compares that declaration with the frozen {baseline} "
-                "baseline; it does not redatum the observations to the comparison "
+                "national feed. This compares that declaration with the frozen "
+                "2025 incumbent baseline; it does not redatum the observations to the comparison "
                 "year or create a new year ruling."
             )
         elif "_by_region@" in name and row.get("kind") == "calibration_drift":

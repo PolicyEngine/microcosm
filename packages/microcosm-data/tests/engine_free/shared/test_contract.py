@@ -214,13 +214,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "75ec46b57d350ba65aad808e09ab4c90d02d86f50a4fdf2ce10e5058d220e52b"
+    "bb727d8c8af98b9d3376d5e8eabb2eaeb708a2dd26379cbc3599af38f29a03c4"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "eef1dd46db8f32c5c1bd7ae508475b72b0987df3ba4a68d273a7f86631371f76"
+    "a34f6782a2f2f2da7126d2e3a59881745130ff4d73733b8bd4c38eb425549061"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fb8b643927d6fddb046234488ad140d7505c4bf6d46fae5280d461d3eedea246"
+    "7fffef7f4f2aaeb25a42c06f94388416858ac8d6305d64f0c59d8bc840333872"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -236,11 +236,6 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight", None),
-    "uk_ledger_compile_parity_production_2023": (
-        "ledger_compile_parity",
-        "preflight",
-        None,
-    ),
     "uk_ledger_compile_parity_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -1418,13 +1413,6 @@ def _gate_battery_payload(
             details: dict = {"check": "manifest_current"}
         elif entry_id == "uk_release_family_build_stages":
             details = {"stage_names": list(stage_names)}
-        elif entry_id == "uk_ledger_compile_parity_production_2023":
-            details = {
-                "fixture": "production_2023",
-                "expected_count": 149,
-                "actual_count": 149,
-                "signed_difference_count": 0,
-            }
         elif entry_id == "uk_ledger_compile_parity_incumbent_2025":
             details = {
                 "fixture": "incumbent_2025",
@@ -1484,14 +1472,6 @@ def _gate_battery_payload(
     evidence = {
         "uk_release_family_build_stages": _canonical_sha256(
             {"stage_names": list(stage_names)}
-        ),
-        "uk_ledger_compile_parity_production_2023": _canonical_sha256(
-            {
-                "fixture_resource": "parity_fixture_production_2023.json",
-                "registry_count": 149,
-                "registry_version": "fixture",
-                "signed_differences": [],
-            }
         ),
         "uk_ledger_compile_parity_incumbent_2025": _canonical_sha256(
             {

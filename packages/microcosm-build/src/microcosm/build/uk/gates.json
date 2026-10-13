@@ -28,18 +28,6 @@
       "notes": "Frameless preflight over the materialized stage names: every family the coverage manifest marks required_at_build must have its build stage scheduled before any stage runs."
     },
     {
-      "id": "uk_ledger_compile_parity_production_2023",
-      "gate": "ledger_compile_parity",
-      "phase": "preflight",
-      "criticality": "release_blocking",
-      "parameters": {
-        "fixture_resource": "parity_fixture_production_2023.json",
-        "signed_differences_resource": "ledger_compile_parity_production_2023_signed_differences.json",
-        "target_period": 2023
-      },
-      "notes": "Ledger-compiled UK targets at period 2023 compared with the certified production 2023 calibration surface fixture. Signed differences are committed for adjudication rather than hidden."
-    },
-    {
       "id": "uk_ledger_compile_parity_incumbent_2025",
       "gate": "ledger_compile_parity",
       "phase": "preflight",

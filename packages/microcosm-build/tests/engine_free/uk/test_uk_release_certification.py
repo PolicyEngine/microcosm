@@ -501,7 +501,7 @@ def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_repor
     # The compile-parity gates read an unresolved reference as ledger_absent
     # only from the compile's own report, so a period that was compiled must
     # bring its report, empty or not.
-    with pytest.raises(ValueError, match=r"national compile reported no .*\['2023'\]"):
+    with pytest.raises(ValueError, match=r"national compile reported no .*\['2025'\]"):
         run_uk_release_cut_battery(
             object(),
             report_path=tmp_path / "release_cut_gates.json",
@@ -509,9 +509,9 @@ def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_repor
             diagnostics_sha256="a" * 64,
             coverage_engine=object(),
             build_stage_names=("frs_spine",),
-            ledger_registries={2023: object(), 2025: object()},
+            ledger_registries={2025: object()},
             local_ledger_registries={2025: object()},
-            ledger_unsupported={2025: ()},
+            ledger_unsupported={},
             local_ledger_unsupported={2025: ()},
             parity_evidence=object(),
             fit_weight_records=None,
@@ -536,9 +536,9 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         diagnostics_sha256="a" * 64,
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
-        ledger_registries={2023: object(), 2025: object()},
+        ledger_registries={2025: object()},
         local_ledger_registries={2025: object()},
-        ledger_unsupported={2023: (), 2025: ()},
+        ledger_unsupported={2025: ()},
         local_ledger_unsupported={2025: ()},
         parity_evidence=object(),
         fit_weight_records=None,

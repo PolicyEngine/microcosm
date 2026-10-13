@@ -69,7 +69,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PIPELINE = "uk-frs-release-certification"
-_LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
+_LEDGER_COMPILE_PARITY_PERIODS = (2025,)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 

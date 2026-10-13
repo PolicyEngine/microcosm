@@ -960,9 +960,7 @@ class TestUKCountryPackage:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
@@ -1093,9 +1091,7 @@ class TestExistingPackagesGeneralize:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
@@ -1402,7 +1398,6 @@ class TestUKGatesManifest:
         assert [gate.id for gate in manifest.gates] == [
             "uk_release_input_coverage_manifest_current",
             "uk_release_family_build_stages",
-            "uk_ledger_compile_parity_production_2023",
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
@@ -1487,9 +1482,10 @@ class TestUKGatesManifest:
     ) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
 
-        assert (
-            params["uk_ledger_compile_parity_production_2023"]["target_period"] == 2023
-        )
+        # The comparison with the 2023 production surface is retired (María's
+        # ruling of 2026-10-13): no build reads a 2023 target, and all but 11
+        # of its 149 rows were signed differences.
+        assert "uk_ledger_compile_parity_production_2023" not in params
         assert (
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
         )
