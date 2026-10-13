@@ -133,6 +133,7 @@ def _imputed_frame(monkeypatch: pytest.MonkeyPatch) -> Frame:
         person_outputs=US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         tax_unit_outputs=(),
         seed=11,
+        tail_bound_diagnostics=[],
     )
 
 

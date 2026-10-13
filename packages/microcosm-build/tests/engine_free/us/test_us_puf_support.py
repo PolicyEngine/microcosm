@@ -708,6 +708,7 @@ def test_puf_tax_detail_refuses_formula_owned_outputs() -> None:
             tax_unit_outputs=("interest_deduction",),
             n_estimators=4,
             seed=0,
+            tail_bound_diagnostics=[],
         )
 
 
@@ -1101,6 +1102,7 @@ def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     puf_people = imputed.table("person")[
@@ -1171,6 +1173,7 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     puf_people = imputed.table("person")[
@@ -1241,6 +1244,7 @@ def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1444,6 +1448,7 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1505,6 +1510,7 @@ def test_puf_tax_detail_imputation_distributes_contributions_by_earnings() -> No
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1601,6 +1607,7 @@ def test_puf_tax_detail_imputation_reconciles_social_security_components(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     person = imputed.table("person")
@@ -1679,6 +1686,7 @@ def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
         ),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     puf_tax_units = imputed.table("tax_unit")[
@@ -1769,6 +1777,7 @@ def test_finalize_pins_signed_person_leg_masses_to_loss_heavy_donor(
         tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
+        tail_bound_diagnostics=[],
     )
 
     final_pos, final_neg = _puf_channel_person_legs(imputed, column)
@@ -1849,6 +1858,7 @@ def test_regime_gated_qrf_farm_net_flips_and_calibration_restores_the_source_sig
         raw_predictions_callback=lambda predictions: raw_holder.__setitem__(
             "raw", predictions[column].to_numpy().copy()
         ),
+        tail_bound_diagnostics=[],
     )
 
     # Recover the recipient tax-unit weights to score the raw draw's national net.

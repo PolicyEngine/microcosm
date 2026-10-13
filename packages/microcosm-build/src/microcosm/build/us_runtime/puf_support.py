@@ -425,7 +425,7 @@ def puf_tax_detail_recipient_share_bound_identity() -> dict[str, object]:
         "recipient_share": "household_design_weight_over_puf_recipient_total",
         "cap": "top_slice_positive_mass_per_slice_weight",
         "floor": "bottom_slice_negative_mass_per_slice_weight",
-        "snapped_outputs": "cap_lowered_to_largest_snap_grid_value",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_grid",
         "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
     }
 
@@ -2083,22 +2083,24 @@ def finalize_us_puf_tax_detail_predictions(
             frame,
             recipient_tax_unit_ids,
         )
-    resolved_share_bounds = {
-        output: _recipient_share_slice_bounds(
-            donor[output], donor["weight"], recipient_weights
-        )
-        for output in share_bound_outputs
-    }
     snapped_outputs = (
         _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
     )
+    resolved_share_bounds: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for output in share_bound_outputs:
         if output in snapped_outputs:
-            floor, cap = resolved_share_bounds[output]
-            resolved_share_bounds[output] = (
-                floor,
-                _largest_grid_values_within(cap, _observed_snap_grid(donor[output])),
+            # A snapped output lives on its snap grid, so it is bounded on the
+            # donor's grid values: a slice inside one grid value caps at that
+            # value exactly, and the cap is then lowered onto the grid.
+            floor, cap = _recipient_share_slice_bounds(
+                _snap_grid_values(donor[output]), donor["weight"], recipient_weights
             )
+            cap = _largest_grid_values_within(cap, _observed_snap_grid(donor[output]))
+        else:
+            floor, cap = _recipient_share_slice_bounds(
+                donor[output], donor["weight"], recipient_weights
+            )
+        resolved_share_bounds[output] = (floor, cap)
     if resolved_tail_bounds:
         for output, (quantile, bound) in resolved_tail_bounds.items():
             values = predictions[output].to_numpy(dtype=np.float64, copy=False)
@@ -3793,11 +3795,17 @@ def _ensure_boolean_output_column(table: pd.DataFrame, column: str) -> None:
     )
 
 
+def _snap_grid_values(observed: Sequence[Any]) -> np.ndarray:
+    """Each donor value as :func:`_snap_to_observed_values` places it on its grid."""
+
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    return np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+
+
 def _observed_snap_grid(observed: Sequence[Any]) -> np.ndarray:
     """The sorted donor values :func:`_snap_to_observed_values` snaps onto."""
 
-    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
-    return np.unique(np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0))
+    return np.unique(_snap_grid_values(observed))
 
 
 def _snap_to_observed_values(

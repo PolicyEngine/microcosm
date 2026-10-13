@@ -609,15 +609,39 @@ def test_snapped_outputs_stay_on_observed_values_within_the_bound() -> None:
 
     finalized = _finalize(frame, donor, {_SNAPPED: raw}, diagnostics=[])
 
-    _, cap = _bounds(donor[_SNAPPED], donor["weight"], _recipient_weights(frame))
-    actual = _puf_values(finalized, _SNAPPED)
     grid = puf_support_module._observed_snap_grid(donor[_SNAPPED])
+    _, cap = _bounds(
+        puf_support_module._snap_grid_values(donor[_SNAPPED]),
+        donor["weight"],
+        _recipient_weights(frame),
+    )
+    actual = _puf_values(finalized, _SNAPPED)
     assert (actual <= cap).all()
     assert np.isin(actual, grid).all()
     assert actual[1] < raw[1]
     # The cap of the heaviest-share draw is not itself a donor value; the draw
     # lands on the largest donor value within it.
     assert actual[1] == grid[grid <= cap[1]].max()
+
+
+def test_draws_at_a_tied_maximum_on_the_snap_grid_are_not_clipped() -> None:
+    # Statutory caps aged by a factor leave the donor's maximum off the integer
+    # grid (4,504.8 here) yet tied across many returns. The bound is computed
+    # on the grid the column snaps to, so draws at that maximum snap to it
+    # unmoved instead of being clipped to the grid value below.
+    frame = _recipient_frame([20.0, 400.0, 600.0, 980.0])
+    donor = pd.DataFrame(
+        {_SNAPPED: [4_504.8, 1_000.4, 0.0], "weight": [500.0, 400.0, 100.0]}
+    )
+    raw = np.asarray([4_504.8, 4_504.8, 4_504.8, 0.0])
+    diagnostics: list[dict[str, object]] = []
+
+    finalized = _finalize(frame, donor, {_SNAPPED: raw}, diagnostics=diagnostics)
+
+    assert diagnostics[0]["clipped_row_count"] == 0
+    np.testing.assert_array_equal(
+        _puf_values(finalized, _SNAPPED), [4_505.0, 4_505.0, 4_505.0, 0.0]
+    )
 
 
 def test_sparsification_rescales_bounded_draws_by_one_common_factor() -> None:
@@ -632,7 +656,9 @@ def test_sparsification_rescales_bounded_draws_by_one_common_factor() -> None:
     finalized = _finalize(frame, donor, {_SNAPPED: raw}, diagnostics=[])
 
     weights = _recipient_weights(frame)
-    floor, cap = _bounds(donor[_SNAPPED], donor["weight"], weights)
+    floor, cap = _bounds(
+        puf_support_module._snap_grid_values(donor[_SNAPPED]), donor["weight"], weights
+    )
     grid = puf_support_module._observed_snap_grid(donor[_SNAPPED])
     lowered = puf_support_module._largest_grid_values_within(cap, grid)
     before = puf_support_module._snap_to_observed_values(

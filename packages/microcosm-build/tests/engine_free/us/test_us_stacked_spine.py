@@ -553,6 +553,7 @@ def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -609,6 +610,7 @@ def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None
         person_outputs=boolean_outputs,
         tax_unit_outputs=(),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -649,6 +651,7 @@ def test_finalize_preserve_nulls_rejects_numeric_boolean_materialization() -> No
             person_outputs=(column,),
             tax_unit_outputs=(),
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            tail_bound_diagnostics=[],
         )
 
 
@@ -664,6 +667,7 @@ def test_finalize_legacy_zero_fill_reproduces_the_audited_defect() -> None:
         predictions.copy(),
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
@@ -689,6 +693,7 @@ def test_finalize_legacy_zero_fill_matches_run_7_protocol_5_byte_pin() -> None:
         predictions.copy(),
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
+        tail_bound_diagnostics=[],
     )
 
     actual = (
@@ -717,6 +722,7 @@ def test_preserve_nulls_sparsification_never_rewrites_native_rows() -> None:
         person_outputs=("taxable_interest_income",),
         tax_unit_outputs=("health_savings_account_ald",),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
 
     person = finalized.table("person")
