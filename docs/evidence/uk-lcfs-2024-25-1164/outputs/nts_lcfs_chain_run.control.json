@@ -3,7 +3,7 @@
   "bus_in_london_trips": 773317753.9145,
   "other_local_bus_trips": 2109236539.655149
  },
- "bus_fare_spending": 4142682769.5600243,
+ "bus_fare_spending": 4143463915.562045,
  "bus_use_band_shares_persons": {
   "0": 0.4917363515754304,
   "1": 0.07421785766210076,
@@ -56,7 +56,7 @@
   "2": 0.21252032262027326,
   "3": 0.7252057175195741
  },
- "seconds": 143.5,
+ "seconds": 701.5,
  "spine": "uk_frs_spine_2024_25.h5",
- "transport_consumption": 185521471586.3274
+ "transport_consumption": 185358782449.10486
 }

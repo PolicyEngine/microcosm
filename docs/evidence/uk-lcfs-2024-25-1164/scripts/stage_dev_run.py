@@ -168,7 +168,11 @@ def _sanitized_support_clip(receipt) -> dict[str, object]:
     columns = {}
     for column, entry in (receipt or {}).get("columns", {}).items():
         columns[column] = {
-            key: (_count(value) if isinstance(value, int) else value)
+            key: (
+                _count(value)
+                if isinstance(value, int) and not isinstance(value, bool)
+                else value
+            )
             for key, value in entry.items()
             if key not in ("donor_min", "donor_max")
         }
