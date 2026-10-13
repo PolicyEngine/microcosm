@@ -104,6 +104,7 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
         "is_household_head",
         "weekly_hours",
         "tax_free_savings_income",
+        "uc_reported_capital",
     }
     inputs = set(engine.variables())
     for name in claimed:
@@ -115,9 +116,11 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
     # debt, a car's list price and the Lifetime ISA balance, which the engine
     # documents as already inside the household's financial wealth.
-    # uc_reported_capital is a benefit-unit input, unset at -1, that the
-    # uc_assessable_capital formula reads in place of both a household proxy
-    # apportioned by claimant and partner count and the person-level sources.
+    # uc_reported_capital is formula-owned since policyengine-uk 2.124.0: unless
+    # set directly it is benunit_reported_capital, a benefit-unit input unset at
+    # -1. The uc_assessable_capital formula reads it in place of both a
+    # household proxy apportioned by claimant and partner count and the
+    # person-level sources.
     inputs = set(engine.variables())
     person_stocks = {
         name
@@ -134,9 +137,14 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name
         assert engine.variable_metadata(name).entity == "household", name
-    assert "uc_reported_capital" in inputs
+    assert "benunit_reported_capital" in inputs
+    assert engine.variable_metadata("benunit_reported_capital").entity == "benunit"
+    assert engine._variable("benunit_reported_capital").default_value == -1
+    assert "uc_reported_capital" not in inputs
     assert engine.variable_metadata("uc_reported_capital").entity == "benunit"
     assert engine._variable("uc_reported_capital").default_value == -1
+    reported = inspect.getsource(engine._variable("uc_reported_capital").get_formula())
+    assert 'benunit("benunit_reported_capital", period)' in reported
     assert "uc_assessable_capital" not in inputs
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "uc_reported_capital" in source

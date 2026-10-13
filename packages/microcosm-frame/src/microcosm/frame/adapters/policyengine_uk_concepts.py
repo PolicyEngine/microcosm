@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING"]
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.123.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.127.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -185,7 +185,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.123.0",
+    engine_version="2.127.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -533,10 +533,11 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "(gov.dwp.universal_credit.means_test.capital.sources), and "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
             "value, is its one person-level source (capital.person_sources). "
-            "uc_reported_capital (benefit unit; 'Claimant-level capital for "
-            "Universal Credit when household-level asset data cannot be "
-            "attributed across multiple benefit units', default -1) is "
-            "Universal Credit capital: when it is zero or more, "
+            "uc_reported_capital (benefit unit, default -1) is Universal "
+            "Credit capital. It is formula-owned since policyengine-uk 2.124.0: "
+            "unless set directly it is benunit_reported_capital, a benefit-unit "
+            "input ('Savings and investments of the benefit unit's adults (the "
+            "claimant and any partner) as recorded'). When it is zero or more, "
             "uc_assessable_capital takes it in place of both the "
             "household-capital proxy it otherwise sums from the household "
             "sources, net of capital other benefit units report, and "
