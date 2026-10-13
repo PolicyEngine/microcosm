@@ -46,6 +46,7 @@ hhs_acf_tanf|hhs_acf_tanf
 hhs_acf_tanf|cash_assistance_expenditures
 irs_soi|adjusted_gross_income
 irs_soi|assigned_aca_ptc
+irs_soi|business_net_income_less_loss
 irs_soi|business_net_profits
 irs_soi|capital_gains_gross
 irs_soi|charitable_deduction
@@ -67,11 +68,13 @@ irs_soi|miscellaneous_losses
 irs_soi|non_sch_d_capital_gains
 irs_soi|ordinary_dividend_income
 irs_soi|partnership_and_s_corp_income
+irs_soi|partnership_and_s_corp_net_income_less_loss
 irs_soi|qualified_dividends
 irs_soi|qualified_business_income_deduction
 irs_soi|real_estate_taxes
 irs_soi|refundable_ctc
 irs_soi|rent_and_royalty_net_income
+irs_soi|rent_and_royalty_net_income_less_loss
 irs_soi|salt_deduction
 irs_soi|tax_exempt_interest_income
 irs_soi|taxable_income

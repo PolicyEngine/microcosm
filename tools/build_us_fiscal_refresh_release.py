@@ -244,6 +244,7 @@ from microcosm.build.us_runtime.exact_k_ladder import (
 from microcosm.build.us_runtime.fiscal_targets import (
     AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
     AGE_BOUND_STAMP_SOURCE_KEY,
+    SOI_NET_INCOME_LESS_LOSS_VARIABLES,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from microcosm.build.us_runtime.h5_io import (
@@ -6016,8 +6017,19 @@ def _assert_supported_ledger_filter_metadata(
 
 
 def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
+    """The tax-unit amount an SOI concept sums.
+
+    AGI and the net-income-(less-loss) concepts keep the sign: their IRS
+    columns net losses against income (microcosm#1228). A ``*_losses``
+    concept on a signed column is the magnitude of its negative part (Table
+    1.4 "net loss"); ``capital_gains_losses`` reads ``capital_losses``, which
+    is a magnitude already. Every other concept is the positive part.
+    """
     values = np.asarray(values, dtype=np.float64)
-    if source_name in {"adjusted_gross_income", "rent_and_royalty_net_income"}:
+    if (
+        source_name == "adjusted_gross_income"
+        or source_name in SOI_NET_INCOME_LESS_LOSS_VARIABLES
+    ):
         return values
     if source_name == "capital_gains_losses":
         return np.maximum(values, 0.0)
@@ -6035,8 +6047,17 @@ def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
 def _soi_component_row(
     values: np.ndarray, source_name: str, *, indicator: bool
 ) -> np.ndarray:
+    """One SOI target row per tax unit: the summed amount, or a return flag.
+
+    A return counts when its component is positive, except for a
+    net-income-(less-loss) concept, whose IRS count is every return with an
+    entry on the line, net income or net loss (HT2 N00900 = Table 1.4
+    col 31 + col 33, microcosm#1228).
+    """
     component = _signed_component(values, source_name)
     if indicator:
+        if source_name in SOI_NET_INCOME_LESS_LOSS_VARIABLES:
+            return (component != 0).astype(np.float64)
         return (component > 0).astype(np.float64)
     return component
 

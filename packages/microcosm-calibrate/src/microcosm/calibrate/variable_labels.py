@@ -95,6 +95,7 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
         "irs_soi": {
             "adjusted_gross_income": "Adjusted gross income",
             "assigned_aca_ptc": "Assigned ACA PTC",
+            "business_net_income_less_loss": "Business net income (less loss)",
             "business_net_profits": "Business net profits",
             "capital_gains_gross": "Gross capital gains",
             "charitable_deduction": "Charitable deduction",
@@ -119,6 +120,9 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "non_sch_d_capital_gains": "Non-Schedule D capital gains",
             "ordinary_dividend_income": "Ordinary dividend income",
             "partnership_and_s_corp_income": "Partnership and S corporation income",
+            "partnership_and_s_corp_net_income_less_loss": (
+                "Partnership and S corporation net income (less loss)"
+            ),
             "qualified_dividends": "Qualified dividends",
             "qualified_business_income_deduction": (
                 "Qualified business income deduction"
@@ -126,6 +130,9 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "real_estate_taxes": "Real estate taxes",
             "refundable_ctc": "Refundable CTC",
             "rent_and_royalty_net_income": "Rent and royalty net income",
+            "rent_and_royalty_net_income_less_loss": (
+                "Rent and royalty net income (less loss)"
+            ),
             "salt_deduction": "SALT deduction",
             "tax_exempt_interest_income": "Tax-exempt interest income",
             "taxable_income": "Taxable income",

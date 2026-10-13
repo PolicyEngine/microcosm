@@ -1,8 +1,10 @@
 import dataclasses
+import functools
 import hashlib
 import importlib.util
 import inspect
 import json
+import math
 import os
 import sys
 from dataclasses import replace
@@ -14,6 +16,8 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import (
@@ -1939,16 +1943,62 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         builder._signed_component(np.array([-5.0, 0.0, 7.0]), "business_net_losses"),
         np.array([5.0, -0.0, -0.0]),
     )
+    # The Table 1.4 "net income" leg is a positive part like every other
+    # income leg; the signed Historic Table 2 column has its own concept
+    # (microcosm#1228).
     assert np.array_equal(
         builder._signed_component(
             np.array([-5.0, 0.0, 7.0]), "rent_and_royalty_net_income"
         ),
-        np.array([-5.0, 0.0, 7.0]),
+        np.array([0.0, 0.0, 7.0]),
     )
+    for concept in (
+        "business_net_income_less_loss",
+        "partnership_and_s_corp_net_income_less_loss",
+        "rent_and_royalty_net_income_less_loss",
+    ):
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), concept),
+            np.array([-5.0, 0.0, 7.0]),
+        )
     assert np.array_equal(
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
+
+
+def test_net_income_less_loss_concepts_are_the_registered_signed_set() -> None:
+    """The materializer keeps the sign for exactly the registered concepts,
+    and each of them reads one model column from the SOI variable map."""
+    builder = _load_builder_module()
+
+    assert builder.SOI_NET_INCOME_LESS_LOSS_VARIABLES == {
+        "business_net_income_less_loss",
+        "partnership_and_s_corp_net_income_less_loss",
+        "rent_and_royalty_net_income_less_loss",
+    }
+    assert {
+        concept: builder.SOI_VARIABLE_MAP[concept]
+        for concept in builder.SOI_NET_INCOME_LESS_LOSS_VARIABLES
+    } == {
+        # Schedule 1 line 3 is every Schedule C, SSTB or not.
+        "business_net_income_less_loss": "total_self_employment_income",
+        "partnership_and_s_corp_net_income_less_loss": (
+            "tax_unit_partnership_s_corp_income"
+        ),
+        # Schedule E line 26 leaves out Form 4835 farm rental (line 40).
+        "rent_and_royalty_net_income_less_loss": "rental_income",
+    }
+    values = np.array([-3.0, 0.0, 2.0])
+    signed = {
+        concept
+        for concept in builder.SOI_VARIABLE_MAP
+        if (builder._signed_component(values, concept) < 0).any()
+    }
+    assert signed == {
+        "adjusted_gross_income",
+        *builder.SOI_NET_INCOME_LESS_LOSS_VARIABLES,
+    }
 
 
 def test_export_target_audit_is_opt_in(monkeypatch) -> None:
@@ -2878,7 +2928,9 @@ def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
     assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
 
 
-def test_soi_indicator_rows_flag_positive_component_items() -> None:
+def test_soi_indicator_rows_flag_component_items() -> None:
+    """A return counts when its component is positive; a net-income-(less-loss)
+    return counts when its signed total is nonzero (microcosm#1228)."""
     builder = _load_builder_module()
 
     assert np.array_equal(
@@ -2904,6 +2956,119 @@ def test_soi_indicator_rows_flag_positive_component_items() -> None:
             indicator=True,
         ),
         np.array([1.0, 0.0, 0.0]),
+    )
+    # A "net income (less loss)" count is every return with an entry on the
+    # line, net income or net loss (microcosm#1228).
+    for concept in (
+        "business_net_income_less_loss",
+        "partnership_and_s_corp_net_income_less_loss",
+        "rent_and_royalty_net_income_less_loss",
+    ):
+        assert np.array_equal(
+            builder._soi_component_row(
+                np.array([-5.0, 0.0, 7.0]), concept, indicator=True
+            ),
+            np.array([1.0, 0.0, 1.0]),
+        )
+        assert np.array_equal(
+            builder._soi_component_row(
+                np.array([-5.0, 0.0, 7.0]), concept, indicator=False
+            ),
+            np.array([-5.0, 0.0, 7.0]),
+        )
+
+
+# Each signed column's (net income, net loss) legs: Table 1.4's split of the
+# line Historic Table 2 publishes as one "net income (less loss)" column.
+_NET_INCOME_LESS_LOSS_LEGS = {
+    "business_net_income_less_loss": ("business_net_profits", "business_net_losses"),
+    "partnership_and_s_corp_net_income_less_loss": (
+        "partnership_and_s_corp_income",
+        "partnership_and_s_corp_losses",
+    ),
+    "rent_and_royalty_net_income_less_loss": (
+        "rent_and_royalty_net_income",
+        "rent_and_royalty_net_losses",
+    ),
+}
+
+
+@functools.cache
+def _cached_builder_module():
+    return _load_builder_module()
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    concept=st.sampled_from(sorted(_NET_INCOME_LESS_LOSS_LEGS)),
+    rows=st.lists(
+        st.tuples(
+            st.one_of(
+                st.just(0.0),
+                st.floats(
+                    min_value=-1e9,
+                    max_value=1e9,
+                    allow_nan=False,
+                    allow_infinity=False,
+                ),
+            ),
+            st.integers(min_value=0, max_value=100_000),
+        ),
+        max_size=60,
+    ),
+)
+def test_net_income_less_loss_rows_are_the_sum_of_their_table_1_4_legs(
+    concept: str, rows: list[tuple[float, int]]
+) -> None:
+    """For every signed tax-unit vector and nonnegative weights, read as one
+    signed column (microcosm#1228):
+
+    - count conservation: the weighted less-loss count equals the net-income
+      leg's count plus the net-loss leg's count;
+    - amount conservation: the weighted less-loss amount equals the net-income
+      leg's amount minus the net-loss leg's amount;
+    - bounds: the less-loss count is at least the net-income count, and the
+      less-loss amount at most the net-income amount;
+    - sign symmetry: negating every value leaves the count unchanged and
+      negates the amount.
+
+    For business the conservation laws are the published identities
+    N00900 = Table 1.4 col 31 + col 33 and A00900 = col 32 - col 34. Table
+    1.4's rental legs report Schedule E lines 26 + 39 + 40 and its TY2021+
+    partnership and S-corp legs are per entity type, so for those the property
+    checks the model's own decomposition of one column.
+    """
+    builder = _cached_builder_module()
+    values = np.array([value for value, _ in rows], dtype=np.float64)
+    weights = np.array([weight for _, weight in rows], dtype=np.float64)
+    income_leg, loss_leg = _NET_INCOME_LESS_LOSS_LEGS[concept]
+
+    def total(source_name: str, vector: np.ndarray, *, indicator: bool) -> float:
+        row = builder._soi_component_row(vector, source_name, indicator=indicator)
+        return math.fsum(row * weights)
+
+    count = total(concept, values, indicator=True)
+    income_count = total(income_leg, values, indicator=True)
+    loss_count = total(loss_leg, values, indicator=True)
+    # Integer weights times 0/1 flags sum exactly in float64.
+    assert count == income_count + loss_count
+    assert count >= income_count
+
+    amount = total(concept, values, indicator=False)
+    income_amount = total(income_leg, values, indicator=False)
+    loss_amount = total(loss_leg, values, indicator=False)
+    assert loss_amount >= 0.0
+    assert math.isclose(
+        amount, income_amount - loss_amount, rel_tol=1e-12, abs_tol=1e-3
+    )
+    assert amount <= income_amount + 1e-3
+
+    assert total(concept, -values, indicator=True) == count
+    assert math.isclose(
+        total(concept, -values, indicator=False),
+        -amount,
+        rel_tol=1e-12,
+        abs_tol=1e-3,
     )
 
 
