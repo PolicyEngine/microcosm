@@ -1,7 +1,7 @@
 {
- "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5": "base_populace_us_2024_puf_support.h5",
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
- "exported_table_outputs": "/private/tmp/claude-501/-Users-maxghenis-Library-Application-Support-Claude-scratch-workspaces-c0861266-1b0e-425f-9c14-2cf2a3d1d567-eedf19ad-6956-46cd-ad08-5b640fb3bcb8-scratch-2026-10-09-4e6b44/583fe62e-3bb8-4f7b-8a84-2077721d0c14/scratchpad/platform/outputs.macos_arm64.npz",
+ "exported_table_outputs": "outputs.macos_arm64.npz",
  "exported_table_outputs_sha256": "ec2c4533087060dbfafd6cca524ab489a67b07782bc70a574685de8cbfc76f6b",
  "full_table_columns": 301,
  "rows": 907863,

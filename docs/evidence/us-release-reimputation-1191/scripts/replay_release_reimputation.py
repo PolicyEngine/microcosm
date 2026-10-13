@@ -283,14 +283,14 @@ def main() -> None:
     diagnostics = json.loads(args.release_diagnostics.read_text())
     base_sha = sha256(args.base_h5)
     header = {
-        "builder_root": str(args.builder_root),
+        "builder_root": Path(args.builder_root).name,
         "builder_head": (args.builder_root / ".git").exists()
         and os.popen(f"git -C '{args.builder_root}' rev-parse HEAD").read().strip(),
-        "base_h5": str(args.base_h5),
+        "base_h5": Path(args.base_h5).name,
         "base_h5_sha256": base_sha,
-        "release_h5": str(args.release_h5),
+        "release_h5": Path(args.release_h5).name,
         "release_h5_sha256": sha256(args.release_h5),
-        "release_diagnostics": str(args.release_diagnostics),
+        "release_diagnostics": Path(args.release_diagnostics).name,
         "release_diagnostics_sha256": sha256(args.release_diagnostics),
         "variants": args.variant,
         "seed": args.seed,

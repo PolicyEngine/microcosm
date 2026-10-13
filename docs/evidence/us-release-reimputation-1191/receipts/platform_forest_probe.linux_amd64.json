@@ -1,5 +1,5 @@
 {
- "input": "/work/retirement_stage_input.pkl",
+ "input": "retirement_stage_input.pkl",
  "platform": {
   "python": "3.14.2 (main, Feb  3 2026, 03:09:04) [GCC 12.2.0]",
   "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.36",

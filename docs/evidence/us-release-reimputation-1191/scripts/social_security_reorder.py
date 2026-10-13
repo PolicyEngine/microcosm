@@ -45,7 +45,7 @@ def main() -> None:
     before = values.sum(axis=1)
     after = (values * factors).sum(axis=1)
     receipt: dict[str, object] = {
-        "base_h5": str(base_path),
+        "base_h5": Path(base_path).name,
         "base_h5_sha256": sha256(base_path),
         "diagnostics_sha256": sha256(diagnostics_path),
         "factors": dict(zip(columns, factors.tolist())),

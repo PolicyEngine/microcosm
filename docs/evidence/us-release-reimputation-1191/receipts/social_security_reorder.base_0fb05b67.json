@@ -1,5 +1,5 @@
 {
- "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5": "base_populace_us_2024_puf_support.h5",
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
  "diagnostics_sha256": "64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80",
  "factors": {

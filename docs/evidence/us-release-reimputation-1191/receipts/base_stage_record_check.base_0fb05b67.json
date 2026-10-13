@@ -1,5 +1,5 @@
 {
- "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5": "base_populace_us_2024_puf_support.h5",
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
  "columns": {
   "roth_401k_contributions_desired": {
@@ -30,6 +30,6 @@
  },
  "stage": "retirement_contributions_post_clone",
  "stage_checkpoint_sha256": "6e156717c839d7982bf013cc4269a9775abc12950ec3b19ccf63314013808e1d",
- "stage_run_context": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-sup/modal-stage_run_context.json",
+ "stage_run_context": "modal-stage_run_context.json",
  "stage_run_context_sha256": "6a7aaf7893cee8d30f2f87bf94c712f07d9cdacb22e354280cba1371e3ee0b76"
 }

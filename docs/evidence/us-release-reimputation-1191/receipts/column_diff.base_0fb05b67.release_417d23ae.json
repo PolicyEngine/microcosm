@@ -1,5 +1,5 @@
 {
- "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5": "base_populace_us_2024_puf_support.h5",
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
  "entities": {
   "family": {
@@ -895,6 +895,6 @@
    "rows_release": 467432
   }
  },
- "release_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+ "release_h5": "populace_us_2024.h5",
  "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
 }

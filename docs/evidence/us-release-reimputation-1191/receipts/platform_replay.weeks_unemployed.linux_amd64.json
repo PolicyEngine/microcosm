@@ -1,6 +1,6 @@
 {
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
- "input": "/work/other/weeks_unemployed.pkl",
+ "input": "weeks_unemployed.pkl",
  "input_sha256": "6c44909f2c5388ec9239cc3546f30da43f5ba8539a3188f4217d672f4f329bfb",
  "period": 2024,
  "platform": {

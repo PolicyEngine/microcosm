@@ -48,9 +48,9 @@ def main() -> None:
     ).set_index("household_id")["household_weight"]
     weights = person["person_household_id"].map(household).to_numpy(dtype=np.float64)
     receipt = {
-        "base_h5": str(base_path),
+        "base_h5": Path(base_path).name,
         "base_h5_sha256": sha256(base_path),
-        "stage_run_context": str(context_path),
+        "stage_run_context": Path(context_path).name,
         "stage_run_context_sha256": sha256(context_path),
         "stage": STAGE,
         "stage_checkpoint_sha256": record["checkpoint_sha256"],

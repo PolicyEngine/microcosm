@@ -1,7 +1,7 @@
 {
- "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5": "base_populace_us_2024_puf_support.h5",
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
- "release_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+ "release_h5": "populace_us_2024.h5",
  "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
  "stages": {
   "childcare": {
@@ -24,7 +24,7 @@
    "columns_added_on_request": [],
    "full_table_run_vs_stored_base_rows_differing": 54,
    "full_table_run_vs_stored_release_rows_differing": 1801,
-   "pickle": "/Users/maxghenis/.cache/microcosm-platform-replay/other/childcare.pkl",
+   "pickle": "childcare.pkl",
    "pickle_sha256": "1cbf4651f785fd4db9409b91dd3b458bd9e372e91bb9cad19c3382413de299f5",
    "rows": 907863,
    "slim_reproduces_full_table_output": true,
@@ -50,7 +50,7 @@
    "columns_added_on_request": [],
    "full_table_run_vs_stored_base_rows_differing": 17,
    "full_table_run_vs_stored_release_rows_differing": 3283,
-   "pickle": "/Users/maxghenis/.cache/microcosm-platform-replay/other/energy_subsidy.pkl",
+   "pickle": "energy_subsidy.pkl",
    "pickle_sha256": "2eec1dc7900ba38a41cb2ffef14400baee63d568482514a4a09e4ce3cfe8dc9a",
    "rows": 907863,
    "slim_reproduces_full_table_output": true,
@@ -77,7 +77,7 @@
    "columns_added_on_request": [],
    "full_table_run_vs_stored_base_rows_differing": 9,
    "full_table_run_vs_stored_release_rows_differing": 0,
-   "pickle": "/Users/maxghenis/.cache/microcosm-platform-replay/other/weeks_unemployed.pkl",
+   "pickle": "weeks_unemployed.pkl",
    "pickle_sha256": "6c44909f2c5388ec9239cc3546f30da43f5ba8539a3188f4217d672f4f329bfb",
    "rows": 907863,
    "slim_reproduces_full_table_output": true,

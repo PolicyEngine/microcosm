@@ -1,6 +1,6 @@
 {
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
- "input": "/work/other/childcare.pkl",
+ "input": "childcare.pkl",
  "input_sha256": "1cbf4651f785fd4db9409b91dd3b458bd9e372e91bb9cad19c3382413de299f5",
  "period": 2024,
  "platform": {

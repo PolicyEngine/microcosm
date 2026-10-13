@@ -1,6 +1,6 @@
 {
  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
- "input": "/work/other/energy_subsidy.pkl",
+ "input": "energy_subsidy.pkl",
  "input_sha256": "2eec1dc7900ba38a41cb2ffef14400baee63d568482514a4a09e4ce3cfe8dc9a",
  "period": 2024,
  "platform": {

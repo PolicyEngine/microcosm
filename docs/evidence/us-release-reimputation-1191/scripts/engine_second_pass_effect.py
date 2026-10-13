@@ -102,9 +102,9 @@ def main() -> None:
     ).to_numpy()
 
     receipt: dict[str, object] = {
-        "base_h5": str(base_path),
+        "base_h5": Path(base_path).name,
         "base_h5_sha256": sha256(base_path),
-        "release_h5": str(release_path),
+        "release_h5": Path(release_path).name,
         "release_h5_sha256": sha256(release_path),
         "policyengine_us": md.version("policyengine-us"),
         "policyengine_core": md.version("policyengine-core"),

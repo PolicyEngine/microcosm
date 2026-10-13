@@ -125,10 +125,10 @@ def verify_export(args: argparse.Namespace) -> None:
     saved = np.load(args.outputs)
     assert np.array_equal(saved["person_id"], stage_person["person_id"].to_numpy())
     receipt = {
-        "base_h5": str(args.base_h5),
+        "base_h5": Path(args.base_h5).name,
         "base_h5_sha256": base_sha,
         "full_table_columns": int(stage_person.shape[1]),
-        "exported_table_outputs": str(args.outputs),
+        "exported_table_outputs": Path(args.outputs).name,
         "exported_table_outputs_sha256": sha256(args.outputs),
         "rows": int(len(stage_person)),
         "rows_differing_full_table_vs_exported_table": {
@@ -163,9 +163,9 @@ def export(args: argparse.Namespace) -> None:
         slim[f"stored_base__{column}"] = slim[column].to_numpy(dtype=np.float64)
         slim[f"stored_release__{column}"] = release[column].to_numpy(dtype=np.float64)
     slim.attrs = {
-        "base_h5": str(args.base_h5),
+        "base_h5": Path(args.base_h5).name,
         "base_h5_sha256": base_sha,
-        "release_h5": str(args.release_h5),
+        "release_h5": Path(args.release_h5).name,
         "release_h5_sha256": sha256(args.release_h5),
     }
     slim.to_pickle(args.out)
@@ -224,7 +224,7 @@ def replay(args: argparse.Namespace) -> None:
         limiter.restore_original_limits()
     aligned = output.set_index("person_id").reindex(slim["person_id"].to_numpy())
     receipt: dict[str, object] = {
-        "input": str(args.input),
+        "input": Path(args.input).name,
         "input_sha256": sha256(Path(args.input)),
         "input_attrs": dict(slim.attrs),
         "seed": args.seed,
@@ -281,7 +281,7 @@ def replay(args: argparse.Namespace) -> None:
     if args.compare_outputs is not None:
         previous = np.load(args.compare_outputs)
         assert np.array_equal(previous["person_id"], slim["person_id"].to_numpy())
-        receipt["compared_with"] = str(args.compare_outputs)
+        receipt["compared_with"] = Path(args.compare_outputs).name
         receipt["rows_differing_from_compared"] = {
             column: int((replayed_columns[column] != previous[column]).sum())
             for column in OUTPUTS
@@ -290,7 +290,7 @@ def replay(args: argparse.Namespace) -> None:
         np.savez_compressed(
             args.outputs, person_id=slim["person_id"].to_numpy(), **replayed_columns
         )
-        receipt["outputs"] = str(args.outputs)
+        receipt["outputs"] = Path(args.outputs).name
     Path(args.out).write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
     print(
         json.dumps(
@@ -309,9 +309,9 @@ def compare(args: argparse.Namespace) -> None:
     left, right = np.load(args.left), np.load(args.right)
     assert np.array_equal(left["person_id"], right["person_id"])
     receipt: dict[str, object] = {
-        "left": str(args.left),
+        "left": Path(args.left).name,
         "left_sha256": sha256(args.left),
-        "right": str(args.right),
+        "right": Path(args.right).name,
         "right_sha256": sha256(args.right),
         "rows": int(len(left["person_id"])),
         "columns": {},

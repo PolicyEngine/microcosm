@@ -153,9 +153,9 @@ def export(args: argparse.Namespace) -> None:
     weights = frame.resolve_weights("person").values
     args.out_dir.mkdir(parents=True, exist_ok=True)
     receipt: dict[str, object] = {
-        "base_h5": str(args.base_h5),
+        "base_h5": Path(args.base_h5).name,
         "base_h5_sha256": base_sha,
-        "release_h5": str(args.release_h5),
+        "release_h5": Path(args.release_h5).name,
         "release_h5_sha256": release_sha,
         "stages": {},
     }
@@ -280,7 +280,7 @@ def export(args: argparse.Namespace) -> None:
         out = args.out_dir / f"{name}.pkl"
         pd.to_pickle(payload, out)
         receipt["stages"][name] = {
-            "pickle": str(out),
+            "pickle": Path(out).name,
             "pickle_sha256": sha256(out),
             "rows": int(len(slim)),
             "columns": keep,
@@ -315,7 +315,7 @@ def replay(args: argparse.Namespace) -> None:
     labels = payload["labels"]
     receipt: dict[str, object] = {
         "stage": name,
-        "input": str(args.input),
+        "input": Path(args.input).name,
         "input_sha256": sha256(Path(args.input)),
         "base_h5_sha256": payload["base_h5_sha256"],
         "release_h5_sha256": payload["release_h5_sha256"],

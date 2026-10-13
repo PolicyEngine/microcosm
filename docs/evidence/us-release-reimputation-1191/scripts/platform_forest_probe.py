@@ -314,7 +314,7 @@ def run(args: argparse.Namespace) -> None:
         config=SourceRuntimeConfig(seed=0, target_year=2024),
     )
     receipt = {
-        "input": str(args.input),
+        "input": Path(args.input).name,
         "platform": {
             "python": sys.version,
             "platform": platform.platform(),

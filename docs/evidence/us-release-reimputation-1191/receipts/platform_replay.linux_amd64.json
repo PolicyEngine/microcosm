@@ -121,15 +121,15 @@
    }
   }
  },
- "input": "/work/retirement_stage_input.pkl",
+ "input": "retirement_stage_input.pkl",
  "input_attrs": {
-  "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+  "base_h5": "base_populace_us_2024_puf_support.h5",
   "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
-  "release_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+  "release_h5": "populace_us_2024.h5",
   "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
  },
  "input_sha256": "e283b6703f9a48c933c81517faaa2e2e8ef7047ee47ea88242c464d894d9413f",
- "outputs": "/work/out/outputs.linux_amd64.npz",
+ "outputs": "outputs.linux_amd64.npz",
  "period": 2024,
  "platform": {
   "cpu_count": 2,
