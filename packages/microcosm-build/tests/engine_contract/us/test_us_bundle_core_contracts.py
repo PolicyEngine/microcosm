@@ -8,8 +8,8 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
     __import__("policyengine_us")
     catalog = build_catalogs()
     columns = catalog["columns"]
-    assert len(columns) == 176
-    assert len({row["key"] for row in columns}) == 176
+    assert len(columns) == 177
+    assert len({row["key"] for row in columns}) == 177
     assert catalog["metadata_waivers"] == [
         {
             "id": "policyengine_us_unit_unavailable",

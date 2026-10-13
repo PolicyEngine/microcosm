@@ -1584,7 +1584,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert (
         len(requests)
         == counts["smoke_probes"] + counts["validation_reform_passes"]
-        == 107
+        == 108
     )
 
     frame, log = _nested_frame(), _EngineLog()

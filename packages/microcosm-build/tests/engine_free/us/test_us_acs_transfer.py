@@ -3025,10 +3025,39 @@ def test_passive_reconciliation_clears_only_newly_imputed_subsets_without_line_3
 
     # A pre-existing (immutable) subset is preserved even with no line 32.
     person.loc[5, "partnership_income"] = 0.0
-    passive, _ = reconcile_acs_passive_partnership_s_corp(
-        person, mutable_rows=mutable
-    )
+    passive, _ = reconcile_acs_passive_partnership_s_corp(person, mutable_rows=mutable)
     assert passive.iloc[5] == 10.0
+
+
+def test_passive_reconciliation_clears_a_unit_whose_line_32_cancels() -> None:
+    """Both people carry line 32, but the unit's total is zero.
+
+    A rule that looked only at each person's own amount would keep both
+    subsets (review of microcosm#1251).
+    """
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [7, 7],
+            "partnership_income": [100.0, 0.0],
+            "s_corp_income": [0.0, -100.0],
+            "passive_partnership_s_corp_income": [30.0, 40.0],
+        }
+    )
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=np.ones(2, dtype=bool)
+    )
+
+    assert passive.tolist() == [0.0, 0.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 2,
+        "remaining_nonzero_subset_rows": 0,
+    }
 
 
 @pytest.mark.parametrize("missing", ["partnership_income", "person_tax_unit_id"])
@@ -3054,7 +3083,8 @@ def test_passive_reconciliation_property_holds_for_random_draws() -> None:
         reconcile_acs_passive_partnership_s_corp,
     )
 
-    amount = st.sampled_from([0.0, 0.0, -300.0, 75.0, 1_250.0])
+    # Equal and opposite amounts make units whose line 32 cancels common.
+    amount = st.sampled_from([0.0, 0.0, -100.0, 100.0, 1_250.0])
 
     @settings(max_examples=200, deadline=None)
     @given(
@@ -3124,3 +3154,103 @@ def test_passive_reconciliation_is_bound_into_transfer_execution_identity() -> N
         is False
     )
     assert enabled["sha256"] != disabled["sha256"]
+
+
+def test_transfer_reconciles_imputed_passive_subsets_and_records_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public transfer applies the rule to the cells it fills.
+
+    Every imputed passive cell gets the donor mean; only the one under a
+    nonzero own and unit line 32 keeps it. The measured cell is kept as it
+    is, and the provenance carries the reconciliation counts.
+    """
+
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "partnership_income": [
+                4_000.0,
+                0.0,
+                -1_000.0,
+                0.0,
+                2_000.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            "s_corp_income": [0.0] * 8,
+            "passive_partnership_s_corp_income": [
+                800.0,
+                0.0,
+                -200.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            # Measured line 32: unit 110 carries 500 on its first person,
+            # unit 120 has none, and unit 130's two amounts cancel.
+            "partnership_income": [500.0, 0.0, 0.0, 100.0, 0.0, 0.0],
+            "s_corp_income": [0.0, 0.0, 0.0, 0.0, -100.0, 0.0],
+            "passive_partnership_s_corp_income": [
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                7.0,
+            ],
+        },
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "pass_through": (
+                    "partnership_income",
+                    "s_corp_income",
+                    "passive_partnership_s_corp_income",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    person = result.frame.person
+    passive = person["passive_partnership_s_corp_income"]
+    # The transfer fits one mean model per recipient predictor pattern, so the
+    # surviving cell holds one of those fits' donor means.
+    fitted_means = {
+        float(call["targets"]["passive_partnership_s_corp_income"].mean())
+        for call in _MeanQRF.calls
+        if "passive_partnership_s_corp_income" in call["targets"]
+    }
+    assert passive.iloc[0] in fitted_means
+    assert passive.iloc[0] != 0.0
+    assert passive.iloc[1:].tolist() == [0.0, 0.0, 0.0, 0.0, 7.0]
+    pd.testing.assert_series_equal(
+        person["partnership_income"], recipient.person["partnership_income"]
+    )
+    provenance = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "passive_partnership_s_corp_income"
+    )
+    assert provenance.imputed_recipient_rows == 5
+    assert provenance.reconciliation == {
+        "cleared_subset_without_line_32": 4,
+        "remaining_nonzero_subset_rows": 1,
+    }

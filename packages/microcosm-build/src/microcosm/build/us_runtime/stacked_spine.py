@@ -5096,11 +5096,14 @@ def validate_stacked_post_puf_transfer_receipt(
             f"{boundary}: stacked post-PUF transfer target receipts do not "
             "prove zero residual nulls; production manifest emission is forbidden."
         )
+    # The counts come from the canonical partition and surface checked above.
+    # Their sizes are pinned once, at import: 19 groups in
+    # us_late_producer_registry and 71 targets in this module's surface check.
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
-        "group_count": 19,
-        "target_count": 71,
+        "group_count": len(expected_groups),
+        "target_count": len(expected_target_labels),
         "residual_null_rows": 0,
     }:
         raise ValueError(
