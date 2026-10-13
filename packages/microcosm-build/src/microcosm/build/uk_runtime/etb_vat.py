@@ -50,7 +50,7 @@ UK_ETB_VAT_ENGINE_PREDICTORS = tuple(
 )
 UK_ETB_VAT_OUTPUT_COLUMNS = ("full_rate_vat_expenditure_rate",)
 #: The full-rate VAT expenditure rate is a share of expenditure after VAT, so
-#: it lies in [0, 1] (uk-data#572). The raw ETB accounts carry households whose
+#: it lies in [0, 1] (microcosm#1225, uk-data#572). The raw ETB accounts carry households whose
 #: VAT equals or exceeds their disposable expenditure, which leave nothing for
 #: the rate to be a share of; they are dropped from the donor, and the rates
 #: above one, where little expenditure is left after VAT, are capped at one.
