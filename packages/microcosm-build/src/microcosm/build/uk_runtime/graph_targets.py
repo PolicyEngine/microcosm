@@ -216,7 +216,7 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets
+        from . import full_targets, high_value_homes
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -225,6 +225,7 @@ class _TargetKernel(KernelBase):
             full_problem,
             full_targets,
             cross_grain,
+            high_value_homes,
             ladder_targets,
             ledger_targets,
             local_doctrine,
@@ -350,6 +351,7 @@ def compile_uk_full_target_surface(
             "local_source_pin": inputs["local_source_pin"],
             "register_completeness": inputs["register_completeness"],
             "ledger_provenance": inputs["ledger_provenance"],
+            "derived_fact_provenance": inputs.get("derived_fact_provenance"),
             "targets": {
                 "chronicle": inputs["ledger_provenance"],
                 "paired_ladder_sha256": ladder_sha256,

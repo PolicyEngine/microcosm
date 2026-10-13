@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     materialize_uk_ledger_targets,
 )
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -379,6 +380,7 @@ def _run_engine_blocks(
                     area_type,
                     period=period,
                     household_ids=block_household_ids,
+                    input_period=int(uk_time_period(block_frame)),
                 )
             )
         resolver_receipts.append(

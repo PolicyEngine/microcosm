@@ -16,6 +16,9 @@ import pytest
 
 from microcosm.build.uk_runtime import metric_names
 from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_target_census import (
@@ -23,6 +26,7 @@ from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
+    SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE,
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
     SOURCE_STATUS_SIGNED_DEFERRED,
     assert_uk_local_target_census_current,
@@ -101,8 +105,17 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["status"] in {
             SOURCE_STATUS_DOCUMENTED_UNPINNED,
             SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+            SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE,
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
+        if source["status"] == SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE:
+            # microcosm#1240: the derived resource restates its own row digest
+            # beside the shared Chronicle pin its auxiliary facts came from.
+            pin = source["derived_resource_pin"]
+            derived = load_uk_high_value_home_stock_facts()
+            assert pin["rows_sha256"] == derived.rows_sha256
+            assert pin["rows"] == len(derived.rows)
+            assert source["ledger_fact_pin"]["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
             # One UK Chronicle pin governs both grains (uk/chronicle_feed.json);
             # the census restates it rather than carrying its own digest.

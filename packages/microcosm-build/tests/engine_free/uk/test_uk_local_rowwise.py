@@ -462,6 +462,7 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     )
     assert receipt["dormant"] == [
         "full_frs_tei_band_unavailable",
+        "high_value_home_stock_derived_estimate",
         "hmrc_spi_frame_model_proxy",
         "population_universe_private_households",
         "uc_unit_vs_household_grain",

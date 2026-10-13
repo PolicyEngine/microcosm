@@ -9,6 +9,9 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -780,7 +783,7 @@ def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            facts,
+            (*facts, *load_uk_high_value_home_stock_facts().rows),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

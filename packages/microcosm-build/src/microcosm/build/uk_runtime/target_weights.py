@@ -88,7 +88,13 @@ LOCAL_SURFACE_MATERIALIZATION = "uk_local_surface"
 
 _COUNT, _AMOUNT = "count", "amount"
 _LOCAL_AMOUNT_METRIC_PREFIXES = ("rent/", "ons/equiv_")
-_LOCAL_COUNT_METRIC_PREFIXES = ("age/", "council_tax/", "tenure/", "uc_")
+_LOCAL_COUNT_METRIC_PREFIXES = (
+    "age/",
+    "council_tax/",
+    "high_value_homes/",
+    "tenure/",
+    "uc_",
+)
 _LOCAL_COUNT_METRICS = frozenset({"households"})
 _NATIONAL_COUNT_UNITS = frozenset({"count"})
 _NATIONAL_AMOUNT_UNIT_PREFIX = "gbp"

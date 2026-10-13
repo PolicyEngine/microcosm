@@ -1236,7 +1236,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 52,
+    "contract_target_count": 55,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1685,7 +1685,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 27,
+    "activation_added_rows": 30,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1794,6 +1794,18 @@
       {
         "target_id": "hmrc.higher_rate_taxpayers.count",
         "basis": "microcosm#1123; pinned HMRC SPI 2023-24 Tables 3.14 and 3.15 higher rate taxpayers by constituency and local authority, England, Wales and Northern Ireland"
+      },
+      {
+        "target_id": "microcosm.high_value_homes.over_1m",
+        "basis": "microcosm#1240; Microcosm-derived owner-occupied homes valued over £1m by constituency and local authority (England and Wales) from HM Land Registry Price Paid Data, the UK HPI and the NSPL, carried in the committed derived-facts resource"
+      },
+      {
+        "target_id": "microcosm.high_value_homes.over_1_5m",
+        "basis": "microcosm#1240; Microcosm-derived owner-occupied homes valued over £1.5m by constituency and local authority (England and Wales) from HM Land Registry Price Paid Data, the UK HPI and the NSPL, carried in the committed derived-facts resource"
+      },
+      {
+        "target_id": "microcosm.high_value_homes.over_2m",
+        "basis": "microcosm#1240; Microcosm-derived owner-occupied homes valued over £2m by constituency and local authority (England and Wales) from HM Land Registry Price Paid Data, the UK HPI and the NSPL, carried in the committed derived-facts resource"
       }
     ],
     "scope_target_ids": [
@@ -1848,7 +1860,10 @@
       "scotgov.council_tax_stock.by_area.band_f",
       "scotgov.council_tax_stock.by_area.band_g",
       "scotgov.council_tax_stock.by_area.band_h",
-      "hmrc.higher_rate_taxpayers.count"
+      "hmrc.higher_rate_taxpayers.count",
+      "microcosm.high_value_homes.over_1m",
+      "microcosm.high_value_homes.over_1_5m",
+      "microcosm.high_value_homes.over_2m"
     ]
   },
   "targets": [
@@ -30963,6 +30978,234 @@
       "category_id": "hmrc.tax_statistics",
       "label": "Higher rate taxpayers",
       "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1m",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes/over_1m",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "in": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE"
+              ]
+            },
+            {
+              "variable": "main_residence_value",
+              "operator": ">",
+              "value": 1000000,
+              "price_basis": "2026-04",
+              "input_period": "dataset"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "high_value_homes/over_1m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1"
+      },
+      "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1 million",
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1_5m",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1500000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes/over_1_5m",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "in": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE"
+              ]
+            },
+            {
+              "variable": "main_residence_value",
+              "operator": ">",
+              "value": 1500000,
+              "price_basis": "2026-04",
+              "input_period": "dataset"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "high_value_homes/over_1_5m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1"
+      },
+      "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1.5 million",
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 2000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes/over_2m",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "in": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE"
+              ]
+            },
+            {
+              "variable": "main_residence_value",
+              "operator": ">",
+              "value": 2000000,
+              "price_basis": "2026-04",
+              "input_period": "dataset"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "high_value_homes/over_2m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1"
+      },
+      "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £2 million",
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
     }
   ],
   "diagnostic_references": {
@@ -31345,6 +31588,9 @@
       },
       "dfc_ni": {
         "label": "Department for Communities (Northern Ireland)"
+      },
+      "microcosm": {
+        "label": "Microcosm derived statistics"
       }
     },
     "categories": {
@@ -31527,6 +31773,10 @@
       "dwp.attendance_allowance": {
         "provider_id": "dwp",
         "label": "Attendance Allowance"
+      },
+      "microcosm.high_value_homes": {
+        "provider_id": "microcosm",
+        "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
       }
     }
   }

@@ -206,6 +206,10 @@ def test_households_metric_is_in_the_computed_surface() -> None:
                 True,
             ],
             "is_child": [1.0, 0.0, 0.0, 1.0],
+            # microcosm#1240: the high_value_homes metrics read the stored
+            # home value and tenure of every household.
+            "main_residence_value": [0.0, 2_500_000.0, 0.0],
+            "tenure_type": ["RENT_PRIVATELY", "OWNED_OUTRIGHT", "RENT_PRIVATELY"],
         }
 
         def calculate(self, variable, **_kwargs):
