@@ -70,6 +70,7 @@ from test_support.microcosm_build.transport_population import (
     run_population,
     write_population_sources,
 )
+from test_support.paths import paths_for
 
 PROPERTY = settings(
     max_examples=8,
@@ -720,6 +721,57 @@ def test_create_enforces_full_feed_pin_before_reading_donor(tmp_path):
     manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
     with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
         TRANSPORT_CREATE.run(context)
+
+
+@pytest.mark.parametrize("hours,independent", [(35, True), (20, False)])
+def test_create_applies_cited_unit_spec_and_reports_hours_diagnostics(
+    tmp_path, hours, independent
+):
+    def edit_tables(tables):
+        person = tables["person"]
+        person["weekly_hours_worked_before_lsr"] = 0
+        person.loc[2, "age"] = 17
+        person.loc[2, "weekly_hours_worked_before_lsr"] = hours
+
+    sources = write_population_sources(tmp_path / "sources", edit_tables=edit_tables)
+    path = (
+        paths_for("microcosm-build").package
+        / "src/microcosm/build/nz/benefit_unit_rule.json"
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+    node = create_node(sources)
+    node = replace(
+        node,
+        params={
+            **node.params,
+            "unit_rule": canonical_text(document),
+            "unit_rule_sha256": digest(document),
+        },
+    )
+    result = TRANSPORT_CREATE.run(
+        KernelContext(
+            node=node,
+            tables={},
+            weights={},
+            strata=pd.Series([], dtype=object),
+            params=node.params,
+            rng=np.random.default_rng(0),
+            sources={"donor": sources.donor, "facts": sources.facts},
+        )
+    )
+    person = result.frame.person
+    assert person.loc[2, "usual_weekly_hours"] == hours
+    assert (
+        person.loc[2, "person_family_id"] == person.loc[2, "person_id"]
+    ) == independent
+    assert result.receipt["n_units"] == 2 + int(independent)
+    assert dict(result.receipt["unit_construction"]) == {
+        "hours_independent_children": int(independent),
+        "independent_teen_parents": 0,
+        "dependent_teen_parents": 0,
+        "non_partnered_coparent_households": 0,
+        "children_with_reference_person": 0,
+    }
 
 
 def _with_band_references(graph, references):

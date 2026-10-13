@@ -153,8 +153,12 @@ def target_inputs(monkeypatch, toy_ladder):
         full_targets, "load_uk_full_target_inputs", lambda *args, **kwargs: inputs
     )
     reference = {"value": 33.0, "period": 2026}
+    # #1123: the census household level is the nations' controls summed; the
+    # fixture's national register carries none, so the reference is stood in.
     monkeypatch.setattr(
-        graph_targets, "uk_ledger_households_total", lambda *args, **kwargs: reference
+        graph_targets,
+        "uk_nation_households_reference",
+        lambda *args, **kwargs: reference,
     )
 
     def surface():

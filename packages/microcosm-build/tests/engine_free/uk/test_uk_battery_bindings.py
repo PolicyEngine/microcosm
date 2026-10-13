@@ -1326,14 +1326,17 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 20_885
-        assert result.details["reference_targets"] == 22_464
-        # Only the 1,579 signed area deferrals and absences remain (2,100
+        assert result.details["candidate_targets"] == 21_804
+        assert result.details["reference_targets"] == 23_386
+        # Only the 1,582 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
-        # Shetland band H is the one Scottish support deferral); the 1,011
-        # household rows are ordinary Chronicle-compiled references.
+        # Shetland band H is the one Scottish support deferral; microcosm#1123
+        # adds the three higher rate taxpayer gaps); the 1,011 household rows
+        # are ordinary Chronicle-compiled references. The small-cell rules
+        # are unsigned, so they defer nothing yet: signing them moves these
+        # counts with the regenerated references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_579
+        assert len(exclusions) == 1_582
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

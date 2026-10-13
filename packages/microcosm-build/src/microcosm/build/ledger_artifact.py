@@ -308,14 +308,17 @@ def load_ledger_consumer_artifact(
                 "Ledger consumer artifact fact rows do not match the "
                 f"manifest hash: {facts_sha256} != {declared}."
             )
-    artifact = LedgerConsumerArtifact(
-        path=artifact_path,
-        facts=_load_fact_rows(facts_path),
-        facts_sha256=facts_sha256,
-        manifest=manifest,
-        manifest_sha256=manifest_sha256,
-    )
+    # Full-feed-pin refusals keep precedence over the optional legacy hashes.
+    # Without a full pin, reject known digest mismatches before parsing rows.
+    artifact = None
     if feed_pin is not None:
+        artifact = LedgerConsumerArtifact(
+            path=artifact_path,
+            facts=_load_fact_rows(facts_path),
+            facts_sha256=facts_sha256,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+        )
         validate_chronicle_feed_pin(artifact, feed_pin)
     if expected_facts_sha256 is not None and expected_facts_sha256 != facts_sha256:
         raise ValueError(
@@ -334,6 +337,14 @@ def load_ledger_consumer_artifact(
                 f"hash: {manifest_sha256} != {expected_manifest_sha256}."
             )
 
+    if artifact is None:
+        artifact = LedgerConsumerArtifact(
+            path=artifact_path,
+            facts=_load_fact_rows(facts_path),
+            facts_sha256=facts_sha256,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+        )
     return artifact
 
 

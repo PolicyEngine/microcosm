@@ -44,7 +44,11 @@ from microcosm.frame.transport import (
     quantile_map,
     read_populace_us_donor,
 )
-from microcosm.frame.unit_construction import BenefitUnitRule, build_benefit_units
+from microcosm.frame.unit_construction import (
+    BenefitUnitRule,
+    benefit_unit_diagnostics,
+    build_benefit_units,
+)
 from microcosm.graph import (
     ROWS_ALL,
     Capabilities,
@@ -223,7 +227,7 @@ class TransportCreateKernel(KernelBase):
                 item = concept_for_column(entity, column)
                 if item is not None and item.dtype == "str":
                     table[column] = table[column].astype(text)
-        rule = BenefitUnitRule.from_dict(
+        rule = BenefitUnitRule.from_spec(
             canonical_document_param(context, self.ref, "unit_rule")
         )
         if rule.entity != "family":
@@ -287,6 +291,9 @@ class TransportCreateKernel(KernelBase):
                 "n_persons": len(person),
                 "n_households": len(household),
                 "n_units": len(family),
+                "unit_construction": benefit_unit_diagnostics(
+                    person, household, family, membership, rule
+                ),
                 "mass_reference": registry.specs[0].name,
                 "facts": dict(surface.facts),
             },

@@ -123,6 +123,24 @@ def test_rejects_facts_pin_mismatch(tmp_path):
         )
 
 
+@pytest.mark.parametrize("hash_kind", ["facts", "manifest"])
+def test_rejects_hash_pin_mismatch_before_parsing_malformed_rows(tmp_path, hash_kind):
+    artifact_dir = _write_artifact_dir(tmp_path, [_fact_row()])
+    facts_path = artifact_dir / "consumer_facts.jsonl"
+    facts_path.write_text("{broken json}\n")
+    facts_sha256 = hashlib.sha256(facts_path.read_bytes()).hexdigest()
+    _rewrite_manifest(artifact_dir, facts_sha256=facts_sha256)
+    if hash_kind == "facts":
+        message = "Ledger consumer facts do not match the pinned hash"
+    else:
+        message = "Ledger consumer artifact manifest does not match the pinned hash"
+
+    with pytest.raises(ValueError, match=message):
+        load_ledger_consumer_artifact(
+            artifact_dir, **{f"expected_{hash_kind}_sha256": "0" * 64}
+        )
+
+
 def test_rejects_manifest_pin_mismatch_and_bare_manifest_pin(tmp_path):
     artifact_dir = _write_artifact_dir(tmp_path, [_fact_row()])
     with pytest.raises(ValueError, match="manifest does not match"):
@@ -394,6 +412,27 @@ def test_full_feed_pin_error_precedes_legacy_hash_error(tmp_path):
             artifact_dir, feed_pin=pin, expected_facts_sha256=pin["facts_sha256"]
         )
     _assert_pin_mismatch(exc.value, "facts_sha256", pin["facts_sha256"], changed_hash)
+
+
+@pytest.mark.parametrize("hash_kind", ["facts", "manifest"])
+@pytest.mark.parametrize(
+    ("field", "altered"),
+    [
+        ("consumer_fact_schema_versions", ["chronicle.consumer_fact.v5"]),
+        ("fact_row_count", 2),
+    ],
+)
+def test_full_feed_row_pin_error_precedes_legacy_hash_error(
+    tmp_path, hash_kind, field, altered
+):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(
+            artifact_dir,
+            feed_pin={**pin, field: altered},
+            **{f"expected_{hash_kind}_sha256": "0" * 64},
+        )
+    _assert_pin_mismatch(exc.value, field, altered, pin[field])
 
 
 @pytest.fixture(scope="module")
