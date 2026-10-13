@@ -180,6 +180,7 @@ from microcosm.build.us_runtime.puf_support import (
     bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
+    puf_tax_detail_recipient_share_bound_identity,
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
@@ -5406,7 +5407,7 @@ def _late_resource_binding_schema_version(
     kind = _late_virtual_resource_kind(column)
     versions = {
         "acs_pums_earnings_universe_execution_config": 2,
-        "primary_puf_execution_config": 5,
+        "primary_puf_execution_config": 6,
         "post_clone_source_execution_config": 3,
         "source_finalizer_execution_config": 2,
         "late_transfer_model_config": 3,
@@ -5607,8 +5608,13 @@ def _validate_late_resource_binding(
             "tax_unit_outputs",
             "invocation_mode",
             "tail_bound_quantiles",
+            "recipient_share_bound",
             "worker_execution",
         }
+        if legacy_worker_authentication is not None:
+            # The attested schema-4 pool predates the recipient-share bound and
+            # truthfully records none; it is admitted for scoring only.
+            qrf_keys.discard("recipient_share_bound")
         if not isinstance(qrf, Mapping) or set(qrf) != qrf_keys:
             raise ValueError(f"{boundary}: late primary-QRF config is malformed.")
         require_nonnegative_integer(qrf.get("seed"), label="QRF seed")
@@ -5644,6 +5650,12 @@ def _validate_late_resource_binding(
             puf_tax_detail_tail_bound_quantiles_identity()
         ):
             raise ValueError(f"{boundary}: late primary-QRF tail bounds changed.")
+        if legacy_worker_authentication is None and qrf.get(
+            "recipient_share_bound"
+        ) != (puf_tax_detail_recipient_share_bound_identity()):
+            raise ValueError(
+                f"{boundary}: late primary-QRF recipient-share bound changed."
+            )
         recorded_worker = qrf.get("worker_execution")
         if legacy_worker_authentication is not None:
             if (
@@ -6110,7 +6122,7 @@ def _late_primary_execution_config_binding(
     )
     return {
         "resource_kind": "primary_puf_execution_config",
-        "schema_version": 5,
+        "schema_version": 6,
         "clone_attachment": {
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
@@ -6138,6 +6150,7 @@ def _late_primary_execution_config_binding(
                 ),
             },
             "tail_bound_quantiles": (puf_tax_detail_tail_bound_quantiles_identity()),
+            "recipient_share_bound": (puf_tax_detail_recipient_share_bound_identity()),
             "worker_execution": _late_primary_qrf_worker_execution_binding(),
         },
         "doctrines": {

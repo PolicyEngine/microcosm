@@ -96,6 +96,7 @@ def _finalize(
     *,
     person_outputs: tuple[str, ...] = (_TARGET,),
     diagnostics: list[dict[str, object]] | None = None,
+    **kwargs: object,
 ) -> Frame:
     return puf_support_module.finalize_us_puf_tax_detail_predictions(
         frame,
@@ -104,6 +105,7 @@ def _finalize(
         person_outputs=person_outputs,
         tax_unit_outputs=(),
         tail_bound_diagnostics=diagnostics,
+        **kwargs,
     )
 
 
@@ -150,16 +152,20 @@ def test_finalizer_clips_tail_without_changing_participation_or_lower_bits() -> 
     np.testing.assert_array_equal(actual, [0.0, 50.0, 100.0, 100.0])
     assert np.count_nonzero(actual > 0.0) == np.count_nonzero(raw > 0.0)
     np.testing.assert_array_equal(actual[:2].view(np.uint64), raw[:2].view(np.uint64))
-    assert diagnostics == [
-        {
-            "output": _TARGET,
-            "quantile": 0.999,
-            "bound_value": 100.0,
-            "clipped_row_count": 2,
-            "clipped_mass_before": 1_903.0,
-            "clipped_mass_after": 700.0,
-        }
-    ]
+    assert diagnostics[0] == {
+        "output": _TARGET,
+        "quantile": 0.999,
+        "bound_value": 100.0,
+        "clipped_row_count": 2,
+        "clipped_mass_before": 1_903.0,
+        "clipped_mass_after": 700.0,
+    }
+    # The recipient-share bound runs after the quantile cap; every draw is
+    # already within its slice, so it records the output and moves nothing.
+    assert len(diagnostics) == 2
+    assert diagnostics[1]["output"] == _TARGET
+    assert diagnostics[1]["rule"] == "recipient_share_slice_mass"
+    assert diagnostics[1]["clipped_row_count"] == 0
 
 
 def test_nonconfigured_output_is_bit_identical_through_finalizer() -> None:
@@ -174,12 +180,15 @@ def test_nonconfigured_output_is_bit_identical_through_finalizer() -> None:
     )
 
     diagnostics: list[dict[str, object]] = []
+    # Isolate the quantile map: the recipient-share bound covers every amount
+    # output and has its own tests (test_us_puf_recipient_share_bound.py).
     finalized = _finalize(
         frame,
         _tail_donor(**{_NONCONFIGURED_OUTPUT: [1.0, 2.0, 3.0]}),
         predictions,
         person_outputs=(_TARGET, _NONCONFIGURED_OUTPUT),
         diagnostics=diagnostics,
+        recipient_share_bound_outputs=(),
     )
 
     actual = _puf_person_values(finalized, _NONCONFIGURED_OUTPUT)
