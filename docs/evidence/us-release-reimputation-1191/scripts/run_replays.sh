@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Run the three replay groups one after another (each holds ~12 GB).
+# Run the three replay groups one after another.
 #
 # Usage: run_replays.sh BUILDER_ROOT BASE_H5 RELEASE_H5 RELEASE_DIAGNOSTICS ASEC_2023_PPPUB23
 #   BUILDER_ROOT  checkout of the commit that built the release (its .venv is used)

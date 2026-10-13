@@ -13,11 +13,11 @@ compares the five outputs with the stored base and release values. Run it on
 the platform under test; nothing in it reads the H5 files. ``--weight-factor``
 multiplies every person weight (the release's mass repair), ``--threads``
 limits BLAS/OpenMP pools, forest fit jobs and draw workers, and
-``--compare-outputs`` compares the outputs bit for bit with an earlier run.
+``--compare-outputs`` compares the output values exactly with an earlier run.
 
 ``compare`` compares two saved output files (``--outputs``) from different
 platforms, row by row. ``verify-export`` runs the stage on the full person
-table and checks that it gives, bit for bit, the outputs a replay of the
+table and checks that it gives exactly the output values a replay of the
 exported column-reduced table saved.
 
 Usage:
@@ -112,8 +112,8 @@ def run_stage(stage, table: pd.DataFrame, seed: int, period: int) -> pd.DataFram
 
 
 def verify_export(args: argparse.Namespace) -> None:
-    """Run the stage on the full person table and compare, bit for bit, with
-    the outputs a replay of the exported (column-reduced) table saved."""
+    """Run the stage on the full person table and compare its output values
+    exactly with those a replay of the exported (column-reduced) table saved."""
 
     stage, stage_person, _, base_sha = full_stage_person(
         args.builder_root, args.base_h5

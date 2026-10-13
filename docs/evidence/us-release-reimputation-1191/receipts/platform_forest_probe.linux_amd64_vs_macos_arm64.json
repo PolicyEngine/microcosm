@@ -2,7 +2,7 @@
  "inputs": {
   "left": {
    "file": "forest_probe.linux_amd64.json",
-   "sha256": "743f08e7f7a250a5efb20a9a1588ac54547548936018b14058ee9dcd6676177a"
+   "sha256": "56c3b173274c61069836dc5e51fa286dd540108072e05c1ef9ab69f1cb3209ba"
   },
   "left_arrays": {
    "file": "forest_probe.linux_amd64.npz",
@@ -10,7 +10,7 @@
   },
   "right": {
    "file": "forest_probe.macos_arm64.json",
-   "sha256": "c33ab2588d1858ccfffb6f9334600f859bab3e8d2775ca69a774a5b8f2aaa085"
+   "sha256": "a806f72e9c4550899722cc368fb865b0f22c61272a08e423dd907b9c71d1056e"
   },
   "right_arrays": {
    "file": "forest_probe.macos_arm64.npz",
@@ -83,7 +83,7 @@
     "gain_relative_difference_median": 6.6133469154579225e-15,
     "gain_relative_difference_max": 2.560344539754044e-11,
     "same_node_samples_both_platforms": 100,
-    "same_parent_impurity_bitwise": 49,
+    "same_parent_impurity": 49,
     "different_feature": 100,
     "same_feature_different_threshold": 0,
     "by_feature_pair": {
@@ -698,7 +698,7 @@
     "gain_relative_difference_median": 6.679237959233657e-13,
     "gain_relative_difference_max": 0.5,
     "same_node_samples_both_platforms": 100,
-    "same_parent_impurity_bitwise": 21,
+    "same_parent_impurity": 21,
     "different_feature": 100,
     "same_feature_different_threshold": 0,
     "by_feature_pair": {
@@ -1159,7 +1159,7 @@
     "gain_relative_difference_median": 3.7855241957249285e-15,
     "gain_relative_difference_max": 3.4172097765511723e-13,
     "same_node_samples_both_platforms": 100,
-    "same_parent_impurity_bitwise": 61,
+    "same_parent_impurity": 61,
     "different_feature": 100,
     "same_feature_different_threshold": 0,
     "by_feature_pair": {
@@ -1536,7 +1536,7 @@
     "gain_relative_difference_median": 3.0440581961957462e-15,
     "gain_relative_difference_max": 2.633901754605203e-13,
     "same_node_samples_both_platforms": 100,
-    "same_parent_impurity_bitwise": 60,
+    "same_parent_impurity": 60,
     "different_feature": 100,
     "same_feature_different_threshold": 0,
     "by_feature_pair": {
@@ -1913,7 +1913,7 @@
     "gain_relative_difference_median": 0.0,
     "gain_relative_difference_max": 2.1365923309528746e-14,
     "same_node_samples_both_platforms": 27,
-    "same_parent_impurity_bitwise": 19,
+    "same_parent_impurity": 19,
     "different_feature": 27,
     "same_feature_different_threshold": 0,
     "by_feature_pair": {

@@ -100,7 +100,8 @@ commit that built the release, loads the base with the builder's
 3. The population mass repair alone (factor 1.0253 on every household weight)
    changes nothing, and neither does limiting BLAS/OpenMP pools, forest fit
    jobs and draw workers to four threads: each reproduces the re-run on the
-   unchanged base bit for bit on all five contribution columns
+   unchanged base exactly (equal values on every row) on all five contribution
+   columns
    (`platform_replay.macos_arm64.{mass_factor,threads4}.json`).
 4. Re-running on the unchanged base on macOS does not reproduce the Modal-built
    base: retirement contributions differ on 21,765 PUF persons for the
@@ -117,7 +118,7 @@ commit that built the release, loads the base with the builder's
    from the base and replayed with the production stage code on linux/amd64
    (CPython 3.14.2 and the base build's uv.lock wheels, under QEMU) and on
    macOS arm64. Each exported table keeps only the columns its stage reads and
-   gives the full table's output bit for bit
+   gives exactly the full table's output values
    (`platform_export_check.retirement.macos_arm64.json`,
    `platform_other_stages.export.macos_arm64.json`). Rows that differ from the
    Modal-built base:
@@ -246,7 +247,7 @@ release's platform.
 | `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed), checks it against the full table, replays it on any platform, optionally with a weight factor or a thread limit, and compares two platforms | `receipts/platform_replay*.json`, `receipts/platform_export_check.retirement.macos_arm64.json`, `receipts/platform_outputs.linux_amd64_vs_macos_arm64.json` |
 | `scripts/platform_other_stages.py` | The same export and replay for weeks unemployed, childcare and energy subsidy | `receipts/platform_other_stages.export.macos_arm64.json`, `receipts/platform_replay.{weeks_unemployed,childcare,energy_subsidy}.linux_amd64.json` |
 | `scripts/release_change_decomposition.py` | Each changed row classed by cause, from the stored values and both platforms' replays | `receipts/release_change_decomposition.base_0fb05b67.release_417d23ae.json` |
-| `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent node | `receipts/platform_forest_probe.*.json` |
+| `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent node; the comparison first checks each arrays file against the sha256 its fingerprint records and every stored array against its digest | `receipts/platform_forest_probe.*.json` |
 | `scripts/platform/` | The linux/amd64 harness: a `python:3.14.2-slim-bookworm` image, the stages' third-party imports at the base build's locked versions and hashes (`req.min.txt`), and a loader that imports a stage module without the package `__init__` chains | `receipts/platform_replay*.linux_amd64.json` |
 
 Receipts bind the files they read by name and sha256. The replays of weeks

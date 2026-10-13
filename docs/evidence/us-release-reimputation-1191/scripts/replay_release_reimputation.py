@@ -46,6 +46,7 @@ import importlib.util
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -266,6 +267,21 @@ def with_recorded_ss_factors(frame, diagnostics: dict):
     )
 
 
+def builder_head(root: Path) -> str | bool:
+    """The builder checkout's commit, or ``False`` when it is not a git
+    checkout."""
+
+    if not (Path(root) / ".git").exists():
+        return False
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--builder-root", type=Path, required=True)
@@ -284,8 +300,7 @@ def main() -> None:
     base_sha = sha256(args.base_h5)
     header = {
         "builder_root": Path(args.builder_root).name,
-        "builder_head": (args.builder_root / ".git").exists()
-        and os.popen(f"git -C '{args.builder_root}' rev-parse HEAD").read().strip(),
+        "builder_head": builder_head(args.builder_root),
         "base_h5": Path(args.base_h5).name,
         "base_h5_sha256": base_sha,
         "release_h5": Path(args.release_h5).name,

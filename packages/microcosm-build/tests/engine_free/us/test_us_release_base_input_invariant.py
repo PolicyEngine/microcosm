@@ -21,7 +21,7 @@ or passes it a flag that consumes the base's value, changes what the replay
 runs.
 
 1. Idempotence: re-running a stage on its own unchanged output reproduces
-   every output bit for bit. Holds.
+   every output value exactly. Holds.
 2. The release's population mass repair (one factor on every household
    weight) leaves every re-run output unchanged. Holds; the property module
    samples other factors.
@@ -32,7 +32,9 @@ runs.
    untouched either way.
 4. Inventory: every stage call in ``_main`` that the base builder also makes
    is pinned, with its guard and constant keyword arguments, so a new or
-   changed re-run has to be classified against invariant 3.
+   changed re-run has to be classified against invariant 3. So are the two
+   value repairs the release frames above apply, and their order before the
+   stages.
 
 The full-scale differential of a real base and release, and replays of these
 stages on that base, are under ``docs/evidence/us-release-reimputation-1191/``.
@@ -44,12 +46,16 @@ import numpy as np
 import pytest
 
 from test_support.microcosm_build.us_release_base_input import (
+    BASE_TOOL,
+    PERIOD,
+    RELEASE_TOOL,
     ROUTE_A_SS_FACTORS,
     STAGES,
     ReleaseScenario,
     UnmodeledReleaseCallError,
     assert_identical,
     base_builder_call_names,
+    constant_binding,
     load_release_tool,
     outputs,
     release_stage,
@@ -121,6 +127,19 @@ _EXPECTED_POOL_ABSENT_STATEMENTS = (
     (
         "base_frame = with_us_wic_claim_input(base_frame, seed=args.seed"
         ", time_period=PERIOD)"
+    ),
+)
+# The value repairs ``_main`` makes on the --base-h5 path, in source order:
+# ``ReleaseScenario`` applies the first two before the stages, as here.
+_EXPECTED_REPAIR_STATEMENTS = (
+    "base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)",
+    (
+        "base_frame, social_security_component_repair = "
+        "_with_social_security_component_value_repair(base_frame, target_specs)"
+    ),
+    (
+        "base_frame, non_sch_d_cgd_repair = "
+        "_with_non_sch_d_cgd_value_repair(base_frame, target_specs)"
     ),
 )
 # The three of those the base builder does not call.
@@ -255,6 +274,34 @@ def test_release_calls_to_base_stages_are_pinned() -> None:
         assert [call.name for call in calls].count(function.__name__) == 1
 
 
+def test_release_value_repairs_precede_the_stage_calls() -> None:
+    calls = release_stage_calls()
+    repairs = [
+        call
+        for call in calls
+        if call.name.endswith("_repair") and call.name.startswith("_with_")
+    ]
+    stage_lines = [
+        call.lineno
+        for call in calls
+        if call.name in {function.__name__ for _, _, function in STAGES.values()}
+    ]
+
+    assert tuple(call.statement for call in repairs) == _EXPECTED_REPAIR_STATEMENTS
+    assert all(call.plain and call.on_base_h5_path is True for call in repairs)
+    # The mass repair runs only without a validated pool; the value repairs
+    # run on every path.
+    assert [call.path for call in repairs] == [("pool_frame is None",), (), ()]
+    assert max(call.lineno for call in repairs) < min(stage_lines)
+
+
+def test_both_builders_bind_the_replayed_period() -> None:
+    # The base builder's --target-year defaults to its PERIOD.
+    assert constant_binding(BASE_TOOL.read_text(), "PERIOD") == PERIOD
+    assert constant_binding(RELEASE_TOOL.read_text(), "PERIOD") == PERIOD
+    assert {call.period for call in release_stage_calls()} == {PERIOD}
+
+
 _READER_SOURCE = """
 def _main():
     if pool_frame is None:
@@ -320,8 +367,8 @@ def test_stage_call_reader_evaluates_guards() -> None:
     )
 
 
-def _calls_for(body: str):
-    return release_stage_calls("def _main():\n" + body)
+def _calls_for(body: str, prelude: str = f"PERIOD = {PERIOD}\n"):
+    return release_stage_calls(prelude + "def _main():\n" + body)
 
 
 def test_replay_follows_the_release_guard() -> None:
@@ -394,4 +441,41 @@ def test_replay_refuses_calls_it_cannot_model(body: str, message: str) -> None:
     calls = _calls_for(body.format(name=name))
 
     with pytest.raises(UnmodeledReleaseCallError, match=message):
+        release_stage("childcare", calls)
+
+
+_CHILDCARE_CALL = (
+    "    if pool_frame is None:\n"
+    "        frame = {name}(frame, seed=args.seed, time_period=PERIOD)\n"
+)
+
+
+def test_replay_accepts_the_period_it_replays() -> None:
+    name = STAGES["childcare"][2].__name__
+    calls = _calls_for(_CHILDCARE_CALL.format(name=name))
+
+    assert calls[0].period == PERIOD
+    assert callable(release_stage("childcare", calls))
+
+
+@pytest.mark.parametrize(
+    ("prelude", "body"),
+    [
+        # The module's period changes.
+        (f"PERIOD = {PERIOD + 1}\n", _CHILDCARE_CALL),
+        # It is not a constant, or not bound at all.
+        ("PERIOD = int(os.environ['PERIOD'])\n", _CHILDCARE_CALL),
+        ("", _CHILDCARE_CALL),
+        # Something else rebinds or shadows it.
+        (f"PERIOD = {PERIOD}\nPERIOD += 1\n", _CHILDCARE_CALL),
+        (f"PERIOD = {PERIOD}\nfrom periods import NEXT as PERIOD\n", _CHILDCARE_CALL),
+        (f"PERIOD = {PERIOD}\n", f"    PERIOD = {PERIOD + 1}\n" + _CHILDCARE_CALL),
+        (f"PERIOD = {PERIOD}\n", "    global PERIOD\n" + _CHILDCARE_CALL),
+    ],
+)
+def test_replay_refuses_a_period_it_does_not_replay(prelude: str, body: str) -> None:
+    name = STAGES["childcare"][2].__name__
+    calls = _calls_for(body.format(name=name), prelude=prelude)
+
+    with pytest.raises(UnmodeledReleaseCallError, match="does not bind PERIOD"):
         release_stage("childcare", calls)

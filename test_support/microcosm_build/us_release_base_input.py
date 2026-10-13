@@ -87,7 +87,8 @@ class StageCall:
     itself and nothing but ``if`` statements encloses it, so ``path`` is its
     whole execution condition. ``context`` names any other construct around
     the call (a loop, ``try``, ``with``, a conditional expression, a nested
-    function, ...).
+    function, ...). ``period`` is the constant the module binds ``PERIOD`` to,
+    or ``None`` unless that is its only binding (see ``constant_binding``).
     """
 
     name: str
@@ -98,7 +99,56 @@ class StageCall:
     context: tuple[str, ...]
     pool_absent_only: bool
     on_base_h5_path: bool | None
+    period: object | None
     node: ast.Call
+
+
+def constant_binding(source: str, name: str) -> object | None:
+    """The constant a module binds ``name`` to, or ``None``.
+
+    Only a single top-level ``name = <constant>`` counts, and only when nothing
+    else in the module binds ``name``: no other assignment, augmented or
+    annotated assignment, ``del``, ``global``/``nonlocal``, import alias,
+    parameter, loop or ``with`` target, ``except ... as``, ``match`` capture,
+    walrus, or function or class of that name.
+    """
+
+    tree = ast.parse(source)
+    bindings: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if (
+            (
+                isinstance(node, ast.Name)
+                and node.id == name
+                and not isinstance(node.ctx, ast.Load)
+            )
+            or (isinstance(node, ast.Global | ast.Nonlocal) and name in node.names)
+            or (
+                isinstance(node, ast.alias)
+                and (node.asname or node.name.split(".")[0]) == name
+            )
+            or (isinstance(node, ast.arg) and node.arg == name)
+            or (isinstance(node, ast.ExceptHandler) and node.name == name)
+            or (isinstance(node, ast.MatchAs | ast.MatchStar) and node.name == name)
+            or (isinstance(node, ast.MatchMapping) and node.rest == name)
+            or (
+                isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+                and node.name == name
+            )
+        ):
+            bindings.append(node)
+    top = [
+        statement
+        for statement in tree.body
+        if isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+        and statement.targets[0].id == name
+        and isinstance(statement.value, ast.Constant)
+    ]
+    if len(top) != 1 or bindings != [top[0].targets[0]]:
+        return None
+    return top[0].value.value
 
 
 def _call_name(node: ast.Call) -> str | None:
@@ -208,7 +258,10 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
     the release builder's source.
     """
 
-    tree = ast.parse(RELEASE_TOOL.read_text() if source is None else source)
+    if source is None:
+        source = RELEASE_TOOL.read_text()
+    tree = ast.parse(source)
+    period = constant_binding(source, "PERIOD")
     main = next(
         node
         for node in ast.walk(tree)
@@ -264,6 +317,7 @@ def release_stage_calls(source: str | None = None) -> tuple[StageCall, ...]:
                         context=context,
                         pool_absent_only=holds(_POOL_PRESENT) is False,
                         on_base_h5_path=holds(_BASE_H5_PATH),
+                        period=period,
                         node=node,
                     )
                 )
@@ -315,9 +369,9 @@ def release_stage(
     Returns the identity when ``_main`` no longer calls the stage or its path
     condition is false on the ``--base-h5`` path. Otherwise the call must be a
     plain ``x = stage(x, seed=args.seed, time_period=PERIOD, ...)`` statement
-    under ``if`` guards only, with every other keyword a constant; constant
-    keywords are passed through and the seed and period take the test's
-    values. Raises ``UnmodeledReleaseCallError`` for anything else, including
+    under ``if`` guards only, with every other keyword a constant, in a module
+    that binds ``PERIOD`` once to the test's period; constant keywords are
+    passed through and the seed and period take the test's values. Raises ``UnmodeledReleaseCallError`` for anything else, including
     a guard this model cannot decide or more than one call. ``calls`` defaults
     to the release builder's calls.
     """
@@ -355,7 +409,8 @@ def _replay_keywords(call: StageCall, name: str) -> dict[str, object]:
 
     The call must read ``x = stage(x, seed=args.seed, time_period=PERIOD, ...)``
     with every other keyword a constant: one positional argument, the frame it
-    assigns back to, and the build's seed and period.
+    assigns back to, and the build's seed and period. The module must bind
+    ``PERIOD`` once, to the period the tests replay.
     """
 
     statement = ast.parse(call.statement).body[0]
@@ -391,6 +446,12 @@ def _replay_keywords(call: StageCall, name: str) -> dict[str, object]:
     if set(expected) - {keyword.arg for keyword in node.keywords}:
         raise UnmodeledReleaseCallError(
             f"_main's call to {name} omits seed or time_period."
+        )
+    if call.period is None or call.period != PERIOD or type(call.period) is not int:
+        raise UnmodeledReleaseCallError(
+            f"_main passes {name} time_period=PERIOD, but the module does not "
+            f"bind PERIOD once to the {PERIOD} the tests replay "
+            f"(binding: {call.period!r})."
         )
     return {"seed": SEED, "time_period": PERIOD, **keywords}
 
@@ -531,10 +592,12 @@ def outputs(frame: Frame, stage: str) -> pd.DataFrame:
 
 
 def assert_identical(left: pd.DataFrame, right: pd.DataFrame) -> None:
-    """Require two output tables to be equal bit for bit.
+    """Require two output tables to hold exactly the same values.
 
     ``assert_frame_equal`` compares floats to a relative tolerance of 1e-5 by
-    default; these invariants are about exact reproduction.
+    default; these invariants are about exact reproduction. ``check_exact``
+    compares values, not representations: it treats ``+0.0`` and ``-0.0`` as
+    equal.
     """
 
     pd.testing.assert_frame_equal(left, right, check_exact=True)
@@ -560,7 +623,19 @@ def ss_targets(release_tool, frame: Frame) -> list[SimpleNamespace]:
 
 
 class ReleaseScenario:
-    """The synthetic base, the release's repaired frames, memoized re-runs."""
+    """The synthetic base, the release's repaired frames, memoized re-runs.
+
+    The repairs follow ``_main`` on the ``--base-h5`` path, where its order is
+    pinned by ``test_release_value_repairs_precede_the_stage_calls``: the
+    population mass repair, then the Social Security component repair, both
+    before the three stages. Of the calls ``_main`` makes in between, the
+    non-Schedule-D capital-gains repair rescales ``non_sch_d_capital_gains``,
+    which is not among the three stages' eight predictors, and QBI
+    reconciliation is not modeled here. Replayed on the real Route A base
+    (macOS arm64), applying only the recorded Social Security factors
+    reproduces the release's stored outputs of all three stages
+    (``docs/evidence/us-release-reimputation-1191/``).
+    """
 
     def __init__(self, release_tool) -> None:
         self.release_tool = release_tool

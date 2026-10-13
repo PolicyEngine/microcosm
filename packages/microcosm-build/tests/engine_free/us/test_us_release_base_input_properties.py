@@ -6,7 +6,7 @@ from those household weights and uses them as relative probabilities (the
 forests' weighted bootstrap) and as sample weights (the sign gate), so a
 uniform factor should not change a draw. This module samples three factors in
 [0.25, 4] for each of childcare, energy subsidy and retirement contributions
-and requires the re-run to reproduce the base output bit for bit.
+and requires the re-run to reproduce the base output values exactly.
 
 The range is deliberate. The sign gate is scikit-learn's histogram
 gradient-boosting classifier, which discards a split whose Hessian sum is below

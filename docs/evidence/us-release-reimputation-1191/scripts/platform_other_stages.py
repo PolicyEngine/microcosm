@@ -6,7 +6,7 @@ once with the release builder's ``_load_frame`` and, for each stage, builds
 the person table as the stage's ``with_us_*`` function hands it to
 ``run_source_stage``. It then finds the columns the stage's operations read
 (adding any column a slimmed run asks for), checks that the slimmed table
-gives the same output as the full table bit for bit, and pickles the slimmed
+gives exactly the same output values as the full table, and pickles the slimmed
 table with the base and release stored outputs.
 
 ``replay`` runs one pickled stage input through the packaged stage manifest

@@ -9,7 +9,10 @@ observers only read; the stage output is unchanged.
 
 ``compare`` takes two such fingerprints from different platforms and reports
 the first step at which they diverge: how many trees differ in structure, how
-far the gate probabilities move, how many drawn values differ.
+far the gate probabilities move, how many drawn values differ. It first
+authenticates each side: the arrays file must have the sha256 its fingerprint
+records, and every stored array (node arrays per tree, gate probabilities,
+drawn values) must match its digest in the fingerprint.
 
 Usage:
     python platform_forest_probe.py run --input INPUT.pkl --out PROBE.json \
@@ -147,7 +150,7 @@ def summarize_divergences(found: list[dict]) -> dict[str, object]:
             "same_node_samples_both_platforms": sum(
                 d["n_node_samples"][0] == d["n_node_samples"][1] for d in found
             ),
-            "same_parent_impurity_bitwise": sum(
+            "same_parent_impurity": sum(
                 d["parent_impurity"][0] == d["parent_impurity"][1] for d in found
             ),
             "different_feature": sum(d["feature"][0] != d["feature"][1] for d in found),
@@ -173,30 +176,71 @@ def summarize_divergences(found: list[dict]) -> dict[str, object]:
 def authenticate_forest(event: dict, arrays) -> None:
     """Refuse a forest whose fingerprints and node arrays do not agree.
 
-    Every per-tree list must have one entry per tree, the node arrays must be
-    present with matching offsets, and each tree's structure digest must be
-    recomputable from its stored ``feature``, ``children_left`` and
-    ``children_right`` arrays.
+    Every per-tree list must have one entry per tree; the offsets must start at
+    0, step by each tree's node count and end at the length of every node
+    array; and each tree's ``feature``/``children_left``/``children_right``,
+    ``threshold`` and ``impurity``/``n_node_samples``/``weighted_n_node_samples``
+    slices must reproduce the structure, threshold and diagnostic digests the
+    fingerprint recorded.
     """
 
-    trees = event["trees"]
-    for key in ("node_counts", "structure_sha256", "threshold_sha256", "value_sha256"):
+    trees, index = event["trees"], event["index"]
+    for key in (
+        "node_counts",
+        "structure_sha256",
+        "threshold_sha256",
+        "diagnostic_sha256",
+        "value_sha256",
+    ):
         if len(event[key]) != trees:
-            raise SystemExit(f"Forest {event['index']}: {key} has the wrong length.")
-    index = event["index"]
+            raise SystemExit(f"Forest {index}: {key} has the wrong length.")
     for name in ("offsets", *NODE_ARRAYS):
         if f"forest_{index}_{name}" not in arrays:
             raise SystemExit(f"Forest {index}: node array {name!r} is missing.")
     offsets = arrays[f"forest_{index}_offsets"]
-    if len(offsets) != trees + 1 or list(np.diff(offsets)) != event["node_counts"]:
+    if (
+        len(offsets) != trees + 1
+        or int(offsets[0]) != 0
+        or list(np.diff(offsets)) != event["node_counts"]
+    ):
         raise SystemExit(f"Forest {index}: node offsets disagree with node counts.")
+    for name in NODE_ARRAYS:
+        if len(arrays[f"forest_{index}_{name}"]) != int(offsets[-1]):
+            raise SystemExit(
+                f"Forest {index}: node array {name!r} does not end at the last offset."
+            )
     for tree in range(trees):
         nodes = tree_arrays(arrays, index, tree)
-        if (
-            digest(nodes["feature"], nodes["children_left"], nodes["children_right"])
-            != event["structure_sha256"][tree]
+        for key, value in (
+            ("structure_sha256", structure_digest(nodes)),
+            ("threshold_sha256", digest(nodes["threshold"])),
+            ("diagnostic_sha256", diagnostic_digest(nodes)),
         ):
-            raise SystemExit(f"Forest {index}, tree {tree}: arrays and digest differ.")
+            if value != event[key][tree]:
+                raise SystemExit(
+                    f"Forest {index}, tree {tree}: stored arrays do not match {key}."
+                )
+
+
+def authenticate_probe(probe: dict, arrays, arrays_path: Path) -> None:
+    """Refuse a probe whose arrays file is not the one its fingerprint names,
+    or whose stored arrays do not match their recorded digests."""
+
+    if file_sha256(arrays_path) != probe["arrays_sha256"]:
+        raise SystemExit(f"{arrays_path.name} is not the arrays file of its probe.")
+    for event in probe["events"]:
+        if event["step"] == "forest":
+            authenticate_forest(event, arrays)
+            continue
+        key, recorded = {
+            "gate_fit": ("train_proba_key", "train_proba_sha256"),
+            "gate_draw": ("proba_key", "proba_sha256"),
+            "forest_draw": ("values_key", "values_sha256"),
+        }.get(event["step"], (None, None))
+        if key is None:
+            continue
+        if event[key] not in arrays or digest(arrays[event[key]]) != event[recorded]:
+            raise SystemExit(f"Stored array {event[key]!r} does not match {recorded}.")
 
 
 def tree_arrays(arrays, index: int, tree: int) -> dict[str, np.ndarray]:
@@ -218,6 +262,20 @@ def digest(*arrays: np.ndarray) -> str:
     for array in arrays:
         sha.update(np.ascontiguousarray(array).tobytes())
     return sha.hexdigest()
+
+
+def structure_digest(tree) -> str:
+    """``tree`` is a fitted sklearn ``Tree`` or a dict of its node arrays."""
+
+    get = tree.__getitem__ if isinstance(tree, dict) else tree.__getattribute__
+    return digest(get("feature"), get("children_left"), get("children_right"))
+
+
+def diagnostic_digest(tree) -> str:
+    get = tree.__getitem__ if isinstance(tree, dict) else tree.__getattribute__
+    return digest(
+        get("impurity"), get("n_node_samples"), get("weighted_n_node_samples")
+    )
 
 
 def run(args: argparse.Namespace) -> None:
@@ -266,11 +324,9 @@ def run(args: argparse.Namespace) -> None:
                 "seed": int(kwargs["seed"]),
                 "trees": len(trees),
                 "node_counts": [int(tree.node_count) for tree in trees],
-                "structure_sha256": [
-                    digest(tree.feature, tree.children_left, tree.children_right)
-                    for tree in trees
-                ],
+                "structure_sha256": [structure_digest(tree) for tree in trees],
                 "threshold_sha256": [digest(tree.threshold) for tree in trees],
+                "diagnostic_sha256": [diagnostic_digest(tree) for tree in trees],
                 "value_sha256": [digest(tree.value) for tree in trees],
             }
         )
@@ -367,8 +423,10 @@ def run(args: argparse.Namespace) -> None:
         },
         "events": events,
     }
-    Path(args.out).write_text(json.dumps(receipt, indent=1) + "\n")
+    # The arrays first, so the fingerprint can name them by sha256.
     np.savez_compressed(args.arrays, **arrays)
+    receipt["arrays_sha256"] = file_sha256(Path(args.arrays))
+    Path(args.out).write_text(json.dumps(receipt, indent=1) + "\n")
     print(json.dumps([event["step"] for event in events]))
 
 
@@ -393,8 +451,8 @@ def compare(args: argparse.Namespace) -> None:
             or a["seed"] != b["seed"]
         ):
             raise SystemExit("A forest differs in identity, seed or tree count.")
-        for event, arrays in ((a, left_arrays), (b, right_arrays)):
-            authenticate_forest(event, arrays)
+    authenticate_probe(left, left_arrays, args.left_arrays)
+    authenticate_probe(right, right_arrays, args.right_arrays)
     report: dict[str, object] = {
         "inputs": {
             name: {"file": path.name, "sha256": file_sha256(path)}
@@ -432,18 +490,17 @@ def compare(args: argparse.Namespace) -> None:
             entry["trees_differing_in_node_count"] = sum(
                 x != y for x, y in zip(a["node_counts"], b["node_counts"])
             )
-            if f"forest_{a['index']}_offsets" in left_arrays:
-                divergences = [
-                    first_divergence(
-                        tree_arrays(left_arrays, a["index"], tree),
-                        tree_arrays(right_arrays, b["index"], tree),
-                    )
-                    for tree in range(a["trees"])
-                ]
-                found = [d for d in divergences if d is not None]
-                entry["trees_with_a_divergent_split"] = len(found)
-                if found:
-                    entry["first_divergence"] = summarize_divergences(found)
+            divergences = [
+                first_divergence(
+                    tree_arrays(left_arrays, a["index"], tree),
+                    tree_arrays(right_arrays, b["index"], tree),
+                )
+                for tree in range(a["trees"])
+            ]
+            found = [d for d in divergences if d is not None]
+            entry["trees_with_a_divergent_split"] = len(found)
+            if found:
+                entry["first_divergence"] = summarize_divergences(found)
         elif a["step"] in ("gate_fit", "gate_draw"):
             key = a["train_proba_key"] if a["step"] == "gate_fit" else a["proba_key"]
             pa, pb = left_arrays[key], right_arrays[key]
