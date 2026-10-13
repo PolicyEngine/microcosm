@@ -250,7 +250,9 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     ledger_registries = {}
     # The compile's own report of the references that did not resolve at each
     # parity period travels with the registry: the parity gate needs it to
-    # reproduce the ledger_absent rows the signed resources carry.
+    # reproduce the ledger_absent rows the signed resources carry. Unlike the
+    # full build, which refuses an unresolved calibration-year reference, this
+    # producer keeps the partial registry and leaves the verdict to the gates.
     ledger_unsupported = {}
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
         compilation = compile_uk_target_registry(artifact.facts, target_period=period)

@@ -72,6 +72,15 @@ def load_uk_local_chronicle_pin() -> dict[str, Any]:
 #: when the pinned feed no longer carries their facts. The 2023 production
 #: surface left this set with its gate (María's ruling of 2026-10-13): no
 #: build reads a 2023 target.
+#:
+#: While this set is the calibration year alone, the full build compiles one
+#: period and is fail-closed there, so its unsupported report at the gated
+#: period is always empty and the "recorded, not fatal" path below does not
+#: fire. The release-cut producer (tools/certify_uk_release_cut.py) compiles
+#: the same period without refusing, hands the report to the parity gates and
+#: reuses the registry as the calibration reference. So the two producers
+#: treat an unresolved calibration-year reference differently: this one
+#: refuses the build, that one leaves the verdict to the gates.
 _VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 _LOCAL_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
 

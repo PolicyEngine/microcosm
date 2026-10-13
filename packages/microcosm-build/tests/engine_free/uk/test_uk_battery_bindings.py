@@ -1545,6 +1545,43 @@ class TestPreflightBindings:
         with pytest.raises(TypeError, match="must be mappings that name"):
             evaluate({2023: ("ons.series",)})
 
+    def test_ledger_compile_parity_evidence_attests_the_unsupported_report(
+        self,
+    ) -> None:
+        # The report decides the verdict, so it is part of the attested
+        # evidence: the same registry with and without it must not share a
+        # digest. The names are sorted, so their order in the report is not.
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _ledger_compile_parity_evidence,
+        )
+
+        parameters = {
+            "fixture_resource": "registry_parity_fixture_2025.json",
+            "target_period": 2025,
+        }
+
+        def evidence(unsupported):
+            return _ledger_compile_parity_evidence(
+                EvidenceContext(
+                    artifacts={
+                        "uk_ledger_compiled_registries": {
+                            2025: TargetRegistry((), country="uk")
+                        },
+                        "uk_ledger_compile_unsupported": {2025: unsupported},
+                    }
+                ),
+                parameters,
+            )
+
+        rows = (
+            {"name": "ons.b", "period": 2025, "reason": "no fact"},
+            {"name": "ons.a", "period": 2025, "reason": "no fact"},
+        )
+        assert evidence(rows)["unsupported_references"] == ["ons.a", "ons.b"]
+        assert evidence(rows) == evidence(tuple(reversed(rows)))
+        assert evidence(())["unsupported_references"] == []
+        assert evidence(rows) != evidence(())
+
     def test_local_default_target_surface_uses_metric_names_and_signed_deferrals(
         self, uk_gates
     ) -> None:

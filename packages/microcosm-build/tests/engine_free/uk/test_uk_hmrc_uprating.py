@@ -73,7 +73,7 @@ def test_engine_index_applier_passes_through_a_reference_declaring_another_index
 def test_a_fact_opening_in_the_calibration_year_binds_as_published_with_a_receipt() -> (
     None
 ):
-    """A compile at the fact's own year, 2023, reads the index as an identity."""
+    """A fact dated in the compile's own year, 2025 here, reads the index as an identity."""
     registry = TargetRegistry(
         (_spec(name="x", value=7.0, lower_bound=20_000, period="2025"),), country="uk"
     )

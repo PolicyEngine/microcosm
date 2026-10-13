@@ -1729,6 +1729,16 @@ def _ledger_compile_parity_evidence(
         "target_period": target_period,
         "signed_differences": parameters.get("signed_differences", ()),
         "signed_differences_resource": parameters.get("signed_differences_resource"),
+        # The report decides the verdict (a fixture row is ledger_absent only
+        # where the compile reported its reference), so it is attested with
+        # the registry: the same registry with and without the report must not
+        # share one evidence digest.
+        "unsupported_references": sorted(
+            str(row["name"])
+            for row in _ledger_compile_parity_unsupported(
+                context, target_period, registry_artifact=registry_artifact
+            )
+        ),
     }
 
 

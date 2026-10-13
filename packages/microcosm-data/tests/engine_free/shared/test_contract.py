@@ -1479,6 +1479,7 @@ def _gate_battery_payload(
                 "registry_count": 636,
                 "registry_version": "fixture",
                 "signed_differences": [],
+                "unsupported_references": [],
             }
         ),
         "uk_ledger_compile_parity_local_incumbent_2025": _canonical_sha256(
@@ -1489,6 +1490,7 @@ def _gate_battery_payload(
                 "registry_version": "fixture",
                 "signed_differences": [],
                 "target_period": 2025,
+                "unsupported_references": [],
             }
         ),
         "uk_target_surface_local_default_2025": _canonical_sha256(
