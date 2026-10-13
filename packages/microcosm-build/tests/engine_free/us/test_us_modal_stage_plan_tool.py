@@ -26,6 +26,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     COMMIT,
     FEED_SHA,
@@ -704,7 +705,7 @@ _GIT_ENV = {
 
 def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", *args],
+        ["git", *NO_BACKGROUND_MAINTENANCE, *args],
         cwd=cwd,
         env=_GIT_ENV,
         check=True,

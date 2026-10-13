@@ -1130,7 +1130,9 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
         ``(sha256 hex digest, total bytes of the hashed files)``.
 
     Raises:
-        ValueError: If ``root`` is not a directory.
+        ValueError: If ``root`` is not a directory, or a file listed under it
+            is removed before it is read: a tree that changes while it is
+            hashed has no digest to name.
     """
     path = Path(root)
     if not path.is_dir():
@@ -1140,7 +1142,16 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
     files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
     for candidate in files:
         relative = candidate.relative_to(path).as_posix().encode("utf-8")
-        content = candidate.read_bytes()
+        try:
+            content = candidate.read_bytes()
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"RuleSpec root {path} changed while it was being hashed: "
+                f"{relative.decode('utf-8')} was listed and then removed. A git "
+                "process still working in a checkout does this (its background "
+                "maintenance holds a lock file under .git); wait for it to "
+                "finish, or reference a git archive export instead."
+            ) from exc
         digest.update(len(relative).to_bytes(8, "little"))
         digest.update(relative)
         digest.update(len(content).to_bytes(8, "little"))
@@ -1205,7 +1216,10 @@ def axiom_engine_ref(
     reference specific to one clone: two clones or worktrees of one commit
     (a worktree's ``.git`` file names an absolute path) and an export of that
     commit all give different references, and any later git operation in the
-    checkout moves it. Prefer the export.
+    checkout moves it. That includes the maintenance git starts in the
+    background after a commit: until it finishes, its lock file under ``.git``
+    is part of the tree, and the reference is refused if the lock is removed
+    while the tree is hashed. Prefer the export.
 
     The first call pins the adapter to the tree digest it names and to the
     file its module path resolves to: it refuses an adapter that has already
@@ -1236,7 +1250,8 @@ def axiom_engine_ref(
             points at); a git checkout root is not its repository's top
             level, is dirty, contains a submodule, has a file flagged
             skip-worktree or assume-unchanged, holds bytes its commit does
-            not, or is at another commit; or the adapter compiled before its
+            not, or is at another commit; a file under the root is removed
+            while the tree is hashed; or the adapter compiled before its
             first reference, or its root or module moved after it.
     """
     if not isinstance(engine, AxiomEngine):

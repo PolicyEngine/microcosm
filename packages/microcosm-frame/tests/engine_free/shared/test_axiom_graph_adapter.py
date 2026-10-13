@@ -69,6 +69,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.keys import _directory_identity, source_content_key
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-frame")
@@ -103,7 +104,9 @@ WHEEL_SHA256 = "b" * 64
 RULESPEC_COMMIT = "c" * 40
 
 # A full override of every git setting a test repository depends on, so the
-# developer's global configuration (hooks, signing) never reaches it.
+# developer's global configuration (hooks, signing) never reaches it. The
+# checkout references below hash ``.git``, so ``_git`` also keeps git's
+# background maintenance (and its lock file) out of every test repository.
 _GIT_ENV = {
     **os.environ,
     "GIT_CONFIG_GLOBAL": os.devnull,
@@ -115,6 +118,7 @@ def _git(root: Path, *args: str) -> str:
     completed = subprocess.run(
         [
             "git",
+            *NO_BACKGROUND_MAINTENANCE,
             "-c",
             "user.name=microcosm-test",
             "-c",
@@ -970,6 +974,26 @@ def _write_tree(root: Path, files: Mapping[str, bytes]) -> Path:
     return root
 
 
+def _remove_on_first_read(
+    patch: pytest.MonkeyPatch, victim: Path, *, trigger: Path | None = None
+) -> None:
+    """Remove ``victim`` when a file is first read, as a process releasing a lock.
+
+    The tree digest lists every file and then reads each, so a file removed at
+    the first read was listed and is gone before its own turn. With
+    ``trigger``, the removal waits for that file's read.
+    """
+
+    read_bytes = Path.read_bytes
+
+    def removing(self: Path) -> bytes:
+        if trigger is None or self == trigger:
+            victim.unlink(missing_ok=True)
+        return read_bytes(self)
+
+    patch.setattr(Path, "read_bytes", removing)
+
+
 def _ref(root: Path, **engine_kwargs) -> str:
     engine = AxiomEngine(
         root / _MODULE, schema=NZ_SCHEMA, rulespec_roots=(root,), **engine_kwargs
@@ -1035,6 +1059,31 @@ class TestRulespecTreeDigest:
         (tmp_path / "file.yaml").write_bytes(b"x")
         with pytest.raises(ValueError, match="not a directory"):
             rulespec_tree_digest(tmp_path / "file.yaml")
+
+    @settings(max_examples=40, deadline=None)
+    @given(files=rulespec_trees(), data=st.data())
+    def test_property_a_file_removed_after_the_listing_is_refused_by_name(
+        self, tmp_path_factory, files, data
+    ) -> None:
+        """No digest names a tree that lost a file while it was hashed."""
+
+        root = _write_tree(tmp_path_factory.mktemp("tree"), files)
+        victim = data.draw(st.sampled_from(sorted(files)))
+        before = rulespec_tree_digest(root)
+        with pytest.MonkeyPatch.context() as patch:
+            _remove_on_first_read(patch, root / victim)
+            with pytest.raises(
+                ValueError,
+                match=re.escape(
+                    f"changed while it was being hashed: {victim} was listed"
+                ),
+            ):
+                rulespec_tree_digest(root)
+        # The file is not skipped: the settled tree has its own digest, the
+        # one the graph gives it.
+        settled = rulespec_tree_digest(root)
+        assert settled != before
+        assert settled == _directory_identity(root)
 
 
 class TestAxiomEngineRef:
@@ -1584,6 +1633,51 @@ class TestAxiomEngineRefGitCheckout:
         # index and move the digest between two calls.
         assert self._checkout_ref(root, head) == first
         assert json.loads(first)["rulespec_commit"] == head
+
+    def test_a_commit_in_a_test_repository_starts_no_git_maintenance(
+        self, checkout, tmp_path, monkeypatch
+    ) -> None:
+        """The fixture's repositories stay still once ``_git`` returns.
+
+        A commit otherwise starts ``git maintenance run --auto``, which
+        detaches holding ``.git/objects/maintenance.lock`` and removes it
+        later: a file the checkout reference lists and may not find.
+        """
+
+        root, _ = checkout
+        trace = tmp_path / "trace2-events"
+        monkeypatch.setitem(_GIT_ENV, "GIT_TRACE2_EVENT", str(trace))
+        _git(root, "commit", "-q", "--allow-empty", "-m", "traced")
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        started = [
+            event["argv"]
+            for event in events
+            if event["event"] in ("start", "child_start")
+        ]
+        # The trace is live: it holds the commit's own start.
+        assert any("commit" in argv for argv in started)
+        assert [argv for argv in started if {"maintenance", "gc"} & set(argv)] == []
+        assert not (root / ".git/objects/maintenance.lock").exists()
+
+    def test_a_lock_git_removes_while_the_checkout_is_hashed_is_refused(
+        self, checkout, monkeypatch
+    ) -> None:
+        """A checkout git is still working in is refused, and says why."""
+
+        root, head = checkout
+        lock = root / ".git/objects/maintenance.lock"
+        lock.write_bytes(b"")
+        # Only the digest reads .git, and it reads HEAD before objects/.
+        _remove_on_first_read(monkeypatch, lock, trigger=root.resolve() / ".git/HEAD")
+        with pytest.raises(
+            ValueError,
+            match=r"changed while it was being hashed: "
+            r"\.git/objects/maintenance\.lock ",
+        ):
+            self._checkout_ref(root, head)
+        assert not lock.exists()
+        # Once git has finished, the same checkout is accepted.
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
 
     def test_a_modified_file_is_refused(self, checkout) -> None:
         root, head = checkout
