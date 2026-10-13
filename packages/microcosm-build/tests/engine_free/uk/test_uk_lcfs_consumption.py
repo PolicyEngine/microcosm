@@ -387,6 +387,52 @@ def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
         ice_share_from_licensed_cars({**declared, "period_value": 1999})
 
 
+def test_recipient_need_band_income_is_the_engines_gross_income() -> None:
+    # microcosm#1164: the donor bands on gross p344p, so the recipient must not
+    # fall back to its (lower) HBAI net income.
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.lcfs_consumption import recipient_predictors
+
+    class _Engine:
+        def materialize(self, frame, variables, period):
+            assert "household_gross_income" in variables
+            return {
+                name: np.array([30_000.0, 80_000.0])
+                if name == "household_gross_income"
+                else np.array([20_000.0, 50_000.0])
+                for name in variables
+            }
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(entity="household")
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [10, 20],
+                "age": [40.0, 70.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [10, 20],
+                "household_weight": [1.0, 1.0],
+                "num_vehicles": [1, 0],
+            }
+        ),
+        time_period="2024",
+    )
+
+    predictors = recipient_predictors(frame, _Engine())
+
+    assert predictors["household_gross_income"].tolist() == [30_000.0, 80_000.0]
+    assert predictors["hbai_household_net_income"].tolist() == [20_000.0, 50_000.0]
+
+
 def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
     from types import SimpleNamespace
 
@@ -807,6 +853,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
                     "household_gross_income"
                 ].to_numpy()
                 * 0.8,
+                # The NEED band reads the engine's gross income (microcosm#1164).
+                "household_gross_income": frame.table("household")[
+                    "household_gross_income"
+                ].to_numpy(),
             }
             return {name: values[name] for name in variables}
 
@@ -834,8 +884,14 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     assert receipt.reason == UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON
     assert receipt.old_total == receipt.new_total > 0
     assert receipt.declared_factor == 1.0
-    assert set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS) <= set(
-        transform.stage.operations[4].parameters["predictors"]
+    materialize = next(
+        operation
+        for operation in transform.stage.operations
+        if operation.kind == "materialize_rules_engine_predictors"
+    )
+    assert (
+        tuple(materialize.parameters["predictors"])
+        == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
     )
     evidence = transform.checkpoint_metadata()["evidence"]
     assert {

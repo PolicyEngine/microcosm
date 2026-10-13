@@ -251,11 +251,16 @@ UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT = frozenset(
 #: which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095).
 UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE = 18
 UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS = ("household_adult_count", "household_child_count")
+#: The engine variables the stage materializes on the recipient: the four
+#: QRF income predictors and ``household_gross_income``, which only bands the
+#: NEED energy rake, on the concept the donor bands on (LCFS p344p, gross;
+#: microcosm#1164). Before it the recipient fell back to its HBAI net income.
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "hbai_household_net_income",
+    "household_gross_income",
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
     "household_adult_count",
@@ -2174,12 +2179,6 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             "(the was_wealth draw the consumption QRF conditions on)."
         )
     result["num_vehicles"] = vehicle_count(household["num_vehicles"]).to_numpy()
-    if "household_gross_income" in household:
-        result["household_gross_income"] = household[
-            "household_gross_income"
-        ].to_numpy()
-    else:
-        result["household_gross_income"] = result["hbai_household_net_income"]
     return result
 
 
