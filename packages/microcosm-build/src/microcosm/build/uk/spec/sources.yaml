@@ -805,7 +805,7 @@ stages:
     numeric_errors: coerce
     runtime_sha256_required: true
   - kind: derive
-    scope: current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag
+    scope: current/highest education, QYP inputs (approved training is TRAINEE = 1 on a child-table record), EMA cell-mean degenerate fills, and benefits-in-own-right flag
   - kind: impute_cell_means
     cells:
     - 'single cell: EMA participants (code == 1; adema/ademaamt pair, eduma/edumaamt when adema is absent; chema/chemaamt for children)'
@@ -826,7 +826,7 @@ stages:
   - adult_ema
   - child_ema
   - age_started_or_accepted_current_education_or_training
-  notes: 'Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant.'
+  notes: 'Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant. is_in_approved_training is TRAINEE = 1 (whether on a government scheme for employment training; adult and child tables) on a child-table record: the FRS counts a 16- to 19-year-old as a dependent child only in full-time non-advanced education or unwaged government training, so such a record is a dependant in approved training (uk-data#560, uk-data#561). No adult-table record is flagged, since the FRS has already decided it is not a dependant and TRAINEE does not say the training is unwaged (UC Regs 2013 reg 5(3)); the adult-table TRAIN2 scheme codes, which microcosm#1063 read, name DWP employment schemes and are no longer read. A tab without TRAINEE refuses the build.'
 - stage: frs_legacy_proxies
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.

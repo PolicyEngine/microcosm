@@ -1153,8 +1153,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1164,8 +1164,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -1176,7 +1176,7 @@
         "child_ema",
         "age_started_or_accepted_current_education_or_training"
       ],
-      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant.",
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant. is_in_approved_training is TRAINEE = 1 (whether on a government scheme for employment training; adult and child tables) on a child-table record: the FRS counts a 16- to 19-year-old as a dependent child only in full-time non-advanced education or unwaged government training, so such a record is a dependant in approved training (uk-data#560, uk-data#561). No adult-table record is flagged, since the FRS has already decided it is not a dependant and TRAINEE does not say the training is unwaged (UC Regs 2013 reg 5(3)); the adult-table TRAIN2 scheme codes, which microcosm#1063 read, name DWP employment schemes and are no longer read. A tab without TRAINEE refuses the build.",
       "operations": [
         {
           "delimiter": "\t",
@@ -1188,7 +1188,7 @@
         },
         {
           "kind": "derive",
-          "scope": "current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag"
+          "scope": "current/highest education, QYP inputs (approved training is TRAINEE = 1 on a child-table record), EMA cell-mean degenerate fills, and benefits-in-own-right flag"
         },
         {
           "cells": [
@@ -1269,8 +1269,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1312,8 +1312,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1530,8 +1530,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1641,8 +1641,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1652,8 +1652,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -1872,8 +1872,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "cf567ac06d1e68b88a8ba0811e0266c28b3466752dc927f45beef9f516e7d634",
+          "size_bytes": 30107,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1905,8 +1905,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         },
