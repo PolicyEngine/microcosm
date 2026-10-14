@@ -15,13 +15,20 @@ operation, ``price_domestic_energy``:
   electricity meters from the DESNZ subnational statistics; gas-positive
   households are disconnected in an identity-keyed uniform order until the
   region's prior-weighted share is the published one, so every group of
-  households loses the same expected share of its connected mass;
+  households loses the same expected share of its connected mass; in a
+  region whose draw falls short, zero-gas households are connected in the
+  declared ``connect_rule`` order (microcosm#1164);
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
-  summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's prior-weighted total is the published one.
+  summed over the four quarters of the declared calendar year (2024, the
+  base year of every LCFS spend column; microcosm#1113), one factor per fuel
+  on the raked kWh so the frame's prior-weighted total is the published one;
+* ceiling: each household's kWh is capped at the declared
+  ``household_kwh_ceiling`` (the NEED domestic-meter limits), the capped
+  households' own NEED cells are re-raked below it and the level is
+  restored (microcosm#1164).
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
