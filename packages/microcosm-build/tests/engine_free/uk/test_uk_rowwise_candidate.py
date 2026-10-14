@@ -100,6 +100,8 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     assert plan["configuration"]["calibration"]["epochs"] == 1500
     assert plan["configuration"]["target_families"] is None
     assert {node["id"] for node in plan["nodes"]} >= {
+        "uk.full.brma_table",
+        "uk.full.brma",
         "uk.full.dense",
         "uk.full.target_selection",
         "uk.full.gates.calibrated",
