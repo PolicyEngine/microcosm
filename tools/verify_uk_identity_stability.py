@@ -36,6 +36,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
+    uk_build_identifier_frame,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
@@ -1909,6 +1910,9 @@ def main() -> int:
     args = parser.parse_args()
 
     frame, _provenance = load_uk_national_frame(args.input_h5)
+    # Every draw these receipts replay is keyed on the build's identifiers; a
+    # release carries them beside its renumbered ones (microcosm#1194).
+    frame = uk_build_identifier_frame(frame)
     if args.check == "e4":
         from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
         from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine

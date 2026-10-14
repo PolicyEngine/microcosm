@@ -123,6 +123,7 @@ from .national_calibration import (
 from .national_doctrine import UKNationalSolveDoctrine, uk_national_target_loss_weights
 from .national_frame import (
     load_uk_national_frame,
+    uk_identifier_range_failures,
     uk_release_export_frame,
     uk_time_period,
 )
@@ -1034,6 +1035,13 @@ class UKNationalReadbackKernel(KernelBase):
             failures.append(
                 "Written national H5 mass log differs from the calibrated population."
             )
+        # The identifiers must survive the engine's 32-bit storage
+        # (microcosm#1194), whatever wrote the file.
+        failures.extend(
+            uk_identifier_range_failures(
+                {entity: written.table(entity) for entity in written.entities}
+            )
+        )
         if file_artifact(path) != dataset:
             raise ValueError("UK national H5 changed during graph readback validation.")
         report = {

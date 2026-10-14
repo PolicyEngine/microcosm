@@ -435,6 +435,13 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert staged.mass_log[1].reason == UK_WEIGHT_YEAR_MASS_REASON
     assert staged.mass_log[1].declared_factor == 1.0 / factor
     assert staged.mass_log[1].old_total == staged.mass_log[0].new_total
+    # microcosm#1194: identifiers inside the range policyengine-uk stores,
+    # the build's own beside them (the fixture numbers its rows from zero).
+    for entity in ("person", "benunit", "household"):
+        table = staged.table(entity)
+        assert table[f"{entity}_id"].tolist() == [1, 2, 3, 4]
+        assert table[f"{entity}_build_id"].tolist() == [0, 1, 2, 3]
+    assert staged.table("person")["person_household_id"].tolist() == [1, 2, 3, 4]
     frozen = TargetRegistry.from_json(out / "national_target_registry.json")
     assert frozen.version == registry.version
 

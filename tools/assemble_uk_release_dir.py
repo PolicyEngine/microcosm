@@ -28,6 +28,7 @@ from microcosm.build.staging_v2 import (
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
+    uk_build_identifiers,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
@@ -291,8 +292,12 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     # must be identical — same ids, same order — before the pairing is
     # digested and shipped as authoritative. A digest over mis-paired bytes
     # authenticates the bytes, not the pairing.
-    candidate_ids = candidate_frame.table("household")["household_id"].to_numpy()
-    spine_ids = spine_frame.table("household")["household_id"].to_numpy()
+    # A release renumbers its identifiers and keeps the build's beside them
+    # (microcosm#1194); the spine carries the build's own.
+    candidate_ids = uk_build_identifiers(
+        candidate_frame.table("household"), "household"
+    )
+    spine_ids = uk_build_identifiers(spine_frame.table("household"), "household")
     if candidate_ids.shape != spine_ids.shape or not np.array_equal(
         candidate_ids, spine_ids
     ):

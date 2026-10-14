@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.calibration_run import resign_uk_gate_report
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
+    uk_release_export_frame,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.release_certification import (
@@ -627,6 +628,41 @@ def test_assemble_labels_weights_written_at_the_dataset_year(
             calibration["household_weight"],
             np.asarray([0.0, 4.0]) / uk_weight_projection_factor(2024, 2025),
         )
+
+
+def test_assemble_pairs_a_renumbered_release_with_its_spine(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """microcosm#1194: the release renumbers its identifiers, so the row
+    pairing with the spine stands on the build identifiers it keeps."""
+    ids = np.asarray([5, 6], dtype="int64")
+
+    def frame(weights, weight_kind):
+        return uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": ids,
+                    "person_benunit_id": ids,
+                    "person_household_id": ids,
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": ids}),
+            household=pd.DataFrame({"household_id": ids}),
+            time_period="2024",
+            weight_kind=weight_kind,
+            household_weights=np.asarray(weights, dtype="float64"),
+        )
+
+    released = uk_release_export_frame(frame([0.0, 4.0], WeightKind.CALIBRATED))
+    assert released.table("household")["household_id"].tolist() == [1, 2]
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        candidate_frame=released,
+        spine_frame=frame([1.0, 2.0], WeightKind.DESIGN),
+    )
+
+    assert _load_driver_module().main(inputs["argv"]) == 0
 
 
 def test_assemble_refuses_spine_with_different_household_count(

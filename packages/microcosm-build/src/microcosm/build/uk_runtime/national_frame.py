@@ -46,6 +46,8 @@ from microcosm.frame import (
 )
 
 __all__ = [
+    "UK_BUILD_IDENTIFIER_COLUMNS",
+    "UK_ENGINE_IDENTIFIER_MAX",
     "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
     "UK_MASS_LOG_ATTR",
@@ -55,8 +57,13 @@ __all__ = [
     "UKNationalStage",
     "UKStagingProvenance",
     "load_uk_national_frame",
+    "uk_build_identifier_frame",
+    "uk_build_identifier_tables",
+    "uk_build_identifiers",
     "uk_household_weight_kind",
+    "uk_identifier_range_failures",
     "uk_national_frame",
+    "uk_release_identifier_tables",
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
@@ -497,12 +504,230 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
 }
 
 
+#: The largest identifier policyengine-uk stores. Its five identifier
+#: variables (``person_id``, ``benunit_id``, ``household_id``,
+#: ``person_benunit_id``, ``person_household_id``) are 32-bit integers, and a
+#: larger stored value wraps (microcosm#1194, pe-uk#2273).
+UK_ENGINE_IDENTIFIER_MAX = 2_147_483_647
+
+#: The column that keeps each entity's build identifier beside its release
+#: identifier. The clone stages number copies by adding a power of ten per
+#: copy, so a built frame's identifiers run far past the engine's range; every
+#: draw in the build is keyed on them, so the build keeps them and the release
+#: boundary renumbers. The lineage columns (``*_source_id``, the clone
+#: indices) describe the build identifier.
+UK_BUILD_IDENTIFIER_COLUMNS: Mapping[str, str] = {
+    "person": "person_build_id",
+    "benunit": "benunit_build_id",
+    "household": "household_build_id",
+}
+
+_UK_ENTITY_IDENTIFIER_COLUMNS: Mapping[str, str] = {
+    "person": "person_id",
+    "benunit": "benunit_id",
+    "household": "household_id",
+}
+_UK_PERSON_MEMBERSHIP_COLUMNS: Mapping[str, str] = {
+    "benunit": "person_benunit_id",
+    "household": "person_household_id",
+}
+
+
+def _uk_build_identifier_state(tables: Mapping[str, pd.DataFrame]) -> bool:
+    """Whether the tables carry the build-identifier columns: all or none."""
+
+    present = [
+        entity
+        for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+        if column in tables[entity].columns
+    ]
+    if present and len(present) != len(UK_BUILD_IDENTIFIER_COLUMNS):
+        missing = sorted(set(UK_BUILD_IDENTIFIER_COLUMNS) - set(present))
+        raise ValueError(
+            "UK tables carry a build identifier on some entities only; "
+            f"{missing} lack theirs."
+        )
+    return bool(present)
+
+
+def _uk_mapped_identifiers(
+    values: np.ndarray, source: np.ndarray, target: np.ndarray, *, label: str
+) -> np.ndarray:
+    """``values`` read through the one-to-one map ``source[i] -> target[i]``."""
+
+    order = np.argsort(source, kind="stable")
+    ordered = source[order]
+    if len(ordered) > 1 and (ordered[1:] == ordered[:-1]).any():
+        raise ValueError(f"UK {label} identifiers are not unique.")
+    position = np.searchsorted(ordered, values)
+    inside = position < len(ordered)
+    if not inside.all() or not (ordered[position[inside]] == values[inside]).all():
+        raise ValueError(f"UK {label} memberships name an identifier with no row.")
+    return target[order][position]
+
+
+def uk_release_identifier_tables(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """The three tables with identifiers inside the engine's range (microcosm#1194).
+
+    Per entity the release identifier is one plus the rank of the build
+    identifier among the entity's rows, so row order is untouched and the
+    numbering depends on nothing but the identifiers themselves. The person
+    table's two memberships map through the same arrays. The build identifier
+    stays beside each release identifier (``UK_BUILD_IDENTIFIER_COLUMNS``).
+
+    Idempotent: tables that already carry the build identifiers are returned
+    as they are.
+    """
+
+    if _uk_build_identifier_state(tables):
+        return dict(tables)
+    result: dict[str, pd.DataFrame] = {}
+    build: dict[str, np.ndarray] = {}
+    release: dict[str, np.ndarray] = {}
+    for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items():
+        table = tables[entity]
+        build[entity] = table[column].to_numpy(dtype=np.int64)
+        order = np.argsort(build[entity], kind="stable")
+        ordered = build[entity][order]
+        if len(ordered) > 1 and (ordered[1:] == ordered[:-1]).any():
+            raise ValueError(f"UK {entity} identifiers are not unique.")
+        release[entity] = np.empty(len(order), dtype=np.int64)
+        release[entity][order] = np.arange(1, len(order) + 1, dtype=np.int64)
+        renumbered = table.copy()
+        renumbered[column] = release[entity].astype(table[column].dtype)
+        renumbered.insert(
+            renumbered.columns.get_loc(column) + 1,
+            UK_BUILD_IDENTIFIER_COLUMNS[entity],
+            build[entity],
+        )
+        result[entity] = renumbered
+    person = result["person"]
+    for entity, column in _UK_PERSON_MEMBERSHIP_COLUMNS.items():
+        person[column] = _uk_mapped_identifiers(
+            person[column].to_numpy(dtype=np.int64),
+            build[entity],
+            release[entity],
+            label=entity,
+        ).astype(tables["person"][column].dtype)
+    return result
+
+
+def uk_build_identifier_tables(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """The inverse of :func:`uk_release_identifier_tables`.
+
+    A reader that replays the build's identifier-keyed draws, or joins a
+    release to its spine, needs the build identifiers back. Tables that
+    carry none are returned as they are.
+    """
+
+    if not _uk_build_identifier_state(tables):
+        return dict(tables)
+    result: dict[str, pd.DataFrame] = {}
+    build: dict[str, np.ndarray] = {}
+    release: dict[str, np.ndarray] = {}
+    for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items():
+        table = tables[entity]
+        carrier = UK_BUILD_IDENTIFIER_COLUMNS[entity]
+        build[entity] = table[carrier].to_numpy(dtype=np.int64)
+        release[entity] = table[column].to_numpy(dtype=np.int64)
+        restored = table.drop(columns=[carrier])
+        restored[column] = build[entity].astype(table[column].dtype)
+        result[entity] = restored
+    person = result["person"]
+    for entity, column in _UK_PERSON_MEMBERSHIP_COLUMNS.items():
+        person[column] = _uk_mapped_identifiers(
+            person[column].to_numpy(dtype=np.int64),
+            release[entity],
+            build[entity],
+            label=entity,
+        ).astype(tables["person"][column].dtype)
+    return result
+
+
+def uk_identifier_range_failures(tables: Mapping[str, pd.DataFrame]) -> list[str]:
+    """Why written identifiers would not survive policyengine-uk, if they would not.
+
+    The engine stores them as 32-bit integers: a value above
+    ``UK_ENGINE_IDENTIFIER_MAX`` wraps, and two that wrap to the same value
+    merge. The messages name the column and a count, never an identifier.
+    """
+
+    failures: list[str] = []
+    columns = [
+        *(
+            (entity, column, True)
+            for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items()
+        ),
+        *(
+            ("person", column, False)
+            for column in _UK_PERSON_MEMBERSHIP_COLUMNS.values()
+        ),
+    ]
+    for entity, column, unique in columns:
+        if column not in tables[entity].columns:
+            failures.append(f"Written {entity} table lacks {column!r}.")
+            continue
+        values = pd.to_numeric(tables[entity][column], errors="coerce")
+        if values.isna().any() or (values != np.floor(values)).any():
+            failures.append(f"Written {column!r} is not a whole number on every row.")
+            continue
+        below = int((values < 1).sum())
+        above = int((values > UK_ENGINE_IDENTIFIER_MAX).sum())
+        if below:
+            failures.append(f"Written {column!r} is below 1 on {below} row(s).")
+        if above:
+            failures.append(
+                f"Written {column!r} is above the 32-bit range policyengine-uk "
+                f"stores on {above} row(s)."
+            )
+        if unique and values.duplicated().any():
+            failures.append(f"Written {column!r} repeats a value.")
+    return failures
+
+
+def uk_build_identifiers(table: pd.DataFrame, entity: str) -> np.ndarray:
+    """One entity table's build identifiers, whether or not it was renumbered."""
+
+    carrier = UK_BUILD_IDENTIFIER_COLUMNS[entity]
+    column = (
+        carrier if carrier in table.columns else _UK_ENTITY_IDENTIFIER_COLUMNS[entity]
+    )
+    return table[column].to_numpy(dtype=np.int64)
+
+
+def uk_build_identifier_frame(frame: Frame) -> Frame:
+    """A loaded release frame back on its build identifiers; others unchanged."""
+
+    tables = {
+        entity: frame.table(entity) for entity in ("person", "benunit", "household")
+    }
+    if not _uk_build_identifier_state(tables):
+        return frame
+    restored = uk_build_identifier_tables(tables)
+    return uk_national_frame(
+        person=restored["person"],
+        benunit=restored["benunit"],
+        household=restored["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
 def uk_release_export_frame(frame: Frame) -> Frame:
     """The frame the release boundary writes: reviewed export exclusions dropped.
 
     The three area codes leave under the consumers' names (microcosm#1114,
     ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
-    carries none and passes unchanged.
+    carries none. The identifiers leave inside the 32-bit range the engine
+    stores, with the build identifiers beside them (microcosm#1194,
+    :func:`uk_release_identifier_tables`). A frame that already left passes
+    unchanged.
     """
 
     from .geography_ladder import export_area_code_columns
@@ -525,6 +750,9 @@ def uk_release_export_frame(frame: Frame) -> Frame:
                 table = renamed
                 changed = True
         tables[entity] = table
+    if not _uk_build_identifier_state(tables):
+        tables = uk_release_identifier_tables(tables)
+        changed = True
     if not changed:
         return frame
     return uk_national_frame(

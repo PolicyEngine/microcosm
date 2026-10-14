@@ -357,6 +357,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.srp_regular_code5",
     "benunit.benunit_clone_index",
     "person.person_clone_index",
+    # microcosm#1194: the build identifiers the release keeps beside the
+    # renumbered ones (national_frame.UK_BUILD_IDENTIFIER_COLUMNS). The
+    # lineage columns above describe them.
+    "benunit.benunit_build_id",
+    "household.household_build_id",
+    "person.person_build_id",
     "household.itl1_code",
     "household.itl2_code",
     "household.itl3_code",

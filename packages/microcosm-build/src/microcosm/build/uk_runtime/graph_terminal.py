@@ -60,6 +60,8 @@ from .national_frame import (
     _read_uk_national_tables,
     _write_uk_single_year_tables,
     uk_household_weight_kind,
+    uk_identifier_range_failures,
+    uk_release_identifier_tables,
     uk_time_period,
     validate_uk_national_frame,
 )
@@ -102,7 +104,9 @@ def _ladder_tables(frame: Frame) -> dict[str, pd.DataFrame]:
         dropped = [c for c in columns if c in renamed[entity]]
         if dropped:
             renamed[entity] = renamed[entity].drop(columns=dropped)
-    return renamed
+    # The identifiers leave inside the range policyengine-uk stores, with the
+    # build identifiers beside them (microcosm#1194).
+    return uk_release_identifier_tables(renamed)
 
 
 def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
@@ -313,6 +317,7 @@ def validate_uk_export(
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
     failures.extend(_area_code_failures(payload["household"], descriptor))
+    failures.extend(uk_identifier_range_failures(payload))
     if file_artifact(path) != dataset:
         raise ValueError("UK exported file changed during graph readback validation.")
     return {
