@@ -36,6 +36,9 @@ and build packages. It currently defines:
 - `UK_REGION_TIER`, `UK_REGION_TIER_ENUM` and `UK_LADDER_NATION_REGION_CODES` (the
   twelve-area region tier UK national references fan out over, its spine
   `region` enum names, and the ladder's nation pseudo-codes; microcosm#905)
+- `UK_WIDE_GEOGRAPHY_IDS` (the K-prefixed UK-wide aggregates among
+  `UK_GEOGRAPHY_ID_TO_LABEL`, which the nation grain of the UK target-weight
+  rules splits on; microcosm#1124)
 - `US_STATE_FIPS_TO_POSTAL`
 - `US_STATE_NUMERIC_FIPS_TO_POSTAL`
 - `US_STATE_POSTAL_TO_NUMERIC_FIPS`

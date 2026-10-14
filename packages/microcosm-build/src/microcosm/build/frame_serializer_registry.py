@@ -222,7 +222,7 @@ HDF_WRITE_EXCLUSIONS = (
     HdfWriteExclusion(
         exclusion_id="uk_smoke_non_release_root_attrs",
         writer=HdfWriteSite(
-            "tools/build_uk_frs_spine.py",
+            "packages/microcosm-build/src/microcosm/build/uk_runtime/spine_build.py",
             "_mark_non_release_h5",
         ),
         reason="Adds non-release smoke metadata to existing root attributes only.",

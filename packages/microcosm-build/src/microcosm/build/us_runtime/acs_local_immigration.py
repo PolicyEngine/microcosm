@@ -47,13 +47,25 @@ year the immigration stage itself uses,
 :func:`~microcosm.build.us_runtime.immigration._asec_arrival_year`), clipped
 at zero. For the US-born (``CIT`` / ``PRCITSHP`` 1-3) it is their age: years in
 the US since birth. The engine reads it as the five-year-bar clock, which
-8 U.S.C. 1613(a) starts at entry *with qualified status*. Neither survey
-measures that date, so for a person who obtained qualified status after
-arriving the proxy runs long and can clear the bar early
-(policyengine-us#9658). The receipt's ``adjustment_lag_sensitivity`` block
-reports, for lags of one to five years, the ACS weight assigned a status the
-bar applies to (:data:`FIVE_YEAR_BAR_STATUSES`) whose proxy falls in
-``[5, 5 + lag)``: the mass whose bar status would flip under that lag.
+8 U.S.C. 1613(a) starts at entry *with qualified status*.
+
+**Known limitation: the clock runs from arrival.** Neither the ACS nor the
+ASEC donor records the date qualified status was granted. The proxy therefore
+runs long, and can clear the five-year bar early, for anyone who adjusted
+status after arriving: a person who arrived in 2014 and obtained qualified
+status in 2023 gets 10 modeled years in 2024 but has one qualifying year
+(policyengine-us#9658). That affects SNAP, Medicaid, CHIP and the state TANF
+tests that read the bar. In policyengine-us 2.2.1 the clock is read by the
+Medicaid immigration-status test (CHIP follows it, because CHIP excludes
+Medicaid-eligible children) and by Washington TANF and RCA; the federal SNAP
+status test reads the status alone. The receipt's
+``adjustment_lag_sensitivity`` block reports the size of the affected group
+under each lag in :data:`ADJUSTMENT_LAG_YEARS` (one to ten, 15 and 20 years):
+the ACS weight assigned a status the bar applies to
+(:data:`FIVE_YEAR_BAR_STATUSES`) whose proxy falls in ``[5, 5 + lag)``, which
+is the mass whose bar status would flip under that lag or any shorter one; that
+mass as a cumulative share of all bar-status weight; and the largest observed
+proxy. The real-data check is microcosm#1093.
 """
 
 from __future__ import annotations
@@ -130,8 +142,11 @@ FIVE_YEAR_BAR_STATUSES: tuple[str, ...] = (
 )
 #: ``gov.hhs.medicaid.eligibility.five_year_bar_years`` (8 U.S.C. 1613(a)).
 FIVE_YEAR_BAR_YEARS = 5.0
-#: Arrival-to-qualified-status lags the sensitivity block reports.
-ADJUSTMENT_LAG_YEARS: tuple[int, ...] = (1, 2, 3, 4, 5)
+#: Arrival-to-qualified-status lags the sensitivity block reports: one to ten
+#: years, then 15 and 20. Lags past five years exist (arrival in 2014 and
+#: status in 2023 is a nine-year lag), so five windows were not enough
+#: (microcosm#1052 review, round 4).
+ADJUSTMENT_LAG_YEARS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20)
 #: The person inputs this stage owns on ACS rows (and, for the entry clock, on
 #: donor rows too).
 ACS_LOCAL_IMMIGRATION_COLUMNS: tuple[str, ...] = (
@@ -275,10 +290,22 @@ _ENTRY_CLOCK = {
     ),
     "us_born": "age (years in the US since birth)",
     "caveat": (
+        "Known limitation: neither the ACS nor the ASEC donor records the "
+        "date qualified status was granted, so the clock runs from arrival. "
         "8 U.S.C. 1613(a) starts the five-year clock at entry with qualified "
-        "status, which neither survey measures; for a person who obtained "
-        "qualified status after arriving the proxy runs long and can clear "
-        "the bar early (policyengine-us#9658)"
+        "status, so for a person who adjusted status after arriving the "
+        "proxy runs long and can clear the bar early (arrival in 2014, "
+        "status in 2023: 10 modeled years in 2024, one qualifying year; "
+        "policyengine-us#9658). That affects SNAP, Medicaid, CHIP and the "
+        "state TANF tests that read the bar. adjustment_lag_sensitivity "
+        "reports the size of the affected group under each lag; the "
+        "real-data check is microcosm#1093."
+    ),
+    "engine_readers": (
+        "policyengine-us 2.2.1 reads the clock in the Medicaid "
+        "immigration-status test (CHIP follows it, because CHIP excludes "
+        "Medicaid-eligible children) and in Washington TANF and RCA; its "
+        "federal SNAP status test reads the status alone"
     ),
 }
 
@@ -523,7 +550,12 @@ def _adjustment_lag_sensitivity(
 
     If qualified status came ``lag`` years after arrival, a person assigned a
     bar status (:data:`FIVE_YEAR_BAR_STATUSES`) whose arrival-based proxy is
-    in ``[5, 5 + lag)`` would still be inside the bar. Informational, never
+    in ``[5, 5 + lag)`` would still be inside the bar. The windows nest, so
+    each lag's entry is also everyone who would flip under any lag up to it;
+    ``cumulative_share_of_bar_status_weight`` divides that by all bar-status
+    weight. ``max_years_since_us_entry`` is the largest proxy among
+    bar-status persons: only a lag past it less five flips everyone already
+    past the bar. Lags are :data:`ADJUSTMENT_LAG_YEARS`. Informational, never
     graded.
     """
 
@@ -538,6 +570,7 @@ def _adjustment_lag_sensitivity(
     ).to_numpy(dtype=np.float64)
     past_bar = subject & (years >= FIVE_YEAR_BAR_YEARS)
     past_weight = float(weights[past_bar].sum())
+    bar_weight = float(weights[subject].sum())
     flips: dict[str, dict[str, object]] = {}
     for lag in ADJUSTMENT_LAG_YEARS:
         flipped = past_bar & (years < FIVE_YEAR_BAR_YEARS + lag)
@@ -548,18 +581,29 @@ def _adjustment_lag_sensitivity(
             "share_of_past_bar_weight": (
                 weight / past_weight if past_weight > 0 else 0.0
             ),
+            "cumulative_share_of_bar_status_weight": (
+                weight / bar_weight if bar_weight > 0 else 0.0
+            ),
         }
     return {
         "graded": False,
         "statuses": list(FIVE_YEAR_BAR_STATUSES),
         "bar_years": FIVE_YEAR_BAR_YEARS,
+        "lags_years": list(ADJUSTMENT_LAG_YEARS),
         "definition": (
             "ACS persons assigned a bar status whose years_since_us_entry is "
             "in [bar, bar + lag): past the bar on arrival, inside it if "
-            "qualified status came lag years after arrival"
+            "qualified status came lag years after arrival. The windows "
+            "nest, so each entry also counts everyone who would flip under "
+            "any shorter lag; cumulative_share_of_bar_status_weight divides "
+            "it by all bar-status weight. max_years_since_us_entry is the "
+            "largest clock among bar-status persons."
         ),
         "bar_status_persons": int(subject.sum()),
-        "bar_status_weight": float(weights[subject].sum()),
+        "bar_status_weight": bar_weight,
+        "max_years_since_us_entry": (
+            float(years[subject].max()) if subject.any() else None
+        ),
         "past_bar_weight": past_weight,
         "within_bar_weight": float(weights[subject & ~past_bar].sum()),
         "flips_by_lag_years": flips,

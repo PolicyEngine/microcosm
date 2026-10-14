@@ -1,0 +1,308 @@
+"""Spine evidence survives cached execution and a completely fresh process."""
+
+import json
+import subprocess
+import sys
+from dataclasses import replace
+from types import SimpleNamespace
+
+import pytest
+
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import (
+    uk_registry,
+    uk_spine_endpoint,
+    uk_spine_graph,
+    uk_spine_operation_inventory,
+)
+from microcosm.build.uk_runtime.graph_evidence import (
+    add_uk_spine_gate_nodes,
+    load_spine_stage_artifacts,
+    spine_sidecar_evidence,
+)
+from microcosm.graph import ContentStore, compile_graph, load_source, run_graph
+from test_support.paths import paths_for
+
+
+def test_spine_evidence_replays_without_instantiating_original_transform(tmp_path):
+    country = load_country_spec("uk")
+    country = replace(
+        country, sources=replace(country.sources, stages=country.sources.stages[:1])
+    )
+    graph = uk_spine_graph(country)
+    compiled = compile_graph(graph)
+    source = (
+        paths_for("microcosm-graph").tests
+        / "fixtures"
+        / "parity"
+        / "uk_spine"
+        / "sources"
+    )
+
+    class Root:
+        sampling = {"fraction": 0.1, "seed": 7}
+        fit_weight_records = (
+            SimpleNamespace(fit_name="fixture-fit", weight_kind="design"),
+        )
+
+        def run_with_sources(self, frame, sources):
+            return load_source("csv-tables", sources["frs"])
+
+        def checkpoint_metadata(self):
+            return {
+                "evidence": {"rows": 8},
+                "replay_payload": {"classification": "fixture"},
+            }
+
+    store = ContentStore(tmp_path / "store")
+    cold = run_graph(
+        compiled,
+        sources={"frs": source},
+        store=store,
+        kernels=uk_registry({"frs_spine": Root()}, graph=graph),
+        resume="forbid",
+    )
+    expected = load_spine_stage_artifacts(cold, store, stage_names=("frs_spine",))
+    warm = run_graph(
+        compiled,
+        sources={"frs": source},
+        store=store,
+        kernels=uk_registry(graph=graph),
+        resume="require",
+    )
+    assert all(receipt.store_hit for receipt in warm.nodes.values())
+    assert (
+        load_spine_stage_artifacts(warm, store, stage_names=("frs_spine",)) == expected
+    )
+    path = tmp_path / "manifest.json"
+    warm.save(path)
+    script = """
+import json, sys
+from microcosm.graph import ContentStore, RunManifest
+from microcosm.build.uk_runtime.graph_evidence import load_spine_stage_artifacts
+store = ContentStore(sys.argv[2])
+manifest = RunManifest.load(sys.argv[1], store)
+print(json.dumps(load_spine_stage_artifacts(manifest, store, stage_names=('frs_spine',)), sort_keys=True))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(path), str(store.root)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert json.loads(result.stdout) == expected
+    sidecar = spine_sidecar_evidence(expected)
+    assert sidecar["sampling"] == {"fraction": 0.1, "seed": 7}
+    assert sidecar["fit_weight_records"]["frs_spine"][0]["weight_kind"] == "design"
+
+
+def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():
+    country = load_country_spec("uk")
+    spine = uk_spine_graph(country)
+    endpoint = uk_spine_endpoint(spine)
+    inventory = uk_spine_operation_inventory(spine, country)
+    assert tuple(row["stage"] for row in inventory) == endpoint.stage_names
+    assert inventory[0]["node"] == "create_uk_frs"
+    assert "normalization" in inventory[0]["coupling"]
+    wealth = next(row for row in inventory if row["stage"] == "was_wealth")
+    assert "Donor and recipient" in wealth["coupling"]
+    graph = add_uk_spine_gate_nodes(spine, spec=country, engine_identity="test-engine")
+    compiled = compile_graph(graph)
+    assembled = graph.node("spine.gates.assembled")
+    transferred = graph.node("spine.gates.transferred")
+    assert assembled.population == compiled.versions["frs_brma"]
+    assert assembled.population != compiled.versions["was_wealth"]
+    assert transferred.population == endpoint.population
+    assert {edge.producer for edge in transferred.artifact_inputs} >= {
+        "spine.gates.assembled",
+        "was_wealth",
+    }
+    # The gate admits whichever stage follows the BRMA checkpoint in the roster
+    # (the SPI block since #1012 moved it ahead of was_wealth), as main's tool
+    # does with UK_SPINE_ASSEMBLED_FINAL_STAGE.
+    stages = endpoint.stage_names
+    admitted = stages[stages.index("frs_brma") + 1]
+    assert admitted == "frs_hmrc_spine_leaves"
+    assert "spine.gates.assembled" in compiled.predecessors["frs_brma.checkpoint"]
+    assert "spine.gates.assembled" in compiled.predecessors[admitted]
+    assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
+    assert "spine_gate_phase" not in graph.node("was_wealth").params
+    # The blocking posture travels with the gate and the admission it guards.
+    assert assembled.params["synthetic_smoke"] is False
+    assert graph.node(admitted).params["spine_gate_synthetic_smoke"] is False
+    smoke = add_uk_spine_gate_nodes(
+        spine, spec=country, engine_identity="test-engine", synthetic_smoke=True
+    )
+    assert smoke.node("spine.gates.assembled").params["synthetic_smoke"] is True
+    assert smoke.node(admitted).params["spine_gate_synthetic_smoke"] is True
+    with pytest.raises(ValueError, match="release candidate"):
+        add_uk_spine_gate_nodes(
+            spine,
+            spec=country,
+            engine_identity="test-engine",
+            release_candidate=True,
+            synthetic_smoke=True,
+        )
+
+
+def _assembled_report(status):
+    from microcosm.build.gate_battery import (
+        GateOutcome,
+        GatePhaseReport,
+        GateStatus,
+        gate_phase_report_payload,
+    )
+    from microcosm.build.gates import GateResult
+    from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_manifest
+
+    gates = uk_spine_gate_manifest(load_country_spec("uk"))
+    entries = tuple(entry for entry in gates.gates if entry.phase == "assembled")
+    selected = next(
+        entry
+        for entry in entries
+        if entry.criticality == "release_blocking" and not entry.evidence_absent_blocks
+    )
+    outcomes = []
+    for entry in entries:
+        state = status if entry == selected else GateStatus.PASSED
+        evaluated = state in (GateStatus.PASSED, GateStatus.FAILED)
+        outcomes.append(
+            GateOutcome(
+                entry,
+                state,
+                result=GateResult(
+                    entry.gate,
+                    state is GateStatus.PASSED,
+                    () if state is GateStatus.PASSED else ("fixture failure",),
+                )
+                if evaluated
+                else None,
+                reason=None if evaluated else "fixture missing reference",
+            )
+        )
+    return gate_phase_report_payload(
+        GatePhaseReport("assembled", tuple(outcomes)), gates=gates
+    ), selected.id
+
+
+def test_assembled_admission_refuses_before_model_and_preserves_development_policy(
+    tmp_path,
+):
+    from microcosm.build.gate_battery import GateStatus
+    from microcosm.build.uk_runtime.graph_evidence import (
+        require_uk_spine_gate_admission,
+    )
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+
+    report, failed = _assembled_report(GateStatus.FAILED)
+    path = tmp_path / "stored-phase.json"
+    path.write_text(json.dumps(report))
+    context = SimpleNamespace(
+        artifacts={"spine_gate": SimpleNamespace(payload=path.read_bytes())},
+        params={
+            "spine_gate_phase": "assembled",
+            "spine_gate_release_candidate": False,
+            "spine_gate_synthetic_smoke": False,
+        },
+    )
+
+    class UntouchedModel:
+        def __call__(self, frame):
+            raise AssertionError("A blocked assembled spine must not run a donor model")
+
+    with pytest.raises(ValueError, match=failed):
+        UKStageKernel("was_wealth", UntouchedModel()).run(context)
+    assert json.loads(path.read_bytes()) == report
+    report, _ = _assembled_report(GateStatus.EVIDENCE_ABSENT)
+    context.artifacts["spine_gate"].payload = json.dumps(report).encode()
+    require_uk_spine_gate_admission(context)
+    context.params["spine_gate_release_candidate"] = True
+    with pytest.raises(ValueError, match="block downstream"):
+        require_uk_spine_gate_admission(context)
+
+
+@pytest.mark.parametrize("synthetic_smoke", [False, True])
+def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
+    """The raw-spine path admits ``uk.full.sample`` through the transferred gate
+    with every parameter the admission check reads (found by the first licensed
+    end-to-end run: ``spine_gate_synthetic_smoke`` was missing there)."""
+    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
+
+    country = load_country_spec("uk")
+    spine = uk_spine_graph(country)
+    gated = add_uk_spine_gate_nodes(
+        spine,
+        spec=country,
+        engine_identity="test-engine",
+        synthetic_smoke=synthetic_smoke,
+    )
+    graph = append_uk_population_nodes(
+        gated,
+        population=uk_spine_endpoint(spine).population,
+        time_period="2024",
+        weight_kind="importance",
+        sample_fraction=0.1,
+        n_clones=2,
+        # The admission under test sits on the sample node, before any
+        # assignment; the legacy law needs no atomic definition here.
+        geography_assignment="legacy",
+    )
+    gate = graph.node("spine.gates.transferred")
+    sample = graph.node("uk.full.sample")
+    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
+    assert sample.params["spine_gate_phase"] == "transferred"
+    assert sample.params["spine_gate_release_candidate"] is bool(
+        gate.params["release_candidate"]
+    )
+    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
+    assert gate.params["synthetic_smoke"] is synthetic_smoke
+
+
+@pytest.mark.parametrize("synthetic_smoke", [False, True])
+def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
+    """The same admission composed under the default law (microcosm#932): the
+    identity-keyed assignment follows the sample node and does not move the
+    transferred-gate parameters the sample admission reads."""
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import SOURCE_VINTAGE
+
+    country = load_country_spec("uk")
+    spine = uk_spine_graph(country)
+    gated = add_uk_spine_gate_nodes(
+        spine,
+        spec=country,
+        engine_identity="test-engine",
+        synthetic_smoke=synthetic_smoke,
+    )
+    graph = append_uk_population_nodes(
+        gated,
+        population=uk_spine_endpoint(spine).population,
+        time_period="2024",
+        weight_kind="importance",
+        sample_fraction=0.1,
+        n_clones=2,
+        seed=7,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=7
+        ),
+        source_vintage=SOURCE_VINTAGE,
+    )
+    gate = graph.node("spine.gates.transferred")
+    sample = graph.node("uk.full.sample")
+    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
+    assert sample.params["spine_gate_phase"] == "transferred"
+    assert sample.params["spine_gate_release_candidate"] is bool(
+        gate.params["release_candidate"]
+    )
+    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
+    assert graph.node("uk.full.identity").kernel == "uk.full.identity@1"
+    compiled = compile_graph(graph)
+    assert compiled.order.index("uk.full.sample") < compiled.order.index(
+        "uk.full.identity"
+    )

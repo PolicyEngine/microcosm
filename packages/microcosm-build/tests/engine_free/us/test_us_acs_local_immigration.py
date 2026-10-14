@@ -790,9 +790,19 @@ def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
     assert clock["label"] == "arrival-based status-duration proxy"
     assert "1613(a)" in clock["caveat"]
     assert "clear the bar early" in clock["caveat"]
+    for text in (
+        "neither the ACS nor the ASEC donor records the date qualified status",
+        "the clock runs from arrival",
+        "SNAP, Medicaid, CHIP and the state TANF tests that read the bar",
+        "microcosm#1093",
+    ):
+        assert text in clock["caveat"]
+    assert "Washington TANF and RCA" in clock["engine_readers"]
     block = clock["adjustment_lag_sensitivity"]
     assert block["graded"] is False
     assert block["statuses"] == list(FIVE_YEAR_BAR_STATUSES)
+    assert block["lags_years"] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
+    assert list(ADJUSTMENT_LAG_YEARS) == block["lags_years"]
     assert set(block["flips_by_lag_years"]) == {
         str(lag) for lag in ADJUSTMENT_LAG_YEARS
     }
@@ -806,11 +816,15 @@ def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
     assert block["within_bar_weight"] == pytest.approx(
         weights[subject & (years < 5)].sum()
     )
+    assert block["max_years_since_us_entry"] == pytest.approx(years[subject].max())
     for lag in ADJUSTMENT_LAG_YEARS:
         expected = subject & (years >= 5) & (years < 5 + lag)
         entry = block["flips_by_lag_years"][str(lag)]
         assert entry["persons"] == int(expected.sum())
         assert entry["weight"] == pytest.approx(weights[expected].sum())
+        assert entry["cumulative_share_of_bar_status_weight"] == pytest.approx(
+            weights[expected].sum() / weights[subject].sum()
+        )
     # The three added LPRs: rows -6, -4 and -2 of the person table.
     added = np.flatnonzero(acs)[-6::2]
     assert (
@@ -824,6 +838,47 @@ def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
     assert flips["1"]["persons"] >= 1  # the 5-year LPR
     assert lag_two_minus_one == int(((years == 6) & subject).sum())
     assert lag_three_minus_two == int(((years == 7) & subject).sum()) >= 1
+
+
+def test_lag_sensitivity_counts_a_nine_year_adjustment_lag() -> None:
+    """#1052 review A2 (round 4): her example.
+
+    An LPR who arrived in 2014 and got qualified status in 2023 has 10
+    modeled years in 2024 but one qualifying year. Lags of one to five years
+    miss them; every lag of six years or more counts them, and the
+    cumulative share never falls as the lag grows.
+    """
+
+    acs_rows = _acs_population() + [_noncitizen(YOEP=2014, HINS4=1), {}]
+    result, receipt = with_acs_local_immigration_inputs(
+        _frame(acs_rows=acs_rows), seed=0, time_period=PERIOD
+    )
+    person = result.table("person")
+    added = np.flatnonzero(_acs(result))[-2]
+    assert person["immigration_status_str"].iloc[added] == "LEGAL_PERMANENT_RESIDENT"
+    assert person[YEARS].iloc[added] == 10.0
+    weights = _person_weights(result)
+    years = person[YEARS].to_numpy()
+    subject = (
+        _acs(result) & person["immigration_status_str"].isin(FIVE_YEAR_BAR_STATUSES)
+    ).to_numpy()
+    ten = subject & (years == 10.0)
+    assert ten[added]
+    block = receipt["entry_clock"]["adjustment_lag_sensitivity"]
+    assert block["max_years_since_us_entry"] >= 10.0
+    flips = block["flips_by_lag_years"]
+    for lag in ADJUSTMENT_LAG_YEARS:
+        flipped = subject & (years >= 5) & (years < 5 + lag)
+        assert bool(flipped[added]) == (lag >= 6)
+        assert flips[str(lag)]["persons"] == int(flipped.sum())
+    shares = [
+        flips[str(lag)]["cumulative_share_of_bar_status_weight"]
+        for lag in ADJUSTMENT_LAG_YEARS
+    ]
+    assert shares == sorted(shares)
+    assert flips["6"]["weight"] - flips["5"]["weight"] == pytest.approx(
+        weights[subject & (years == 10.0)].sum()
+    )
 
 
 def test_assignment_is_deterministic_in_the_seed() -> None:

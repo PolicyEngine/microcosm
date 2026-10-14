@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_us_fiscal_targets.py."""
 
 # ruff: noqa: F403, F405
+import dataclasses
+
 from test_support.microcosm_build.us_fiscal_targets import *
 
 
@@ -891,17 +893,25 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 32,842 compiled targets after
-    Medicaid substitution, 5,694 national_state targets at registry
-    d315c75804ef, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. Before microcosm#956 it was
+    """The release surface on the pinned feed: 33,250 compiled targets after
+    Medicaid substitution, 6,102 national_state targets at registry
+    3fad14f85468, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1227 moved the
+    version from e1f9906bf0e0 by doubling the eight Table 2.5 EITC child
+    total rows, whose uprating source sum had counted each split twice;
+    microcosm#1206 moved it from f96be9f41781 by binding the Part B premium
+    target to gross_medicare_part_b_premium_if_enrolled. Neither changed
+    the counts.
+    The 408 state AGI-band rows of
+    microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
+    5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
     32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 32_842
-    assert len(surface.specs) == 5_694
-    assert surface.version == "d315c75804ef"
+    assert len(registry.specs) == 33_250
+    assert len(surface.specs) == 6_102
+    assert surface.version == "3fad14f85468"
     chip = [
         spec
         for spec in surface.specs
@@ -926,6 +936,60 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+_EITC_CHILD_SPLITS = (
+    "no_qualifying_children",
+    "one_qualifying_child",
+    "two_qualifying_children",
+    "three_or_more_qualifying_children",
+)
+
+
+@pytest.mark.parametrize(
+    ("measure", "active_measure", "factor"),
+    [
+        ("eitc_total", "total_earned_income_credit_amount", "1.04182361614341"),
+        ("eitc_returns", "total_earned_income_credit_returns", "0.975335982876551"),
+    ],
+)
+def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
+    pinned_feed_national_state_surface, measure, active_measure, factor
+) -> None:
+    """The four TY2023 Table 2.5 child splits' all-AGI total rows take one
+    factor, the TY2024 filing-season AGI bins over the source total rows
+    ($69,041,650,000 / $66,269,999,000; 23,837,149 / 24,439,936), so they sum
+    to those bins as the splits' 112 AGI bins do. The source sum used to count
+    each split's bins and total row both, which halved the factor (0.5209 and
+    0.4877) and shipped the total rows at about half their bins."""
+    registry, surface, _ = pinned_feed_national_state_surface
+    by_name = {spec.name: spec for spec in registry.specs}
+    on_surface = {spec.name for spec in surface.specs}
+    active = sum(
+        spec.value
+        for spec in registry.specs
+        if spec.name.startswith("irs_soi.ty2024.filing_season_week47.eitc_by_agi.")
+        and spec.metadata["source_measure_id"] == active_measure
+    )
+    record_set = "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+    totals = [
+        by_name[f"{record_set}{split}.total.{measure}"] for split in _EITC_CHILD_SPLITS
+    ]
+    bins = [
+        spec
+        for spec in registry.specs
+        if spec.name.startswith(record_set)
+        and spec.metadata["source_measure_id"] == measure
+        and spec not in totals
+    ]
+
+    assert len(bins) == 4 * 28
+    assert {spec.name for spec in [*totals, *bins]} <= on_surface
+    assert {spec.metadata["uprating_factor"] for spec in totals} == {factor}
+    assert {spec.metadata["uprating_agi_lower_bound"] for spec in totals} == {"-inf"}
+    assert {spec.metadata["uprating_agi_upper_bound"] for spec in totals} == {"inf"}
+    assert sum(spec.value for spec in totals) == pytest.approx(active, rel=1e-12)
+    assert sum(spec.value for spec in bins) == pytest.approx(active, rel=1e-12)
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -5138,16 +5202,22 @@ def test_soi_return_count_targets_expose_count_mode_without_base_variable() -> N
     assert "base_variables" not in spec.metadata
 
 
-def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
-    source_record_id = (
-        "cms_medicare.cy2024.part_b_premium_income."
-        "premiums_from_enrollees.actual_amount"
-    )
+_MEDICARE_PART_B_PREMIUM_RECORD_ID = (
+    "cms_medicare.cy2024.part_b_premium_income.premiums_from_enrollees.actual_amount"
+)
+_MEDICARE_PART_B_PREMIUM_KEY = (
+    "cms_medicare",
+    "actual_amount",
+    "premiums_from_enrollees",
+)
+
+
+def _compiled_medicare_part_b_premium_spec():
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _dynamic_ledger_fact(
-                source_record_id=source_record_id,
+                source_record_id=_MEDICARE_PART_B_PREMIUM_RECORD_ID,
                 source_name="cms_medicare",
                 measure_id="actual_amount",
                 groupby_value_id="premiums_from_enrollees",
@@ -5156,13 +5226,63 @@ def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
         ],
         allow_unaged_dollar_targets=True,
     )
-
     specs = {spec.name: spec for spec in registry.specs}
-    spec = specs[source_record_id]
+    return specs[_MEDICARE_PART_B_PREMIUM_RECORD_ID]
+
+
+def test_medicare_part_b_premium_reference_uses_enrolled_gross_premium() -> None:
+    """CMS premiums from enrollees bind the enrollment-gated gross premium.
+
+    ``gross_medicare_part_b_premium`` is defined for ``is_medicare_eligible``
+    and so also charges eligible non-enrollees (microcosm#1206).
+    """
+
+    spec = _compiled_medicare_part_b_premium_spec()
     assert spec.family == "cms_medicare"
+    assert spec.value == 139_837_000_000
     assert spec.metadata["target_role"] == "medicare_part_b_premium_total"
-    assert spec.metadata["base_variable"] == "gross_medicare_part_b_premium"
+    assert spec.metadata["base_variable"] == (
+        "gross_medicare_part_b_premium_if_enrolled"
+    )
     assert spec.metadata["source_measure_id"] == "actual_amount"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert "calibration_role" not in spec.metadata
+
+
+def test_medicare_part_b_premium_remap_changes_only_the_bound_variable(
+    monkeypatch,
+) -> None:
+    """Differential invariant for microcosm#1206's remap.
+
+    Compiling the same ledger fact under the pre-#1206 mapping and the
+    current one yields the same target (name, value, period, entity,
+    family, sign, hierarchy and every metadata key) except the bound
+    variable. The value the calibration matches is the fact's value both
+    times.
+    """
+
+    current = _compiled_medicare_part_b_premium_spec()
+    base_variable, family, metadata = fiscal_targets.DIRECT_LEDGER_TARGETS[
+        _MEDICARE_PART_B_PREMIUM_KEY
+    ]
+    assert base_variable == "gross_medicare_part_b_premium_if_enrolled"
+    monkeypatch.setitem(
+        fiscal_targets.DIRECT_LEDGER_TARGETS,
+        _MEDICARE_PART_B_PREMIUM_KEY,
+        ("gross_medicare_part_b_premium", family, metadata),
+    )
+    previous = _compiled_medicare_part_b_premium_spec()
+
+    assert previous.metadata["base_variable"] == "gross_medicare_part_b_premium"
+    current_metadata = dict(current.metadata)
+    previous_metadata = dict(previous.metadata)
+    assert current_metadata.pop("base_variable") != previous_metadata.pop(
+        "base_variable"
+    )
+    assert current_metadata == previous_metadata
+    assert dataclasses.replace(current, metadata={}) == dataclasses.replace(
+        previous, metadata={}
+    )
 
 
 def test_census_pep_population_age_facts_compile_to_count_targets() -> None:
@@ -5347,6 +5467,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
             "metadata": {"target_role": "federal_income_tax_total"},
         },
         *complete_agi_distribution_rows(),
+        *complete_state_agi_top_tail_rows(),
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_program_rows(),

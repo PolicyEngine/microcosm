@@ -355,7 +355,7 @@ def test_default_pins_are_the_shared_census_person_pins(sources):
     """Without an explicit pin the production table applies (and refuses here)."""
 
     member, _, archive, _ = sources
-    assert set(ASEC_SPM_ROLE_SOURCES) == {2022, 2023, 2024}
+    assert set(ASEC_SPM_ROLE_SOURCES) == {2022, 2023, 2024, 2025}
     with pytest.raises(AsecCensusPersonColumnsError, match="archive SHA-256"):
         restore_asec_census_person_columns(
             _h5_person(member), income_year=2022, source_path=archive

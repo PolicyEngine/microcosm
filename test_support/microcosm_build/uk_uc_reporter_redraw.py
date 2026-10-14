@@ -15,7 +15,10 @@ from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
     support_clone_index_column,
 )
-from microcosm.build.uk_runtime.uc_capital_coherence import cohere_uc_capital
+from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    cohere_uc_capital,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UC_REPORTER_REDRAW_OUTPUT,
     UC_REPORTER_REDRAW_SEED,
@@ -157,8 +160,10 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": age,
                     "is_benunit_head": member == 0,
+                    "is_household_head": member == 0,
                     "is_parent": children > 0,
                     "is_uc_child": benunit_id == 204,
+                    "is_uc_claimant": True,
                     "employment_income": 10_000.0 + benunit_id + member,
                     "self_employment_income": 100.0 * member,
                     "savings_interest_income": 10.0,
@@ -176,8 +181,10 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": 10,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": False,
                     "is_uc_child": True,
+                    "is_uc_claimant": False,
                     "employment_income": 0.0,
                     "self_employment_income": 0.0,
                     "savings_interest_income": 0.0,
@@ -206,6 +213,8 @@ def _frame(*, child_only: bool = False):
             "household_is_capital_gains_clone": [row[4] for row in benunit_rows],
         }
     )
+    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+        household[column] = 0.0
     return uk_national_frame(
         person=person,
         benunit=benunit,

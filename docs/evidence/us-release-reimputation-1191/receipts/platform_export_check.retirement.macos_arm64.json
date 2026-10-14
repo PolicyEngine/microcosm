@@ -1,0 +1,15 @@
+{
+ "base_h5": "base_populace_us_2024_puf_support.h5",
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "exported_table_outputs": "outputs.macos_arm64.npz",
+ "exported_table_outputs_sha256": "ec2c4533087060dbfafd6cca524ab489a67b07782bc70a574685de8cbfc76f6b",
+ "full_table_columns": 301,
+ "rows": 907863,
+ "rows_differing_full_table_vs_exported_table": {
+  "roth_401k_contributions_desired": 0,
+  "roth_ira_contributions_desired": 0,
+  "self_employed_pension_contributions_desired": 0,
+  "traditional_401k_contributions_desired": 0,
+  "traditional_ira_contributions_desired": 0
+ }
+}
