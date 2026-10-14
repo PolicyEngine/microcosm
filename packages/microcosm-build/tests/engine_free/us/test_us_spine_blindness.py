@@ -243,6 +243,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # subject to the all-runtime source-identity scan.
         "asec_census_person_columns.py",
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
+        # Builds the processed ASEC census_cps_YYYY.h5 inputs from pinned
+        # Census archives, before any build stage runs; no population
+        # treatment. Remains subject to the all-runtime source-identity scan.
+        "asec_processed_source.py",
         "asec_pool.py",
         # Pinned ASEC source coordinates and verified fetch; no population
         # treatment. Remains subject to the all-runtime source-identity scan.

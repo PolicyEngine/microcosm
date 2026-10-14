@@ -1,0 +1,147 @@
+{
+ "purpose": "Row-by-row agreement of TAX_ID and role between the archived construction (commit 40314a75) and the builder's microunit path on seeded synthetic households.",
+ "generator": "experiments/us-asec-processed-source-builder/scripts/household_cases.py",
+ "households": 20000,
+ "persons": 65556,
+ "seed": 20260928,
+ "archived": {
+  "pandas": "2.3.3",
+  "policyengine_us": "1.729.0",
+  "helpers_module": "policyengine_us.tools.tax_unit_construction",
+  "limits": {
+   "2022": 4400.0,
+   "2023": 4700.0,
+   "2024": 5050.0,
+   "2025": 5200.0
+  },
+  "checkout_commit": "9f177ddd6197dd0e296ad05d080865a3e5c2cdbf"
+ },
+ "builder": {
+  "pandas": "3.0.3",
+  "microunit": "0.1.0"
+ },
+ "case_input_audit": {
+  "married_spouse_present_with_pointer": 17647,
+  "pairs": 8086,
+  "spouse_line_absent": 298,
+  "self_spouse_pointer": 174,
+  "spouse_not_married_spouse_present": 1011,
+  "one_sided_spouse_pointer": 8,
+  "parent_line_absent": 27539,
+  "persons_in_several_pairs": 0,
+  "self_parent_pointer": 0,
+  "duplicate_person_lines": 0,
+  "refused_households": []
+ },
+ "years": {
+  "2022": {
+   "dependent_gross_income_limit": 4400.0,
+   "tax_units": 42523,
+   "roles": {
+    "DEPENDENT": 14947,
+    "HEAD": 42523,
+    "SPOUSE": 8086
+   },
+   "tax_id_rows_equal": 65556,
+   "role_rows_equal": 65556,
+   "equal": true,
+   "first_disagreeing_households": []
+  },
+  "2023": {
+   "dependent_gross_income_limit": 4700.0,
+   "tax_units": 42509,
+   "roles": {
+    "DEPENDENT": 14961,
+    "HEAD": 42509,
+    "SPOUSE": 8086
+   },
+   "tax_id_rows_equal": 65556,
+   "role_rows_equal": 65556,
+   "equal": true,
+   "first_disagreeing_households": []
+  },
+  "2024": {
+   "dependent_gross_income_limit": 5050.0,
+   "tax_units": 42492,
+   "roles": {
+    "DEPENDENT": 14978,
+    "HEAD": 42492,
+    "SPOUSE": 8086
+   },
+   "tax_id_rows_equal": 65556,
+   "role_rows_equal": 65556,
+   "equal": true,
+   "first_disagreeing_households": []
+  },
+  "2025": {
+   "dependent_gross_income_limit": 5200.0,
+   "tax_units": 42479,
+   "roles": {
+    "DEPENDENT": 14991,
+    "HEAD": 42479,
+    "SPOUSE": 8086
+   },
+   "tax_id_rows_equal": 65556,
+   "role_rows_equal": 65556,
+   "equal": true,
+   "first_disagreeing_households": []
+  }
+ },
+ "precondition_probes": {
+  "cases": "household_cases.probe_cases",
+  "spouse_chain": {
+   "input_audit": {
+    "married_spouse_present_with_pointer": 3,
+    "pairs": 2,
+    "spouse_line_absent": 0,
+    "self_spouse_pointer": 0,
+    "spouse_not_married_spouse_present": 0,
+    "one_sided_spouse_pointer": 1,
+    "parent_line_absent": 0,
+    "persons_in_several_pairs": 1,
+    "self_parent_pointer": 0,
+    "duplicate_person_lines": 0,
+    "refused_households": [
+     1
+    ]
+   },
+   "archived": {
+    "raised": "StopIteration"
+   },
+   "builder": {
+    "raised": "ValueError",
+    "message": "Tax units cannot be constructed from these records: 1 person(s) in several married pairs (households [1])."
+   }
+  },
+  "self_parent": {
+   "input_audit": {
+    "married_spouse_present_with_pointer": 0,
+    "pairs": 0,
+    "spouse_line_absent": 0,
+    "self_spouse_pointer": 0,
+    "spouse_not_married_spouse_present": 0,
+    "one_sided_spouse_pointer": 0,
+    "parent_line_absent": 0,
+    "persons_in_several_pairs": 0,
+    "self_parent_pointer": 1,
+    "duplicate_person_lines": 0,
+    "refused_households": [
+     1
+    ]
+   },
+   "archived": {
+    "raised": "StopIteration"
+   },
+   "builder": {
+    "raised": "ValueError",
+    "message": "Tax units cannot be constructed from these records: 1 self parent pointer(s) (households [1])."
+   }
+  }
+ },
+ "households_whose_partition_changes_between_years": {
+  "2022-2023": 14,
+  "2023-2024": 17,
+  "2024-2025": 13
+ },
+ "equal": true
+}
