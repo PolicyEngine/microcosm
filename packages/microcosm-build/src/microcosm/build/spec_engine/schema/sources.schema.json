@@ -2072,6 +2072,29 @@
         "full_time_education_through_age"
        ]
       },
+      "looked_after_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "foster_child_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "foster_parent_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "below_age": {
+         "type": "integer",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "foster_child_code",
+        "foster_parent_code",
+        "below_age"
+       ]
+      },
       "one_person_age_split": {
        "type": "integer",
        "minimum": 0
@@ -2145,6 +2168,7 @@
       "head_label",
       "family_link_codes",
       "dependent_child",
+      "looked_after_child",
       "one_person_age_split",
       "family_role_values",
       "household_type_values",
@@ -4667,6 +4691,12 @@
       "column_reconciliation": {
        "type": "string"
       },
+      "investable_wealth_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
       "kind": {
        "const": "rank_preserving_allocation"
       },
@@ -4685,6 +4715,9 @@
       "suppressed_cell_allocation": {
        "type": "string"
       },
+      "wealth_rank_weight": {
+       "type": "number"
+      },
       "weights": {
        "type": "string"
       },
@@ -4696,12 +4729,14 @@
       "band_order",
       "cell_order",
       "column_reconciliation",
+      "investable_wealth_columns",
       "kind",
       "minimum_allocation_people",
       "ordering",
       "rounding",
       "shortfall_policy",
       "suppressed_cell_allocation",
+      "wealth_rank_weight",
       "weights",
       "within"
      ]
@@ -5552,17 +5587,17 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "band_pool": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "string"
+      },
       "basis_assumption": {
        "type": "string"
       },
-      "count_target": {
-       "type": "string"
-      },
-      "gains_target": {
-       "type": "string"
-      },
       "kind": {
-       "const": "assign_residential_property_flag"
+       "const": "assign_badr_qualifying_gains"
       },
       "model": {
        "type": "string"
@@ -5573,13 +5608,22 @@
       "output_semantics": {
        "type": "string"
       },
-      "parameter_solver": {
-       "type": "string"
+      "policy_parameters": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       },
       "population": {
        "type": "string"
       },
+      "qualifying_amount": {
+       "type": "string"
+      },
       "realization": {
+       "type": "string"
+      },
+      "reported_not_fitted": {
        "type": "string"
       },
       "seed": {
@@ -5587,32 +5631,65 @@
       },
       "seed_mixing": {
        "type": "string"
+      },
+      "stock_log_odds": {
+       "type": "number"
+      },
+      "stock_signal": {
+       "type": "string"
+      },
+      "top_band_count": {
+       "type": "string"
+      },
+      "type_coupling": {
+       "type": "string"
       }
      },
      "required": [
+      "band_pool",
+      "bands",
       "basis_assumption",
-      "count_target",
-      "gains_target",
       "kind",
       "model",
       "output_column",
       "output_semantics",
-      "parameter_solver",
+      "policy_parameters",
       "population",
+      "qualifying_amount",
       "realization",
+      "reported_not_fitted",
       "seed",
-      "seed_mixing"
+      "seed_mixing",
+      "stock_log_odds",
+      "stock_signal",
+      "top_band_count",
+      "type_coupling"
      ]
     },
     {
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "basis_assumption": {
+       "type": "string"
+      },
       "categories": {
        "type": "array",
        "items": {
         "type": "string"
        }
+      },
+      "claimant_categories": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "claimant_restriction": {
+       "type": "string"
+      },
+      "claimant_share_targets": {
+       "type": "string"
       },
       "diagnostic_only": {
        "const": true
@@ -5626,6 +5703,9 @@
       "log_sigma": {
        "type": "number"
       },
+      "non_claimant_share_targets": {
+       "type": "string"
+      },
       "none_semantics": {
        "type": "string"
       },
@@ -5638,14 +5718,17 @@
       "realization": {
        "type": "string"
       },
-      "seed": {
-       "type": "number"
-      },
-      "seed_mixing": {
-       "type": "string"
-      },
       "share_targets": {
        "type": "string"
+      },
+      "stock_signals": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "stock_type_floor": {
+       "type": "number"
       },
       "sub_aea_semantics": {
        "type": "string"
@@ -5667,18 +5750,23 @@
       }
      },
      "required": [
+      "basis_assumption",
       "categories",
+      "claimant_categories",
+      "claimant_restriction",
+      "claimant_share_targets",
       "diagnostic_only",
       "kernel",
       "kind",
       "log_sigma",
+      "non_claimant_share_targets",
       "none_semantics",
       "output_column",
       "population",
       "realization",
-      "seed",
-      "seed_mixing",
       "share_targets",
+      "stock_signals",
+      "stock_type_floor",
       "sub_aea_semantics",
       "value_domain",
       "weight_fitting",
@@ -6257,6 +6345,12 @@
         "survey_year",
         "calibration_year"
        ]
+      },
+      "dataset_year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year"
+       ]
       }
      }
     },
@@ -6315,6 +6409,201 @@
       "kind",
       "output",
       "draw",
+      "seed",
+      "anchor",
+      "bands",
+      "weight_mapping",
+      "residual_rate",
+      "solve_scope",
+      "newly_entitled_rate_key"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_component_take_up_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "rule",
+         "rate_key"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "rule": {
+          "type": "string"
+         },
+         "rate_key": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "residual_rate": {
+       "type": "string"
+      },
+      "solve_scope": {
+       "type": "string",
+       "enum": [
+        "great_britain"
+       ]
+      },
+      "newly_entitled_rate_key": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "anchor",
+      "eligibility",
+      "family_key",
+      "resource",
+      "rate_measure",
+      "rate_period",
+      "weight_mapping",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_family_claims_by_child_age"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "family_key": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "rate_measure": {
+       "type": "string"
+      },
+      "rate_period": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "resource",
+      "numerator_measure",
+      "denominator_measure",
+      "caseload_period",
+      "charge_income",
+      "charge_parameters",
+      "pools",
+      "weight_mapping",
+      "rule",
+      "payment_rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_opt_out_by_charge_income"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "numerator_measure": {
+       "type": "string"
+      },
+      "denominator_measure": {
+       "type": "string"
+      },
+      "caseload_period": {
+       "type": "string"
+      },
+      "charge_income": {
+       "type": "string"
+      },
+      "charge_parameters": {
+       "type": "string"
+      },
+      "pools": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "payment_rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
       "anchor",
       "rate_key",
       "seed"
@@ -6336,6 +6625,9 @@
        "type": "string"
       },
       "population": {
+       "type": "string"
+      },
+      "rows": {
        "type": "string"
       },
       "seed": {
@@ -6559,6 +6851,36 @@
        "additionalProperties": {
         "type": "string"
        }
+      },
+      "role_column": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "method",
+      "aggregates"
+     ],
+     "properties": {
+      "kind": {
+       "const": "aggregate_person_to_household"
+      },
+      "method": {
+       "type": "string"
+      },
+      "consumed_only": {
+       "type": "boolean"
+      },
+      "aggregates": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
       }
      }
     },
@@ -6728,8 +7050,16 @@
         "type": "string"
        }
       },
+      "floor": {
+       "type": "number"
+      },
       "logged_dropna_row_count": {
        "type": "boolean"
+      },
+      "unmapped_codes": {
+       "enum": [
+        "refuse"
+       ]
       },
       "margins": {
        "type": "array",
@@ -6758,6 +7088,14 @@
       },
       "range": {
        "type": "string"
+      },
+      "rate_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 2,
+       "maxItems": 2
       },
       "reduced_rate_share": {
        "type": "number"
@@ -6893,6 +7231,10 @@
       },
       "cache": {
        "type": "boolean"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
       }
      }
     },
@@ -7180,6 +7522,12 @@
       "conservation": {
        "type": "string"
       },
+      "pension_age_share": {
+       "type": "number"
+      },
+      "pension_age_stratum": {
+       "type": "string"
+      },
       "share": {
        "type": "number"
       },
@@ -7380,6 +7728,9 @@
       "recipient_minimum_age": {
        "type": "integer",
        "minimum": 0
+      },
+      "recipient_role_column": {
+       "type": "string"
       },
       "rebase_income_to_build_period": {
        "type": "boolean"
@@ -7706,6 +8057,11 @@
       "output",
       "rows",
       "donor_rows",
+      "reporter_status",
+      "investment_income",
+      "investment_income_band_edges",
+      "minimum_cell_donors",
+      "coarsening",
       "dependent_children_bands",
       "couple_status",
       "weight_mapping",
@@ -7726,6 +8082,30 @@
       },
       "donor_rows": {
        "type": "string"
+      },
+      "reporter_status": {
+       "type": "string"
+      },
+      "investment_income": {
+       "type": "string"
+      },
+      "investment_income_band_edges": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "number"
+       }
+      },
+      "minimum_cell_donors": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "coarsening": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
       },
       "dependent_children_bands": {
        "type": "array",
@@ -7822,6 +8202,8 @@
       "kind",
       "predictors",
       "chain_order",
+      "stratified_targets",
+      "derived_totals",
       "seed"
      ],
      "properties": {
@@ -7852,10 +8234,30 @@
         "type": "string"
        }
       },
-      "debt_segment_predictors": {
+      "stratified_targets": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "internal_components": {
        "type": "array",
        "items": {
         "type": "string"
+       }
+      },
+      "derived_totals": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
        }
       },
       "region_remap": {
@@ -7964,7 +8366,6 @@
      "required": [
       "kind",
       "clone_flag_column",
-      "donor_flag_column",
       "id_remapping",
       "pairing",
       "requirement"
@@ -7974,9 +8375,6 @@
        "const": "pair_clone_households_to_originals"
       },
       "clone_flag_column": {
-       "type": "string"
-      },
-      "donor_flag_column": {
        "type": "string"
       },
       "id_remapping": {
@@ -8065,7 +8463,6 @@
       "sub_exempt_group",
       "loss_group",
       "liable_clones",
-      "donors",
       "factor",
       "maximum_factor",
       "transfer",
@@ -8089,9 +8486,6 @@
        "type": "string"
       },
       "liable_clones": {
-       "type": "string"
-      },
-      "donors": {
        "type": "string"
       },
       "factor": {
@@ -8187,89 +8581,249 @@
      "additionalProperties": false,
      "required": [
       "kind",
-      "size_band_resource",
-      "incidence_resource",
-      "minimum_band_lower",
-      "donors_per_band",
-      "expected_band_count",
-      "expected_donor_count",
-      "candidate_order",
-      "draw",
-      "propensity",
-      "seed",
-      "flag_column",
+      "joint_resource",
+      "joint_record_set_prefix",
+      "joint_vintage",
+      "taxpayer_concept",
+      "income_band_lower_bounds",
+      "minimum_gain_band_lower",
+      "published_top_band_taxpayers",
+      "suppressed_cells",
+      "clone_split_factor",
+      "headroom",
+      "expected_support_mass",
+      "support_mass_rule",
+      "income_band_measure",
+      "income_proxy_components",
+      "allowance_subtraction",
+      "adult_minimum_age",
       "carrier",
-      "initial_weight",
-      "never_zero_weight",
+      "wealth_measure",
+      "investable_wealth_columns",
+      "selection",
+      "maximum_copy_weight",
+      "copy_rule",
+      "id_remapping",
+      "flag_column",
+      "copies_column",
+      "copy_index_column",
+      "values",
       "weight_kind_out",
-      "reason",
-      "size_band_vintage",
-      "retained_taxpayers",
-      "retained_gains_gbp"
+      "conservation",
+      "declared_factor",
+      "reason"
      ],
      "properties": {
       "kind": {
-       "const": "stack_band_donor_households"
+       "const": "split_top_wealth_support_households"
       },
-      "size_band_resource": {
+      "joint_resource": {
        "type": "string"
       },
-      "incidence_resource": {
+      "joint_record_set_prefix": {
        "type": "string"
       },
-      "minimum_band_lower": {
+      "joint_vintage": {
+       "type": "string"
+      },
+      "taxpayer_concept": {
+       "type": "string"
+      },
+      "income_band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
+      "minimum_gain_band_lower": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "published_top_band_taxpayers": {
        "type": "number"
       },
-      "donors_per_band": {
+      "suppressed_cells": {
+       "type": "string"
+      },
+      "clone_split_factor": {
        "type": "integer",
        "minimum": 1
       },
-      "expected_band_count": {
+      "headroom": {
+       "type": "number"
+      },
+      "expected_support_mass": {
+       "type": "number"
+      },
+      "support_mass_rule": {
+       "type": "string"
+      },
+      "income_band_measure": {
+       "type": "string"
+      },
+      "income_proxy_components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "allowance_subtraction": {
+       "type": "boolean"
+      },
+      "adult_minimum_age": {
        "type": "integer",
        "minimum": 1
-      },
-      "expected_donor_count": {
-       "type": "integer",
-       "minimum": 1
-      },
-      "candidate_order": {
-       "type": "string"
-      },
-      "draw": {
-       "type": "string"
-      },
-      "propensity": {
-       "type": "string"
-      },
-      "seed": {
-       "type": "integer"
-      },
-      "flag_column": {
-       "type": "string"
       },
       "carrier": {
        "type": "string"
       },
-      "initial_weight": {
+      "wealth_measure": {
        "type": "string"
       },
-      "never_zero_weight": {
-       "type": "boolean"
+      "investable_wealth_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "selection": {
+       "type": "string"
+      },
+      "maximum_copy_weight": {
+       "type": "number"
+      },
+      "copy_rule": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "copies_column": {
+       "type": "string"
+      },
+      "copy_index_column": {
+       "type": "string"
+      },
+      "values": {
+       "type": "string"
       },
       "weight_kind_out": {
        "type": "string"
       },
+      "conservation": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
       "reason": {
        "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "population",
+      "model",
+      "stock_log_odds",
+      "stock_signal",
+      "parameter_solver",
+      "count_target",
+      "gains_target",
+      "basis_assumption",
+      "realization",
+      "maximum_liable_gainers_per_household",
+      "gainer_order",
+      "id_remapping",
+      "flag_column",
+      "index_column",
+      "probability_column",
+      "output_column",
+      "output_semantics",
+      "values",
+      "weight_kind_out",
+      "conservation",
+      "declared_factor",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "split_liable_gainers_by_residential_probability"
       },
-      "size_band_vintage": {
+      "population": {
        "type": "string"
       },
-      "retained_taxpayers": {
+      "model": {
+       "type": "string"
+      },
+      "stock_log_odds": {
        "type": "number"
       },
-      "retained_gains_gbp": {
-       "type": "number"
+      "stock_signal": {
+       "type": "string"
+      },
+      "parameter_solver": {
+       "type": "string"
+      },
+      "count_target": {
+       "type": "string"
+      },
+      "gains_target": {
+       "type": "string"
+      },
+      "basis_assumption": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "maximum_liable_gainers_per_household": {
+       "type": "integer"
+      },
+      "gainer_order": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "index_column": {
+       "type": "string"
+      },
+      "probability_column": {
+       "type": "string"
+      },
+      "output_column": {
+       "type": "string"
+      },
+      "output_semantics": {
+       "type": "string"
+      },
+      "values": {
+       "type": "string"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "conservation": {
+       "const": "exact_total"
+      },
+      "declared_factor": {
+       "const": 1.0
+      },
+      "reason": {
+       "type": "string"
       }
      }
     },
@@ -8282,21 +8836,33 @@
       "taxpayer_count_measure",
       "taxpayer_count_period",
       "band_lower_bounds",
-      "donors_per_band",
+      "minimum_donors_per_band",
+      "maximum_donor_weight",
+      "count_rule",
+      "weight_rule",
       "expected_band_count",
-      "expected_donor_count",
       "candidate_population",
       "candidate_order",
       "draw",
       "propensity",
+      "tape_preparation",
+      "tape_preparation_seed",
       "seed",
+      "salt",
       "clone_index",
       "flag_column",
       "band_column",
       "carrier_column",
-      "initial_weight",
+      "funding",
+      "funding_strata",
+      "maximum_reallocation_share",
+      "maximum_donor_household_share",
+      "seating_scale",
+      "mass_scale",
       "never_zero_weight",
       "weight_kind_out",
+      "conservation",
+      "declared_factor",
       "reason"
      ],
      "properties": {
@@ -8319,13 +8885,21 @@
         "type": "integer"
        }
       },
-      "donors_per_band": {
-       "type": "integer"
+      "minimum_donors_per_band": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "maximum_donor_weight": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "count_rule": {
+       "type": "string"
+      },
+      "weight_rule": {
+       "type": "string"
       },
       "expected_band_count": {
-       "type": "integer"
-      },
-      "expected_donor_count": {
        "type": "integer"
       },
       "candidate_population": {
@@ -8340,8 +8914,17 @@
       "propensity": {
        "type": "string"
       },
+      "tape_preparation": {
+       "type": "string"
+      },
+      "tape_preparation_seed": {
+       "type": "integer"
+      },
       "seed": {
        "type": "integer"
+      },
+      "salt": {
+       "type": "string"
       },
       "clone_index": {
        "type": "integer"
@@ -8355,7 +8938,30 @@
       "carrier_column": {
        "type": "string"
       },
-      "initial_weight": {
+      "funding": {
+       "type": "string"
+      },
+      "funding_strata": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "maximum_reallocation_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "exclusiveMaximum": 1
+      },
+      "maximum_donor_household_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "exclusiveMaximum": 1
+      },
+      "seating_scale": {
+       "type": "string"
+      },
+      "mass_scale": {
        "type": "string"
       },
       "never_zero_weight": {
@@ -8364,7 +8970,77 @@
       "weight_kind_out": {
        "type": "string"
       },
+      "conservation": {
+       "const": "exact_total"
+      },
+      "declared_factor": {
+       "const": 1.0
+      },
       "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "artifact_role",
+      "resource",
+      "scheme_source",
+      "sector_source",
+      "occupational_split",
+      "rate_basis",
+      "top_band_ceiling",
+      "seed",
+      "salts"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_employer_pension_contributions_from_rate_bands"
+      },
+      "output": {"type": "string"},
+      "artifact_role": {"type": "string"},
+      "resource": {"type": "string"},
+      "scheme_source": {"type": "string"},
+      "sector_source": {"type": "string"},
+      "occupational_split": {"type": "string"},
+      "rate_basis": {"type": "string"},
+      "top_band_ceiling": {"type": "number"},
+      "seed": {"type": "integer"},
+      "salts": {"type": "array", "items": {"type": "string"}}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "artifact_role",
+      "resource",
+      "population_period",
+      "method",
+      "state_pension_age"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_spi_donor_ages_by_population"
+      },
+      "artifact_role": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population_period": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      },
+      "state_pension_age": {
        "type": "string"
       }
      }
@@ -8382,6 +9058,9 @@
       "weighting",
       "with_replacement",
       "outputs",
+      "draw",
+      "draw_key",
+      "salt",
       "seed"
      ],
      "properties": {
@@ -8413,11 +9092,122 @@
       "with_replacement": {
        "type": "boolean"
       },
+      "draw": {
+       "type": "string"
+      },
+      "draw_key": {
+       "type": "string"
+      },
+      "salt": {
+       "type": "string"
+      },
       "outputs": {
        "type": "string"
       },
       "seed": {
        "type": "integer"
+      },
+      "age_pool_minimum": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "rows",
+      "columns",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "zero_spi_channel_reports"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "rows",
+      "columns",
+      "linkage",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "restore_spi_channel_reports_from_source"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "linkage": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "spi_state_pension_leaf",
+      "spi_channel_columns",
+      "base_channel_columns",
+      "state_pension_age",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "zero_pension_age_reports_below_state_pension_age"
+      },
+      "spi_state_pension_leaf": {
+       "type": "string"
+      },
+      "spi_channel_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "base_channel_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "state_pension_age": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
       }
      }
     },
@@ -8535,7 +9325,9 @@
       "eligible_region_exclusions",
       "highest_education",
       "seed",
-      "salt"
+      "salt",
+      "realization",
+      "realization_bound"
      ],
      "properties": {
       "kind": {
@@ -8588,6 +9380,12 @@
        "type": "integer"
       },
       "salt": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "realization_bound": {
        "type": "string"
       }
      }
@@ -8740,6 +9538,9 @@
          },
          "audit_parameter_path": {
           "type": "string"
+         },
+         "from_window": {
+          "const": "fiscal_year"
          }
         }
        }
@@ -8752,6 +9553,22 @@
       },
       "instant": {
        "const": "january_first"
+      },
+      "fiscal_year_bridge": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "start_year_weight",
+        "next_year_weight"
+       ],
+       "properties": {
+        "start_year_weight": {
+         "const": 0.75
+        },
+        "next_year_weight": {
+         "const": 0.25
+        }
+       }
       }
      }
     },
@@ -8860,7 +9677,8 @@
       "margins_resource",
       "margins_period_value",
       "level_resource",
-      "level_fiscal_start",
+      "level_period_type",
+      "level_period_value",
       "level_temperature_adjustment"
      ],
      "properties": {
@@ -8944,6 +9762,19 @@
         "identity_uniform_order"
        ]
       },
+      "connect_rule": {
+       "enum": [
+        "gas_payer_probability_order"
+       ]
+      },
+      "connect_salt": {
+       "type": "string",
+       "minLength": 1
+      },
+      "connect_n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
       "seed": {
        "type": "integer",
        "minimum": 0
@@ -8957,13 +9788,37 @@
       "level_resource": {
        "type": "string"
       },
-      "level_fiscal_start": {
-       "type": "string"
+      "level_period_type": {
+       "enum": [
+        "calendar_year",
+        "fiscal_year"
+       ]
+      },
+      "level_period_value": {
+       "type": "integer"
       },
       "level_temperature_adjustment": {
        "enum": [
         "actual_temperature"
        ]
+      },
+      "household_kwh_ceiling": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "electricity",
+        "gas"
+       ],
+       "properties": {
+        "electricity": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "gas": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       }
       }
      },
      "if": {
@@ -9351,6 +10206,487 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "household_key",
+      "person_columns",
+      "household_aggregate",
+      "aggregate_tolerance_gbp",
+      "non_dependent_code",
+      "female_code",
+      "age_band_edges",
+      "sentinel_codes",
+      "sentinel_recode_columns",
+      "household_predictors",
+      "credibility_rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_was_lisa_donor"
+      },
+      "scope": {
+       "type": "string"
+      },
+      "household_key": {
+       "type": "string"
+      },
+      "person_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "person_number",
+        "is_dependent_child",
+        "age_band",
+        "sex",
+        "employment_income",
+        "holds_lifetime_isa",
+        "holding_imputed",
+        "reported_value",
+        "value_imputed",
+        "reported_band",
+        "band_imputed",
+        "lifetime_isa_balance"
+       ],
+       "properties": {
+        "person_number": {
+         "type": "string"
+        },
+        "is_dependent_child": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        },
+        "sex": {
+         "type": "string"
+        },
+        "employment_income": {
+         "type": "string"
+        },
+        "holds_lifetime_isa": {
+         "type": "string"
+        },
+        "holding_imputed": {
+         "type": "string"
+        },
+        "reported_value": {
+         "type": "string"
+        },
+        "value_imputed": {
+         "type": "string"
+        },
+        "reported_band": {
+         "type": "string"
+        },
+        "band_imputed": {
+         "type": "string"
+        },
+        "lifetime_isa_balance": {
+         "type": "string"
+        }
+       }
+      },
+      "household_aggregate": {
+       "type": "string"
+      },
+      "aggregate_tolerance_gbp": {
+       "type": "number"
+      },
+      "non_dependent_code": {
+       "type": "integer"
+      },
+      "female_code": {
+       "type": "integer"
+      },
+      "age_band_edges": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "sentinel_codes": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "sentinel_recode_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "household_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "credibility_rule": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "maximum_holder_age_band_lower",
+        "balance_ceiling_gbp"
+       ],
+       "properties": {
+        "maximum_holder_age_band_lower": {
+         "type": "integer"
+        },
+        "balance_ceiling_gbp": {
+         "type": "number"
+        },
+        "basis": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "salt",
+      "model",
+      "penalty_c",
+      "solver",
+      "max_iter",
+      "standardise",
+      "age_group_lower_bounds",
+      "log1p_predictors",
+      "indicator_predictors",
+      "count_predictors",
+      "population"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_lifetime_isa_ownership"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "weighted_ridge_logistic"
+       ]
+      },
+      "penalty_c": {
+       "type": "number"
+      },
+      "solver": {
+       "type": "string"
+      },
+      "max_iter": {
+       "type": "integer"
+      },
+      "standardise": {
+       "enum": [
+        "donor_unweighted_mean_sd"
+       ]
+      },
+      "age_group_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "log1p_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "indicator_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "count_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "population": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "minimum_age"
+       ],
+       "properties": {
+        "minimum_age": {
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "salt",
+      "model",
+      "n_estimators",
+      "training_rows",
+      "expected_regime",
+      "predictors"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_lifetime_isa_balance"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "regime_gated_qrf"
+       ]
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "training_rows": {
+       "enum": [
+        "credible_holders"
+       ]
+      },
+      "expected_regime": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "column",
+      "cap_column",
+      "method",
+      "ownership_output"
+     ],
+     "properties": {
+      "kind": {
+       "const": "cap_lifetime_isa_to_financial_wealth"
+      },
+      "column": {
+       "type": "string"
+      },
+      "cap_column": {
+       "type": "string"
+      },
+      "method": {
+       "enum": [
+        "pro_rata_within_household"
+       ]
+      },
+      "ownership_output": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "add_back_to",
+      "population",
+      "tape_preparation",
+      "tape_preparation_seed",
+      "donor_income_period",
+      "income_uprating_variables",
+      "donor",
+      "incidence_cells",
+      "incidence",
+      "incidence_seed",
+      "incidence_salt",
+      "model",
+      "n_estimators",
+      "training_rows",
+      "expected_regime",
+      "predictors",
+      "amount_seed",
+      "amount_salt",
+      "draw",
+      "add_back"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_frs_property_finance_costs"
+      },
+      "output": {
+       "type": "string"
+      },
+      "add_back_to": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "tape_preparation": {
+       "type": "string"
+      },
+      "tape_preparation_seed": {
+       "type": "integer"
+      },
+      "donor_income_period": {
+       "type": "integer"
+      },
+      "income_uprating_variables": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "donor": {
+       "type": "string"
+      },
+      "incidence_cells": {
+       "type": "integer"
+      },
+      "incidence": {
+       "type": "string"
+      },
+      "incidence_seed": {
+       "type": "integer"
+      },
+      "incidence_salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "regime_gated_qrf"
+       ]
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "expected_regime": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "amount_seed": {
+       "type": "integer"
+      },
+      "amount_salt": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "add_back": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "resource",
+      "population",
+      "band_lower_bounds",
+      "band_basis",
+      "order",
+      "walk",
+      "walk_seed",
+      "within_band",
+      "top_band",
+      "maximum_top_band_multiplier",
+      "sublet_receipts",
+      "residuals"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_property_rental_income"
+      },
+      "output": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "band_basis": {
+       "type": "string"
+      },
+      "order": {
+       "type": "string"
+      },
+      "walk": {
+       "type": "string"
+      },
+      "walk_seed": {
+       "type": "integer"
+      },
+      "within_band": {
+       "type": "string"
+      },
+      "top_band": {
+       "type": "string"
+      },
+      "maximum_top_band_multiplier": {
+       "type": "number"
+      },
+      "sublet_receipts": {
+       "type": "string"
+      },
+      "residuals": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "outputs",
       "household_output",
       "annualisation_weeks",
@@ -9478,6 +10814,9 @@
       },
       "fiscal_start": {
        "type": "string"
+      },
+      "price_year": {
+       "type": "integer"
       },
       "trip_rates_resource": {
        "type": "string"
@@ -9636,6 +10975,35 @@
          },
          "trips_concept": {
           "type": "string"
+         },
+         "price_index": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept",
+           "frequency"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "frequency": {
+            "enum": [
+             "quarterly",
+             "annual"
+            ]
+           },
+           "basis": {
+            "type": "string"
+           }
+          }
          },
          "trips_basis": {
           "enum": [
@@ -10074,6 +11442,225 @@
        "type": "array",
        "items": {
         "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "resource",
+      "concept",
+      "coicop",
+      "period_type",
+      "period_value",
+      "other_fuels_rule",
+      "other_fuels_codes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "resource": {
+       "type": "string"
+      },
+      "concept": {
+       "type": "string"
+      },
+      "coicop": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "calendar_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "other_fuels_rule": {
+       "type": "string"
+      },
+      "other_fuels_codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "flag",
+      "rule",
+      "seed",
+      "salt",
+      "n_estimators"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_zero_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "flag": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "codes",
+      "rule",
+      "seed",
+      "salt",
+      "n_estimators"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_prepayment_meter"
+      },
+      "output": {
+       "type": "string"
+      },
+      "codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "rule": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "parents",
+      "maximum_total",
+      "uncarried"
+     ],
+     "properties": {
+      "kind": {
+       "const": "recompose_from_remainder"
+      },
+      "maximum_total": {
+       "enum": [
+        "donor_support"
+       ]
+      },
+      "parents": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "drawn_subtracts",
+         "components"
+        ],
+        "properties": {
+         "drawn_subtracts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "uncarried": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "resource",
+        "period_value",
+        "classes"
+       ],
+       "properties": {
+        "resource": {
+         "type": "string"
+        },
+        "period_value": {
+         "type": "integer"
+        },
+        "classes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "coicop",
+           "concept"
+          ],
+          "properties": {
+           "coicop": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           }
+          }
+         }
+        }
        }
       }
      }

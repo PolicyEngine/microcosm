@@ -1,0 +1,1455 @@
+{
+ "format": "microcosm.axiom_input_closure.v1",
+ "country": "nz",
+ "content_basis": "transport",
+ "description": "The input closure for every Axiom module the New Zealand v0 graph binds: each root input of each module's committed input surface is encoded (by a concept binding of the axiom:nz mapping, a state binding declared here, or another graph node), or defaulted with its reason and citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input, so a run feeds every entry here. The defaults are modelling content listed for the D1 method review.",
+ "status": "awaiting D1: every default is a proposal (new_default true)",
+ "work_package": "G4 (unit construction and group encode)",
+ "mapping": {
+  "engine": "axiom:nz",
+  "engine_version": "6fe181fc4c65763150fe97501ef3443774e64869"
+ },
+ "input_surface": {
+  "fixture": "packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/nz.json",
+  "rulespec_commit": "6fe181fc4c65763150fe97501ef3443774e64869",
+  "engine": {
+   "repository": "TheAxiomFoundation/axiom-rules-engine",
+   "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66"
+  }
+ },
+ "rulespec_pin": {
+  "commit": "8dc2507d5f10a0467c285fed54d018ee37246798",
+  "method_card_row": "MC1",
+  "note": "The input surface was generated at 6fe181fc, an ancestor of the MC1 pin 8dc2507; git log 6fe181fc..8dc2507 lists no commit touching the four modules, and their SHA-256 values below are the same at both."
+ },
+ "rulespec_paths": {
+  "nz/statutes/social_security/main_benefits/entitlement.yaml": "94332c778b3b5324798f67cb1b30f59c2af4131be8159455814f453bc814f8d0",
+  "nz/statutes/social_security/main_benefits/rates.yaml": "7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39",
+  "nz/statutes/new_zealand_superannuation/core.yaml": "d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4",
+  "nz/statutes/social_security/accommodation_supplement/core.yaml": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc"
+ },
+ "receipt_flags": {
+  "columns": [
+   "person.receives_jobseeker_support",
+   "person.receives_sole_parent_support",
+   "person.receives_supported_living_payment",
+   "person.receives_nz_super"
+  ],
+  "note": "The person-level receipt flags the receipt layer (takeup.assign@1, declared but not yet implemented) is to write and the state bindings read. Their names are a contract with that kernel."
+ },
+ "receipt_requirements": {
+  "note": "What the receipt layer (takeup.assign@1, declared but not yet implemented) must enforce because the closure's entitlement defaults leave it to receipt. Each is a modelling default for D1.",
+  "requirements": [
+   "At most one main benefit (Jobseeker Support, Sole Parent Support, Supported Living Payment) per person: Social Security Act 2018 s 18; main_benefit_receiving_another_main_benefit is defaulted false.",
+   "Never New Zealand Superannuation and a main benefit for the same person: s 18; main_benefit_receiving_new_zealand_superannuation is defaulted false on transported frames.",
+   "A main benefit only where the rates module's income-tested net weekly payment for it is positive: entitlement treats the s 24 income test and the s 21 work gap as met (jobseeker_income_less_than_zero_rate_cutout true, jobseeker_in_full_time_employment false), and the Sole Parent Support and Supported Living Payment entitlement rules have no income term; the rates module tests the person's own income only."
+  ]
+ },
+ "engine_optional_evidence": "The axiom-rules-engine commit named in input_surface.engine (the engine that generated the committed input surface) has no optional inputs. A RuleSpec module has no inputs section (RulesDocument holds format, imports, module, units, relations and rules; src/rulespec.rs:361-374), a rule-level default is rejected (RuleSpecError::UnsupportedDefault, src/rulespec.rs:91-94), and the dense batch call collects only the inputs the caller supplies (python-ext/src/lib.rs:458-466). A plain read of an absent input fails every row whose evaluation reaches it with EvalError::MissingInput (src/dense.rs:2790-2803), and that fails the request. The internal input_or_else node that would read a default (src/dense.rs:2805-2811) is never produced from RuleSpec text: formula lowering turns a name no rule defines into a plain input read (src/formula.rs:1400-1413). So no root input of these modules can be verified engine-optional, and this closure classes none as such: an input a run does not encode is defaulted here, with its reason.",
+ "engine_source_pins": {
+  "note": "The axiom-rules-engine source files that engine_optional_evidence and undetermined_judgments cite by line, pinned at input_surface.engine.commit so each line citation names one exact file version.",
+  "pins": [
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "python-ext/src/lib.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/dense.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/formula.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/rulespec.rs"
+   }
+  ]
+ },
+ "undetermined_judgments": {
+  "action": "refuse",
+  "alternatives": [
+   "not_eligible",
+   "eligible"
+  ],
+  "new_default": true,
+  "reason": "Entitlement judgments come back as codes 1 (holds), -1 (does not hold) and 0 (undetermined). At the axiom-rules-engine commit named in input_surface.engine, no dense leaf yields an undetermined value: dense input columns are booleans, integers, floats or text, an absent input is an error rather than an unknown, and and/or/not only pass an undetermined item along. With every root input encoded or defaulted by this closure, a 0 cannot arise, so the receipt kernel takeup.assign@1, once implemented, is to refuse any 0 it sees instead of guessing: a 0 would mean the engine or the closure changed. The alternatives a review could choose are treating 0 as not entitled (understates receipt) or as entitled (overstates it). microcosm.frame.input_closure.resolve_judgments implements all three."
+ },
+ "knobs": [
+  {
+   "name": "rent_allocation",
+   "kind": "allocation",
+   "targets": [
+    "accommodation_supplement_weekly_rent_paid"
+   ],
+   "central": "reference_unit",
+   "values": [
+    "reference_unit",
+    "per_adult_share"
+   ],
+   "method_card_row": "MC8",
+   "note": "A household's rent goes to the family containing the reference person (central, a lower bound for other families), or is shared among the household's families in proportion to their adults (scenario S2, the upper sensitivity). Either way the families' rents sum to the household's."
+  },
+  {
+   "name": "asset_test",
+   "kind": "switch_zeroes",
+   "targets": [
+    "accommodation_supplement_cash_assets"
+   ],
+   "central": true,
+   "values": [],
+   "method_card_row": "MC10",
+   "note": "On (central): each family's summed liquid financial assets meet the reg 15 cash-asset limits. Off (scenario S1, an upper bound): every family's cash assets are set to zero, so the limit never binds."
+  },
+  {
+   "name": "area_column",
+   "kind": "state_column",
+   "targets": [
+    "household.as_area"
+   ],
+   "central": "as_area",
+   "values": [
+    "as_area",
+    "as_area_alt"
+   ],
+   "method_card_row": "MC9",
+   "note": "Which household area assignment the area flags read: the central crosswalk (as_area) or the alternative (as_area_alt, scenario S3)."
+  },
+  {
+   "name": "rent_factor",
+   "kind": "factor",
+   "targets": [
+    "accommodation_supplement_weekly_rent_paid"
+   ],
+   "central": 1.0,
+   "values": [],
+   "method_card_row": "MC8",
+   "note": "A factor on every family's weekly rent: 1.0 centrally; scenario S4's stock adjustment from lodged-bond rents to all rents takes its factor from the B6 evidence."
+  }
+ ],
+ "entries": [
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_available_for_and_seeking_full_time_employment",
+   "class": "defaulted",
+   "value": true,
+   "reason": "Work-test compliance is behavioural and adjudicated by MSD case by case; it is not observed. Treated as met, so entitlement reflects the observed conditions; the take-up draw calibrated to MSD counts (method card MC6) absorbs non-compliance.",
+   "citation": "Social Security Act 2018 s 22 (jobseeker_available_for_work)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_full_time_student",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_has_dependent_child",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_has_no_income",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Whether the person's income reaches the zero-rate cutout is an output of the rates module, not an input any concept determines; s 24 is carried by jobseeker_income_less_than_zero_rate_cutout instead.",
+   "citation": "Social Security Act 2018 s 24 (jobseeker_no_or_minimum_income_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_health_condition_injury_or_disability_limits_capacity_to_seek_or_undertake_work",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The main s 22 branch is treated as met, so the health branch is not needed; health-limited capacity enters Supported Living Payment through has_disability instead.",
+   "citation": "Social Security Act 2018 s 22 (jobseeker_available_for_work)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_in_full_time_employment",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Full-time employment is a threshold status on hours worked that no mapping transform computes (see the mapping's reason for fact:person.usual_weekly_hours). Treated as not in full-time employment, so the s 21 work gap holds for everyone; earnings then screen recipients only through the rates module's income test, which the receipt layer applies (receipt_requirements: a positive net weekly payment).",
+   "citation": "Social Security Act 2018 s 21 (jobseeker_work_gap)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_income_less_than_zero_rate_cutout",
+   "class": "defaulted",
+   "value": true,
+   "reason": "The s 24 income test is applied by the rates module's income-tested net payment, which is zero for a person whose income reaches the cutout. Entitlement treats s 24 as met and the receipt layer requires a positive net weekly payment (receipt_requirements); without that screen, high earners would count as entitled. The rates module tests the person's own income only (its income inputs are person-level), so a partnered person whose partner earns is screened on their own income: a default for review.",
+   "citation": "Social Security Act 2018 s 24 (jobseeker_no_or_minimum_income_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_losing_earnings_through_health_condition_or_injury",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only with full-time employment, which is defaulted false.",
+   "citation": "Social Security Act 2018 s 21 (jobseeker_work_gap)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_section_25_discretionary_student_eligibility",
+   "class": "defaulted",
+   "value": false,
+   "reason": "MSD's s 25 discretion for full-time students is not modelled; full-time students (bound from enrolled_full_time) stay ineligible for Jobseeker Support.",
+   "citation": "Social Security Act 2018 ss 25 and 26 (jobseeker_not_ineligible)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_taken_reasonable_steps_to_find_full_time_employment",
+   "class": "defaulted",
+   "value": true,
+   "reason": "Work-test compliance is behavioural and adjudicated by MSD case by case; it is not observed. Treated as met, so entitlement reflects the observed conditions; the take-up draw calibrated to MSD counts (method card MC6) absorbs non-compliance.",
+   "citation": "Social Security Act 2018 s 22 (jobseeker_available_for_work)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_temporary_income_reduces_rate_to_zero_but_otherwise_entitled",
+   "class": "defaulted",
+   "value": false,
+   "reason": "s 24 is carried by jobseeker_income_less_than_zero_rate_cutout.",
+   "citation": "Social Security Act 2018 s 24 (jobseeker_no_or_minimum_income_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_unemployed_due_to_strike",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Strike action is not observed; treated as not applying.",
+   "citation": "Social Security Act 2018 ss 25 and 26 (jobseeker_not_ineligible)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_unemployed_or_on_leave_for_employment_related_training",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Employment-related training leave is not observed; treated as not applying.",
+   "citation": "Social Security Act 2018 ss 25 and 26 (jobseeker_not_ineligible)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_willing_and_able_to_undertake_full_time_employment",
+   "class": "defaulted",
+   "value": true,
+   "reason": "Work-test compliance is behavioural and adjudicated by MSD case by case; it is not observed. Treated as met, so entitlement reflects the observed conditions; the take-up draw calibrated to MSD counts (method card MC6) absorbs non-compliance.",
+   "citation": "Social Security Act 2018 s 22 (jobseeker_available_for_work)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "jobseeker_would_satisfy_available_for_work_but_for_work_test_exemption_circumstances",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Work-test exemptions are adjudicated by MSD and not observed; the main s 22 branch is treated as met, so the exemption branch is not needed.",
+   "citation": "Social Security Act 2018 s 22 (jobseeker_available_for_work)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "main_benefit_receiving_another_main_benefit",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. Each main benefit's entitlement is assessed on its own; the s 18 one-main-benefit limit is enforced where receipt is assigned (receipt_requirements: at most one main benefit per person).",
+   "citation": "Social Security Act 2018 s 18 (main_benefit_concurrent_benefit_limit)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "main_benefit_receiving_new_zealand_superannuation",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The mapping binds it to positive public pension income, a donor program receipt that transport drops (concepts.split_for_transport), so on a transported frame that binding never runs. Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. The s 18 bar on a main benefit alongside New Zealand Superannuation is enforced where receipt is assigned (receipt_requirements: never NZS and a main benefit together).",
+   "citation": "Social Security Act 2018 s 18 (main_benefit_concurrent_benefit_limit)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "main_benefit_receiving_veterans_pension",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Veteran's Pension is not modelled in v0 and the concept schema has no veteran facts.",
+   "citation": "Social Security Act 2018 s 18 (main_benefit_concurrent_benefit_limit)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_continuous_residence_years_after_citizen_or_resident",
+   "class": "defaulted",
+   "value": 2,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Set at the s 16(2) requirement (social_security_residence_years_required is 2 at rulespec-nz 8dc2507), so a citizen meets it; an applicant who arrived within two years is not identified.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_continuous_residence_years_before_application",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only through the reciprocity-country branch of s 16, which is closed (social_security_ordinarily_resident_in_reciprocity_country is defaulted false).",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_new_zealand_citizen",
+   "class": "defaulted",
+   "value": true,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Every person is treated as a New Zealand citizen, so the s 16 residence requirement holds through citizenship (the s 19 lawful-presence requirement holds through the unlawful-presence and temporary-visa defaults); this overstates entitlement for non-citizens and recent migrants.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_only_temporary_entry_class_visa_holder",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Nobody is treated as a temporary visa holder.",
+   "citation": "Social Security Act 2018 s 19 (social_security_lawful_presence_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_ordinarily_resident_in_new_zealand_on_application",
+   "class": "defaulted",
+   "value": true,
+   "reason": "The modelled population is New Zealand's resident population (design weights at the Stats NZ scale), so everyone is ordinarily resident.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_ordinarily_resident_in_reciprocity_country",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Everyone is ordinarily resident in New Zealand; the reciprocity branch does not apply.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_refugee_or_protected_person",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Citizenship carries the s 16 test, so the refugee exception is not needed.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_regulations_treat_person_as_meeting_residence_requirement",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No regulation-based residence treatment is modelled; citizenship carries the s 16 test.",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_residence_class_visa_holder",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Citizenship carries the s 16 test (social_security_new_zealand_citizen is defaulted true).",
+   "citation": "Social Security Act 2018 s 16 (social_security_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_section_205_override_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only when the s 19 lawful-presence test fails, which it never does here.",
+   "citation": "Social Security Act 2018 s 19 (social_security_lawful_presence_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "social_security_unlawfully_resident_or_present_in_new_zealand",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No citizenship, visa or residence-history data exists in a transported frame (the donor is not New Zealand microdata). Nobody is treated as unlawfully present.",
+   "citation": "Social Security Act 2018 s 19 (social_security_lawful_presence_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_caring_for_dependent_children_under_age_limit",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_is_mother_or_father_or_child_regarded_as_child",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_is_single",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_living_apart_and_lost_or_lacks_partner_support",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Single status (bound from the partner pointer) carries the s 30 relationship test; a partner living elsewhere is not observed.",
+   "citation": "Social Security Act 2018 s 30 (sole_parent_relationship_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_lost_regular_support_due_to_partner_sentence_conditions",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Single status carries the s 30 relationship test; a partner's sentence is not observed.",
+   "citation": "Social Security Act 2018 s 30 (sole_parent_relationship_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_marriage_or_civil_union_dissolved",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_receiving_sole_parent_support",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. It feeds only the s 33 expiry output for an existing recipient (sole_parent_support_expires_when_youngest_child_turns_age_limit); the child-age limit for a new grant is applied through sole_parent_caring_for_dependent_children_under_age_limit, which the mapping binds.",
+   "citation": "Social Security Act 2018 s 33 (sole_parent_support_expires_when_youngest_child_turns_age_limit)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_split_care_court_order_exception_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only in a split-care situation, which is defaulted false.",
+   "citation": "Social Security Act 2018 s 32 (sole_parent_split_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_split_care_entitlement_allocated_to_person",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only in a split-care situation, which is defaulted false.",
+   "citation": "Social Security Act 2018 s 32 (sole_parent_split_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_split_care_situation_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no shared-care or custody facts. Treated as no split care, so the s 32 test holds.",
+   "citation": "Social Security Act 2018 s 32 (sole_parent_split_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_spouse_or_partner_died",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "sole_parent_youngest_dependent_child_age",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only by the s 33 expiry test, which is false while sole_parent_receiving_sole_parent_support is defaulted false.",
+   "citation": "Social Security Act 2018 s 33 (sole_parent_support_expires_when_youngest_child_turns_age_limit)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_capacity_restricted_by_health_condition_injury_or_disability",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_cared_person_is_spouse_or_partner",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers.",
+   "citation": "Social Security Act 2018 s 40(1)(a) and (2) (supported_living_caring_full_time_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_cared_person_would_otherwise_receive_institutional_care",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers.",
+   "citation": "Social Security Act 2018 s 40(1)(a) and (2) (supported_living_caring_full_time_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_caring_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_caring_applicant_has_dependent_child",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_caring_payment_already_granted",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers. Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here.",
+   "citation": "Social Security Act 2018 s 40(1)(a) and (2) (supported_living_caring_full_time_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_caring_required_full_time_care_at_home",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers.",
+   "citation": "Social Security Act 2018 s 40(1)(a) and (2) (supported_living_caring_full_time_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_caring_temporary_continuation_days",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers. Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here.",
+   "citation": "Social Security Act 2018 s 40(1)(a) and (2) (supported_living_caring_full_time_care_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_open_employment_trial_agreed_with_msd",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. Nobody is on an s 39 open-employment trial.",
+   "citation": "Social Security Act 2018 s 39 (supported_living_open_employment_trial_preserves_entitlement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_open_employment_trial_weeks",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only by the s 39 trial output, which is false with no trial agreed.",
+   "citation": "Social Security Act 2018 s 39 (supported_living_open_employment_trial_preserves_entitlement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_granted_for_restricted_work_capacity",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. It feeds only the s 39 open-employment-trial output.",
+   "citation": "Social Security Act 2018 s 39 (supported_living_open_employment_trial_preserves_entitlement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_regular_open_employment_capacity_hours_per_week",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Work capacity is assessed by MSD and not observed (the mapping does not bind work-capacity hours to usual hours worked, see its reason for fact:person.usual_weekly_hours). Set below the s 35(3) severity threshold (15 hours at rulespec-nz 8dc2507), so everyone flagged by has_disability meets the severity test; this overstates SLP entitlement, which the take-up draw calibrated to MSD counts absorbs (method card MC6).",
+   "citation": "Social Security Act 2018 s 35(3) (supported_living_restricted_work_capacity_severe)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_restricted_capacity_or_blindness_self_inflicted_to_qualify",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Self-inflicted restriction (s 36) is not observed; treated as not applying.",
+   "citation": "Social Security Act 2018 s 36 (supported_living_restricted_or_blind_not_ineligible)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_restricting_condition_expected_to_continue_required_period",
+   "class": "defaulted",
+   "value": true,
+   "reason": "The concept fact:person.has_disability (bound to supported_living_capacity_restricted_by_health_condition_injury_or_disability) is read as a long-term restriction, so the s 35(2) duration test is treated as met for those it flags; prognosis is not observed.",
+   "citation": "Social Security Act 2018 s 35(2) (supported_living_restricted_work_capacity_permanent)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_terminal_condition",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Terminal illness is not observed; the s 35(2) duration branch carries the test.",
+   "citation": "Social Security Act 2018 s 35(2) (supported_living_restricted_work_capacity_permanent)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "entity": "Person",
+   "input": "supported_living_totally_blind",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Total blindness is not a concept; restricted capacity carries s 34(a).",
+   "citation": "Social Security Act 2018 s 34(a) (supported_living_restricted_or_blind_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+   "class": "defaulted",
+   "value": true,
+   "reason": "A benefit granted in the modelled tax year commences after 1 July 1998.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_dependent_children_count",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_living_with_parent",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Living with a parent is not read from the parent pointers in v0 (no mapping transform flags a person who has a co-resident parent); this gives an under-20 who lives with a parent the higher rate, overstating their rate.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Benefit sanctions and strike action are not observed, so no partner is read as ineligible for either.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_partner_receives_main_benefit",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. A partnered person's rate takes the branch for a partner who receives no main benefit; the receipt layer's net-payment screen reads that rate (receipt_requirements).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. A partnered person's rate takes the branch for a partner who receives neither; the receipt layer's net-payment screen reads that rate (receipt_requirements).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_single",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_total_income",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_transferred_2013_no_dependent_children",
+   "class": "defaulted",
+   "value": false,
+   "reason": "A 2013 transfer from a former benefit is administrative history, not observed; a new grant is not a transfer.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "jobseeker_support_youngest_dependent_child_age",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Not read from the built units in v0 (the input is person-level and no mapping transform gives a person their unit's youngest child). Inert at rulespec-nz 8dc2507: the two rates it chooses between, jobseeker_support_single_youngest_child_14_or_older_weekly_rate (clause 1(e)) and jobseeker_support_single_with_dependent_children_weekly_rate (clause 1(f)), are both 521.52, and the income test does not read it.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3 (jobseeker_support_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "main_benefit_income_test_assessable_income",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "sole_parent_support_personal_earnings_used_for_childcare",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "The concept schema has no childcare-cost facts; no childcare earnings disregard is applied.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 2 clause 2 (sole_parent_support_income_disregarded_for_childcare)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "sole_parent_support_total_income",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_blind_average_weekly_earnings",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_blind_beneficiary_employed",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_blind_other_weekly_amounts_from_all_sources",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only for a totally blind beneficiary, and nobody is flagged totally blind.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clauses 3 and 4 (supported_living_blind_subsidy_weekly_amount)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_applicant_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_beneficiary_personal_earnings",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_caring",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no carer or care-recipient facts, so the Supported Living Payment caring branch is closed in v0; this understates SLP carers.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 7 (supported_living_payment_schedule_weekly_rate_before_residential_care_halving)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_dependent_children_count",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_partner_receives_main_benefit",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. A partnered person's Supported Living Payment rate takes the branch for a partner who receives no main benefit; the receipt layer's net-payment screen reads that rate (receipt_requirements).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 7 (supported_living_payment_schedule_weekly_rate_before_residential_care_halving)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_partner_receives_new_zealand_superannuation_or_veterans_pension",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Entitlement is assessed before the receipt layer assigns any benefit, so nobody is an existing recipient here. A partnered person's Supported Living Payment rate takes the branch for a partner who receives neither; the receipt layer's net-payment screen reads that rate (receipt_requirements).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 7 (supported_living_payment_schedule_weekly_rate_before_residential_care_halving)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_partnered_long_term_residential_care_halving_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The transported population lives in private dwellings (the donor frame is a household survey), so no family is in funded residential or disability care.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 5 (supported_living_payment_gross_weekly_rate)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_restricted_or_blind",
+   "class": "defaulted",
+   "value": true,
+   "reason": "With the caring branch closed (supported_living_payment_caring is defaulted false), a Supported Living Payment is the restricted-or-blind payment.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clause 1 (supported_living_payment_income_disregard_for_restricted_or_blind)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_single",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_total_income",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "entity": "Person",
+   "input": "supported_living_payment_totally_blind",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Total blindness is not a concept; nobody is read as totally blind, so the blind earnings disregard does not apply.",
+   "citation": "Social Security Act 2018 Schedule 4 Part 3 clause 1 (supported_living_payment_income_disregard_for_restricted_or_blind)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only when the residence is shared, which is defaulted false.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_birth_year",
+   "class": "defaulted",
+   "value": 1950,
+   "reason": "Birth year is not a concept (age is, and the mapping binds it to nz_super_person_age). With the residence years set at the longest s 8(4) requirement (below), the birth cohort this selects cannot change the result.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8(4) (nz_super_standard_total_time_requirement_years)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_born_on_or_before_30_june_of_birth_year",
+   "class": "defaulted",
+   "value": true,
+   "reason": "Selects the cohort with nz_super_birth_year; inert for the same reason.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8(4) (nz_super_standard_total_time_requirement_years)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_elected_weekly_compensation_instead_of_superannuation",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Electing ACC weekly compensation instead of superannuation (s 7) is not observed.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 7 (nz_super_age_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_ordinarily_resident_in_new_zealand_on_application",
+   "class": "defaulted",
+   "value": true,
+   "reason": "The modelled population is New Zealand's resident population.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8 (nz_super_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_overseas_application_residence_exception_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Everyone is ordinarily resident in New Zealand, so the s 8 exception for an application made overseas is not needed.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8 (nz_super_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_person_age",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_principal_residence_is_qualifying_accommodation",
+   "class": "defaulted",
+   "value": true,
+   "reason": "Everyone lives in a private dwelling, which is read as qualifying accommodation for the s 4A living-alone rate.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_resident_present_since_age_20_new_zealand_years",
+   "class": "defaulted",
+   "value": 10,
+   "reason": "Residence history is not observed. Set at the s 8(2)(a) minimum (nz_super_minimum_new_zealand_resident_present_years_since_20 is 10 at rulespec-nz 8dc2507).",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8 (nz_super_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_resident_present_since_age_20_total_years",
+   "class": "defaulted",
+   "value": 20,
+   "reason": "Residence history is not observed. Set at the longest s 8(4) total-time requirement (nz_super_total_time_requirement_20_years is 20 at rulespec-nz 8dc2507), so everyone of qualifying age meets s 8; this overstates NZS for recent migrants.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8 (nz_super_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_resident_present_since_age_50_total_years",
+   "class": "defaulted",
+   "value": 5,
+   "reason": "Residence history is not observed. Set at the s 8(3) minimum (nz_super_minimum_resident_present_years_since_50 is 5 at rulespec-nz 8dc2507).",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 8 (nz_super_residential_requirement)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_shares_residence_with_person_at_least_adult_age",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Household composition is not read into this person-level input in v0 (no mapping transform flags another adult in the household), so every single person gets the s 4A living-alone rate; this overstates NZS for singles who share a home. The receipt layer reads NZS eligibility, not the amount; if the reg 17 superannuitant bridge reads the amount (method card MC11), this default matters there too.",
+   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "entity": "Person",
+   "input": "nz_super_single",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_additional_resident_in_social_housing",
+   "class": "defaulted",
+   "value": false,
+   "reason": "No family is read as an additional resident of a social-housing tenancy: the donor does not record who holds a tenancy. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_area_let_to_nonresidents",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "No floor-area facts; with total_premises_area 0 the module takes the branch that applies no area apportionment (Schedule 4 Part 7 clause 7). The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of weekly qualifying accommodation costs (accommodation_supplement_weekly_qualifying_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_base_rate_weekly_amount",
+   "class": "encoded",
+   "encoded_by": "graph_node",
+   "node": "nz.as.bridge.base_rate",
+   "reason": "The reg 17 base rate, computed by the engine-calling bridge node from the main-benefit and family tax credit modules (method card MC11, amendment MC11a; the one sanctioned exception to real-Axiom-only runtime until rulespec-nz encodes reg 17, work package B13). Unit construction and group encoding never compute it."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_boarder",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders.",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_business_use_area",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "No floor-area facts; with total_premises_area 0 the module takes the branch that applies no area apportionment (Schedule 4 Part 7 clause 7). The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of weekly qualifying accommodation costs (accommodation_supplement_weekly_qualifying_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_cash_assets",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The lender's identity is not observed, so no mortgage is read as a concessionary Kainga Ora or Crown mortgage (s 66).",
+   "citation": "Social Security Act 2018 s 66 (accommodation_supplement_social_housing_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_costs_are_homeownership",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_disability_accommodation_or_care_funded_under_pae_ora_act",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The transported population lives in private dwellings (the donor frame is a household survey), so no family is in funded residential or disability care.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_has_accommodation_costs",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_has_dependent_children",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_has_two_or_more_dependent_children",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_in_relationship",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_joint_owner_with_resident",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The concept schema has no title or co-ownership facts; an owner-occupier is read as a sole owner. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_non_beneficiary",
+   "class": "encoded",
+   "encoded_by": "state_binding",
+   "state_binding": {
+    "engine_input": "accommodation_supplement_non_beneficiary",
+    "engine_entity": "Family",
+    "columns": [
+     "person.receives_jobseeker_support",
+     "person.receives_sole_parent_support",
+     "person.receives_supported_living_payment",
+     "person.receives_nz_super"
+    ],
+    "test": "any_true",
+    "group_rule": "any_member",
+    "negate": true,
+    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_non_beneficiary",
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_non_beneficiary_income_reduction (source: Social Security Regulations 2018 reg 18), which abates the supplement above the non-beneficiary income cutout only when it is true. Read as no member of the family receiving Jobseeker Support, Sole Parent Support, Supported Living Payment or New Zealand Superannuation, from the receipt layer's flags (person.receives_<program>, assigned by take-up as rules-eligible times a draw calibrated to MSD and IRD counts, method card MC6). No receipt is read from the donor. Differences: receipt is modelled, not observed; benefits outside v0 (Youth Payment, Young Parent Payment, Veteran's Pension) are not flags, so their recipients count as non-beneficiaries; and treating a New Zealand Superannuation recipient's family as not a non-beneficiary family is a default for review (method card MC11 assesses superannuitants through the reg 17 superannuitant branch)."
+   },
+   "reason": "Model state, not a concept: see the state binding's note."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+   "class": "encoded",
+   "encoded_by": "graph_node",
+   "node": "nz.as.bridge.cutout",
+   "reason": "The reg 18 non-beneficiary income cutout, computed by the engine-calling bridge node (method card MC11, amendment MC11a; deleted when B13 encodes reg 18). Unit construction and group encoding never compute it."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_owner_weekly_payment_share",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only for a joint owner, and nobody is a joint owner. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_owner_weekly_required_payments",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_partner_receiving_accommodation_supplement",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Partners always share a family under the unit rule (method card MC7) and a family is assessed once, so no partner receives the supplement separately.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_receiving_or_eligible_for_student_allowance_grant",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Student Allowance is not modelled in v0; a full-time tertiary student who would take the allowance's accommodation benefit instead is counted for the supplement, which overstates it.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_relevant_weekly_income",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_rent_paid_to_kainga_ora",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_residential_care_funded_under_residential_care_act",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The transported population lives in private dwellings (the donor frame is a household survey), so no family is in funded residential or disability care.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_resides_in_area_1",
+   "class": "encoded",
+   "encoded_by": "state_binding",
+   "state_binding": {
+    "engine_input": "accommodation_supplement_resides_in_area_1",
+    "engine_entity": "Family",
+    "columns": [
+     "household.as_area"
+    ],
+    "test": "equals",
+    "value": 1,
+    "group_rule": "household_value",
+    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_1",
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 1. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+   },
+   "reason": "Model state, not a concept: see the state binding's note."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_resides_in_area_2",
+   "class": "encoded",
+   "encoded_by": "state_binding",
+   "state_binding": {
+    "engine_input": "accommodation_supplement_resides_in_area_2",
+    "engine_entity": "Family",
+    "columns": [
+     "household.as_area"
+    ],
+    "test": "equals",
+    "value": 2,
+    "group_rule": "household_value",
+    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_2",
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 2. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+   },
+   "reason": "Model state, not a concept: see the state binding's note."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_resides_in_area_3",
+   "class": "encoded",
+   "encoded_by": "state_binding",
+   "state_binding": {
+    "engine_input": "accommodation_supplement_resides_in_area_3",
+    "engine_entity": "Family",
+    "columns": [
+     "household.as_area"
+    ],
+    "test": "equals",
+    "value": 3,
+    "group_rule": "household_value",
+    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_3",
+    "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which picks the area's maximum weekly rate; a family in none of areas 1 to 3 takes the area 4 rates. Read from the household's assigned Accommodation Supplement area (household.as_area, 1 to 4) equal to 3. The area is model state: the geography nodes assign it to the household from the territorial-authority-to-area crosswalk with population split shares (method card MC9), not from an address, so every family in a household shares the household's area."
+   },
+   "reason": "Model state, not a concept: see the state binding's note."
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_section_68_joint_tenant_exception_applies",
+   "class": "defaulted",
+   "value": false,
+   "reason": "Read only when a partner receives the supplement separately, which never happens here.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_self_contained_area_let_to_residents",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "No floor-area facts; with total_premises_area 0 the module takes the branch that applies no area apportionment (Schedule 4 Part 7 clause 7). The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of weekly qualifying accommodation costs (accommodation_supplement_weekly_qualifying_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_social_housing_weekly_contributions_paid",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Read only for an additional resident in social housing, and nobody is. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_sole_parent",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_super_or_veterans_pension_income_above_schedule_5_limit",
+   "class": "defaulted",
+   "value": false,
+   "reason": "The superannuitant income test against the Schedule 5 limit is not modelled in v0; the s 67 exclusion is not applied, which overstates the supplement for higher-income superannuitants.",
+   "citation": "Social Security Act 2018 s 67 (accommodation_supplement_other_funding_exclusion_not_applies)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_total_premises_area",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "No floor-area facts; with total_premises_area 0 the module takes the branch that applies no area apportionment (Schedule 4 Part 7 clause 7). The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of weekly qualifying accommodation costs (accommodation_supplement_weekly_qualifying_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_weekly_board_and_lodgings_paid",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders.",
+   "citation": "Social Security Act 2018 s 65AAA definition of accommodation costs (accommodation_supplement_weekly_accommodation_costs)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_weekly_boarder_payments_received",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of accommodation income (accommodation_supplement_weekly_accommodation_income)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_weekly_contributions_received_from_additional_residents",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of accommodation income (accommodation_supplement_weekly_accommodation_income)",
+   "new_default": true
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_weekly_rent_paid",
+   "class": "encoded",
+   "encoded_by": "concept_binding"
+  },
+  {
+   "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "entity": "Family",
+   "input": "accommodation_supplement_weekly_rent_received_from_other_residents",
+   "class": "defaulted",
+   "value": 0,
+   "reason": "Boarders are closed at zero (method card MC8): the donor records no board paid or received between families of one household, so under the central rent allocation a non-reference family's housing costs are zero (under the per-adult-share scenario it takes a share of the rent instead), and the reference family's accommodation income from boarders and other residents is zero; this overstates the reference family's qualifying costs where it takes boarders. The Treasury IncomeExplorer reproduction harness defaults it the same way (TheAxiomFoundation ops nz-lane/emtr_reproduction/run.py, ModelEvaluator.accommodation_values).",
+   "citation": "Social Security Act 2018 Schedule 4 Part 7 clause 7 definition of accommodation income (accommodation_supplement_weekly_accommodation_income)",
+   "new_default": true
+  }
+ ]
+}

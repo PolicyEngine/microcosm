@@ -425,6 +425,97 @@ class TestImputation:
         assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
 
 
+class TestWealthRanking:
+    """Gainers take amounts in the order of a prior and wealth rank blend (#1014)."""
+
+    def test_the_wealthiest_gainer_takes_the_top_band(self) -> None:
+        # One income band whose cells hold 100 people against weights of 100,
+        # so the GBP 5m+ band holds exactly one person of mass. The largest
+        # prior gainer holds no wealth; a smaller one holds the most.
+        distribution = _distribution(cell_people=100.0)
+        rows = 4_000
+        rng = np.random.default_rng(3)
+        gains = rng.lognormal(9, 2, rows)
+        order = np.argsort(-gains)
+        largest, runner_up = order[0], order[1]
+        wealth = rng.uniform(0.0, 1_000.0, rows)
+        wealth[largest] = 0.0
+        wealth[runner_up] = 1.0e9
+        frame = _frame(
+            rows, gains=gains, incomes=np.full(rows, 20_000.0), wealth=wealth
+        )
+
+        drawn = impute_uk_capital_gains(frame, distribution, PARAMETERS)
+        drawn = drawn.table("person")["capital_gains"].to_numpy()
+
+        assert drawn[runner_up] >= 5_000_000.0
+        assert drawn[largest] < 5_000_000.0
+
+    def test_the_blend_moves_who_carries_amounts_not_the_amounts(self) -> None:
+        # Equal weights: the walks and plan strata are fixed by mass, so the
+        # multiset of drawn amounts is the same whatever the wealth ordering.
+        distribution = _distribution(cell_people=100.0)
+        rows = 3_000
+        rng = np.random.default_rng(11)
+        gains = rng.lognormal(9, 2, rows)
+        incomes = rng.choice([20_000.0, 60_000.0, 150_000.0], rows)
+        prior_only = impute_uk_capital_gains(
+            _frame(rows, gains=gains, incomes=incomes), distribution, PARAMETERS
+        )
+        blended = impute_uk_capital_gains(
+            _frame(
+                rows,
+                gains=gains,
+                incomes=incomes,
+                wealth=rng.lognormal(11, 2, rows),
+            ),
+            distribution,
+            PARAMETERS,
+        )
+        a = prior_only.table("person")["capital_gains"].to_numpy()
+        b = blended.table("person")["capital_gains"].to_numpy()
+        np.testing.assert_allclose(np.sort(a), np.sort(b))
+        assert not np.array_equal(a, b)
+
+    def test_the_receipt_declares_the_blend_and_reports_coherence(self) -> None:
+        distribution = _distribution(cell_people=100.0)
+        rows = 2_000
+        rng = np.random.default_rng(5)
+        gains = rng.lognormal(9, 2, rows)
+        wealth = gains * rng.lognormal(0, 0.5, rows)
+        _, report = impute_uk_capital_gains_with_report(
+            _frame(rows, gains=gains, incomes=np.full(rows, 20_000.0), wealth=wealth),
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        rank_key = report.evidence()["rank_key"]
+        assert rank_key["wealth_rank_weight"] == UK_CGT_WEALTH_RANK_WEIGHT
+        assert rank_key["investable_wealth_columns"] == list(
+            UK_CGT_INVESTABLE_WEALTH_COLUMNS
+        )
+        coherence = rank_key["gains_wealth_spearman_within_income_band"]
+        assert coherence["mass_weighted"] > 0.5
+
+    def test_refuses_a_household_table_without_the_wealth_columns(self) -> None:
+        rows = 50
+        frame = _frame(
+            rows, gains=np.full(rows, 10_000.0), incomes=np.full(rows, 20_000.0)
+        )
+        household = frame.table("household").drop(
+            columns=[UK_CGT_INVESTABLE_WEALTH_COLUMNS[1]]
+        )
+        stripped = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=household,
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+        with pytest.raises(ValueError, match="investable wealth"):
+            impute_uk_capital_gains(stripped, _distribution(), PARAMETERS)
+
+
 class TestStage:
     """The spine stage is the only CGT gains stage; the June wrapper is retired."""
 
@@ -995,4 +1086,371 @@ class TestConditionedAllocation:
             "conditioning",
             "rounding_carry_out",
             "remainder",
+            "rank_key",
+            "placement_by_row_type",
+            "heaviest_placed_weight",
+            "income_band_rows",
+            "open_band",
+            "placed_share_by_wealth_decile",
         }
+
+
+def _leaves(value, path=""):
+    """Every leaf of a nested receipt with its path; keys must be strings."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            assert isinstance(key, str), path
+            yield from _leaves(item, f"{path}.{key}")
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            yield from _leaves(item, f"{path}[{index}]")
+    else:
+        yield path, value
+
+
+class TestPlacementReceipts:
+    """The redraw reports where its walk placed each row (microcosm#1045).
+
+    Receipts only: the walk, the plan draws and the remainder mapping are
+    untouched, so every receipt is checked against the drawn amounts (a
+    placed row carries more than the exempt amount, a demoted gainer at most
+    the exempt amount) and against the report's existing joint rows.
+    """
+
+    FAMILIES = 12
+    COPIES = 5
+    EXEMPT = PARAMETERS.annual_exempt_amount
+    PLACEMENT_KEYS = (
+        "placement_by_row_type",
+        "heaviest_placed_weight",
+        "income_band_rows",
+        "open_band",
+        "placed_share_by_wealth_decile",
+    )
+
+    def _support_copies(self, rows: int) -> np.ndarray:
+        # Twelve families of five copies at the head of the household table,
+        # laid out as the split stage writes them (the root first), then
+        # unsplit households.
+        family_rows = self.FAMILIES * self.COPIES
+        return np.asarray([self.COPIES] * family_rows + [1] * (rows - family_rows))
+
+    def _placed_frame(self, *, support: bool = True):
+        rows = 1_200
+        rng = np.random.default_rng(23)
+        gains = np.where(rng.random(rows) < 0.1, 0.0, rng.lognormal(9, 2, rows))
+        incomes = rng.choice([20_000.0, 60_000.0, 150_000.0], rows)
+        copies = self._support_copies(rows)
+        family = copies > 1
+        # Copies are light and the wealthiest, so the wealth-ranked walk
+        # seats most of them; plain rows are heavy and spread over a low
+        # wealth range, so both row types have placed and demoted rows.
+        weights = np.where(family, 20.0, 100.0)
+        wealth = np.where(
+            family,
+            rng.uniform(1.0e6, 2.0e6, rows),
+            rng.uniform(0.0, 1.0e3, rows),
+        )
+        frame = _frame(
+            rows,
+            gains=gains,
+            incomes=incomes,
+            weights=weights,
+            wealth=wealth,
+            support_copies=copies if support else None,
+        )
+        result, report = impute_uk_capital_gains_with_report(
+            frame,
+            _distribution(cell_people=100.0),
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        return frame, report, drawn, weights, gains, family
+
+    def test_frame_builder_flags_the_later_copies_of_each_family(self) -> None:
+        frame, *_ = self._placed_frame()
+        household = frame.table("household")
+        copies = household[CGT_SUPPORT_COPIES_COLUMN].to_numpy()
+        flags = household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].to_numpy()
+        family_rows = self.FAMILIES * self.COPIES
+        assert copies.dtype == np.int64
+        assert (copies[:family_rows] == self.COPIES).all()
+        assert (copies[family_rows:] == 1).all()
+        expected = [False, *([True] * (self.COPIES - 1))] * self.FAMILIES
+        assert flags[:family_rows].tolist() == expected
+        assert not flags[family_rows:].any()
+
+    def test_placement_partitions_the_gainers_by_row_type(self) -> None:
+        _, report, drawn, weights, gains, family = self._placed_frame()
+        gainer = gains > 0.0
+        placed = drawn > self.EXEMPT
+        demoted = (drawn > 0.0) & ~placed
+        assert placed.sum() > 0 and demoted.sum() > 0
+        placement = report.placement_by_row_type
+        assert placement["row_type_column"] == UK_CGT_SUPPORT_COPIES_COLUMN
+        assert placement["row_type_column_present"] is True
+        assert placement["gain_band_lower_bounds"] == list(
+            HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+        )
+        by_type = placement["by_row_type"]
+        assert list(by_type) == list(UK_CGT_PLACEMENT_ROW_TYPES)
+        initial_band = (
+            np.searchsorted(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS, gains, side="right") - 1
+        )
+        for name, in_type in {"plain": ~family, "support_family": family}.items():
+            block = by_type[name]
+            assert block["persons"] == int(in_type.sum())
+            assert block["person_mass"] == pytest.approx(weights[in_type].sum())
+            assert block["gainers"] == int((in_type & gainer).sum())
+            assert block["gainer_mass"] == pytest.approx(
+                weights[in_type & gainer].sum()
+            )
+            assert block["placed_rows"] == int((in_type & placed).sum()) > 0
+            assert block["demoted_rows"] == int((in_type & demoted).sum()) > 0
+            assert block["placed_rows"] + block["demoted_rows"] == block["gainers"]
+            assert block["placed_mass"] == pytest.approx(
+                weights[in_type & placed].sum()
+            )
+            assert block["demoted_mass"] == pytest.approx(
+                weights[in_type & demoted].sum()
+            )
+            assert block["placed_mass"] + block["demoted_mass"] == pytest.approx(
+                block["gainer_mass"]
+            )
+            bands = block["by_initial_gain_band"]
+            assert list(bands) == [str(b) for b in HMRC_CGT_GAIN_BAND_LOWER_BOUNDS]
+            for key in ("placed_rows", "demoted_rows"):
+                assert sum(b[key] for b in bands.values()) == block[key]
+            for key in ("placed_mass", "demoted_mass"):
+                assert sum(b[key] for b in bands.values()) == pytest.approx(block[key])
+            for gi, lower in enumerate(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS):
+                in_band = in_type & (initial_band == gi)
+                assert bands[str(lower)]["placed_rows"] == int((in_band & placed).sum())
+                assert bands[str(lower)]["demoted_rows"] == int(
+                    (in_band & demoted).sum()
+                )
+                assert bands[str(lower)]["demoted_mass"] == pytest.approx(
+                    weights[in_band & demoted].sum()
+                )
+        assert by_type["plain"]["gainers"] + by_type["support_family"][
+            "gainers"
+        ] == int(gainer.sum())
+        remainder = placement["remainder_mass_by_row_type"]
+        assert list(remainder) == list(UK_CGT_PLACEMENT_ROW_TYPES)
+        assert remainder["plain"] + remainder["support_family"] == pytest.approx(
+            report.remainder["mass"]
+        )
+        assert remainder["support_family"] == by_type["support_family"]["demoted_mass"]
+
+    def test_heaviest_placed_weight_is_the_heaviest_assigned_row(self) -> None:
+        _, report, drawn, weights, _, _ = self._placed_frame()
+        placed = drawn > self.EXEMPT
+        heaviest = report.heaviest_placed_weight
+        assert heaviest["overall"] == weights[placed].max() == 100.0
+        assert heaviest["placed_rows"] == int(placed.sum())
+        bounds = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+        redrawn_band = np.searchsorted(bounds, drawn, side="right") - 1
+        by_band = heaviest["by_gain_band"]
+        assert list(by_band) == [str(b) for b in bounds]
+        for gi, lower in enumerate(bounds):
+            in_band = placed & (redrawn_band == gi)
+            expected = weights[in_band].max() if in_band.any() else 0.0
+            assert by_band[str(lower)] == expected
+        assert max(by_band.values()) == heaviest["overall"]
+        by_cell = heaviest["by_cell"]
+        assert list(by_cell) == [str(b) for b in bounds]
+        for lower in bounds:
+            cells = by_cell[str(lower)]
+            assert list(cells) == [str(i) for i in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS]
+            # A placed row's redrawn band is its plan's band.
+            assert max(cells.values()) == by_band[str(lower)]
+        assert report.open_band["heaviest_placed_weight"] <= heaviest["overall"]
+
+    def test_income_band_rows_follow_the_joint_residuals(self) -> None:
+        _, report, drawn, weights, gains, _ = self._placed_frame()
+        placed = drawn > self.EXEMPT
+        joint_rows = pd.DataFrame(report.joint_rows)
+        rows = report.income_band_rows
+        assert [row["income_lower_bound"] for row in rows] == list(
+            HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+        )
+        for row in rows:
+            cells = joint_rows[
+                joint_rows["income_lower_bound"] == row["income_lower_bound"]
+            ]
+            assert len(cells) == len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
+            for key in ("target_people", "achieved_pass1", "achieved_fallback"):
+                assert row[key] == pytest.approx(cells[key].sum(), abs=1e-6)
+            assert row["achieved_people"] == pytest.approx(
+                row["achieved_pass1"] + row["achieved_fallback"]
+            )
+            residual = float(cells["residual"].sum())
+            assert row["residual"] == pytest.approx(residual, abs=1e-6)
+            assert row["overshoot"] >= 0.0
+            assert row["overshoot"] == pytest.approx(max(0.0, -residual), abs=1e-6)
+            assert (
+                row["heaviest_placed_weight"]
+                <= report.heaviest_placed_weight["overall"]
+            )
+        assert sum(row["placed_rows"] for row in rows) == int(placed.sum())
+        assert sum(row["placed_mass"] for row in rows) == pytest.approx(
+            weights[placed].sum()
+        )
+        assert sum(row["gainers"] for row in rows) == int((gains > 0.0).sum())
+        assert sum(row["gainer_mass"] for row in rows) == pytest.approx(
+            weights[gains > 0.0].sum()
+        )
+
+    def test_open_band_reads_against_the_summary_band_rows(self) -> None:
+        # Three thousand rows at weight 100 in one income column reach the
+        # GBP 5m+ band on the published surface.
+        rows = 3_000
+        rng = np.random.default_rng(13)
+        frame = _frame(
+            rows,
+            gains=rng.lognormal(10, 1, rows),
+            incomes=np.full(rows, 20_000.0),
+            weights=np.full(rows, 100.0),
+        )
+        distribution = _real_distribution()
+        conditioning = load_hmrc_cgt_conditioning_facts()
+        result, report = impute_uk_capital_gains_with_report(
+            frame, distribution, PARAMETERS, conditioning=conditioning
+        )
+        summary = summarize_uk_cgt_imputation(
+            frame,
+            result,
+            distribution,
+            PARAMETERS,
+            conditioning=conditioning,
+            report=report,
+        )
+        top = summary.rows.iloc[-1]
+        open_band = report.open_band
+        assert open_band["gain_lower_bound"] == 5_000_000 == top["gain_lower_bound"]
+        assert open_band["published_people"] == top["published_people"]
+        assert open_band["published_gains"] == top["published_gains"]
+        assert open_band["achieved_people"] == pytest.approx(top["achieved_people"])
+        assert open_band["achieved_gains"] == pytest.approx(top["achieved_gains"])
+        folded = conditioning.size_bands_aggregated(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
+        assert open_band["published_people"] == float(folded[5_000_000][0])
+        assert open_band["published_gains"] == float(folded[5_000_000][1])
+        assert open_band["target_people"] == report.band_rows[-1]["target_people"]
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        in_open = drawn >= 5_000_000.0
+        assert open_band["placed_rows"] == int(in_open.sum()) > 0
+        assert open_band["heaviest_placed_weight"] == 100.0
+        cells = open_band["by_income_band"]
+        assert list(cells) == [str(i) for i in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS]
+        assert sum(c["target_people"] for c in cells.values()) == pytest.approx(
+            open_band["target_people"]
+        )
+        assert sum(c["achieved_people"] for c in cells.values()) == pytest.approx(
+            open_band["achieved_people"]
+        )
+        assert sum(c["placed_rows"] for c in cells.values()) == open_band["placed_rows"]
+        # Only the lowest income column has gainers, so it carries the band.
+        assert cells["0"]["achieved_people"] == pytest.approx(
+            open_band["achieved_people"]
+        )
+        assert cells["0"]["heaviest_placed_weight"] == 100.0
+        assert cells["0"]["target_people"] > 0.0
+        assert summary.evidence()["allocation"]["open_band"] == open_band
+
+    def test_placed_share_rises_with_the_wealth_decile(self) -> None:
+        _, report, drawn, weights, gains, _ = self._placed_frame()
+        placed = drawn > self.EXEMPT
+        gainer = gains > 0.0
+        block = report.placed_share_by_wealth_decile
+        assert block["wealth_rank_weight"] == UK_CGT_WEALTH_RANK_WEIGHT
+        assert block["investable_wealth_columns"] == list(
+            UK_CGT_INVESTABLE_WEALTH_COLUMNS
+        )
+        deciles = block["deciles"]
+        assert list(deciles) == [str(tenth) for tenth in range(1, 11)]
+        assert sum(d["gainers"] for d in deciles.values()) == int(gainer.sum())
+        assert sum(d["gainer_mass"] for d in deciles.values()) == pytest.approx(
+            weights[gainer].sum()
+        )
+        assert sum(d["placed_rows"] for d in deciles.values()) == int(placed.sum())
+        assert sum(d["placed_mass"] for d in deciles.values()) == pytest.approx(
+            weights[placed].sum()
+        )
+        for decile in deciles.values():
+            assert 0.0 <= decile["placed_share"] <= 1.0
+            if decile["gainer_mass"] > 0.0:
+                assert decile["placed_share"] == pytest.approx(
+                    decile["placed_mass"] / decile["gainer_mass"]
+                )
+        # The support families hold every top wealth rank and the walk
+        # seats the wealthiest first.
+        assert deciles["10"]["placed_share"] > deciles["1"]["placed_share"]
+        assert deciles["10"]["placed_share"] > 0.0
+        by_income = block["by_income_band"]
+        assert list(by_income) == [str(i) for i in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS]
+        for shares in by_income.values():
+            assert list(shares) == list(deciles)
+            assert all(0.0 <= share <= 1.0 for share in shares.values())
+        # Income columns without gainers report zero shares, not gaps.
+        assert set(by_income["50000"].values()) == {0.0}
+
+    def test_a_frame_without_the_support_column_reports_every_row_plain(
+        self,
+    ) -> None:
+        frame, report, drawn, _, gains, _ = self._placed_frame(support=False)
+        assert UK_CGT_SUPPORT_COPIES_COLUMN not in frame.table("household").columns
+        placement = report.placement_by_row_type
+        assert placement["row_type_column_present"] is False
+        support = placement["by_row_type"]["support_family"]
+        assert support["persons"] == 0
+        assert support["gainers"] == 0
+        assert support["placed_mass"] == 0.0
+        assert support["demoted_mass"] == 0.0
+        plain = placement["by_row_type"]["plain"]
+        assert plain["persons"] == len(gains)
+        assert plain["gainers"] == int((gains > 0.0).sum())
+        assert plain["placed_rows"] == int((drawn > self.EXEMPT).sum())
+        remainder = placement["remainder_mass_by_row_type"]
+        assert remainder["support_family"] == 0.0
+        assert remainder["plain"] == pytest.approx(report.remainder["mass"])
+
+    def test_every_placement_value_is_finite_and_json_serialisable(self) -> None:
+        import json
+
+        _, report, *_ = self._placed_frame()
+        evidence = report.evidence()
+        blocks = {key: evidence[key] for key in self.PLACEMENT_KEYS}
+        leaves = list(_leaves(blocks))
+        assert len(leaves) > 100
+        for path, value in leaves:
+            # Plain Python scalars, not numpy ones, so the sidecar can carry
+            # the receipt as it stands.
+            assert type(value) in {bool, int, float, str}, (path, type(value))
+            if type(value) in {int, float}:
+                assert np.isfinite(value), path
+        json.dumps(blocks)
+
+    def test_the_row_type_column_is_the_split_stage_column(self) -> None:
+        assert UK_CGT_SUPPORT_COPIES_COLUMN == CGT_SUPPORT_COPIES_COLUMN
+        assert UK_CGT_PLACEMENT_ROW_TYPES == ("plain", "support_family")
+
+    def test_refuses_a_copy_count_below_one(self) -> None:
+        rows = 30
+        frame = _frame(
+            rows,
+            gains=np.full(rows, 10_000.0),
+            incomes=np.full(rows, 20_000.0),
+            support_copies=[1] * rows,
+        )
+        household = frame.table("household").copy()
+        household.iloc[0, household.columns.get_loc(CGT_SUPPORT_COPIES_COLUMN)] = 0
+        broken = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=household,
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+        with pytest.raises(ValueError, match="copy count"):
+            impute_uk_capital_gains(broken, _distribution(), PARAMETERS)

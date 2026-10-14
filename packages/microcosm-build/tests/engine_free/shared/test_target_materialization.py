@@ -8,6 +8,7 @@ from microcosm.build.target_materialization import (
     BandEdgeCoverageError,
     MeasureResolutionError,
     assert_calibration_input_finite,
+    counterfactual_column,
     materialize_target_bindings,
     resolve_target_measures,
 )
@@ -1319,3 +1320,232 @@ def test_filter_aware_provider_without_filters_is_unchanged():
     np.testing.assert_array_equal(
         adapter.tables["person"]["cgt_taxpayer_measure"], [0.0, 0.0, 1.0]
     )
+
+
+# microcosm#1069 c11: counterfactual measures resolve through the provider.
+class CounterfactualAdapter(ResolutionAdapter):
+    def counterfactual_delta(self, binding, period):
+        column = counterfactual_column(binding)
+        if column in self.tables["person"]:
+            return np.asarray(self.tables["person"][column])
+        raise ValueError(
+            "frame does not carry precomputed counterfactual delta "
+            f"{binding['metric_name']!r}"
+        )
+
+
+_RELIEF_BINDING = {
+    "metric_name": "hmrc/relief",
+    "kind": "input_substitution_counterfactual",
+    "zeroed_input": "salary_sacrifice",
+    "folded_into": "pay",
+    "output_variable": "tax",
+    "output_delta": "counterfactual_minus_baseline",
+    "from_entity": "person",
+}
+
+
+class CounterfactualProvider:
+    contract_targets = {"relief": {"bindings": {"policyengine": _RELIEF_BINDING}}}
+
+    def __init__(self):
+        self.calls = []
+
+    def knows(self, entity, variable):
+        return False
+
+    def compute(self, entity, variable):
+        raise AssertionError("a counterfactual measure is not a column compute")
+
+    def counterfactual_delta(self, binding, period):
+        self.calls.append((binding["metric_name"], period))
+        return np.array([0.0, 30.0, 60.0]), "stub counterfactual"
+
+
+def test_counterfactual_column_is_slash_free():
+    assert (
+        counterfactual_column(
+            {"metric_name": "hmrc/salary_sacrifice_employer_nics_relief"}
+        )
+        == "counterfactual_delta__hmrc_salary_sacrifice_employer_nics_relief"
+    )
+
+
+def test_resolve_target_measures_routes_counterfactual_deltas_through_the_provider():
+    provider = CounterfactualProvider()
+
+    resolution = resolve_target_measures(
+        lambda: CounterfactualAdapter(_resolution_source()),
+        _resolution_registry("relief"),
+        provider,
+        period=2025,
+    )
+
+    key = ("person", "counterfactual_delta__hmrc_relief")
+    assert set(resolution.measure_inputs) == {key}
+    np.testing.assert_array_equal(resolution.measure_inputs[key], [0.0, 30.0, 60.0])
+    assert provider.calls == [("hmrc/relief", 2025)]
+    assert resolution.receipt["attached"] == {
+        "person.counterfactual_delta__hmrc_relief": "stub counterfactual"
+    }
+
+
+def test_counterfactual_skips_refuse_without_a_provider_route():
+    class NoRouteProvider(StubMeasureProvider):
+        contract_targets = CounterfactualProvider.contract_targets
+
+    with pytest.raises(MeasureResolutionError, match="counterfactual target measure"):
+        resolve_target_measures(
+            lambda: CounterfactualAdapter(_resolution_source()),
+            _resolution_registry("relief"),
+            NoRouteProvider(),
+            period=2025,
+        )
+
+
+def _whole_pence_award_bands(binding_extra=None, *, top_band=True):
+    labels = {
+        "award_low": "£0.01 to £100.00",
+        "award_mid": "£100.01 to £200.00",
+    }
+    if top_band:
+        labels["award_top"] = "£200.01 or over"
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="person",
+                measure=name,
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_monthly_award_amount_bands": label,
+                },
+            )
+            for name, label in labels.items()
+        ],
+        country="uk",
+    )
+    contract = {
+        "uc.award_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                    **(binding_extra or {}),
+                }
+            }
+        }
+    }
+    adapter = StubAdapter()
+    # Annual awards: none; a penny a month, exact and with float noise;
+    # GBP 100.00 a month; a sub-penny GBP 100.005 a month; GBP 100.01;
+    # GBP 200.00; GBP 200.01; a large award.
+    adapter.tables["person"] = {
+        "income": np.array(
+            [
+                0.0,
+                0.12,
+                0.12 - 1e-9,
+                1_200.0,
+                1_200.06,
+                1_200.12,
+                2_400.0,
+                2_400.12,
+                1e6,
+            ]
+        )
+    }
+    return adapter, registry, contract
+
+
+def test_whole_pence_bands_close_at_the_next_band_less_a_penny():
+    """microcosm#1095: DWP's award bands read as (lower - £0.01, next lower -
+    £0.01] in whole pence, so a penny a month lands in the bottom band."""
+
+    adapter, registry, contract = _whole_pence_award_bands(
+        {"band_semantics": "whole_pence_upper_closed"}
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+def test_undeclared_bands_keep_their_half_open_reading():
+    """Without band_semantics the same bands stay half-open [lower, upper),
+    the reading every other banded binding keeps. It is float-fragile on
+    pence edges: the penny-a-month award with float noise falls below the
+    bottom band, and GBP 100.01 a month (1,200.12 a year) stays in the bottom
+    band because 100.01 x 12 rounds just above 1,200.12."""
+
+    adapter, registry, contract = _whole_pence_award_bands()
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 0, 1, 1, 1, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 0, 0, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ({"band_semantics": "whole_pounds"}, "unknown band_semantics"),
+        (
+            {
+                "band_semantics": "whole_pence_upper_closed",
+                "band_upper_bound": 200,
+                "band_upper_bound_inclusive": True,
+            },
+            "declare no band_upper_bound_inclusive",
+        ),
+    ],
+)
+def test_whole_pence_bands_refuse_undeclared_readings(extra, message):
+    adapter, registry, contract = _whole_pence_award_bands(extra)
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert len(result.skipped) == 3
+    assert all(message in skip.reason for skip in result.skipped)
+
+
+def test_whole_pence_bands_close_the_last_bound_band_at_its_declared_top():
+    """Where the top-coded category is not bound, band_upper_bound closes the
+    last bound band, so it does not absorb the awards above it."""
+
+    semantics = {"band_semantics": "whole_pence_upper_closed"}
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 200}, top_band=False
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    # GBP 200.00 a month is the last award in the band.
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+
+    # Without the bound, the last band runs on and takes the top awards.
+    adapter, registry, contract = _whole_pence_award_bands(semantics, top_band=False)
+    materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert list(adapter.tables["person"]["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    # A bound at or below a band's lower edge is refused.
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 100}, top_band=False
+    )
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert [skip.reason for skip in result.skipped if "band_upper_bound" in skip.reason]

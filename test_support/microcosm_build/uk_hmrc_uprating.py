@@ -18,8 +18,15 @@ from microcosm.build.uk_runtime.hmrc_uprating import (
     UK_ENGINE_INDEX_PARAMETERS,
     UK_ENGINE_PARAMETER_INDEX_PREFIX,
     UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
+    UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+    UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+    UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+    UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+    UK_SPI_STATE_PENSION_RATE_PARAMETER,
+    align_hmrc_amount_by_recipient_growth_and_rate,
     align_hmrc_count_row_by_taxpayer_growth,
     align_hmrc_row_by_engine_index,
+    align_hmrc_row_by_history_then_projection,
     engine_parameter_value,
     hmrc_uprating_appliers,
 )
@@ -77,16 +84,6 @@ def _fake_parameter(path: str, instant: str) -> float:
     return {"2023-01-01": 1.5, "2025-01-01": 1.65}[instant]
 
 
-
-
-
-
-
-
-
-
-
-
 def _count_row(*, year: int, lower: int, upper: int | None, value: float):
     return {
         "concept": "hmrc.spi_taxpayer_count",
@@ -115,5 +112,6 @@ def _count_rows():
         rows.append(_count_row(year=year, lower=1_000_000, upper=2_000_000, value=one))
         rows.append(_count_row(year=year, lower=2_000_000, upper=None, value=two))
     return rows
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]
