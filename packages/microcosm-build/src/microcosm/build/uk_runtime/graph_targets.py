@@ -639,7 +639,9 @@ class UKFullProblemKernel(_TargetKernel):
                     prepared.target_rows,
                     prepared.target_loss_weights,
                     rule=str(context.params["target_weight_rule"]),
-                )
+                ),
+                # microcosm#1207: the family loss-share floors' check.
+                "family_loss_share_floors": prepared.family_loss_share_floor_receipt,
             }
         )
         payload = encode_problem(

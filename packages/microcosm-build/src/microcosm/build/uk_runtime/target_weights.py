@@ -57,6 +57,7 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
     UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_TARGET_WEIGHT_RULES,
     uk_local_target_loss_weights,
@@ -76,6 +77,7 @@ __all__ = [
     "uk_target_loss_weights_sha256",
     "UK_TARGET_LOSS_SCALE_RULE",
     "UK_LOCAL_LOSS_SCALE_FLOORS",
+    "assert_uk_family_loss_share_floors",
     "uk_family_floored_loss_scales",
     "uk_target_rows",
     "uk_target_rows_from_problem",
@@ -499,6 +501,53 @@ def uk_rule_loss_weights(rows: UKTargetRows, *, rule: str) -> np.ndarray:
             dtype=np.float64,
         )
     return uk_target_loss_weights_for_rows(rows, rule=rule)
+
+
+def assert_uk_family_loss_share_floors(
+    rows: UKTargetRows,
+    weights: np.ndarray,
+    *,
+    floors: Mapping[str, float] = UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
+) -> dict[str, object]:
+    """Refuse a weight vector that leaves a floored family under its floor.
+
+    A family's share is the sum of its rows' weights over all rows', every
+    grain counted (microcosm#1207). Check-only: the weights are not changed.
+    A floored family the surface does not bind is recorded absent.
+    """
+
+    weights = np.asarray(weights, dtype=np.float64)
+    if weights.shape != (len(rows),):
+        raise ValueError(
+            f"{weights.shape} loss weights do not align with {len(rows)} rows."
+        )
+    total = float(weights.sum())
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError("family loss-share floors need positive loss weights.")
+    families = np.asarray(rows.family, dtype=object)
+    receipt: dict[str, dict[str, object]] = {}
+    below: list[str] = []
+    for family, floor in sorted(floors.items()):
+        mask = families == family
+        if not mask.any():
+            receipt[family] = {"floor": float(floor), "status": "absent"}
+            continue
+        share = float(weights[mask].sum()) / total
+        receipt[family] = {
+            "floor": float(floor),
+            "loss_share": share,
+            "n_targets": int(mask.sum()),
+            "status": "met" if share >= floor else "below",
+        }
+        if share < floor:
+            below.append(f"{family} ({share:.4%} < {floor:.4%})")
+    if below:
+        raise ValueError(
+            "UK family loss-share floors refused the target weights: "
+            f"{', '.join(below)}. A rule or surface that dilutes a floored "
+            "family below its declared share is refused (microcosm#1207)."
+        )
+    return {"check_only": True, "families": receipt}
 
 
 def uk_target_loss_weights_sha256(names: Sequence[str], weights: np.ndarray) -> str:
