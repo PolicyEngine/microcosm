@@ -653,7 +653,8 @@ def uk_identifier_range_failures(tables: Mapping[str, pd.DataFrame]) -> list[str
 
     The engine stores them as 32-bit integers: a value above
     ``UK_ENGINE_IDENTIFIER_MAX`` wraps, and two that wrap to the same value
-    merge. The messages name the column and a count, never an identifier.
+    merge. The messages name the column only: never an identifier, and never a
+    count of rows.
     """
 
     failures: list[str] = []
@@ -675,14 +676,12 @@ def uk_identifier_range_failures(tables: Mapping[str, pd.DataFrame]) -> list[str
         if values.isna().any() or (values != np.floor(values)).any():
             failures.append(f"Written {column!r} is not a whole number on every row.")
             continue
-        below = int((values < 1).sum())
-        above = int((values > UK_ENGINE_IDENTIFIER_MAX).sum())
-        if below:
-            failures.append(f"Written {column!r} is below 1 on {below} row(s).")
-        if above:
+        if (values < 1).any():
+            failures.append(f"Written {column!r} has a value below 1.")
+        if (values > UK_ENGINE_IDENTIFIER_MAX).any():
             failures.append(
-                f"Written {column!r} is above the 32-bit range policyengine-uk "
-                f"stores on {above} row(s)."
+                f"Written {column!r} has a value above the 32-bit range "
+                "policyengine-uk stores."
             )
         if unique and values.duplicated().any():
             failures.append(f"Written {column!r} repeats a value.")

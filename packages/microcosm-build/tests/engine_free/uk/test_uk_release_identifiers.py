@@ -157,36 +157,34 @@ def test_tables_that_cannot_be_renumbered_refuse() -> None:
         uk_release_identifier_tables(partial)
 
 
-def test_range_failures_name_the_column_and_a_count_never_an_identifier() -> None:
+def test_range_failures_name_the_column_only() -> None:
     built = _tables()
 
     failures = uk_identifier_range_failures(built)
 
+    above = "has a value above the 32-bit range policyengine-uk stores."
     assert failures == [
-        "Written 'person_id' is above the 32-bit range policyengine-uk stores on "
-        "4 row(s).",
-        "Written 'benunit_id' is above the 32-bit range policyengine-uk stores on "
-        "3 row(s).",
-        "Written 'household_id' is above the 32-bit range policyengine-uk stores on "
-        "2 row(s).",
-        "Written 'person_benunit_id' is above the 32-bit range policyengine-uk "
-        "stores on 4 row(s).",
-        "Written 'person_household_id' is above the 32-bit range policyengine-uk "
-        "stores on 4 row(s).",
+        f"Written 'person_id' {above}",
+        f"Written 'benunit_id' {above}",
+        f"Written 'household_id' {above}",
+        f"Written 'person_benunit_id' {above}",
+        f"Written 'person_household_id' {above}",
     ]
-    assert not any(str(COPY) in failure for failure in failures)
+    # Never an identifier, and never a count of rows.
+    assert not any(
+        character.isdigit()
+        for failure in failures
+        for character in failure.replace("32-bit", "")
+    )
 
     edge = uk_release_identifier_tables(_tables())
     edge["household"]["household_id"] = [0, 2, 2, UK_ENGINE_IDENTIFIER_MAX]
     assert uk_identifier_range_failures(edge) == [
-        "Written 'household_id' is below 1 on 1 row(s).",
+        "Written 'household_id' has a value below 1.",
         "Written 'household_id' repeats a value.",
     ]
     edge["household"]["household_id"] = [1, 2, 3, UK_ENGINE_IDENTIFIER_MAX + 1]
-    assert uk_identifier_range_failures(edge) == [
-        "Written 'household_id' is above the 32-bit range policyengine-uk stores on "
-        "1 row(s)."
-    ]
+    assert uk_identifier_range_failures(edge) == [f"Written 'household_id' {above}"]
 
 
 def test_the_release_frame_leaves_renumbered_and_loads_back_to_the_build(
@@ -254,8 +252,8 @@ def test_the_national_readback_passes_the_release_and_refuses_build_identifiers(
     report = _readback(built, unrenumbered)
     assert report["passed"] is False and report["outcome"] == "fail"
     assert (
-        "Written 'household_id' is above the 32-bit range policyengine-uk stores on "
-        "2 row(s)."
+        "Written 'household_id' has a value above the 32-bit range "
+        "policyengine-uk stores."
     ) in report["failures"]
     assert not any(str(COPY) in failure for failure in report["failures"])
 
@@ -297,8 +295,7 @@ def test_the_local_readback_refuses_out_of_range_and_repeated_identifiers(
     report = validate_uk_export(path, descriptor)
     assert report["passed"] is False
     assert (
-        "Written 'person_id' is above the 32-bit range policyengine-uk stores on "
-        "1 row(s)."
+        "Written 'person_id' has a value above the 32-bit range policyengine-uk stores."
     ) in report["failures"]
 
     with pd.HDFStore(path) as store:
