@@ -282,7 +282,13 @@ def owner_uniforms(
     u = identity.copy()
     ranked = (spine["owner"].to_numpy() & (spine["value"].to_numpy() > 0)).astype(bool)
     is_support = spine["support"].to_numpy().astype(bool)
-    rank_rows = ranked & ~is_support
+    # The support copies are ranked beside their root (they tie on value and
+    # split the tie-break), so the stratum keeps its mass in the rank: the
+    # unselected owners' mid-ranks end where the stratum starts, and the
+    # copies' own draws below then spread them inside it. Dropping the copies
+    # from the rank would hand their 5/6 of the stratum's mass to the owners
+    # below and nearly double the mass above ``support_stratum_lower``.
+    rank_rows = ranked
     spine_region = spine["region"].to_numpy().astype(str)
     spine_value = spine["value"].to_numpy(dtype=float)
     spine_weight = spine["weight"].to_numpy(dtype=float)

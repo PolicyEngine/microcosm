@@ -140,8 +140,62 @@ def test_support_copies_take_a_keyed_uniform_inside_the_top_stratum() -> None:
     )
     assert np.all(u[support] >= 0.9) and np.all(u[support] < 1.0)
     assert receipt["support_copies"] == 1
-    # The remaining owner is alone in the rank: mid-rank 0.5.
-    assert pd.Series(u).groupby(pool["key"]).first()["a"] == pytest.approx(0.5)
+    # The support copy is ranked beside the other owner (review finding 1 of
+    # microcosm#1270): b (300k) then a (500k), equal spine weights, so a's
+    # mid-rank is 0.75 and the copy's own draw replaces its 0.25.
+    assert pd.Series(u).groupby(pool["key"]).first()["a"] == pytest.approx(0.75)
+
+
+def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
+    # Four thousand equal-weight owners in one region: the stage selects the
+    # top five per cent and copies each six ways; the pool's uniforms must
+    # leave exactly that share of the owner mass at or above the stratum.
+    from microcosm.build.uk_runtime.high_value_home_support import (
+        select_high_value_support_households,
+    )
+
+    n = 4_000
+    ids = np.arange(1, n + 1, dtype=np.int64)
+    values = 100_000.0 + 1_000.0 * np.arange(n, dtype=float)
+    region = np.full(n, "LONDON", dtype=object)
+    tenure = np.full(n, "OWNED_OUTRIGHT", dtype=object)
+    weights = np.ones(n, dtype=float)
+    selected, _ = select_high_value_support_households(
+        household_ids=ids,
+        weights=weights,
+        region=region,
+        tenure_type=tenure,
+        value=values,
+        stratum_lower=0.95,
+    )
+    assert selected.sum() == pytest.approx(0.05 * n, abs=2)
+    copies = 6
+    rows = []
+    for index in range(n):
+        if selected[index]:
+            for copy in range(copies):
+                rows.append(
+                    (f"{ids[index]}#{copy}", values[index], 1.0 / copies, copy > 0)
+                )
+        else:
+            rows.append((str(ids[index]), values[index], 1.0, False))
+    pool = pd.DataFrame(rows, columns=["key", "value", "weight", "support"])
+    u, receipt = pl.owner_uniforms(
+        spine_key=pool["key"].to_numpy(dtype=object),
+        region=np.full(len(pool), "LONDON", dtype=object),
+        tenure_type=np.full(len(pool), "OWNED_OUTRIGHT", dtype=object),
+        value=pool["value"].to_numpy(),
+        weight=pool["weight"].to_numpy(),
+        stream=STREAM,
+        support_copy=pool["support"].to_numpy(),
+        support_stratum_lower=0.95,
+    )
+    total = float(pool["weight"].sum())
+    mass_top = float(pool["weight"].to_numpy()[u >= 0.95].sum()) / total
+    mass_top_1 = float(pool["weight"].to_numpy()[u >= 0.99].sum()) / total
+    assert mass_top == pytest.approx(0.05, abs=0.003)
+    assert mass_top_1 == pytest.approx(0.01, abs=0.003)
+    assert receipt["support_copies"] == int(selected.sum()) * (copies - 1)
 
 
 def test_owner_uniforms_refuse_clones_that_disagree() -> None:

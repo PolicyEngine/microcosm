@@ -15,9 +15,12 @@ copy its own keyed rank inside the stratum instead of the household's single
 rank, so the copies spread across the tail and across seats.
 
 Deterministic and mass-conserving: no draw, no seed, no salt. Every
-household's mass and the total household mass are conserved exactly; the
-weighted rank that selects the stratum is the one the value node uses, so the
-two agree by construction. No value moves here.
+household's mass and the total household mass are conserved exactly. The
+stratum is selected on the spine's weights with ties broken by household id;
+the value node ranks the pool's weights with a keyed tie-break and ranks the
+copies beside their root, so the two agree up to ties and up to any weight
+change between the spine and the pool, not by construction. No value moves
+here.
 """
 
 from __future__ import annotations
