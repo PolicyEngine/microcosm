@@ -117,14 +117,22 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     evidence = uk_high_value_home_evidence(household, weights=weights, facts=facts)
     summary = evidence.summary
     bands = summary["england_owner_occupied_by_band_2026"]
-    # Basis values are deflated by 0.9: 1.9m stored is 2.11m at 2026 prices.
-    assert bands["gbp_2m_to_2_5m"] == pytest.approx(4.0)
-    assert bands["gbp_2_5m_to_3_5m"] == pytest.approx(2.0)
+    # The toy pool's bands rest on fewer than ten source households, so the
+    # shipped copies are suppressed (PR #1270 review, finding 6); the total
+    # over two suppressed bands stays, and empty bands stay as zero.
+    assert bands["gbp_2m_to_2_5m"] is None and bands["gbp_2_5m_to_3_5m"] is None
+    assert bands["gbp_3_5m_to_5m"] == 0.0 and bands["over_gbp_5m"] == 0.0
     assert bands["total"] == pytest.approx(6.0)
+    assert summary["england_bands_suppressed_small_cells"] == [
+        "gbp_2_5m_to_3_5m",
+        "gbp_2m_to_2_5m",
+    ]
     assert summary["obr"]["status"] == "awaiting_vendored_facts"
     shares = summary["regional_over_2m_share"]
-    assert shares["frame"]["E12000007"] == pytest.approx(5 / 6)
+    assert shares["frame"]["E12000007"] is None
+    assert "E12000007" in shares["frame_regions_suppressed_small_cells"]
     assert shares["derived_stock"]["E12000007"] == pytest.approx(5 / 7)
+    assert shares["largest_gap_evaluated"] == pytest.approx(abs(5 / 6 - 5 / 7))
     rho = summary["seat_rank_correlation"]["over_gbp_2m"]["final"]
     assert rho["spearman_vs_derived_stock"] == pytest.approx(1.0)
     assert rho["spearman_vs_voa_band_h"] == pytest.approx(1.0)

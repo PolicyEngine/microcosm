@@ -102,6 +102,41 @@ def _weighted_counts(
     return {str(code): float(value) for code, value in series.items()}
 
 
+#: Shipped cells need at least this many distinct source households.
+SMALL_CELL_SOURCES = 10
+ENGLAND_CODE = "E92000001"
+
+
+def _suppress_small_cells(
+    values: Mapping[str, float], sources: Mapping[str, int]
+) -> tuple[dict[str, float | None], list[str]]:
+    """Null every cell under the distinct-source floor, plus one more when only one is.
+
+    An empty cell discloses nothing and stays. A single suppressed cell could
+    be recovered from the others and the total, so the smallest remaining
+    non-empty cell goes with it (complementary suppression). The caller keeps
+    the exact values for the gate's own evaluation; only the shipped copy is
+    suppressed.
+    """
+    suppressed = [
+        key
+        for key in values
+        if key != "total" and 0 < int(sources.get(key, 0)) < SMALL_CELL_SOURCES
+    ]
+    if len(suppressed) == 1:
+        remaining = [
+            key
+            for key in values
+            if key != "total" and key not in suppressed and int(sources.get(key, 0)) > 0
+        ]
+        if remaining:
+            suppressed.append(min(remaining, key=lambda key: int(sources.get(key, 0))))
+    shipped = {
+        key: (None if key in suppressed else value) for key, value in values.items()
+    }
+    return shipped, sorted(suppressed)
+
+
 def _obr_band_counts(
     obr_rows: Sequence[Mapping[str, Any]] | None, *, period: str, basis: str
 ) -> dict[str, float]:
@@ -158,11 +193,22 @@ def uk_high_value_home_evidence(
     positive = weights > 0
 
     # 1. England owner-occupied counts by surcharge band at April-2026 prices.
+    # The shipped counts are suppressed where a band rests on fewer than
+    # ``SMALL_CELL_SOURCES`` distinct source households, with a second band
+    # suppressed when only one would be, so the total cannot recover it.
     bands: dict[str, float] = {}
+    band_sources: dict[str, int] = {}
     for lower, upper, band_id in HVCTS_BANDS_2026:
         mask = owner & england & positive & (value_2026 >= lower) & (value_2026 < upper)
         bands[band_id] = float(weights[mask].sum())
+        band_sources[band_id] = int(pd.Series(source[mask]).nunique())
     bands["total"] = float(sum(bands[band_id] for _, _, band_id in HVCTS_BANDS_2026))
+    band_sources["total"] = int(
+        pd.Series(
+            source[owner & england & positive & (value_2026 >= HVCTS_BANDS_2026[0][0])]
+        ).nunique()
+    )
+    shipped_bands, suppressed_bands = _suppress_small_cells(bands, band_sources)
     obr = _obr_band_counts(obr_rows, period=obr_period, basis=obr_basis)
     obr_leg: dict[str, Any] = {"status": "awaiting_vendored_facts"}
     if obr:
@@ -173,7 +219,11 @@ def uk_high_value_home_evidence(
             "basis": obr_basis,
             "all_properties": obr,
             "frame_over_all_properties_ratio": {
-                band: (bands[band] / obr[band] if obr.get(band) else None)
+                band: (
+                    shipped_bands[band] / obr[band]
+                    if obr.get(band) and shipped_bands.get(band) is not None
+                    else None
+                )
                 for band in bands
             },
         }
@@ -181,16 +231,52 @@ def uk_high_value_home_evidence(
             obr_leg["owner_occupied_sensitivity_total"] = obr.get("total", 0.0) * (
                 1.0 - float(non_owner)
             )
+        # The derived stock's own England totals over 2m beside Table 1.1: the
+        # all-tenure private-sector count is the like-for-like comparison
+        # (Table 1.1 counts every residential property in scope), and the
+        # owner-occupied count is what the local family binds.
+        derived_england = {
+            measure: facts.rows_at(
+                level="country", measure_id=measure, threshold_id="over_gbp_2m"
+            ).get(ENGLAND_CODE)
+            for measure in ("private_sector_dwellings", "owner_occupied_homes")
+        }
+        obr_total = float(obr.get("total") or 0.0)
+        obr_leg["derived_stock_england_over_2m"] = {
+            **derived_england,
+            "private_sector_over_obr_all_properties": (
+                derived_england["private_sector_dwellings"] / obr_total
+                if obr_total and derived_england["private_sector_dwellings"]
+                else None
+            ),
+            "owner_occupied_over_obr_owner_occupied": (
+                derived_england["owner_occupied_homes"]
+                / (obr_total * (1.0 - float(non_owner)))
+                if obr_total
+                and isinstance(non_owner, (int, float))
+                and derived_england["owner_occupied_homes"]
+                else None
+            ),
+        }
 
-    # 2. Regional split of owner-occupied homes over £2m, England.
-    frame_region = _weighted_counts(
-        region, weights, owner & england & positive & (stored > two_m.basis_gbp)
-    )
+    # 2. Regional split of owner-occupied homes over £2m, England. The gate
+    # evaluates every region; the shipped shares suppress regions resting on
+    # fewer than ``SMALL_CELL_SOURCES`` distinct source households (with a
+    # second region suppressed when only one would be).
+    over_2m = owner & england & positive & (stored > two_m.basis_gbp)
+    frame_region = _weighted_counts(region, weights, over_2m)
+    region_sources = {
+        code: int(pd.Series(source[over_2m & (region == code)]).nunique())
+        for code in frame_region
+    }
     frame_total = sum(frame_region.values())
     frame_shares = (
         {code: value / frame_total for code, value in frame_region.items()}
         if frame_total
         else {}
+    )
+    shipped_shares, suppressed_regions = _suppress_small_cells(
+        frame_shares, region_sources
     )
     derived_region = {
         code: value
@@ -330,12 +416,20 @@ def uk_high_value_home_evidence(
         "frame_basis_deflator": deflator,
         "households": int(len(household)),
         "owner_occupied_rows": int(owner.sum()),
-        "england_owner_occupied_by_band_2026": bands,
+        "england_owner_occupied_by_band_2026": shipped_bands,
+        "england_bands_suppressed_small_cells": suppressed_bands,
         "obr": obr_leg,
         "regional_over_2m_share": {
-            "frame": frame_shares,
+            "frame": shipped_shares,
+            "frame_regions_suppressed_small_cells": suppressed_regions,
             "derived_stock": derived_shares,
-            "gap": share_gaps,
+            "gap": {
+                code: (gap if shipped_shares.get(code) is not None else None)
+                for code, gap in share_gaps.items()
+            },
+            "largest_gap_evaluated": max(
+                (abs(float(v)) for v in share_gaps.values()), default=0.0
+            ),
             "frame_total": frame_total,
             "derived_total": derived_total,
         },
@@ -458,7 +552,12 @@ def high_value_home_benchmarks_gate(
             )
     regional = summary.get("regional_over_2m_share") or {}
     gaps = regional.get("gap") or {}
-    worst = max((abs(float(v)) for v in gaps.values()), default=0.0)
+    worst = regional.get("largest_gap_evaluated")
+    if worst is None:
+        worst = max(
+            (abs(float(v)) for v in gaps.values() if v is not None), default=0.0
+        )
+    worst = float(worst)
     if worst > maximum_regional_share_gap:
         failures.append(
             f"regional split of owner-occupied homes over 2m differs from the derived stock "

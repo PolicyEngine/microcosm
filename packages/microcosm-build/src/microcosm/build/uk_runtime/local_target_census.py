@@ -842,7 +842,12 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "valued dwellings); the owner-occupied share is the census share of "
             "the private stock, rescaled to the OBR costing note's national "
             "control on dwellings over 2 million; registrations lag sales by "
-            "weeks to months; England and Wales only."
+            "weeks to months; England and Wales only. The coverage correction "
+            "is the main sensitivity: it lifts the sold stock by a median "
+            "authority ratio of about 1.5, and with it the England "
+            "owner-occupied count over 2 million sits about a sixth above "
+            "the OBR-implied figure (the no-correction and no-control "
+            "variants are receipted in uk/high_value_home_stock.provenance.json)."
         ),
         "authority": (
             "HM Land Registry Price Paid Data guidance; UK HPI methodology; "

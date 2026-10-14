@@ -3484,9 +3484,12 @@ def _high_value_home_support_gate(
                 )
     if regions_with_owners == 0:
         failures.append(f"{stage}: no region carries owner households.")
+    # The shipped details round the survey counts to the nearest ten (the
+    # receipts rule of microcosm#1095); the exact counts stay in the stage
+    # receipt the checkpoint holds.
     details = {
-        "households_selected": selected,
-        "copies_created": created,
+        "households_selected_nearest_10": int(round(selected / 10.0)) * 10,
+        "copies_created_nearest_10": int(round(created / 10.0)) * 10,
         "mass_deviation": deviation,
         "regions_with_owners": regions_with_owners,
     }
