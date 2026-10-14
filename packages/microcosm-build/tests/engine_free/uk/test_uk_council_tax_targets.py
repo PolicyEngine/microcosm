@@ -458,14 +458,15 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
     # microcosm#1240: the three high_value_homes local-authority legs take the
-    # same support-floor deferral on the Isles of Scilly and the City of London.
-    assert len(support) == 45
-    assert sum(len(row.area_ids) for row in support) == 85
+    # same support-floor deferral on the Isles of Scilly and the City of London;
+    # microcosm#1207's three DESNZ energy rows take it too.
+    assert len(support) == 48
+    assert sum(len(row.area_ids) for row in support) == 91
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 40, "E09000001": 45}
+    assert by_area == {"E06000053": 43, "E09000001": 48}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support

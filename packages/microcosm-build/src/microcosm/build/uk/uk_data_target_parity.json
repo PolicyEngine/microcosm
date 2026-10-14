@@ -247,6 +247,33 @@
     },
     {
       "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.desnz.subnational.electricity_kwh",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target desnz.subnational.electricity_kwh; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.desnz.subnational.gas_connected_households",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target desnz.subnational.gas_connected_households; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.desnz.subnational.gas_kwh",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target desnz.subnational.gas_kwh; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.dwp.uc.households_by_area",
       "covers": [
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
