@@ -653,9 +653,15 @@ def uk_consumption_drift(
     Where the frame carries the ETB VAT stage's full-rate expenditure rate,
     the totals also hold the full-rate VAT base, consumption times that rate
     (microcosm#1207: no bound row holds the VAT base, so this is where its
-    drift shows).
+    drift shows). Where it carries the household's region, they also hold
+    the electricity and gas kWh the stage raked, read back from the spend at
+    the stage's declared prices (microcosm#1207).
     """
 
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
     from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
@@ -686,6 +692,15 @@ def uk_consumption_drift(
     if vat_rate_column in household.columns:
         vat_base = consumption * column(vat_rate_column)
         totals["full_rate_vat_base"] = _drift_value(design @ vat_base, final @ vat_base)
+    if "region" in household.columns:
+        kwh = household_energy_kwh(
+            column("electricity_consumption"),
+            column("gas_consumption"),
+            region=household["region"].astype(str).to_numpy(),
+            prices=household_energy_prices(),
+        )
+        for name, values in kwh.items():
+            totals[name] = _drift_value(design @ values, final @ values)
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 

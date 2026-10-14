@@ -42,6 +42,9 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_partitions,
     uk_fanout_sum_bridges,
 )
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    domestic_energy_appliers,
+)
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
@@ -670,6 +673,7 @@ UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
     **tenure_drift_appliers(),
+    **domestic_energy_appliers(),
 }
 
 

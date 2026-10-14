@@ -30,6 +30,8 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.chronicle_feed",
     "microcosm.build.uk_runtime.council_tax_constants",
     "microcosm.build.uk_runtime.cross_grain_declarations",
+    "microcosm.build.uk_runtime.domestic_energy_targets",
+    "microcosm.build.uk_runtime.energy_pricing",
     "microcosm.build.uk_runtime.frs_release",
     "microcosm.build.uk_runtime.geography_ladder",
     "microcosm.build.uk_runtime.high_value_homes",
@@ -87,6 +89,18 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         "microcosm.build.uk_runtime.hmrc_replay": (
             "local_target_census imports FULL_FRS_TI_BAND_FENCE_ID for the "
             "census text only"
+        ),
+        "microcosm.build.raking": (
+            "energy_pricing imports the proportional fit for the spine's NEED "
+            "rake; the compile reads only its published level and shares"
+        ),
+        "microcosm.build.source_manifest": (
+            "energy_pricing imports SourceStageSpec as a type; the declared "
+            "stage is part of the country-spec fingerprint"
+        ),
+        "microcosm.build.stochastic_assignment": (
+            "energy_pricing imports the identity-keyed uniforms for the "
+            "spine's gas connection walk, which no target value reads"
         ),
     }
 )
