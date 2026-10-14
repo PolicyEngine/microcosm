@@ -787,6 +787,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             ),
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
+        _Cell("household", "uses_energy_prepayment_meter", "bool"),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (

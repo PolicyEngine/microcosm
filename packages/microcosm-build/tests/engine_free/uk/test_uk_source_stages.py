@@ -619,6 +619,7 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
+            "impute_prepayment_meter",
             "iterative_proportional_fit",
             "price_domestic_energy",
             "price_bus_journeys",
@@ -631,6 +632,8 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
             "derive",
+            # The donor's disposable income to the base year (microcosm#1164).
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf",
             "support_clip",
@@ -759,6 +762,7 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
+            UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -831,14 +835,19 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
-            == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS[:-1]
+            == UK_LCFS_CONSUMPTION_TARGET_COLUMNS
         )
-        assert (
-            tuple(stages["etb_vat"].operations[1].parameters["predictors"])
-            == UK_ETB_VAT_ENGINE_PREDICTORS
+        assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
+            *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+            "has_fuel_consumption",
+            "uses_energy_prepayment_meter",
         )
         assert (
             tuple(stages["etb_vat"].operations[2].parameters["predictors"])
+            == UK_ETB_VAT_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[3].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -974,8 +983,11 @@ class TestE3ManifestLockstep:
             "price_domestic_energy": 0,
             # The road-fuel incidence redraw (microcosm#1113).
             "redraw_zero_road_fuel": 0,
+            # The prepayment-meter flag (microcosm#1110).
+            "impute_prepayment_meter": 0,
         }
-        assert stages["etb_vat"].operations[2].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["seed"] == 0
+        assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:

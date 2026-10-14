@@ -208,6 +208,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.gas_consumption",
     "household.geography_household_key",
     "household.has_fuel_consumption",
+    # The LCFS prepayment-meter flag (microcosm#1110): policyengine-uk reads it
+    # from 2.123.3 for the Energy Price Guarantee prepayment discount, and an
+    # older engine ignores the column; the incumbent does not carry it yet
+    # (uk-data#539).
+    "household.uses_energy_prepayment_meter",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",

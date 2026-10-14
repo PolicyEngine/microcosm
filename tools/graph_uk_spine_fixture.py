@@ -843,14 +843,32 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
-        "weighta": 1.0 + rows % 7 / 10.0,
+        "cal_weight_annual": 1.0 + rows % 7 / 10.0,
         "a122": 1 + rows.astype(int) % 8,
         "a121": 1 + rows.astype(int) % 8,
-        "b226": 6.0 + rows % 3,
-        "b489": 2.0 + rows % 5,
-        "b490": 1.0 + rows % 4,
         "p537": 10.0 + rows,
     }
+    # The labelled fuel, light and power parts (microcosm#1164): an electricity
+    # account everywhere, a gas account on most diaries, combined bills on a
+    # third (gas and electricity components), prepayment meters on a sixth,
+    # and oil on a few.
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_ENERGY_CODES
+
+    for code in UK_LCFS_ENERGY_CODES:
+        if code != "p537":
+            household[code] = np.zeros(_DONOR_ROWS)
+    combined = rows.astype(int) % 3 == 0
+    prepay = rows.astype(int) % 6 == 1
+    household["b175"] = np.where(combined | prepay, 0.0, 8.0 + rows % 5)
+    household["b489"] = household["b175"]
+    household["b170"] = np.where(combined | prepay, 0.0, 4.0 + rows % 4)
+    household["b490"] = household["b170"]
+    household["b231"] = np.where(combined, 10.0 + rows % 3, 0.0)
+    household["b226"] = np.where(combined, 4.0, 0.0)
+    household["b227"] = np.where(combined, 6.0 + rows % 3, 0.0)
+    household["b1751"] = np.where(prepay, 5.0 + rows % 2, 0.0)
+    household["b1701"] = np.where(prepay & (rows.astype(int) % 12 == 1), 3.0, 0.0)
+    household["b017"] = np.where(rows.astype(int) % 10 == 7, 2.5, 0.0)
     for position, source in enumerate(
         (
             "p601",
