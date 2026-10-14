@@ -928,6 +928,7 @@ def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=
         graph,
         population=root.id,
         bindings={"target_scope": "all", "geography": synthetic_geography_binding()},
+        solve_year=2025,
         artifact_inputs=(
             ArtifactInput(
                 "gates",

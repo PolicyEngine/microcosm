@@ -54,6 +54,11 @@ from microcosm.build.uk_runtime.national_frame import (
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.weight_year import (
+    UK_WEIGHT_YEAR_MASS_REASON,
+    uk_engine_year_frame,
+    uk_weight_projection_factor,
+)
 from microcosm.calibrate import TargetRegistry, calibrate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build import uk_calibration_run as seam
@@ -382,6 +387,13 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         "uk.full.national.readback",
     }
     assert record["graph"]["readback"]["passed"] is True
+    # The fixture frame is a 2023 dataset solved at 2025 (microcosm#796 A19).
+    factor = uk_weight_projection_factor(2023, 2025)
+    assert record["graph"]["readback"]["weight_year"] == {
+        "solve_year": 2025,
+        "dataset_year": 2023,
+        "engine_projection_factor": factor,
+    }
 
     # The seam diagnostics with the build block, digest measured from the file.
     written = json.loads(diagnostics.read_text())
@@ -412,13 +424,17 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         == signature
     )
 
-    # The H5: calibrated weights, the seam's mass record.
+    # The H5: calibrated weights at the dataset's year. The seam's mass
+    # record, then the division by the engine's projection to the solve year.
     staged, _ = load_uk_national_frame(dataset)
     assert staged.weights_for("household").kind is WeightKind.CALIBRATED
-    assert len(staged.mass_log) == 1
+    assert len(staged.mass_log) == 2
     assert staged.mass_log[0].reason == national_calibration_mass_reason(
         [spec.family for spec in registry.specs]
     )
+    assert staged.mass_log[1].reason == UK_WEIGHT_YEAR_MASS_REASON
+    assert staged.mass_log[1].declared_factor == 1.0 / factor
+    assert staged.mass_log[1].old_total == staged.mass_log[0].new_total
     frozen = TargetRegistry.from_json(out / "national_target_registry.json")
     assert frozen.version == registry.version
 
@@ -518,7 +534,9 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
 
 def test_uk_national_role_solve_is_the_seam_solve(monkeypatch, tmp_path):
     """The graph's H5 carries the weights an in-process calibrate call under
-    the national doctrine produces on the same frame and register."""
+    the national doctrine produces on the same frame and register, written at
+    the dataset's year: the engine's projection to the solve year returns
+    them (microcosm#796 A19)."""
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
@@ -528,7 +546,12 @@ def test_uk_national_role_solve_is_the_seam_solve(monkeypatch, tmp_path):
 
     staged, _ = load_uk_national_frame(out / "microcosm_uk_2024_25.h5")
     expected = _seam_weights(seam._frame(), registry, UKNationalSolveDoctrine(epochs=7))
-    assert np.array_equal(staged.weights_for("household").values, expected)
+    factor = uk_weight_projection_factor(2023, 2025)
+    assert np.array_equal(staged.weights_for("household").values, expected / factor)
+    at_solve_year = uk_engine_year_frame(staged, simulation_year=2025)
+    np.testing.assert_allclose(
+        at_solve_year.weights_for("household").values, expected, rtol=1e-15, atol=0
+    )
 
 
 def test_uk_national_role_records_doctrine_overrides(monkeypatch, tmp_path):

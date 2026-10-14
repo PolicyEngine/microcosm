@@ -46,7 +46,7 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
-from . import geography_ladder, national_frame
+from . import geography_ladder, national_frame, weight_year
 from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
 from .dataset_size import UK_SIZE_L2_PARAM_KEYS
 from .geography_ladder import (
@@ -68,6 +68,7 @@ from .rowwise_dataset import (
     ladder_clone_index_column,
     load_uk_rowwise_dataset,
 )
+from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 EXPORT_DESCRIPTOR_TYPE = ArtifactType("microcosm.uk.full-export-descriptor", 1)
 EXPORT_READBACK_TYPE = ArtifactType("microcosm.uk.full-export-readback", 1)
@@ -195,11 +196,17 @@ def _content_descriptor(
 
 
 def describe_uk_export(
-    frame: Frame, *, bindings: Mapping[str, object]
+    frame: Frame, *, bindings: Mapping[str, object], solve_year: int
 ) -> dict[str, object]:
-    """Validate and describe the maintained H5 layout without serializing it."""
+    """Validate and describe the maintained H5 layout without serializing it.
+
+    ``solve_year`` is the year the weights were solved at. The artifact
+    carries them at the dataset's year (``uk_runtime.weight_year``,
+    microcosm#796 A19); the geography gate reads the solved weights.
+    """
     validate_uk_national_frame(frame)
-    ladder = _ladder_tables(frame)
+    release = uk_dataset_year_frame(frame, solve_year=solve_year)
+    ladder = _ladder_tables(release)
     gate = uk_geography_ladder_gate(
         ladder["household"], frame.weights_for("household").values
     )
@@ -208,15 +215,26 @@ def describe_uk_export(
             "UK export geography integrity failed: " + "; ".join(gate.failures)
         )
     tables = {**ladder, "household": export_area_code_columns(ladder["household"])}
+    dataset_year = int(uk_time_period(release))
     return {
         "schema_version": 1,
         "kind": "uk_full_build_export",
         **_content_descriptor(
             tables,
-            time_period=uk_time_period(frame),
-            weight_kind=uk_household_weight_kind(frame),
-            mass_log=frame.mass_log,
+            time_period=uk_time_period(release),
+            weight_kind=uk_household_weight_kind(release),
+            mass_log=release.mass_log,
         ),
+        # The year the weights were solved at, the year the file carries them
+        # at, and the engine's own factor between the two. The division itself
+        # is inside the content identity, as the last record of the mass log.
+        "weight_year": {
+            "solve_year": int(solve_year),
+            "dataset_year": dataset_year,
+            "engine_projection_factor": uk_weight_projection_factor(
+                dataset_year, int(solve_year)
+            ),
+        },
         "bindings": dict(bindings),
         "geography_integrity": {"passed": gate.passed, "failures": list(gate.failures)},
         "area_codes": _area_codes_block(tables["household"]),
@@ -247,6 +265,10 @@ def materialize_uk_export(
 ) -> dict[str, object]:
     """Perform only the declared serialization, recreating files on cache hits."""
     _check_descriptor(descriptor)
+    # The weights leave at the dataset's year, as the descriptor declared.
+    frame = uk_dataset_year_frame(
+        frame, solve_year=int(descriptor["weight_year"]["solve_year"])
+    )
     tables = _tables(frame)
     current = _content_descriptor(
         tables,
@@ -312,7 +334,9 @@ class UKExportPrepareKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], national_frame, geography_ladder)
+        return source_hash(
+            sys.modules[__name__], national_frame, geography_ladder, weight_year
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         for value in context.artifacts.values():
@@ -326,7 +350,11 @@ class UKExportPrepareKernel(KernelBase):
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
         }
-        descriptor = describe_uk_export(context_frame(context), bindings=bindings)
+        descriptor = describe_uk_export(
+            context_frame(context),
+            bindings=bindings,
+            solve_year=int(context.params["solve_year"]),
+        )
         return KernelResult(artifacts={"export_descriptor": canonical_json(descriptor)})
 
 
@@ -414,6 +442,7 @@ def add_uk_export_preparation(
     *,
     population: str,
     bindings: Mapping[str, object],
+    solve_year: int,
     artifact_inputs: tuple[ArtifactInput, ...] = (),
 ) -> Graph:
     node = Node(
@@ -421,7 +450,10 @@ def add_uk_export_preparation(
         kernel=UKExportPrepareKernel.ref,
         population=population,
         inputs=population_slices(population_columns(graph, population)),
-        params={"bindings": canonical_json(dict(bindings)).decode()},
+        params={
+            "bindings": canonical_json(dict(bindings)).decode(),
+            "solve_year": int(solve_year),
+        },
         artifact_inputs=artifact_inputs,
         artifact_outputs=(ArtifactOutput("export_descriptor", EXPORT_DESCRIPTOR_TYPE),),
         description="Validate and describe exact H5 values, schema, weights and geographic lineage.",

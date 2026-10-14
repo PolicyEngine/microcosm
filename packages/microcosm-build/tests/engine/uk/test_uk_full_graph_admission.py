@@ -132,6 +132,7 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         graph,
         population=full.calibration.population,
         bindings={"target_scope": "all", "n_clones": full.config.n_clones},
+        solve_year=int(full.config.calibration_year),
         artifact_inputs=(final_gate,),
     )
     graph = add_uk_export_continuation(
