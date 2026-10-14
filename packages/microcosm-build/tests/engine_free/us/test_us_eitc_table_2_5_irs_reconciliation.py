@@ -29,12 +29,13 @@ IRS-published EITC (EITC statistics pages, read 2026-10-14):
 
 IRS labels those "returns processed in" the filing year, "as of December".
 Publication 1304 Table 2.5 is the SOI sample estimate for "Tax Year 2023
-(Filing Year 2024)", whose footnote says prior-year returns are included. Its
-TY2023 EITC (24,439,936 returns, $66.27 billion) sits 6.3% and 3.5% above the
-TY2023 December figures; the two products' bases differ, and this module does
-not attribute the gap. The reconciliation tolerance is 10%: wide enough for
-that observed gap, far too narrow for a halving. Child shares are compared within 1.5
-percentage points because IRS rounds them to whole percents.
+(Filing Year 2024)"; its footnote 1 defines EIC earned income "for prior-year
+returns", which implies they are in it. Its TY2023 EITC (24,439,936 returns,
+$66.27 billion) sits 6.3% and 3.5% above the TY2023 December figures; the two
+products' bases differ, and this module does not attribute the gap. The
+reconciliation tolerance is 10%: wide enough for that observed gap, far too
+narrow for a halving. Child shares are compared within 1.5 percentage points
+because IRS rounds them to whole percents.
 """
 
 from __future__ import annotations
