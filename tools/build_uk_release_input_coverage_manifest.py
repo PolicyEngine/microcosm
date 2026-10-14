@@ -43,7 +43,7 @@ UK_PACKAGE_DIR = (
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
-HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
+CGT_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "cgt_source_stages.json"
 SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
@@ -65,6 +65,30 @@ EXCLUSION_TRACKING_NOTE = (
     "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-"
     "family restoration milestone before promoting it to required."
 )
+#: Reference inputs the release leaves for the engine to derive (microcosm#1106).
+#: The enhanced FRS persists them, but policyengine-uk computes them from
+#: inputs the candidate persists, and a persisted copy overrides the formula,
+#: so they are reviewed exclusions by declaration, not parity debt: they sit in
+#: their own section of the known-gap ledger, outside the evidence-derived
+#: ``known_gaps``. The release and calibration boundaries drop them
+#: (``national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS``).
+ENGINE_DERIVED_EXCLUSION_REASON = (
+    "formula-owned in policyengine-uk and derived from persisted components; "
+    "a persisted copy overrides the formula and is not uprated"
+)
+ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "property_wealth": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1106 (the uk-data#543 defect): the release and "
+            "calibration boundaries drop the WAS total, and policyengine-uk "
+            "sums main_residence_value, other_residential_property_value and "
+            "non_residential_property_value, which stay required."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-10-11",
+    },
+}
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
 EFFECTIVE_MASS_COVERAGE = {
@@ -95,6 +119,7 @@ RESTORED_REQUIRED_COLUMN_EVIDENCE = {
         "promotion_basis": "weighted release gate stale-exclusion remediation",
         "reviewed_on": "2026-07-13",
         "stage": "hmrc_spi_income",
+        "current_producer_stage": "hmrc_spi_income_spine",
         "support_channel": "spi",
     },
     "gift_aid": {
@@ -104,6 +129,7 @@ RESTORED_REQUIRED_COLUMN_EVIDENCE = {
         "promotion_basis": "weighted release gate stale-exclusion remediation",
         "reviewed_on": "2026-07-13",
         "stage": "hmrc_spi_income",
+        "current_producer_stage": "hmrc_spi_income_spine",
         "support_channel": "spi",
     },
 }
@@ -594,6 +620,7 @@ def build_known_gaps(
         },
         "candidate_evidence": candidate_evidence,
         "restored_required_columns": RESTORED_REQUIRED_COLUMN_EVIDENCE,
+        "engine_derived_exclusions": ENGINE_DERIVED_EXCLUSIONS,
         "known_gaps": {
             name: {
                 "reason": EXCLUSION_REASON,
@@ -720,6 +747,43 @@ def _validate_known_gaps(
             )
         if not str(entry.get("tracking_note", "")).strip():
             raise ValueError(f"UK known gap {name!r} needs a tracking note.")
+    raw_engine_derived = known_gaps_payload.get("engine_derived_exclusions")
+    if raw_engine_derived != ENGINE_DERIVED_EXCLUSIONS:
+        raise ValueError(
+            "efrs_parity_known_gaps.json: engine_derived_exclusions disagrees "
+            "with the reviewed declaration in this tool."
+        )
+    engine_derived = set(ENGINE_DERIVED_EXCLUSIONS)
+    off_surface = sorted(engine_derived - surface)
+    if off_surface:
+        raise ValueError(
+            "Engine-derived exclusions must name populated eFRS reference "
+            f"inputs: {off_surface}."
+        )
+    engine = reference.get("engine")
+    formula_owned = set(
+        engine.get("formula_owned_persisted_overrides_included", ())
+        if isinstance(engine, dict)
+        else ()
+    )
+    not_formula_owned = sorted(engine_derived - formula_owned)
+    if not_formula_owned:
+        raise ValueError(
+            "Engine-derived exclusions must be formula-owned inputs the "
+            f"reference persists: {not_formula_owned}."
+        )
+    restored_engine_derived = sorted(engine_derived & restored)
+    if restored_engine_derived:
+        raise ValueError(
+            "Restored UK reference inputs cannot be engine-derived exclusions: "
+            f"{restored_engine_derived}."
+        )
+    gap_and_engine_derived = sorted(engine_derived & actual)
+    if gap_and_engine_derived:
+        raise ValueError(
+            "A column cannot be both a parity known gap and an engine-derived "
+            f"exclusion: {gap_and_engine_derived}."
+        )
 
 
 def build_manifest(
@@ -738,12 +802,14 @@ def build_manifest(
         if float(share) > 0.0
     }
     columns: dict[str, dict[str, str]] = {}
+    engine_derived = known_gaps_payload["engine_derived_exclusions"]
     for name in sorted(populated_layers):
-        if name in known_gaps:
+        exclusion = known_gaps.get(name) or engine_derived.get(name)
+        if exclusion is not None:
             columns[name] = {
                 "status": "reviewed_exclusion",
-                "reason": str(known_gaps[name]["reason"]),
-                "tracking_note": str(known_gaps[name]["tracking_note"]),
+                "reason": str(exclusion["reason"]),
+                "tracking_note": str(exclusion["tracking_note"]),
             }
         else:
             columns[name] = {"status": "required"}
@@ -793,8 +859,8 @@ def build_manifest(
                 stage_name="cgt_incidence_clone",
                 candidate_source=candidate_source,
             ),
-            "cgt_band_donors": _source_stage_family_coverage_contract(
-                stage_name="cgt_band_donors",
+            "cgt_support_split": _source_stage_family_coverage_contract(
+                stage_name="cgt_support_split",
                 candidate_source=candidate_source,
             ),
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
@@ -808,12 +874,25 @@ def build_manifest(
                 stage_name="cgt_incidence_anchor",
                 candidate_source=candidate_source,
             ),
+            # The residential split conserves mass like the other CGT
+            # structural stages (microcosm#1063).
+            "cgt_residential_split": _source_stage_family_coverage_contract(
+                stage_name="cgt_residential_split",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
             ),
             "student_loans": _source_stage_family_coverage_contract(
                 stage_name="student_loans",
+                candidate_source=candidate_source,
+            ),
+            # The reserved income rows are a support channel funded from the
+            # incumbent households (microcosm#1063): the terminal gate demands
+            # their conserving receipt like any other stage's.
+            "spi_income_band_donors": _source_stage_family_coverage_contract(
+                stage_name="spi_income_band_donors",
                 candidate_source=candidate_source,
             ),
             "hmrc_spi_income": _hmrc_family_coverage_contract(
@@ -823,12 +902,20 @@ def build_manifest(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,
             ),
+            "was_lisa": _source_stage_family_coverage_contract(
+                stage_name="was_lisa",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,
             ),
             "regional_property_uprating": _source_stage_family_coverage_contract(
                 stage_name="regional_property_uprating",
+                candidate_source=candidate_source,
+            ),
+            "property_components": _source_stage_family_coverage_contract(
+                stage_name="property_components",
                 candidate_source=candidate_source,
             ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
@@ -851,7 +938,10 @@ def build_manifest(
             "effective-mass share OR the column is pinned in "
             "restored_required_columns after a source-family restoration; all "
             "remaining surface columns are reviewed_exclusion with reason "
-            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note. "
+            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note, "
+            "except the engine_derived_exclusions, which are reviewed_exclusion "
+            "with their own reason because the engine computes them from "
+            "persisted inputs. "
             "The final release gate applies the same effective-mass floor, and "
             "distributional restorations must pass it on their required source "
             "channel."
@@ -909,14 +999,15 @@ def _source_stage_family_coverage_contract(
             "assert the mass was conserved."
         )
     required_mass_change_reason = declared_reasons[-1]
-    mass_change_semantics = (
-        "mass_increasing_support"
-        if any(
-            operation.get("kind") == "stack_band_donor_households"
-            for operation in operations
-        )
-        else "mass_conserving"
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        UK_FAMILY_MASS_CHANGE_SEMANTICS,
     )
+
+    # Every spine stage conserves household mass: microcosm#1045 retired the
+    # CGT band-donor stack and microcosm#1063 made the SPI income-band donors
+    # a funded support channel, so no family adds mass and the validator
+    # accepts no other semantics.
+    mass_change_semantics = UK_FAMILY_MASS_CHANGE_SEMANTICS
     return {
         "status": "required_at_build",
         "stage": stage_name,
@@ -1036,77 +1127,29 @@ def _hmrc_family_coverage_contract(
     *,
     candidate_source: dict[str, Any],
 ) -> dict[str, Any]:
-    payload = _load(HMRC_SOURCE_STAGES_PATH)
-    stages = payload.get("stages")
-    if not isinstance(stages, list) or len(stages) != 1:
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: expected exactly one source stage."
-        )
-    stage = stages[0]
-    if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
-        raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
-    canonical_payload = _load(SOURCE_STAGES_PATH)
-    canonical_stages = canonical_payload.get("stages")
-    if not isinstance(canonical_stages, list):
-        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
-    canonical_matches = [
-        candidate
-        for candidate in canonical_stages
-        if isinstance(candidate, dict) and candidate.get("stage") == "hmrc_spi_income"
-    ]
-    if len(canonical_matches) != 1:
-        raise ValueError(
-            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_spi_income stage."
-        )
-    canonical_stage = canonical_matches[0]
-    base_candidate = stage.get("base_candidate")
-    if not isinstance(base_candidate, dict):
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: base_candidate must be an object."
-        )
-    source_tier = validate_uk_release_tier(candidate_source.get("tier"))
-    base_candidate_tier = validate_uk_release_tier(base_candidate.get("tier"))
-    if base_candidate_tier != source_tier:
-        raise ValueError(
-            "HMRC source-stage base candidate tier disagrees with the certified "
-            f"candidate evidence: {base_candidate_tier!r} != {source_tier!r}."
-        )
-    artifacts = {
-        artifact["role"]: artifact
-        for artifact in stage.get("artifacts", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
-    }
-    canonical_artifacts = {
-        artifact["role"]: artifact
-        for artifact in canonical_stage.get("artifacts", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
-    }
-    operations = {
-        operation["kind"]: operation
-        for operation in stage.get("operations", [])
-        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
-    }
-    required_artifacts = {"qrf_donor", "published_fact_surface"}
-    missing_artifacts = sorted(required_artifacts - set(artifacts))
-    missing_canonical_artifacts = sorted(required_artifacts - set(canonical_artifacts))
-    required_operations = {
-        "retain_adjudicated_frs_hmrc_leaves",
-        "verify_pinned_hmrc_source_pair",
-        "replace_zero_weight_spi_support",
-        "classify_hmrc_income_facts_with_reviewed_fences",
-        "gate_distributional_effective_mass",
-    }
-    missing_operations = sorted(required_operations - set(operations))
-    if missing_artifacts or missing_canonical_artifacts or missing_operations:
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: incomplete HMRC family contract; "
-            f"missing_artifacts={missing_artifacts}, "
-            f"missing_canonical_artifacts={missing_canonical_artifacts}, "
-            f"missing_operations={missing_operations}."
-        )
+    from microcosm.build.source_manifest import SourceStageSpec
+    from microcosm.build.uk_runtime.hmrc_source_contract import (
+        assert_uk_hmrc_income_source_contract_current,
+    )
+    from microcosm.build.uk_runtime.spi_spine import uk_spi_support_mass_change_reason
+
+    assert_uk_hmrc_income_source_contract_current(SOURCE_STAGES_PATH)
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = {stage["stage"]: stage for stage in payload["stages"]}
+    stage = stages["hmrc_spi_income_spine"]
+    artifacts = {artifact["role"]: artifact for artifact in stage["artifacts"]}
+    operations = {operation["kind"]: operation for operation in stage["operations"]}
+    frs_leaves = next(
+        operation
+        for operation in stages["frs_hmrc_spine_leaves"]["operations"]
+        if operation["kind"] == "retain_adjudicated_frs_hmrc_leaves"
+    )
+    prior = next(
+        operation
+        for operation in stages["spi_support_channel"]["operations"]
+        if operation["kind"] == "allocate_zero_weight_prior_mass"
+    )
     classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
-    frs_leaves = operations["retain_adjudicated_frs_hmrc_leaves"]
-    prior = operations["replace_zero_weight_spi_support"]
     effective = operations["gate_distributional_effective_mass"]
     floor = float(effective["minimum_nondefault_mass_share"])
     if floor != EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"]:
@@ -1145,42 +1188,29 @@ def _hmrc_family_coverage_contract(
         # truthfully retains the 208-fact adjudicated-partial-replay verdict.
         "status": "required_at_build",
         "restoration_status": str(frs_leaves["status"]),
-        "stage": "hmrc_spi_income",
-        "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
-        "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
-        # The two re-mapped period fields below come from the CANONICAL
-        # manifest (the #723 signed re-map lives there; the frozen mirror
-        # keeps its June bytes), so the bytes they derive from are pinned
-        # separately - evidence fields and their hash must name the same
-        # source (adversarial-review finding, 2026-08-20).
-        "canonical_source_manifest": SOURCE_STAGES_PATH.name,
-        "canonical_source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
-        "superseded_by": {
-            "stage": "hmrc_spi_income_spine",
-            "source_manifest": SOURCE_STAGES_PATH.name,
-            "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
-            "reason": (
-                "The FRS spine build executes hmrc_spi_income_spine, which "
-                "supersedes the June retained-leaves/hmrc_spi_income pair "
-                "inside source_stages.json."
-            ),
-        },
-        "base_candidate_sha256": str(base_candidate["sha256"]),
-        "base_candidate_tier": base_candidate_tier,
+        "stage": "hmrc_spi_income_spine",
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "required_predecessor_stages": [
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+        ],
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
             "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),
             "mapped_build_period": str(
-                canonical_artifacts["published_fact_surface"]["mapped_build_period"]
+                artifacts["published_fact_surface"]["mapped_build_period"]
             ),
             "period_mapping": str(
-                canonical_artifacts["published_fact_surface"]["period_mapping"]
+                artifacts["published_fact_surface"]["period_mapping"]
             ),
         },
-        "spi_prior_national_household_mass_share": float(
-            prior["spi_prior_national_household_mass_share"]
+        "spi_prior_national_household_mass_share": float(prior["share"]),
+        "required_mass_change_reason": uk_spi_support_mass_change_reason(
+            SourceStageSpec.from_mapping(stages["spi_support_channel"])
         ),
-        "required_mass_change_reason": str(prior["mass_change_reason"]),
         "input_weight_kind": str(classification["input_weight_kind"]),
         "output_weight_kind": str(classification["output_weight_kind"]),
         "calibration_permitted": bool(classification["calibration_permitted"]),

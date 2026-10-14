@@ -1,13 +1,18 @@
 # UK dense line release assembly runbook (#762)
 
 The dense line `microcosm-uk-2024-25-dense` is the spine cloned K=15 times
-through the OA geography ladder and calibrated to the national and local
-target surfaces in one solve (`tools/build_uk_rowwise_candidate.py`). It ships
+through the atomic output-area assignment and calibrated to the national and local
+target surfaces in one solve (`microcosm-build-uk --release-role dense`, the
+graph driver `tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py`
+is a stub over it). It ships
 on the **inspect lane only**: a constant release id, an immutable per-cut tag,
 `dataset_role: non_default_local_area`, an empty `default_datasets` map, and
 `--no-latest` at publication, so it can never displace the default artifact.
 It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
+Since microcosm#1124 (ruling of 2026-10-13) the line may ship the
+100,000-household exact-k selection from that pool instead of the whole pool,
+under the same requirements; see [Sized release](#sized-release-microcosm1124).
 
 The R16/R17 release verdicts recorded in the historical receipts used the
 previous gate policy. They do not satisfy the current contract: four quality
@@ -21,6 +26,12 @@ No historical run was re-signed or recalibrated by the PR #870 review fixes.
 - The Ledger consumer artifact, the spine H5 with its sidecar, the OA ladder.
 - The incumbent extraction (`tools/extract_uk_local_incumbent_surface.py`) for
   the head-to-head score.
+- The licensed input-mass reference the national line keeps with its runs
+  (`--input-mass-reference`). `uk_input_mass_parity` is release-blocking on
+  this line too and records `evidence_absent` without it. The sidecar's totals
+  digest must match the registry's `totals_sha256`; the totals depend on the
+  installed policyengine-uk, so re-emitting them under a newer engine does not
+  reproduce the pinned file.
 
 ## 1. Pre-flight the environment
 
@@ -36,24 +47,58 @@ digest mismatch, or doctrine constants that are not the ruled ones.
 ## 2. Run the release candidate
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role dense \
+uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --release-candidate --input-h5 <spine.h5> --input-sha256 <spine> \
   --ladder build/uk/uk_oa_ladder_2021.npz --ladder-sha256 <ladder> \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
   --ledger-manifest-sha256 <manifest> --seed 42 \
+  --input-mass-reference <licensed-input-mass-reference> \
   --logbook-prev-row-digest <previous row> --out <candidate-dir>
 ```
 
 `--release-role dense` is required (microcosm#823): the role supplies the
-solve defaults (K=15, seed 42, 1,500 epochs, learning rate 0.15,
-`grain_equal`), names the outputs `microcosm_uk_2024_25_local.h5` and
+solve defaults (K=15, seed 42, 2,000 epochs, learning rate 0.15,
+`nation_grain_family_equal_sqrt_count`), names the outputs `microcosm_uk_2024_25_local.h5` and
 `microcosm_uk_2024_25_local.local_gates.json`, records itself in the
 manifest, and refuses the national role's flags. `--release-candidate` pins
-the doctrine (bound 10, `grain_equal`, K=15, 1500 epochs), resolves the
-engine in a single block, and runs the rotated holdout. Best-effort staging
+the doctrine (bound 10, `nation_grain_family_equal_sqrt_count`, K=15, 2000
+epochs) and runs the
+rotated holdout. The engine may resolve in a single block or per clone
+(`--engine-blocks K`): each block's engine weights are scaled to the pool so
+weight-share formulas see the pool's denominator, and the measures receipt
+records whether the blocks were identical copies (an exact representation);
+a per-block run is releasable only when it was. Best-effort staging
 telemetry uploads every 300 s by default on this driver (the Hub allows about
 128 commits per hour per repository).
-Expect about 3.5 hours and 10 GB at K=15.
+For scale: at K=25 with `--engine-blocks 25` the graph driver's dense solve took
+about 3 hours (2,000 epochs over 1.6 million households, M1 Max), each of three
+size-search probes about as long, and the build peaked at 24.7 GiB (the
+2026-10-11 100,000-household candidate). At K=15 the pool is 60 % of that size,
+and the rowwise tool measured about 3.5 hours and 10 GB for an unsized build.
+A release candidate also runs the rotated holdout, which repeats the dense
+solve in each of its five folds, and in a sized build the size search and
+refit too. Since microcosm#901 the
+dense role runs through the [full-build graph](uk-full-build-graph.md): the
+candidate directory also holds `candidate.json`, `certification.json`,
+`operations.json` and the `build.json` completion marker, the graph store sits
+at `<candidate-dir>/.graph-store` unless `--graph-store` says otherwise, and
+`--input-h5` must be a spine whose gate manifest matches the branch's gate
+declarations.
+
+### Sized release (microcosm#1124)
+
+A release candidate may add `--dataset-households 100000` to ship the exact-k
+selection instead of the whole pool. It must carry the local size doctrine
+(`local_doctrine.uk_local_size_doctrine`): 100,000 households, an exact-count
+draw at π_hi 0.5, the refit baseline floored at 0.5 and a chi-square refit L2
+penalty toward uniform weights at λ 0.0216, drawn with the solve seed. The role
+fills those values when the request leaves them unset and refuses any other.
+`--selection-initial-lambda` warm-starts the budget search, and every holdout
+fold's search starts from the same value. The requirements are the dense
+line's (ruling of 2026-10-13; no matched-size scorecard): every
+release-blocking gate passed, the rotated holdout, the pre-flight, which also
+checks the size receipt, and the incumbent-surface evaluation on one engine
+over the 100,000-household file. The release identity is unchanged.
 
 ## 3. Pre-flight the finished run, then score it
 
@@ -62,9 +107,17 @@ uv run --no-sync python tools/preflight_uk_local_release_candidate.py --candidat
 uv run --no-sync python tools/score_uk_local_candidate.py ... --output-json <candidate-dir>/score_vs_incumbent.json
 ```
 
+The scorer's `--registry-json` is the candidate's target selection,
+`<candidate-dir>/microcosm_uk_2024_25_local.target_selection.json` (the
+manifest's `outputs.target_registry`); it scores that selection's local rows,
+which must be the 21,804 compiled local references of the #1123 surface and
+must all appear in the candidate's diagnostics, so scoring needs the full rung.
+
 The pre-flight checks the manifest and the signed gate report for everything
 the contract will demand: release posture attested, shippable, every
-release-blocking gate passed, single-block engine, the doctrine values, the
+release-blocking gate passed, an exact engine population (single block, or
+per-block with identical copies scaled to the pool), the doctrine values (for
+a sized run, the size doctrine and a realized count equal to the request), the
 A15 census household uprating and A17 tenure application, the measure
 exclusions and their windows, the holdout, the
 Logbook row, the artifact digest.
@@ -83,6 +136,17 @@ uv run --no-sync python tools/evaluate_uk_incumbent_surface.py \
   --out-json <candidate-dir>/incumbent_surface_evaluation.json \
   --out-md <candidate-dir>/incumbent_surface_evaluation.md
 ```
+
+This evaluation is also where the released file's fit is gated on the engine
+a consumer runs. The build's release-blocking fit gates read the measures it
+resolved, per clone when `--engine-blocks K`; the build records that
+representation as exact only for the weight-share scaling
+(`engine_population_representation.exact_scope`), and engine draws that depend
+on a record's position can differ between per-clone and single-block runs. The
+evaluator re-measures the released file on one engine, which the data contract
+requires, and its assessment fails release for any national or local row more
+than 25% from its target, or any family of five or more rows with fewer than
+half within 25%. Signed deferrals and measure exclusions do not exempt a row.
 
 Use the actual metrics and weights filenames from the extraction manifest.
 The evaluator remains diagnostic: missing optional incumbent inputs and poor

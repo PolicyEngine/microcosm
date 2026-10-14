@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -206,18 +207,6 @@ def _patch_release_seams(module, monkeypatch) -> None:
     def _stub_gate(*args, **kwargs):
         return SimpleNamespace(passed=True, failures=(), details={})
 
-    def _stub_materialize(frame, specs, **kwargs):
-        registry = TargetRegistry(list(specs), country="us")
-        return (
-            frame,
-            registry,
-            {
-                "declared_targets": len(specs),
-                "compiled_candidate_targets": len(specs),
-                "dropped_target_names": [],
-            },
-        )
-
     def _stub_cd_probe(h5_path):
         return {
             module.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: None,
@@ -231,8 +220,85 @@ def _patch_release_seams(module, monkeypatch) -> None:
     monkeypatch.setattr(release, "_with_base_population_mass_repair", _identity_repair)
     monkeypatch.setattr(release, "_base_population_scale_gate", _stub_gate)
     monkeypatch.setattr(release, "_health_input_signal_gate", _stub_gate)
-    monkeypatch.setattr(release, "_materialize_target_frame", _stub_materialize)
+    monkeypatch.setattr(release, "_materialize_target_frame", _fixture_materialize)
     monkeypatch.setattr(release, "_read_cd_vintage_support_provenance", _stub_cd_probe)
+
+
+def _fixture_materialize(frame, specs, **kwargs):
+    """The same engine-free materializer in the parent and spawned children."""
+    return (
+        frame,
+        TargetRegistry(list(specs), country="us"),
+        {
+            "declared_targets": len(specs),
+            "compiled_candidate_targets": len(specs),
+            "dropped_target_names": [],
+            "fixture_materialization": {
+                "household_ids": frame.table("household")["household_id"].tolist(),
+                "target_names": [spec.name for spec in specs],
+            },
+        },
+    )
+
+
+def _initialize_fixture_slice_worker(*args) -> None:
+    """Install test seams explicitly because spawn inherits no monkeypatches."""
+    module = _load_head_to_head_module()
+    module._initialize_slice_worker(*args)
+    _patch_release_seams(module, pytest.MonkeyPatch())
+    log_dir = os.environ.get("MICROCOSM_TEST_H2H_SLICE_LOG_DIR")
+    if log_dir is not None:
+        score_slice = module._score_household_slice
+
+        def record_slice(*args, **kwargs):
+            result = score_slice(*args, **kwargs)
+            with (Path(log_dir) / f"{os.getpid()}.txt").open("a") as stream:
+                stream.write("slice\n")
+            return result
+
+        module._score_household_slice = record_slice
+
+
+def _failing_fixture_materialize(frame, specs, **kwargs):
+    if 3 in frame.table("household")["household_id"].to_numpy():
+        raise ValueError("fixture materialization failed for household 3")
+    return _fixture_materialize(frame, specs, **kwargs)
+
+
+def _initialize_failing_fixture_slice_worker(*args) -> None:
+    _initialize_fixture_slice_worker(*args)
+    module = _load_head_to_head_module()
+    module.release._materialize_target_frame = _failing_fixture_materialize
+
+
+def _three_household_fixture_artifact(module, *, sha256: str, measure_values):
+    """Extend the existing frame with a shorter household-slice tail."""
+    artifact = _fixture_artifact(
+        module,
+        sha256=sha256,
+        measure_values=measure_values,
+    )
+    tables = {}
+    for entity in artifact.frame.entities:
+        table = artifact.frame.table(entity)
+        third_row = table.iloc[[-1]].copy()
+        for column in table.columns:
+            if column.endswith("_id"):
+                third_row[column] = 3
+        tables[entity] = pd.concat([table, third_row], ignore_index=True)
+    return replace(
+        artifact,
+        frame=Frame(
+            tables,
+            US_SCHEMA,
+            {
+                "household": Weights(
+                    np.asarray([10.0, 20.0, 30.0], dtype=np.float64),
+                    WeightKind.CALIBRATED,
+                )
+            },
+        ),
+    )
 
 
 def _score_loaded_as_incumbent(module, monkeypatch, loaded) -> dict[str, object]:
@@ -290,5 +356,6 @@ def _complete_battery_comparisons(module) -> dict[str, dict[str, object]]:
             }
         comparisons[label] = receipt
     return comparisons
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]
