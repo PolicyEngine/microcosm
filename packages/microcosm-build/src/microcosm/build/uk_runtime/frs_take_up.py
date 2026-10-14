@@ -49,7 +49,7 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.127.0's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.130.1's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
 # Credit qualifying age. The draw's population is therefore the units with a
@@ -59,10 +59,13 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # ``uk_take_up_population_policy``: the qualifying age is the State Pension age
 # the ``gov.dwp.state_pension.age`` timetable sets for the cohort reaching it
 # in the build year, which equals the engine's Pension Credit qualifying age at
-# 2024 and 2025, and the minimum age is UC's 18. Two engine cases are not
+# 2024 and 2025, and the minimum age is UC's 18. Three engine cases are not
 # mirrored, and the lockstep test names them: 16- and 17-year-old claimants
-# under the UC Regs 2013 reg 8 exceptions, whom the engine includes, and
-# mixed-age couples on the Pension Credit route, whom it excludes. The stage
+# under the UC Regs 2013 reg 8 exceptions, whom the engine includes; mixed-age
+# couples on the Pension Credit route, whom it excludes; and, from 2.128.0, a
+# pension-age family moved onto Universal Credit when its legacy benefit
+# closes, whom it includes (SI 2014/1230 reg 60A; the build leaves
+# ``would_claim_uc_at_legacy_closure`` at the engine default). The stage
 # manifest declares the same population on the ``would_claim_uc`` operation;
 # ``assert_take_up_stage_population_declaration`` refuses a manifest that stops
 # saying so, so the declaration and the code cannot drift apart.

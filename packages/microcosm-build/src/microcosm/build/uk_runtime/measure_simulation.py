@@ -85,22 +85,28 @@ _CGT_DATED_MEASURE = re.compile(
 #: (microcosm#1014). Derived from these engine variables at the measure year.
 _CGT_TAXABLE_INCOME = "cgt_taxable_income"
 _CGT_TAXABLE_INCOME_COMPONENTS = (
-    "adjusted_net_income",
+    "net_income",
     "allowances",
-    "gift_aid",
     "personal_pension_contributions",
     "pension_contributions_relief",
 )
 _CGT_TAXABLE_INCOME_DEFINITION = (
-    "max(0, adjusted_net_income - max(0, allowances - gift_aid - "
+    "max(0, net_income - max(0, allowances - "
     "min(personal_pension_contributions, pension_contributions_relief))), as "
     "policyengine-uk's capital_gains_tax computes the taxable income it stacks "
-    "gains on"
+    "gains on; from 2.128.0 Gift Aid extends the basic rate band instead of "
+    "reducing allowances (pe-uk#2271)"
 )
 
 
 def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
-    """The engine CGT formula's taxable income from its component arrays."""
+    """The engine CGT formula's taxable income from its component arrays.
+
+    policyengine-uk 2.128.0 and later stack gains on net income less the
+    allowances, with relief-at-source pension contributions taken off the
+    allowances; Gift Aid extends the basic rate band instead (pe-uk#2271), so
+    it moves where the band ends, not the income the band is measured on.
+    """
 
     values = {
         name: np.asarray(parts[name], dtype=float)
@@ -110,10 +116,8 @@ def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
         values["personal_pension_contributions"],
         values["pension_contributions_relief"],
     )
-    allowances = np.maximum(
-        0.0, values["allowances"] - values["gift_aid"] - band_extension
-    )
-    return np.maximum(0.0, values["adjusted_net_income"] - allowances)
+    allowances = np.maximum(0.0, values["allowances"] - band_extension)
+    return np.maximum(0.0, values["net_income"] - allowances)
 
 
 #: Every binding key that names a measured variable: a dated CGT measure in
@@ -814,6 +818,15 @@ class UKMeasureResolver:
         scottish, _ = compute_uk_measure_input(
             self.frame, self.simulation, "person", flag, self.year
         )
+        # A donor's grossed-up Gift Aid extends their bands; returning the
+        # sacrifice to pay does not change the gift.
+        gross_gift, _ = compute_uk_measure_input(
+            self.frame,
+            self.simulation,
+            "person",
+            str(UK_RATE_CLASS_ALLOCATION["gift_aid_extends_bands"]),
+            self.year,
+        )
         # The simulation's own parameters at the measurement year are its
         # fiscal-year values, so the Scottish bands are the ones in force from
         # 6 April, as the engine taxes them.
@@ -829,9 +842,11 @@ class UKMeasureResolver:
             counterfactual_income=np.asarray(counterfactual_income, dtype=float),
             scottish=np.asarray(scottish, dtype=bool),
             schedules=schedules,
+            gross_gift=np.asarray(gross_gift, dtype=float),
         )
         # The allocation re-implements the engine's earned_income_tax, the
-        # schedule applied to earned taxable income. Its classes must add up
+        # schedule applied to earned taxable income with a donor's bands
+        # extended by their gift. Its classes must add up
         # to that variable's rise, or the schedule has moved away from the
         # brackets read here.
         engine_variable = UK_RATE_CLASS_ENGINE_VARIABLE

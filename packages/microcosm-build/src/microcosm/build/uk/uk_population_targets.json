@@ -3219,6 +3219,7 @@
             "schedule_flag": "pays_scottish_income_tax",
             "basic_below_rate": 0.3,
             "additional": "the schedule's top rate",
+            "gift_aid_extends_bands": "gift_aid_grossed_up",
             "rate_class": "basic"
           },
           "from_entity": "person",
@@ -3267,6 +3268,7 @@
             "schedule_flag": "pays_scottish_income_tax",
             "basic_below_rate": 0.3,
             "additional": "the schedule's top rate",
+            "gift_aid_extends_bands": "gift_aid_grossed_up",
             "rate_class": "higher"
           },
           "from_entity": "person",
@@ -3315,6 +3317,7 @@
             "schedule_flag": "pays_scottish_income_tax",
             "basic_below_rate": 0.3,
             "additional": "the schedule's top rate",
+            "gift_aid_extends_bands": "gift_aid_grossed_up",
             "rate_class": "additional"
           },
           "from_entity": "person",
@@ -15281,6 +15284,10 @@
             "equals": true
           },
           {
+            "concept": "uk.childcare.is_child_receiving_extended_childcare",
+            "equals": false
+          },
+          {
             "concept": "uk.geography.country",
             "equals": "ENGLAND"
           }
@@ -15298,11 +15305,15 @@
               "equals": true
             },
             {
+              "variable": "is_child_receiving_extended_childcare",
+              "equals": false
+            },
+            {
               "variable": "country",
               "equals": "ENGLAND"
             }
           ],
-          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound."
+          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound. From policyengine-uk 2.128.1 a child on the working parent entitlement keeps the universal hours (Childcare Act 2016 s.1(6)(a); pe-uk#2177), so the measure counts children on the universal hours who are not receiving the extended entitlement, as the published difference does."
         },
         "axiom": {
           "metric_name": "dfe/funded_childcare/universal_only_children",

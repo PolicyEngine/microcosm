@@ -1108,19 +1108,20 @@ def test_packaged_exclusion_names_resolve_to_committed_references():
 def test_cgt_taxable_income_nets_the_allowances_the_engine_formula_nets():
     """Hand-computed rows: the band extension and the floors (microcosm#1014)."""
     parts = {
-        "adjusted_net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
-        "allowances": [12_570.0, 12_570.0, 20_570.0, 32_570.0, 27_570.0, 12_570.0],
-        "gift_aid": [0.0, 0.0, 8_000.0, 0.0, 0.0, 0.0],
+        "net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
+        "allowances": [12_570.0, 12_570.0, 12_570.0, 32_570.0, 27_570.0, 12_570.0],
         "personal_pension_contributions": [0.0, 0.0, 0.0, 30_000.0, 5_000.0, 0.0],
         "pension_contributions_relief": [0.0, 0.0, 0.0, 20_000.0, 15_000.0, 0.0],
     }
     np.testing.assert_allclose(
         measure_simulation.cgt_taxable_income_from_components(parts),
-        # 0 floor; 30,000 - 12,570; gift aid leaves the allowances (it extends
-        # the band instead); relief up to the personal contributions leaves
-        # them too; an allowance above income floors at 0.
+        # 0 floor; 30,000 - 12,570; a Gift Aid donor's income is net income
+        # less the allowances, the gift extending the band instead (2.128.0,
+        # pe-uk#2271); relief up to the personal contributions leaves the
+        # allowances; an allowance above income floors at 0.
         [0.0, 17_430.0, 47_430.0, 7_430.0, 57_430.0, 0.0],
     )
+    assert "gift_aid" not in measure_simulation._CGT_TAXABLE_INCOME_COMPONENTS
 
 
 # microcosm#1069 c11: the live counterfactual route (salary sacrifice returned to pay).
@@ -1219,6 +1220,8 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         {**allocation, "basic_below_rate": 0.25},
         {**allocation, "rate_class": "starter"},
         {**allocation, "taxable_income": "adjusted_net_income"},
+        # The bands a Gift Aid donor's gift extends are part of the allocation.
+        {k: v for k, v in allocation.items() if k != "gift_aid_extends_bands"},
     ):
         with pytest.raises(ValueError, match="rate-class allocation must declare"):
             resolver.counterfactual_delta(

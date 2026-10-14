@@ -21,6 +21,9 @@ from microcosm.frame.adapters.policyengine_uk import (
     UK_SCHEMA,
     PolicyEngineUKEngine,
 )
+from microcosm.frame.adapters.policyengine_uk_concepts import (
+    UK_ENGINE_DEFAULT_TAKE_UP_INPUTS,
+)
 from microcosm.frame.concept_mapping import (
     Recode,
     TakeUpThreshold,
@@ -83,7 +86,10 @@ def test_take_up_bindings_are_the_engines_would_claim_inputs(engine) -> None:
         if isinstance(binding.transform, TakeUpThreshold)
         and binding.engine_input.startswith("would_claim_")
     }
-    assert bound == would_claim
+    # Every other take-up input is left at the engine default, with a reason.
+    left = set(UK_ENGINE_DEFAULT_TAKE_UP_INPUTS)
+    assert bound.isdisjoint(left)
+    assert bound | left == would_claim
 
 
 def test_structural_inputs_are_engine_inputs(engine) -> None:
@@ -133,6 +139,11 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "car_list_price",
         "lifetime_isa_balance",
         "student_loan_balance",
+        # Universal Credit's regulation 77 company inputs (2.130.0): no
+        # company by default, and the build sets none.
+        "owned_company_capital",
+        "owned_company_holding_value",
+        "owned_company_trade_assets",
     }
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name

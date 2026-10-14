@@ -25,14 +25,14 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import AlignmentRelation
 
-__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING"]
+__all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"]
 
 # ---------------------------------------------------------------------------
 # Concept mapping
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.127.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.130.1. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -164,6 +164,21 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 }
 
 
+#: Take-up inputs of the engine the build leaves at the engine's default,
+#: with why. ``would_claim_uc_at_legacy_closure`` (policyengine-uk 2.128.0,
+#: pe-uk#2119) says whether a family DWP moves off a legacy benefit claims
+#: Universal Credit; the default is that every such family does. uk-data#534
+#: draws it at DWP's Move to UC claim rates, which are not yet a Chronicle
+#: fact (microcosm#1095).
+UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
+    "would_claim_uc_at_legacy_closure": (
+        "Left at the engine's default (true): every family moved off a legacy "
+        "benefit claims Universal Credit. DWP's Move to UC claim rates, which "
+        "uk-data#534 draws it at, are not yet a Chronicle fact (microcosm#1095)."
+    ),
+}
+
+
 def _uk_take_up(program: str, entity: str) -> InputBinding:
     person = entity == "person"
     documentation, build = _UK_TAKE_UP_EVIDENCE[program]
@@ -185,7 +200,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.127.0",
+    engine_version="2.130.1",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -528,7 +543,11 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "('Current value of the person's Lifetime ISAs, cash and stocks "
             "and shares together'), one savings wrapper, which the engine "
             "documents as already inside gross_financial_wealth and "
-            "net_financial_wealth. savings and corporate_wealth are two of "
+            "net_financial_wealth. Since policyengine-uk 2.130.0 three more "
+            "describe a company the person owns, for Universal Credit's "
+            "regulation 77 (owned_company_capital, owned_company_holding_value "
+            "and owned_company_trade_assets); every one defaults to no such "
+            "company, and the build sets none. savings and corporate_wealth are two of "
             "Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources), and "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
