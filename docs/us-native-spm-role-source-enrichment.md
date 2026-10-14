@@ -296,6 +296,12 @@ entity tables this release writes, or the SPM path that consumes them.
   is worse than a new release.
 - **Speculative headroom.** `>=2.0.1,<2.1` because 2.0.2 is expected is
   defensible; `>=2.0.1,<3` because a major bump seems far off is not.
+- **A stored input the range renames or removes.** If any version inside the
+  range renames or drops a column the candidate stores, consumers on that
+  version get the microcosm#1026 failure: the engine ignores the column. If a
+  version starts defining a column the stored-input register lists as a
+  non-variable, the engine reads that column as an input nobody reviewed. No
+  check catches either for that version (see below).
 
 Consumers record which basis they used. Measured against policyengine.py's
 installed provenance code, a manifest declaring `>=2.0.1,<2.1` over `built_with`
@@ -320,6 +326,36 @@ the exact versions certification tested. A publish preflight therefore still
 runs with the exact `built_with` model and Core versions installed, with the
 four matching wheels to hand. A declared range never lets the publisher replay
 a bundle against a runtime it did not measure.
+
+### What a declared range is measured against
+
+The native-loader probe, and the stored-input contract it runs
+(`microcosm.data.stored_inputs`, microcosm#1026), measure one country version:
+the tested one, which the manifest records as `build.built_with_model_package`.
+Every other version the claim admits is unmeasured. That includes later
+releases inside the range, and earlier ones when the range reaches below the
+tested version: the guard bounds a claim above but accepts any lower bound
+above zero, so `>=1.0,<3` over a 2.2.1 build is accepted and admits 1.764.6,
+which defines `would_claim_wic` and not `takes_up_wic_if_eligible`. A stored
+input that such a version renames, removes or never had is not caught for that
+version, and its engine ignores the column.
+
+Certification records this in the bundle, beside the claim, as
+`compatibility.claim_measurement`: the claim's specifier and the versions
+measured, `{"model": {"specifier": ">=2.0.1,<2.1", "measured_versions":
+["2.0.1"]}}`. Validation and the publisher recompute it from the version the
+replayed probe tested and refuse a report that records anything else, a record
+with no claim, or a pending candidate that carries one. The validation and
+`--preflight-only` JSON, the certify JSON and the publisher's stderr print it
+for a declared bundle, so the operator at each later gate sees what the range
+rests on.
+
+Before declaring a range, grade the candidate H5 against each released version
+you intend it to cover: run `python -m microcosm.data.stored_inputs
+<candidate.h5>` in an environment where that policyengine-us version is
+installed. The command grades the installed engine and reads HDF metadata only.
+It cannot grade versions released after certification, which is why the range
+should stop where you can read the diff.
 
 ### Follow-on: the other release types still pin exactly
 
@@ -379,7 +415,7 @@ python -m pytest \
   packages/microcosm-data/tests/engine_free/shared/test_contract.py \
   packages/microcosm-data/tests/engine_free/shared/test_release.py \
   packages/microcosm-data/tests/engine_free/shared/test_publish_guard.py
-python tools/ci_test_groups.py --verify
+python3 tools/ci_test_plan.py verify
 ruff check .
 ```
 

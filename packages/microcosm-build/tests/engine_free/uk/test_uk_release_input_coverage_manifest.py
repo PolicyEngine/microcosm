@@ -48,6 +48,18 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
 def test_known_gap_register_records_post_candidate_restoration_separately() -> None:
     gaps = _resource("efrs_parity_known_gaps.json")
     assert gaps["known_gaps"] == {}
+    # microcosm#1106: property_wealth is formula-owned in policyengine-uk, so
+    # the release leaves it for the engine to derive. It is a declared
+    # exclusion in its own section, never parity debt in known_gaps.
+    assert set(gaps["engine_derived_exclusions"]) == {"property_wealth"}
+    assert gaps["engine_derived_exclusions"]["property_wealth"]["reason"] == (
+        "formula-owned in policyengine-uk and derived from persisted "
+        "components; a persisted copy overrides the formula and is not uprated"
+    )
+    assert (
+        "microcosm#1106"
+        in (gaps["engine_derived_exclusions"]["property_wealth"]["tracking_note"])
+    )
     assert set(gaps["restored_required_columns"]) == {
         "charitable_investment_gifts",
         "gift_aid",
@@ -62,6 +74,7 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     assert gaps["exclusion_policy"]["tracking_note"].strip()
     for name, evidence in gaps["restored_required_columns"].items():
         assert evidence["stage"] == "hmrc_spi_income"
+        assert evidence["current_producer_stage"] == "hmrc_spi_income_spine"
         assert evidence["support_channel"] == "spi"
         assert (
             evidence["effective_signal_mass_share"]
@@ -81,66 +94,57 @@ def test_frozen_candidate_retains_its_original_engine_provenance() -> None:
 
 
 def test_hmrc_family_period_fields_come_from_the_bytes_their_hash_names() -> None:
-    # Adversarial-review finding (2026-08-20): the family block renders the
-    # #723 re-mapped period fields from the CANONICAL manifest while the
-    # frozen mirror keeps its June bytes; each field set must bind to the
-    # sha256 of the file it actually came from.
     import hashlib
 
-    manifest = _resource("release_input_coverage_manifest.json")
-    family = manifest["family_coverage"]["hmrc_spi_income"]
-
-    frozen_bytes = (
-        files(_UK_PACKAGE).joinpath("hmrc_income_source_stages.json").read_bytes()
-    )
+    family = _resource("release_input_coverage_manifest.json")["family_coverage"][
+        "hmrc_spi_income"
+    ]
     canonical_bytes = files(_UK_PACKAGE).joinpath("source_stages.json").read_bytes()
-    assert family["source_manifest_sha256"] == hashlib.sha256(frozen_bytes).hexdigest()
+    assert family["source_manifest"] == "source_stages.json"
     assert (
-        family["canonical_source_manifest_sha256"]
-        == hashlib.sha256(canonical_bytes).hexdigest()
+        family["source_manifest_sha256"] == hashlib.sha256(canonical_bytes).hexdigest()
     )
-
-    frozen_stage = json.loads(frozen_bytes)["stages"][0]
-    frozen_surface = next(
-        artifact
-        for artifact in frozen_stage["artifacts"]
-        if artifact.get("role") == "published_fact_surface"
-    )
-    canonical_stage = next(
+    stage = next(
         stage
         for stage in json.loads(canonical_bytes)["stages"]
-        if stage.get("stage") == "hmrc_spi_income"
+        if stage["stage"] == "hmrc_spi_income_spine"
     )
-    canonical_surface = next(
+    surface = next(
         artifact
-        for artifact in canonical_stage["artifacts"]
-        if artifact.get("role") == "published_fact_surface"
+        for artifact in stage["artifacts"]
+        if artifact["role"] == "published_fact_surface"
     )
-    # The re-mapped fields equal the canonical declaration; the frozen mirror
-    # still declares the June mapping (its bytes are pinned elsewhere).
     assert family["source_vintages"]["mapped_build_period"] == str(
-        canonical_surface["mapped_build_period"]
+        surface["mapped_build_period"]
     )
-    assert (
-        family["source_vintages"]["period_mapping"]
-        == canonical_surface["period_mapping"]
-    )
-    assert str(frozen_surface["mapped_build_period"]) == "2023"
-    assert frozen_surface["period_mapping"] == "tax_year_start"
+    assert family["source_vintages"]["period_mapping"] == surface["period_mapping"]
+    assert "canonical_source_manifest" not in family
 
 
 def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 145,
-        "reviewed_exclusion": 0,
+        "required": 144,
+        "reviewed_exclusion": 1,
         "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    assert all(
-        entry == {"status": "required"} for entry in manifest["columns"].values()
-    )
+    # Every reference input is required except the engine-derived total; its
+    # three persisted components stay required (microcosm#1106).
+    excluded = {
+        name: entry
+        for name, entry in manifest["columns"].items()
+        if entry != {"status": "required"}
+    }
+    assert set(excluded) == {"property_wealth"}
+    assert excluded["property_wealth"]["status"] == "reviewed_exclusion"
+    for component in (
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+    ):
+        assert manifest["columns"][component] == {"status": "required"}
     assert manifest["restoration_evidence"] == {
         "derived_from": "efrs_parity_known_gaps.json",
         "required_columns": ["charitable_investment_gifts", "gift_aid"],
@@ -165,7 +169,7 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
 
     assert family["status"] == "required_at_build"
     assert family["restoration_status"] == "adjudicated_partial_replay"
-    assert family["source_manifest"] == "hmrc_income_source_stages.json"
+    assert family["source_manifest"] == "source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
     assert family["base_candidate_tier"] == "frs"
     assert family["source_vintages"] == {
@@ -175,11 +179,18 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
         "period_mapping": "latest_published_tax_year",
     }
     assert family["spi_prior_national_household_mass_share"] == 0.5
-    assert family["canonical_source_manifest"] == "source_stages.json"
-    assert len(family["canonical_source_manifest_sha256"]) == 64
+    assert family["required_predecessor_stages"] == [
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "spi_income_band_donors",
+    ]
+    # The declared allocation's own sentence: a pension-age share is declared
+    # since microcosm#1069 c6.
     assert family["required_mass_change_reason"] == (
-        "Allocate 50% of certified UK national household prior mass to the "
-        "rebuilt 2022-23 SPI support channel; total national mass is conserved."
+        "Allocate 0.5 of certified UK national household prior mass in "
+        "households without, and 0.2 in households with, a member at or over "
+        "State Pension age to the rebuilt 2022-23 SPI support channel; total "
+        "national mass is conserved."
     )
     assert family["input_weight_kind"] == "importance"
     assert family["output_weight_kind"] == "importance"
@@ -253,6 +264,43 @@ def test_generator_never_reintroduces_a_pinned_restoration_as_a_gap() -> None:
     }
 
 
+def test_generator_keeps_the_engine_derived_section_on_a_candidate_refresh() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
+
+    gaps = generator.build_known_gaps(evidence, reference=reference)
+
+    assert gaps["engine_derived_exclusions"] == generator.ENGINE_DERIVED_EXCLUSIONS
+    assert "property_wealth" not in gaps["known_gaps"]
+
+
+def test_manifest_generation_rejects_engine_derived_drift_and_overlap() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    drifted = _resource("efrs_parity_known_gaps.json")
+    drifted["engine_derived_exclusions"]["property_wealth"]["reason"] = "edited"
+    with pytest.raises(ValueError, match="engine_derived_exclusions disagrees"):
+        generator.build_manifest(reference=reference, known_gaps_payload=drifted)
+
+    dropped = _resource("efrs_parity_known_gaps.json")
+    del dropped["engine_derived_exclusions"]
+    with pytest.raises(ValueError, match="engine_derived_exclusions disagrees"):
+        generator.build_manifest(reference=reference, known_gaps_payload=dropped)
+
+    # Only a formula-owned input the reference persists can be left to the
+    # engine; an ordinary input never becomes an engine-derived exclusion.
+    unowned = json.loads(json.dumps(reference))
+    unowned["engine"]["formula_owned_persisted_overrides_included"].remove(
+        "property_wealth"
+    )
+    with pytest.raises(ValueError, match="must be formula-owned inputs"):
+        generator.build_manifest(
+            reference=unowned,
+            known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+        )
+
+
 def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:
     generator = _load_generator()
     reference = _resource("efrs_parity_reference.json")
@@ -273,18 +321,26 @@ def test_manifest_generation_rejects_candidate_tier_drift() -> None:
         generator.build_manifest(reference=reference, known_gaps_payload=gaps)
 
 
-def test_hmrc_family_rejects_source_stage_tier_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_hmrc_family_rejects_canonical_source_contract_drift(
+    monkeypatch, tmp_path
 ) -> None:
     generator = _load_generator()
-    source_stages = _resource("hmrc_income_source_stages.json")
-    source_stages["stages"][0]["base_candidate"]["tier"] = "cps-transfer"
-    drifted = tmp_path / "hmrc_income_source_stages.json"
+    source_stages = _resource("source_stages.json")
+    stage = next(
+        stage
+        for stage in source_stages["stages"]
+        if stage["stage"] == "spi_support_channel"
+    )
+    operation = next(
+        operation
+        for operation in stage["operations"]
+        if operation["kind"] == "allocate_zero_weight_prior_mass"
+    )
+    operation["share"] = 0.1
+    drifted = tmp_path / "source_stages.json"
     drifted.write_text(json.dumps(source_stages), encoding="utf-8")
-    monkeypatch.setattr(generator, "HMRC_SOURCE_STAGES_PATH", drifted)
-
-    with pytest.raises(ValueError, match="disagrees with the certified candidate"):
+    monkeypatch.setattr(generator, "SOURCE_STAGES_PATH", drifted)
+    with pytest.raises(ValueError, match="prior.mass_share"):
         generator._hmrc_family_coverage_contract(candidate_source={"tier": "frs"})
 
 
@@ -338,3 +394,54 @@ def test_implicit_candidate_resolution_requires_revision_mapping(monkeypatch) ->
             "token": None,
         }
     ]
+
+
+def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
+    # microcosm#1106: the engine-derived section is a permanent adjudication,
+    # so its entries carry approved_by and approved_on and the loader refuses
+    # one without them; known gaps carry neither.
+    import json
+
+    import pytest
+
+    from microcosm.build.uk_runtime.parity_reference import (
+        load_efrs_engine_derived_exclusions,
+        load_efrs_parity_known_gaps,
+    )
+
+    committed = load_efrs_engine_derived_exclusions()
+    assert [(gap.variable, gap.approved_by) for gap in committed] == [
+        ("property_wealth", "juaristi22")
+    ]
+    assert committed[0].approved_on == "2026-10-11"
+    assert all(gap.approved_by is None for gap in load_efrs_parity_known_gaps())
+
+    unsigned = tmp_path / "ledger.json"
+    unsigned.write_text(
+        json.dumps(
+            {
+                "engine_derived_exclusions": {
+                    "property_wealth": {"reason": "r", "tracking_note": "t"}
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="approved_by"):
+        load_efrs_engine_derived_exclusions(str(unsigned))
+    undated = tmp_path / "undated.json"
+    undated.write_text(
+        json.dumps(
+            {
+                "engine_derived_exclusions": {
+                    "property_wealth": {
+                        "reason": "r",
+                        "tracking_note": "t",
+                        "approved_by": "juaristi22",
+                        "approved_on": "11-10-2026",
+                    }
+                }
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="ISO date"):
+        load_efrs_engine_derived_exclusions(str(undated))

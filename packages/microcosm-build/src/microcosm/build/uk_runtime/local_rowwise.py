@@ -34,6 +34,7 @@ from scipy import sparse as sp
 from microcosm.build.holdout import rotated_folds, summarize_rotations
 from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
@@ -43,6 +44,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.target_weights import (
+    UKTargetRows,
+    uk_target_loss_weights_for_rows,
+    uk_target_rows_from_targets,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
@@ -356,6 +362,42 @@ def build_uk_rowwise_local_matrix(
         area_codes_by_grain={area_type: codes},
         area_metric_order_by_grain={area_type: names},
         _canonical_surface_order=False,
+    )
+
+
+def empty_uk_local_problem(household_ids: Sequence[Any]) -> UKRowwiseLocalMatrix:
+    """An explicitly filtered local surface on the full pool household axis.
+
+    Composition must still supply at least one selected target. This does
+    not manufacture local constraints or imply that local fit was assessed.
+    """
+
+    ids = tuple(household_ids)
+    if len(set(ids)) != len(ids):
+        raise ValueError("household IDs must be unique.")
+    return UKRowwiseLocalMatrix(
+        matrix=sp.csr_matrix((0, len(ids)), dtype=np.float64),
+        targets=np.empty(0, dtype=np.float64),
+        target_frame=pd.DataFrame(
+            columns=[
+                "target_index",
+                "area_type",
+                "area_code",
+                "metric",
+                "value",
+                "target_name",
+                "family",
+            ]
+        ),
+        area_codes=(),
+        metric_names=(),
+        household_ids=ids,
+        assigned_areas=(),
+        metric_values=np.empty((len(ids), 0), dtype=np.float64),
+        area_codes_by_grain={},
+        metric_names_by_grain={},
+        assigned_areas_by_grain={},
+        metric_values_by_grain={},
     )
 
 
@@ -719,8 +761,15 @@ def require_adjudicated_uk_local_binding(
     census: Mapping[str, Any] | None = None,
     register: Mapping[str, Any] | None = None,
     now: Any = None,
+    allow_empty: bool = False,
 ) -> dict[str, Any]:
-    """Require in-force review records before binding fenced UK local families."""
+    """Require in-force review records before binding fenced UK local families.
+
+    A declaration that names nothing is refused unless ``allow_empty`` is
+    passed: only the graph's country-only target selection, whose local
+    surface is empty by construction, has nothing to declare; every other
+    caller must name exactly what its matrix binds.
+    """
 
     census_payload = (
         local_target_census.load_uk_local_target_census() if census is None else census
@@ -729,6 +778,7 @@ def require_adjudicated_uk_local_binding(
     declared, parsed = _normalise_uk_local_bound_families(
         bound_families,
         family_rows=family_rows,
+        allow_empty=allow_empty,
     )
     derived = _derive_uk_local_bound_families_from_target_frame(
         target_frame,
@@ -844,6 +894,7 @@ def _normalise_uk_local_bound_families(
     bound_families: Sequence[str],
     *,
     family_rows: Mapping[str, Mapping[str, Any]],
+    allow_empty: bool = False,
 ) -> tuple[tuple[str, ...], dict[str, tuple[str, str]]]:
     if isinstance(bound_families, str):
         raise ValueError(
@@ -851,7 +902,7 @@ def _normalise_uk_local_bound_families(
             "sequence of family/area_type strings, not one string."
         )
     declared = tuple(str(name) for name in bound_families)
-    if not declared:
+    if not declared and not allow_empty:
         raise ValueError(
             "UK local binding declarations: bound_families must name at "
             "least one family/area_type pair."
@@ -1067,82 +1118,51 @@ def _progress_fan_out(
     return callback
 
 
-def solve_uk_rowwise_weights_under_doctrine(
+@dataclass(frozen=True)
+class UKPreparedFullSolve:
+    """Declared target problem before any weight or size operation."""
+
+    frame: Frame
+    problem: UKRowwiseLocalMatrix
+    national_rows: UKRowwiseNationalRows | None
+    target_set: TargetSet
+    target_loss_weights: np.ndarray
+    binding_adjudications: Mapping[str, Any]
+    mass_reason: str
+    #: The row carrier a row-metadata weighting rule was computed from
+    #: (microcosm#1124); ``None`` under the grain rules.
+    target_rows: UKTargetRows | None = None
+
+
+def prepare_uk_full_solve(
     frame: Frame,
     problem: UKRowwiseLocalMatrix,
     *,
     bound_families: Sequence[str],
     national_rows: UKRowwiseNationalRows | None = None,
     target_weight_rule: str = "uniform",
-    restore: Callable[[Frame], Frame] | None = None,
-    epochs: int = 512,
-    learning_rate: float = 0.15,
-    conserve_mass: bool = False,
-    target_records: int | None = None,
-    dataset_households: int | None = None,
-    l0_lambda: float = 0.0,
-    budget_iters: int = 10,
-    seed: int = 0,
-    selection_seed: int | None = None,
-    selection_pi_hi: float = 1.0,
-    baseline_pi_floor: float = 0.0,
-    size_checkpoint_dir: Path | None = None,
-    resume_size_checkpoint: Path | None = None,
-    checkpoint_identity: Mapping[str, Any] | None = None,
-    checkpoint_provenance: Mapping[str, Any] | None = None,
-    progress: Callable[[str], None] | None = None,
-    progress_events: Callable[[dict[str, object]], None] | None = None,
-) -> UKRowwiseDoctrineSolve:
-    """Solve rowwise household weights under the reviewed doctrine.
+    allow_empty_local_binding: bool = False,
+) -> UKPreparedFullSolve:
+    """Validate the selected surface with one doctrine for every geography.
 
-    ``progress`` receives readable lines (every 100 epochs, each probe, the
-    search stop); ``progress_events`` receives every raw calibrator event as a
-    dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
-    phase-tagged by the size machinery, so a build driver can publish staging
-    telemetry without changing the lines a log reader follows.
-
-    ``selection_seed`` (default ``seed``) seeds only the size selection —
-    the informed L0 search, the exact-count draw and the refit — so two
-    selections can be compared on one pool and one dense reference.
-
-    ``size_checkpoint_dir`` persists the dense solve and the informed L0
-    search of a ``dataset_households`` solve before the exact-count draw
-    (:mod:`microcosm.build.uk_runtime.size_checkpoint`), stamped with
-    ``checkpoint_identity``; ``resume_size_checkpoint`` restores such a
-    checkpoint instead of solving and searching again, refusing when the
-    identity, the pool or the target surface differ. The draw's threshold
-    (``selection_pi_hi``) may differ from the one the search stopped on; the
-    size receipt records both. ``baseline_pi_floor`` trims the refit's
-    Horvitz–Thompson baseline (see
-    :func:`~microcosm.build.uk_runtime.dataset_size.refit_uk_dataset_size`);
-    it is a refit setting, so a resumed checkpoint may use a different one.
-
-    ``progress`` receives one readable line per hundred epochs of the dense
-    solve, of every budget probe and of the refit, one line per finished
-    probe with its drawability verdict, and one when the search stops
-    (:func:`~microcosm.build.uk_runtime.solve_progress.uk_solve_progress_callback`).
-
-    Structurally knob-free like before the ``calibrate()`` migration: no
-    per-target parameters and no doctrine parameter — the bounds always come
-    from :data:`UK_LOCAL_SOLVE_DOCTRINE` and ride into the public front door
-    as explicit arguments. Initial weights are the frame's typed household
-    weights directly (a rowwise household exists in exactly one area, so
-    nothing is split); zero weights are refused — a dead row must be dropped
-    or revived upstream with a recorded mass change, never resurrected by a
-    solver floor. The kernel enforces the ``CALIBRATED`` kind transition and
-    mints the mass record (reason from
-    :func:`rowwise_calibration_mass_reason`); the returned frame carries
-    both, with the persisted ``household_weight`` column refreshed.
+    ``allow_empty_local_binding`` admits a local declaration that names no
+    family: the graph's country-only target selection passes it, because its
+    local surface is empty by construction; any other caller keeps the
+    refusal of a declaration that names nothing.
     """
 
-    doctrine = UK_LOCAL_SOLVE_DOCTRINE
     _require_uniform_target_surface(problem)
+    if not len(problem.targets) and (
+        national_rows is None or not len(national_rows.targets)
+    ):
+        raise ValueError("full calibration requires at least one selected target.")
     local_bound_families = tuple(
         family for family in bound_families if not str(family).startswith("national/")
     )
     binding_adjudications = require_adjudicated_uk_local_binding(
         local_bound_families,
         problem.target_frame,
+        allow_empty=allow_empty_local_binding,
     )
     national_families = (
         ()
@@ -1224,20 +1244,185 @@ def solve_uk_rowwise_weights_under_doctrine(
             *(() if national_rows is None else national_rows.targets.targets),
         ]
     )
+    if not len(target_set):
+        raise ValueError("full calibration requires at least one selected target.")
     local_count = len(local_target_set)
     national_count = len(target_set) - local_count
     grain_labels = [
         *problem.target_frame["area_type"].astype(str).tolist(),
         *(["national"] * national_count),
     ]
-    target_loss_weights = uk_local_target_loss_weights(
-        grain_labels,
-        rule=target_weight_rule,
+    target_rows = None
+    if target_weight_rule in UK_LOCAL_ROW_METADATA_RULES:
+        # microcosm#1124: the rule reads each row's family, geography and
+        # value basis, carried in the solve's own row order.
+        target_rows = uk_target_rows_from_targets(
+            local_target_set.targets,
+            () if national_rows is None else national_rows.registry.specs,
+        )
+        if target_rows.grain != tuple(grain_labels):
+            raise ValueError(
+                "the target-weight row carrier disagrees with the solve's grain "
+                "labels; the rule cannot be computed on this surface."
+            )
+        target_loss_weights = uk_target_loss_weights_for_rows(
+            target_rows, rule=target_weight_rule
+        )
+    else:
+        target_loss_weights = uk_local_target_loss_weights(
+            grain_labels,
+            rule=target_weight_rule,
+        )
+    return UKPreparedFullSolve(
+        frame=frame,
+        problem=problem,
+        national_rows=national_rows,
+        target_set=target_set,
+        target_loss_weights=target_loss_weights,
+        binding_adjudications=binding_adjudications,
+        mass_reason=mass_reason,
+        target_rows=target_rows,
     )
+
+
+def solve_uk_dense_reference(
+    prepared: UKPreparedFullSolve,
+    *,
+    epochs: int = 512,
+    learning_rate: float = 0.15,
+    conserve_mass: bool = False,
+    target_records: int | None = None,
+    l0_lambda: float = 0.0,
+    budget_iters: int = 10,
+    seed: int = 0,
+    progress_callback: Callable | None = None,
+) -> CalibrationResult:
+    """Execute the shared solver on the original pool, before size selection."""
+
+    doctrine = UK_LOCAL_SOLVE_DOCTRINE
+    return calibrate(
+        prepared.frame,
+        prepared.target_set,
+        weight_entity="household",
+        epochs=epochs,
+        learning_rate=learning_rate,
+        mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
+        mass_reason=None if conserve_mass else prepared.mass_reason,
+        max_weight_ratio=doctrine.max_weight_ratio,
+        target_records=target_records,
+        l0_lambda=l0_lambda,
+        budget_iters=budget_iters,
+        seed=seed,
+        target_loss_weights=prepared.target_loss_weights,
+        target_loss_cap=doctrine.target_loss_cap,
+        progress_callback=progress_callback,
+    )
+
+
+def solve_uk_rowwise_weights_under_doctrine(
+    frame: Frame,
+    problem: UKRowwiseLocalMatrix,
+    *,
+    bound_families: Sequence[str],
+    national_rows: UKRowwiseNationalRows | None = None,
+    target_weight_rule: str = "uniform",
+    restore: Callable[[Frame], Frame] | None = None,
+    epochs: int = 512,
+    learning_rate: float = 0.15,
+    conserve_mass: bool = False,
+    target_records: int | None = None,
+    dataset_households: int | None = None,
+    l0_lambda: float = 0.0,
+    budget_iters: int = 10,
+    seed: int = 0,
+    selection_seed: int | None = None,
+    selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
+    selection_initial_lambda: float | None = None,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
+    size_checkpoint_dir: Path | None = None,
+    resume_size_checkpoint: Path | None = None,
+    checkpoint_identity: Mapping[str, Any] | None = None,
+    checkpoint_provenance: Mapping[str, Any] | None = None,
+    progress: Callable[[str], None] | None = None,
+    progress_events: Callable[[dict[str, object]], None] | None = None,
+    allow_empty_local_binding: bool = False,
+) -> UKRowwiseDoctrineSolve:
+    """Solve rowwise household weights under the reviewed doctrine.
+
+    ``progress`` receives readable lines (every 100 epochs, each probe, the
+    search stop); ``progress_events`` receives every raw calibrator event as a
+    dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
+    phase-tagged by the size machinery, so a build driver can publish staging
+    telemetry without changing the lines a log reader follows.
+
+    ``selection_seed`` (default ``seed``) seeds only the size selection —
+    the informed L0 search, the exact-count draw and the refit — so two
+    selections can be compared on one pool and one dense reference.
+
+    ``size_checkpoint_dir`` persists the dense solve and the informed L0
+    search of a ``dataset_households`` solve before the exact-count draw
+    (:mod:`microcosm.build.uk_runtime.size_checkpoint`), stamped with
+    ``checkpoint_identity``; ``resume_size_checkpoint`` restores such a
+    checkpoint instead of solving and searching again, refusing when the
+    identity, the pool or the target surface differ. The draw's threshold
+    (``selection_pi_hi``) may differ from the one the search stopped on; the
+    size receipt records both. ``baseline_pi_floor`` trims the refit's
+    Horvitz–Thompson baseline (see
+    :func:`~microcosm.build.uk_runtime.dataset_size.refit_uk_dataset_size`);
+    it is a refit setting, so a resumed checkpoint may use a different one.
+
+    ``progress`` receives one readable line per hundred epochs of the dense
+    solve, of every budget probe and of the refit, one line per finished
+    probe with its drawability verdict, and one when the search stops
+    (:func:`~microcosm.build.uk_runtime.solve_progress.uk_solve_progress_callback`).
+
+    Structurally knob-free like before the ``calibrate()`` migration: no
+    per-target parameters and no doctrine parameter — the bounds always come
+    from :data:`UK_LOCAL_SOLVE_DOCTRINE` and ride into the public front door
+    as explicit arguments. Initial weights are the frame's typed household
+    weights directly (a rowwise household exists in exactly one area, so
+    nothing is split); zero weights are refused — a dead row must be dropped
+    or revived upstream with a recorded mass change, never resurrected by a
+    solver floor. The kernel enforces the ``CALIBRATED`` kind transition and
+    mints the mass record (reason from
+    :func:`rowwise_calibration_mass_reason`); the returned frame carries
+    both, with the persisted ``household_weight`` column refreshed.
+    """
+
+    prepared = prepare_uk_full_solve(
+        frame,
+        problem,
+        bound_families=bound_families,
+        national_rows=national_rows,
+        target_weight_rule=target_weight_rule,
+        allow_empty_local_binding=allow_empty_local_binding,
+    )
+    doctrine = UK_LOCAL_SOLVE_DOCTRINE
+    target_set = prepared.target_set
     if (size_checkpoint_dir is not None or resume_size_checkpoint is not None) and (
         dataset_households is None
     ):
         raise ValueError("size checkpoints apply to a dataset_households solve.")
+    if dataset_households is None and (
+        selection_l2_lambda
+        or refit_l2_lambda
+        or any(
+            value is not None
+            for value in (
+                selection_l2_anchor,
+                selection_l2_basis,
+                refit_l2_anchor,
+                refit_l2_basis,
+            )
+        )
+    ):
+        raise ValueError("size-stage L2 penalties apply to a dataset_households solve.")
     if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
         raise ValueError("a resumed solve does not write a second checkpoint.")
     progress_callback = _progress_fan_out(progress, progress_events)
@@ -1275,21 +1460,15 @@ def solve_uk_rowwise_weights_under_doctrine(
                 + "."
             )
     else:
-        result = calibrate(
-            frame,
-            target_set,
-            weight_entity="household",
+        result = solve_uk_dense_reference(
+            prepared,
             epochs=epochs,
             learning_rate=learning_rate,
-            mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
-            mass_reason=None if conserve_mass else mass_reason,
-            max_weight_ratio=doctrine.max_weight_ratio,
+            conserve_mass=conserve_mass,
             target_records=target_records,
             l0_lambda=l0_lambda,
             budget_iters=budget_iters,
             seed=seed,
-            target_loss_weights=target_loss_weights,
-            target_loss_cap=doctrine.target_loss_cap,
             progress_callback=progress_callback,
         )
     selected_support = None
@@ -1319,6 +1498,10 @@ def solve_uk_rowwise_weights_under_doctrine(
                 learning_rate=learning_rate,
                 seed=size_seed,
                 pi_hi=selection_pi_hi,
+                initial_lambda=selection_initial_lambda,
+                selection_l2_lambda=selection_l2_lambda,
+                selection_l2_anchor=selection_l2_anchor,
+                selection_l2_basis=selection_l2_basis,
                 progress_callback=progress_callback,
             )
             if size_checkpoint_dir is not None:
@@ -1347,6 +1530,12 @@ def solve_uk_rowwise_weights_under_doctrine(
             seed=size_seed,
             pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
             selection=size_selection,
             progress_callback=progress_callback,
         )
@@ -1358,6 +1547,35 @@ def solve_uk_rowwise_weights_under_doctrine(
         # always hands the refit the selection it just searched or restored.
         size_receipt["selection_reused"] = restored is not None
         size_receipt["checkpoint"] = checkpoint_receipt
+    return finish_uk_full_solve(
+        prepared,
+        result,
+        restore=restore,
+        selected_support=selected_support,
+        size_receipt=size_receipt,
+        dense_result=dense_result,
+    )
+
+
+def finish_uk_full_solve(
+    prepared: UKPreparedFullSolve,
+    result: CalibrationResult,
+    *,
+    restore: Callable[[Frame], Frame] | None = None,
+    selected_support: np.ndarray | None = None,
+    size_receipt: Mapping[str, Any] | None = None,
+    dense_result: CalibrationResult | None = None,
+) -> UKRowwiseDoctrineSolve:
+    """Restore clean inputs and label evidence after the one selected solve."""
+
+    frame = prepared.frame
+    problem = prepared.problem
+    national_rows = prepared.national_rows
+    target_set = prepared.target_set
+    target_loss_weights = prepared.target_loss_weights
+    binding_adjudications = prepared.binding_adjudications
+    local_count = len(problem.targets)
+    doctrine = UK_LOCAL_SOLVE_DOCTRINE
     evidence = _doctrine_solve_evidence(
         result,
         target_set=target_set,
@@ -1572,10 +1790,19 @@ def _doctrine_solve_evidence(
         )
 
     scales = default_target_loss_scales(targets_vec)
-    local_targets_vec = targets_vec[:local_count]
-    local_scales = scales[:local_count]
-    local_initial = initial_estimates[:local_count]
-    local_final = final_estimates[:local_count]
+    # Identity joins avoid making local-prefix/national-suffix ordering a
+    # public diagnostic contract. Compilation order is still checked above.
+    row_positions = {
+        diagnostic.name: i for i, diagnostic in enumerate(result.diagnostics)
+    }
+    local_positions = np.asarray(
+        [row_positions[target.row_name] for target in _rowwise_target_set(problem)],
+        dtype=np.int64,
+    )
+    local_targets_vec = targets_vec[local_positions]
+    local_scales = scales[local_positions]
+    local_initial = initial_estimates[local_positions]
+    local_final = final_estimates[local_positions]
     diagnostics = problem.target_frame.copy()
     diagnostics["target"] = local_targets_vec
     diagnostics["initial_estimate"] = local_initial
@@ -1596,10 +1823,14 @@ def _doctrine_solve_evidence(
         target_frame=problem.target_frame,
     )
     national_specs = () if national_rows is None else national_rows.registry.specs
-    national_initial = initial_estimates[local_count:]
-    national_final = final_estimates[local_count:]
-    national_targets_vec = targets_vec[local_count:]
-    national_scales = scales[local_count:]
+    national_positions = np.asarray(
+        [row_positions[spec.to_target().row_name] for spec in national_specs],
+        dtype=np.int64,
+    )
+    national_initial = initial_estimates[national_positions]
+    national_final = final_estimates[national_positions]
+    national_targets_vec = targets_vec[national_positions]
+    national_scales = scales[national_positions]
     national_diagnostics = pd.DataFrame(
         {
             "name": [spec.to_target().row_name for spec in national_specs],
@@ -1694,15 +1925,46 @@ def rotated_uk_local_holdout(
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
     baseline_pi_floor: float = 0.0,
+    selection_initial_lambda: float | None = None,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
 ) -> dict[str, object]:
-    """Run five local-row rotations with national rows fixed in training."""
+    """Run five local-row rotations with national rows fixed in training.
 
+    A sized fold reruns the whole size selection on its training rows;
+    ``selection_initial_lambda`` starts each fold's budget search where the
+    main build's search started.
+    """
+
+    if not len(problem.targets):
+        return {
+            "report_only": True,
+            "method": "rotated_folds",
+            "outcome": "not_applicable",
+            "reason": "No local targets were selected for calibration.",
+            "n_folds": 0,
+            "folds": [],
+            "training_national_rows": (
+                0 if national_rows is None else len(national_rows.targets)
+            ),
+        }
     folds = rotated_folds(
         len(problem.targets),
         n_folds=UK_LOCAL_HOLDOUT_FOLDS,
         seed=UK_LOCAL_HOLDOUT_SEED,
     )
     all_indices = np.arange(len(problem.targets), dtype=np.int64)
+    # A row-metadata rule weights the held rows from their own row carrier
+    # (microcosm#1124); the grain rules keep the grain-label path.
+    local_rows = (
+        uk_target_rows_from_targets(_rowwise_target_set(problem).targets)
+        if target_weight_rule in UK_LOCAL_ROW_METADATA_RULES
+        else None
+    )
     fold_rows: list[dict[str, object]] = []
     declared_national = []
     if bound_families is not None:
@@ -1742,6 +2004,13 @@ def rotated_uk_local_holdout(
             selection_seed=selection_seed,
             selection_pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_initial_lambda=selection_initial_lambda,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(
@@ -1754,10 +2023,15 @@ def rotated_uk_local_holdout(
             @ train_solve.weights,
             dtype=np.float64,
         ).reshape(-1)
-        held_weights = uk_local_target_loss_weights(
-            problem.target_frame.iloc[holdout_indices]["area_type"].astype(str),
-            rule=target_weight_rule,
-        )
+        if local_rows is not None:
+            held_weights = uk_target_loss_weights_for_rows(
+                local_rows.take(holdout_indices), rule=target_weight_rule
+            )
+        else:
+            held_weights = uk_local_target_loss_weights(
+                problem.target_frame.iloc[holdout_indices]["area_type"].astype(str),
+                rule=target_weight_rule,
+            )
         loss = relative_error_loss(
             held_estimates,
             held_targets,

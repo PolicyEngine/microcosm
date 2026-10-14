@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from microcosm.calibrate import (
+    L2_BASIS_CHI_SQUARE,
     DemographicProjection,
     SeriesProjection,
     score_predictions,
@@ -637,3 +638,25 @@ def test_projected_frame_preserves_link_tables():
     pd.testing.assert_frame_equal(
         result.frame_for(frame, 2025).link("jobs"), frame.link("jobs")
     )
+
+
+def test_l2_basis_reaches_each_years_calibration() -> None:
+    """``l2_basis`` is passed through to every projected year's solve.
+
+    Aging runs at free mass, where the chi-square basis penalizes distance
+    from the base-year weights rather than the total weight scale.
+    """
+    frame = _frame(n_households=120)
+    result = static_aging(
+        frame,
+        base_year=BASE_YEAR,
+        years=(2025,),
+        demographics=_projection(frame),
+        epochs=20,
+        max_weight_ratio=3.0,
+        l2_lambda=0.01,
+        l2_basis=L2_BASIS_CHI_SQUARE,
+    )
+    options = result.years[0].calibration.options
+    assert options["l2_basis"] == L2_BASIS_CHI_SQUARE
+    assert options["l2_penalty"] == "chi_square_initial_pre_gate_weight_distance"

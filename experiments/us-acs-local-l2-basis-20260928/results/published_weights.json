@@ -1,0 +1,11 @@
+{
+ "weights": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/run/release/checkpoints/weights_latest.npz",
+ "checkpoint": "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint",
+ "households": 1588854,
+ "national_kish_ess": 13631.348394968125,
+ "massachusetts": {
+  "households": 36578,
+  "kish_ess": 446.19038886278906,
+  "n_records_holding_half_weight": 149
+ }
+}

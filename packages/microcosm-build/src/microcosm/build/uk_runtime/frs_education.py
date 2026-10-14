@@ -31,6 +31,12 @@ NON_ADVANCED_EDUCATION_LEVELS = (
     "POST_SECONDARY",
 )
 FRS_APPROVED_TRAINING_CODES = tuple(range(1, 10))
+#: FRS 2024-25 (SN 9563) renames ``TRAIN`` to ``TRAIN2`` and recodes it: the
+#: scheme codes are 1-8 (Work Club or Enterprise Club, New Enterprise
+#: Allowance, Work Experience, Work Trial, Work Programme, Fair Start
+#: Scotland, other local employment support, any other government scheme)
+#: and 10 (Kickstart Scheme); 9 is "None of these" (microcosm#1063 c9).
+FRS_APPROVED_TRAINING_CODES_TRAIN2 = (1, 2, 3, 4, 5, 6, 7, 8, 10)
 UNKNOWN_QUALIFYING_EDUCATION_OR_TRAINING_ENTRY_AGE = 1000
 BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS = (
     "universal_credit_reported",
@@ -129,10 +135,14 @@ def add_frs_education(
 ) -> Frame:
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"]
+        )
     )
     child = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["child"]["locator"]), artifacts["child"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["child"]["locator"]), artifacts["child"]
+        )
     )
     raw_person = pd.concat([adult, child], ignore_index=True, sort=False)
     person = frame.table("person").copy()
@@ -152,7 +162,9 @@ def add_frs_education(
     return result
 
 
-def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.DataFrame:
+def derive_frs_education(
+    person: pd.DataFrame, raw_person: pd.DataFrame
+) -> pd.DataFrame:
     raw = raw_person.set_index("person_id").reindex(person["person_id"])
     values = pd.DataFrame(index=person.index)
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
@@ -167,12 +179,17 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
     values["is_in_non_advanced_education"] = np.isin(
         current, NON_ADVANCED_EDUCATION_LEVELS
     )
-    train = _num(raw, "train") if "train" in raw.columns else pd.Series(0, index=raw.index)
-    values["is_in_approved_training"] = train.isin(FRS_APPROVED_TRAINING_CODES).to_numpy()
-    in_qualifying = (
-        values["is_in_non_advanced_education"].to_numpy(dtype=bool)
-        | values["is_in_approved_training"].to_numpy(dtype=bool)
-    )
+    if "train" in raw.columns:
+        approved = _num(raw, "train").isin(FRS_APPROVED_TRAINING_CODES)
+    elif "train2" in raw.columns:
+        # The 2024-25 vintage's recoded variable; code 9 is "None of these".
+        approved = _num(raw, "train2").isin(FRS_APPROVED_TRAINING_CODES_TRAIN2)
+    else:
+        approved = pd.Series(False, index=raw.index)
+    values["is_in_approved_training"] = approved.to_numpy(dtype=bool)
+    in_qualifying = values["is_in_non_advanced_education"].to_numpy(
+        dtype=bool
+    ) | values["is_in_approved_training"].to_numpy(dtype=bool)
     # Integer by the stage's own contract, whatever dtype ``age`` arrives in
     # (int64 from the root since #845; float in synthetic frames).
     values["age_started_or_accepted_current_education_or_training"] = np.where(
@@ -181,8 +198,8 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
         UNKNOWN_QUALIFYING_EDUCATION_OR_TRAINING_ENTRY_AGE,
     ).astype("int64")
     values["is_before_universal_credit_qualifying_young_person_terminal_date"] = (
-        (age == 19) & in_qualifying
-    )
+        age == 19
+    ) & in_qualifying
     if "adema" in raw.columns:
         values["adult_ema"] = _ema(raw, code_column="adema", amount_column="ademaamt")
     else:
@@ -264,5 +281,7 @@ def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
     by_table = {str(artifact.get("table")): artifact for artifact in stage.artifacts}
     missing = sorted({"adult", "child"} - set(by_table))
     if missing:
-        raise ValueError(f"frs_education manifest is missing tab artifact(s): {missing}.")
+        raise ValueError(
+            f"frs_education manifest is missing tab artifact(s): {missing}."
+        )
     return by_table

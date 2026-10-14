@@ -7,6 +7,8 @@ from collections import Counter
 from importlib.resources import files
 from typing import Any
 
+import pytest
+
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_COLLATED_ODS_SHA256,
     HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
@@ -16,6 +18,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
+    assert_uk_release_input_coverage_build_stages,
 )
 from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_SHA256,
@@ -121,22 +124,8 @@ def test_real_replay_binds_sources_identity_and_positive_mass() -> None:
     }
     assert sources["hmrc_surface"]["sha256"] == HMRC_SPI_COLLATED_ODS_SHA256
     assert sources["hmrc_surface"]["mapped_build_period"] == "2023"
-    # June-freeze partition, made self-describing (adversarial-review
-    # disposition, microcosm#723): this report is evidence for the
-    # grandfathered June release and binds to the FROZEN manifest's period
-    # mapping - it deliberately does NOT follow the live build period, which
-    # moved to "2024" with the #723 signed re-map. It retires with the frozen
-    # manifest after #686 (#687's disposition), never regenerates against a
-    # different vintage.
-    frozen_stage = _resource("hmrc_income_source_stages.json")["stages"][0]
-    frozen_surface = next(
-        artifact
-        for artifact in frozen_stage["artifacts"]
-        if artifact.get("role") == "published_fact_surface"
-    )
-    assert sources["hmrc_surface"]["mapped_build_period"] == str(
-        frozen_surface["mapped_build_period"]
-    )
+    # This immutable June replay remains historical evidence. Current source
+    # contracts use the canonical spine stages and the 2024 build period.
     assert qrf["fits"] == {
         "uk_frs_only_spi_fill": {"weight_kind": "importance"},
         "uk_spi_2022_23_income": {"weight_kind": "design"},
@@ -256,3 +245,9 @@ def test_committed_replay_artifacts_contain_no_row_level_payloads_or_local_paths
         serialized = json.dumps(payload, allow_nan=False, sort_keys=True)
         assert "/Users/" not in serialized
         assert "put2223uk.tab" not in serialized
+
+
+def test_historical_candidate_stages_cannot_satisfy_current_build_contract():
+    record = _resource(_BUILD_RECORD_RESOURCE)
+    with pytest.raises(ValueError, match="hmrc_spi_income"):
+        assert_uk_release_input_coverage_build_stages(record["stages"])

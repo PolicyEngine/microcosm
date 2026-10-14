@@ -290,9 +290,16 @@ def run_acceptance(
             }
         )
 
+    # A sized release candidate at the size doctrine may be releasable
+    # (microcosm#1124, 2026-10-13); every other sized run stays a candidate.
+    size_release_candidate = bool(
+        _mapping(manifest.get("parameters")).get("release_candidate")
+    )
     add(
         "releasable_false",
-        manifest.get("releasable") is False if is_size else None,
+        manifest.get("releasable") is False
+        if is_size and not size_release_candidate
+        else None,
         manifest.get("releasable"),
         False,
     )
@@ -335,7 +342,13 @@ def run_acceptance(
         )
     add("epochs", epoch_pass, epoch_values if is_size else epochs, epoch_expected)
     measure = _mapping(solve.get("measure_resolution"))
-    add("engine_blocks", measure.get("blocks") == 1, measure.get("blocks"), 1)
+    representation = _mapping(measure.get("engine_population_representation"))
+    add(
+        "engine_blocks",
+        measure.get("blocks") == 1 or representation.get("exact") is True,
+        measure.get("blocks"),
+        "1, or per-block with an exact pool representation",
+    )
     stretch_reference = weights_manifest.get(
         "stretch_reference", "pool_design" if not is_size else None
     )

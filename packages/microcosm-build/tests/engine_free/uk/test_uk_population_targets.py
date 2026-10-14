@@ -40,7 +40,14 @@ BINDING_KINDS = {
     "parameter_gated_threshold",
     "baseline_flag_crosstab",
 }
-PROJECTION_FAMILIES = {"obr", "slc_borrowers", "scotgov_social_security", "hmrc_itl"}
+PROJECTION_FAMILIES = {
+    "obr",
+    "slc_borrowers",
+    "scotgov_social_security",
+    "hmrc_itl",
+    "hmrc_itl_marginal_rate",
+    "dwp_benefit_expenditure",
+}
 NATIONAL_SELECTOR_KEYS = {
     "aggregate_fact_key",
     "source_name",
@@ -54,13 +61,27 @@ NATIONAL_SELECTOR_KEYS = {
     "period_type",
     "period_value",
     "layout_groupby_value_id",
+    "source_measure_id_by_opening_year",
 }
-LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
+LOCAL_SELECTOR_KEYS = {
+    "source_name",
+    "source_measure_id",
+    "record_set_spec_id",
+    # microcosm#1123: the UC area rows select DWP's monthly series by concept,
+    # child count and the twelve calendar-2025 months.
+    "source_concept",
+    "dimensions",
+    "dimension_values",
+    "period_type",
+    "period_value",
+}
 POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
+    "allocation",
     "band",
     "band_filter_dimension",
     "band_period_factor",
+    "band_semantics",
     "band_upper_bound",
     "band_upper_bound_inclusive",
     "count_of",
@@ -176,16 +197,33 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "calendar_year_average",
         "monthly_window_average",
         "monthly_window_sum_average",
+        "monthly_window_count_x_mean",
         "linear_combination",
         "scaled_by_ratio",
         "calendar_year_window",
+        "rolled_forward_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 342
+    # 26 State Pension targets since microcosm#1069 c3; the OBR State Pension
+    # line became a diagnostic in c4; 14 Pension Credit caseload targets in c7;
+    # four SPI pension contribution band targets in c8; c9 adds the DWP employer
+    # and employee contribution totals and the salary-sacrifice amount and drops
+    # the salary-sacrifice users total; c10 adds two Attendance Allowance and
+    # three pension-age Housing Benefit caseload targets; the four Table 3.8
+    # contribution targets and the DWP employee total leave the fit again (their
+    # relief-mechanism and gross definitions do not match the engine's columns;
+    # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
+    # pension-age Housing Benefit spending, and OBR's NICs total and the
+    # all-rates salary-sacrifice relief become diagnostics beside the bound
+    # rows they repeat, as do the two PIP daily-living caseload rows;
+    # microcosm#1113 adds ONS 07.2.2 household road fuel; microcosm#1123 adds
+    # the four nation household controls (LFS English regions, NRS, Welsh
+    # Government, NI).
+    assert len(resource["targets"]) == 396
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -199,10 +237,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 291
-    assert len(profile_scope) == 51
-    assert target_ids[:291] == registry_scope
-    assert target_ids[291:] == profile_scope
+    assert len(registry_scope) == 344
+    assert len(profile_scope) == 52
+    assert target_ids[:344] == registry_scope
+    assert target_ids[344:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -215,8 +253,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 194
-    assert len(unmapped_declarations) == 97
+    # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
+    # the mapped rows for diagnostics.
+    assert len(mapped_target_ids) == 189
+    assert len(unmapped_declarations) == 155
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -235,9 +275,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 51
+    assert parity["contract_target_count"] == 52
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 26
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 27
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -335,7 +375,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 342
+    assert len(target_ids) == 396
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -427,6 +467,8 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain",
         "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share",
         "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
+        "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
     }
     allowed_operations = set(resource["allowed_value_operations"])
     for target in resource["targets"]:
@@ -558,11 +600,20 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
     assert targets["ons.age.70_80"]["ledger_selector"]["record_set_spec_id"] == (
         "uk.local_geography.population.age_70_80.v1"
     )
+    # microcosm#1123: the calendar-2025 mean of DWP's monthly series, the
+    # three-plus band summed from its three published child counts.
     assert targets["dwp.uc.households_by_area_children_3plus"]["ledger_selector"] == {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1",
+        "dimensions": ["number_of_children"],
+        "dimension_values": {"number_of_children": [3, 4, "5 or more"]},
+        "period_type": "month",
+        "period_value": [f"2025-{month:02d}" for month in range(1, 13)],
     }
+    assert targets["dwp.uc.households_by_area_children_3plus"]["value_operation"] == (
+        "monthly_window_sum_average"
+    )
     assert (
         targets["dwp.uc.households_by_area_children_3plus"]["bindings"]["policyengine"][
             "metric_name"
@@ -596,8 +647,8 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
-    assert len(metric_names_from_target_profile(resource, "la")) == 31
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 19
+    assert len(metric_names_from_target_profile(resource, "la")) == 32
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -796,12 +847,16 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
             target["bindings"]["policyengine"]["filters"][0]["variable"]
             == "uc_calibration_administrative_family_type"
         )
-        assert target["bindings"]["policyengine"]["band_upper_bound"] == 2500
+        binding = target["bindings"]["policyengine"]
+        # microcosm#1095: whole-pence bands, closed at GBP 2,500.00 a month.
+        assert binding["band_semantics"] == "whole_pence_upper_closed"
+        assert binding["band_upper_bound"] == 2500
+        assert "band_upper_bound_inclusive" not in binding
 
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 342
+    assert len(targets) == 396
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -851,8 +906,8 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
             "from_entity", "household"
         )
         if target_id.startswith("dwp.uc.payment_distribution_"):
+            assert binding["band_semantics"] == "whole_pence_upper_closed"
             assert binding["band_upper_bound"] == 2500
-            assert binding["band_upper_bound_inclusive"] is True
             assert binding["band_period_factor"] == 12
     # The omitted source top-coded row is not introduced or merged into a
     # finite reference by these measurement-only changes.
@@ -882,7 +937,10 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
         "hmrc/capital_gains_band",
         "hmrc/capital_gains_by_age_band",
         "hmrc/capital_gains_by_region",
+        "hmrc/capital_gains_by_taxable_income_band",
         "hmrc/capital_gains_total",
+        "hmrc/cgt_badr_ir_qualifying_gains_by_band",
+        "hmrc/cgt_badr_ir_taxpayers_by_band",
         "hmrc/cgt_liability",
         "hmrc/cgt_liability_by_age_band",
         "hmrc/cgt_residential_property_gains",
@@ -891,6 +949,7 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
         "hmrc/cgt_taxpayers_band",
         "hmrc/cgt_taxpayers_by_age_band",
         "hmrc/cgt_taxpayers_by_region",
+        "hmrc/cgt_taxpayers_by_taxable_income_band",
     ]
     assert mapped["hmrc/capital_gains_total"] == "hmrc.cgt.gains_total"
     assert mapped["hmrc/cgt_taxpayers"] == "hmrc.cgt.taxpayers_total"
@@ -1043,3 +1102,35 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
         assert by_id[target_id]["measurement"]["filters"] == [
             {"concept": "uk.housing.council_tax_band", "operator": "in", "value": bands}
         ], target_id
+
+
+def test_only_the_uc_award_bands_read_whole_pence() -> None:
+    """microcosm#1095: the four UC payment families opt in to whole-pence,
+    upper-closed bands; the other 28 banded bindings keep the half-open
+    reading."""
+
+    banded = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _load()["targets"]
+        if target["bindings"]["policyengine"].get("groupby_variable")
+    }
+    whole_pence = {
+        target_id
+        for target_id, binding in banded.items()
+        if binding.get("band_semantics") == "whole_pence_upper_closed"
+    }
+    assert len(banded) == 32
+    assert whole_pence == {
+        f"dwp.uc.payment_distribution_{family}"
+        for family in (
+            "single",
+            "lone_parent",
+            "couple_no_children",
+            "couple_with_children",
+        )
+    }
+    assert not [
+        target_id
+        for target_id, binding in banded.items()
+        if target_id not in whole_pence and "band_semantics" in binding
+    ]

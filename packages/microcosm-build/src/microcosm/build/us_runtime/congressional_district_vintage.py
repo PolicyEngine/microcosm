@@ -100,9 +100,10 @@ def load_default_congressional_district_vintage_crosswalk() -> pd.DataFrame:
     """Load the packaged Census-built default 117th->119th CD crosswalk.
 
     This is the canonical, versioned crosswalk built by
-    ``tools/build_us_congressional_district_vintage_crosswalk.py`` from Census
-    Block Assignment Files, the 119th BEF, and 2020 P.L. 94-171 block
-    populations. Builds may still pass an explicit crosswalk path to override it.
+    ``tools/build_us_congressional_district_vintage_crosswalk.py`` from the
+    block -> congressional-district plan registry (117th and 119th plans on
+    2020 blocks, weighted by 2020 P.L. 94-171 block populations). Builds may
+    still pass an explicit crosswalk path to override it.
     """
 
     return load_congressional_district_vintage_crosswalk(
