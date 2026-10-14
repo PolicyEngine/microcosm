@@ -17,6 +17,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.spec_engine import LegacyPayloadMismatchError
+from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
 from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
@@ -60,6 +62,11 @@ from microcosm.build.us_runtime.take_up_contract import (
     take_up_contract_identity,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_table
+from test_support.microcosm_build.us_acs_pums import (
+    _household,
+    _person,
+    _write_csv_zip,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -191,6 +198,65 @@ def _many_household_source_frame(
         {"household": Weights(np.full(count, 2.0), WeightKind.DESIGN)},
         pd.Series(["fixture"] * count, dtype=object),
     )
+
+
+def _with_raw_acs_work_columns(frame: Frame, *, usual_hours: bool = True) -> Frame:
+    """Give a fixture ACS arm the raw columns the real loader keeps.
+
+    Every third person is 15: inside the ACS earnings universe (15 and over)
+    but outside the usual-hours one (16 and over). Every fourth of the rest
+    last worked over a year ago; the others report hours. ``usual_hours=False``
+    leaves only ``AGEP``, the shape of an ACS arm loaded before the loader
+    kept ``WKHP``.
+    """
+
+    person = frame.table("person").copy()
+    position = np.arange(len(person))
+    fifteen = position % 3 == 0
+    no_recent_work = ~fifteen & (position % 4 == 0)
+    worked = ~fifteen & ~no_recent_work
+    person["AGEP"] = np.where(fifteen, 15, 40)
+    if usual_hours:
+        person["WKHP"] = np.where(worked, 20.0 + position % 30, np.nan)
+        person["WKL"] = np.where(fifteen, np.nan, np.where(worked, 1.0, 3.0))
+        person["FWKHP"] = 0
+    return _replace_person(frame, person)
+
+
+def _with_native_usual_hours(
+    frame: Frame,
+) -> tuple[Frame, Mapping[str, Mapping[str, Any]]]:
+    """Map a fixture ACS arm's raw work columns as ``_load_inputs`` maps them."""
+
+    mapped = map_acs_native_inputs(_with_raw_acs_work_columns(frame))
+    return mapped.frame, mapped.native_inputs
+
+
+def _acs_archives_for_load_inputs(
+    root: Path,
+    *,
+    usual_hours: bool,
+) -> tuple[Path, Path]:
+    """Write one three-person ACS household as PUMS archives."""
+
+    household_zip = root / "csv_hus.zip"
+    person_zip = root / "csv_pus.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("hours", NP=3)]})
+    people = [
+        _person("hours", 1, 20, WKHP=40, WKL=1, FWKHP=1),
+        _person("hours", 2, 21, SEX=2, WAGP=0, WKHP=None, WKL=3, FWKHP=0),
+        _person("hours", 3, 25, AGEP=12, MAR=5, WAGP=None, WKHP=None, WKL=None),
+    ]
+    if not usual_hours:
+        people = [
+            {key: value for key, value in row.items() if key not in _RAW_HOURS_COLUMNS}
+            for row in people
+        ]
+    _write_csv_zip(person_zip, {"psam_pusa.csv": people})
+    return household_zip, person_zip
+
+
+_RAW_HOURS_COLUMNS = frozenset({"WKHP", "WKL", "FWKHP"})
 
 
 def _replace_person(
@@ -642,6 +708,8 @@ def _run_checkpoint_fixture(
     primary_qrf_manifest_path: Path | None = None,
     authenticated_qbi: bool = True,
     checkpoint_nullable_booleans: bool = False,
+    acs: Frame | None = None,
+    source_native_inputs: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
 ):
     order: list[str] = []
 
@@ -712,12 +780,17 @@ def _run_checkpoint_fixture(
     result = pool_tool.build_multispine_pool(
         _source_frame() if resume is None else None,
         (
-            _source_frame(measured_offset=99.0, include_peridnum=False)
+            (
+                acs
+                if acs is not None
+                else _source_frame(measured_offset=99.0, include_peridnum=False)
+            )
             if resume is None
             else None
         ),
         puf_donor=pd.DataFrame(),
         primary_qrf_checkpoint_dir=tmp_path / "unused-qrf",
+        source_native_inputs=source_native_inputs,
         impute=stage(
             "impute",
             lambda person: person.__setitem__(
