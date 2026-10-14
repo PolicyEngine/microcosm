@@ -360,7 +360,7 @@ _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS
 # measures interest (``INT_VAL``, carried as ``taxable_interest_income``) and
 # alimony received (``OI_VAL`` code 20) for every respondent, filers and
 # non-filers alike. Pruning them to the PUF filer rate zeroed every ASEC tax
-# unit reporting under $444 of interest in the 2024 releases (microcosm#PRNUM).
+# unit reporting under $444 of interest in the base behind the 2024 releases.
 _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset(
     {
         "domestic_production_ald",
