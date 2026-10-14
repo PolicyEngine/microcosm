@@ -81,3 +81,90 @@ def frs_uc_couple_mask(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndarra
         .reindex(benunit["benunit_id"])
     )
     return counts.eq(2).to_numpy(dtype=bool)
+
+
+#: Benefit-unit financial investment income: interest (tax-free included),
+#: dividends and other investment income. TOTCAPB4 counts accounts and assets
+#: and has no property code (SN 9563), so let-property income is not part of
+#: the capital it predicts (microcosm#1095).
+UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS = (
+    "savings_interest_income",
+    "dividend_income",
+    "other_investment_income",
+)
+
+
+def benunit_financial_investment_income(
+    person: pd.DataFrame, benunit: pd.DataFrame
+) -> np.ndarray:
+    """Sum each member's financial investment income in benefit-unit row order."""
+
+    missing = sorted(
+        {"person_benunit_id", *UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS} - set(person)
+    )
+    if missing:
+        raise KeyError(f"benefit-unit investment income inputs missing: {missing}")
+    values = (
+        person[list(UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS)]
+        .apply(pd.to_numeric, errors="coerce")
+        .sum(axis=1, min_count=len(UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS))
+    )
+    if not np.isfinite(values.to_numpy(dtype=float, na_value=np.nan)).all():
+        raise ValueError("benefit-unit investment income inputs must be finite.")
+    if (values < 0.0).any():
+        raise ValueError("benefit-unit investment income inputs must be nonnegative.")
+    totals = values.groupby(person["person_benunit_id"].to_numpy(), sort=False).sum()
+    return (
+        totals.reindex(benunit["benunit_id"].to_numpy())
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+
+
+def household_family_role_counts(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray]:
+    """Claimants and partners, and every other member, per household.
+
+    In household row order. The persisted FRS adult-file role
+    ``is_uc_claimant`` splits each household into its adults and its dependent
+    children the way survey household grids do (WAS ``NumAdultR8`` and
+    ``NumChildR8`` sum to the household size), rather than at the engine's
+    age-18 ``is_adult`` (uk-data#486, microcosm#1095).
+    """
+
+    missing = sorted({"person_household_id", "is_uc_claimant"} - set(person))
+    if missing:
+        raise KeyError(f"household role-count inputs missing: {missing}")
+    role = person["is_uc_claimant"]
+    if not pd.api.types.is_bool_dtype(role.dtype):
+        raise ValueError("is_uc_claimant must be a boolean column.")
+    claimant = role.to_numpy(dtype=bool)
+    members = person["person_household_id"].to_numpy()
+    ids = household["household_id"].to_numpy()
+    adults = (
+        pd.Series(claimant.astype(float)).groupby(members, sort=False).sum()
+    ).reindex(ids, fill_value=0.0)
+    children = (
+        pd.Series((~claimant).astype(float)).groupby(members, sort=False).sum()
+    ).reindex(ids, fill_value=0.0)
+    return adults.to_numpy(dtype=float), children.to_numpy(dtype=float)
+
+
+def uc_family_child_member(
+    claimant: np.ndarray, qualifying: np.ndarray, age: np.ndarray
+) -> np.ndarray:
+    """Members DWP's Universal Credit family-type counts treat as children.
+
+    Never a claimant or partner (``claimant``, the FRS adult-file role); any
+    UC child or qualifying young person (``qualifying``), or any other member
+    under 20, since DWP's post-April-2019 child-presence definition includes
+    reported under-20 children beyond those eligible for a child element:
+    https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html
+    One rule for the national family-type composition and the constituency
+    child bands (uk-data#486, microcosm#1095).
+    """
+
+    return ~np.asarray(claimant, dtype=bool) & (
+        np.asarray(qualifying, dtype=bool) | (np.asarray(age, dtype=float) < 20)
+    )

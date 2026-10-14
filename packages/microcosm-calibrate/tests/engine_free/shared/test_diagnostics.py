@@ -41,10 +41,12 @@ from microcosm.calibrate import (
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
 from microcosm.calibrate.geography_constants import (
     UK_GEOGRAPHY_ID_TO_LABEL,
+    UK_WIDE_GEOGRAPHY_IDS,
     US_STATE_FIPS_TO_POSTAL,
     US_STATE_NUMERIC_FIPS_TO_POSTAL,
     US_STATE_POSTAL_TO_NUMERIC_FIPS,
 )
+from microcosm.calibrate.solve import zero_target_loss_census
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-calibrate")
@@ -63,6 +65,7 @@ def test_shared_geography_constant_views_are_consistent() -> None:
     assert dict(UK_GEOGRAPHY_ID_TO_LABEL) == {
         "K02000001": "United Kingdom",
         "K03000001": "Great Britain",
+        "K04000001": "England and Wales",
         "E92000001": "England",
         "W92000004": "Wales",
         "S92000003": "Scotland",
@@ -77,6 +80,8 @@ def test_shared_geography_constant_views_are_consistent() -> None:
         "E12000008": "South East",
         "E12000009": "South West",
     }
+    assert UK_WIDE_GEOGRAPHY_IDS == {"K02000001", "K03000001", "K04000001"}
+    assert UK_WIDE_GEOGRAPHY_IDS <= set(UK_GEOGRAPHY_ID_TO_LABEL)
     assert len(US_STATE_FIPS_TO_POSTAL) == 51
     assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"
     assert US_STATE_FIPS_TO_POSTAL["11"] == "DC"
@@ -330,6 +335,64 @@ def test_payload_reports_unequal_weights_custom_scales_and_zero_target(
     assert income_row["target_loss_weight_share"] == 0.75
     assert sum(row["final_loss_contribution"] for row in payload["targets"]) == (
         pytest.approx(result.final_loss, rel=1e-12, abs=1e-12)
+    )
+
+
+def test_zero_targets_keep_a_positive_loss_weight_under_split_weighting(
+    feasible_frame,
+) -> None:
+    """microcosm#104: a zero-valued target stays in the loss.
+
+    Under the default scale ``max(abs(target), 1)`` a zero target is measured
+    in one unit of its basis, and a weighting that splits the loss between
+    amount and count rows (half each) still gives it a positive weight; the
+    solve's options census the zero rows so a scheme that drops them shows.
+    """
+
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="zero_population",
+                entity="household",
+                value=0.0,
+                measure="household_count",
+            ),
+            Target(
+                name="income",
+                entity="household",
+                value=truths["income"],
+                measure="income",
+            ),
+        )
+    )
+    # One count row and one amount row, each half of the loss.
+    result = score_targets(frame, targets, target_loss_weights=np.asarray([0.5, 0.5]))
+    census = result.options["target_loss_scales"]["zero_targets"]
+    assert census == {
+        "n": 1,
+        "scale_min": 1.0,
+        "scale_max": 1.0,
+        "loss_weight_min": 0.5,
+        "loss_weight_max": 0.5,
+        "zero_weighted": 0,
+    }
+    zero_row, _ = diagnostics_payload(result)["targets"]
+    assert zero_row["target_loss_scale"] == 1.0
+    assert zero_row["target_loss_weight"] > 0.0
+    # A positive estimate on the zero row is charged, not ignored.
+    assert zero_row["final_loss_contribution"] > 0.0
+
+
+def test_a_surface_without_zero_targets_reports_none() -> None:
+    assert zero_target_loss_census(np.asarray([3.0, 4.0]), np.asarray([3.0, 4.0])) == {
+        "n": 0
+    }
+    assert (
+        zero_target_loss_census(
+            np.asarray([0.0, 4.0]), np.asarray([1.0, 4.0]), np.asarray([0.0, 1.0])
+        )["zero_weighted"]
+        == 1
     )
 
 

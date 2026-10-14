@@ -238,6 +238,54 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
         )
 
 
+def test_the_frozen_count_is_the_1123_compiled_local_reference_count() -> None:
+    # microcosm#1123's surface regeneration on the 942a1fa feed:
+    # register_completeness.compiled_local_reference_count 20,885 -> 21,804.
+    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 21_804
+
+
+def test_a_graph_target_selection_scores_its_local_rows(tmp_path) -> None:
+    """A graph build's target selection carries national and local rows; the
+    scorer reads it as written and keeps the local surface."""
+
+    import json
+
+    from microcosm.build.uk_runtime.graph_targets import registry_payload
+
+    scorer = _load_scorer()
+    registry, _candidate, _weights, _metrics = _case()
+    national = TargetSpec(
+        name="obr.income_tax",
+        entity="person",
+        value=1.0,
+        measure="income_tax",
+        period=2025,
+        source="fixture",
+        family="obr",
+        metadata={"geography_level": "country"},
+    )
+    selection = tmp_path / "target_selection.json"
+    selection.write_text(
+        json.dumps(
+            {
+                "receipt": {"schema": "microcosm.calibrate.target-selection.v1"},
+                "registry": registry_payload(
+                    TargetRegistry([*registry.specs, national], country="uk")
+                ),
+                "target_families": [],
+            }
+        )
+    )
+    scored = scorer.load_scored_registry(selection)
+    assert [spec.name for spec in scored.specs] == [
+        spec.name for spec in registry.specs
+    ]
+    # A registry artifact still loads as one.
+    artifact = tmp_path / "registry.json"
+    registry.to_json(artifact)
+    assert len(scorer.load_scored_registry(artifact)) == len(registry)
+
+
 def test_local_scorer_accepts_candidate_superset_with_receipt() -> None:
     scorer = _load_scorer()
     registry, candidate, weights, metrics = _case()

@@ -109,7 +109,7 @@ def test_support_bounds_tool_rounds_synthetic_donor_outward(tmp_path: Path) -> N
     rows = {
         "R8xshhwgt": [1, 1],
         "DVLUKValR8_sum": [10, 100],
-        "DVPropertyR8": [20, 200],
+        "DVPropertyR8": [104100, 6500],
         "DVFESHARESR8_aggr": [1, 2],
         "DVFShUKVR8_aggr": [3, 4],
         "DVIISAVR8_aggr": [5, 6],
@@ -118,22 +118,26 @@ def test_support_bounds_tool_rounds_synthetic_donor_outward(tmp_path: Path) -> N
         "totalpenr8_aggr": [100, 200],
         "dvvaldbt_scaper8_aggr": [40, 50],
         "NumAdultR8": [2, 1],
-        "NumCh18R8": [1, 0],
+        "NumChildR8": [1, 0],
         "DVGIPPENR8_AGGR": [11, 12],
         "DVGISER8_AGGR": [13, 14],
         "DVGIINVR8_aggr": [15, 16],
         "DVGIEMPR8_AGGR": [17, 18],
         "HBedRmR8": [3, 4],
         "GORR8": [8, 12],
-        "DVPriRntR8": [1, 2],
-        "CTAmtR8": [1000, 1200],
-        "HFINWNTR8_Sum": [-5, 50],
-        "HFINWNTR8_exSLC_Sum": [20, 40],
-        "HFINWR8_SUM": [30, 40],
+        "DVPriRntR8": [-9, 2],
+        "DVCTaxAmtAnnualR8": [1000, 1200],
+        "DVNetRentAmtAnnualR8_aggr": [0, 300],
+        "HFINWNTR8_Sum": [-4480, -1356],
+        "HFINWNTR8_exSLC_Sum": [520, 644],
+        "HFINWR8_SUM": [530, 644],
         "HMortGR8": [1000, 0],
+        "TotMortR8": [1000, 0],
+        "OthMortR8_sum": [0, 0],
         "Ten1R8": [2, 4],
-        "DVhvalueR8": [100000, 200000],
+        "DVhvalueR8": [100000, 0],
         "DVHseValR8_sum": [1000, 2000],
+        "DVBltValR8_sum": [0, 300],
         "DVBlDValR8_sum": [3000, 4000],
         "DVTotinc_bhcR8": [50000, 60000],
         "DVSaValR8_aggr": [500, 600],
@@ -148,6 +152,6 @@ def test_support_bounds_tool_rounds_synthetic_donor_outward(tmp_path: Path) -> N
     payload = _support_tool().build_support_bounds(tab)
 
     assert payload["bounds"]["owned_land"] == [10.0, 100.0]
-    assert payload["bounds"]["net_financial_wealth"] == [-5.0, 50.0]
+    assert payload["bounds"]["net_financial_wealth"] == [-5000.0, -1000.0]
     assert payload["bounds"]["mortgage_debt"] == [0.0, 1000.0]
     assert payload["bounds"]["consumer_debt"] == [0.0, 10.0]

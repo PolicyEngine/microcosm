@@ -1,0 +1,91 @@
+# Self-contained canonical-root RuleSpec module for the Axiom adapter's graph
+# tests: family-scope outputs of every graph-typed engine dtype — a decimal
+# rent assistance, a judgment asset test, an integer size band, and a boolean
+# flag — shaped like the New Zealand family benefit unit (no relations).
+format: rulespec/v1
+module:
+  summary: |-
+    microcosm-frame test fixture: family-scope rent assistance above a
+    weekly threshold, a cash-asset limit judgment, a family size band, and a
+    large-family flag. Values are round numbers chosen for hand verification.
+units:
+  - name: EUR
+    kind: currency
+    minor_units: 2
+rules:
+  - name: toy_family_rent_threshold
+    kind: parameter
+    dtype: Money
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          100
+  - name: toy_family_assistance_rate
+    kind: parameter
+    dtype: Rate
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          0.5
+  - name: toy_family_asset_limit
+    kind: parameter
+    dtype: Money
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          8000
+  - name: toy_family_rent_assistance
+    kind: derived
+    entity: Family
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_family_weekly_rent > toy_family_rent_threshold:
+              (toy_family_weekly_rent - toy_family_rent_threshold) * toy_family_assistance_rate
+          else:
+              0
+  - name: toy_family_assets_within_limit
+    kind: derived
+    entity: Family
+    dtype: Judgment
+    period: Year
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          toy_family_cash_assets <= toy_family_asset_limit
+  - name: toy_family_size_band
+    kind: derived
+    entity: Family
+    dtype: Integer
+    period: Year
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_family_size >= 3:
+              2
+          else:
+              1
+  - name: toy_family_is_large
+    kind: derived
+    entity: Family
+    dtype: Boolean
+    period: Year
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_family_size >= 3:
+              true
+          else:
+              false

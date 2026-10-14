@@ -437,23 +437,36 @@ class TestUKManifest:
         assert_uk_release_input_coverage_manifest_current(
             engine=_StubEngine({}, set(manifest.declared_columns))
         )
-        assert manifest.required_columns == frozenset(
-            load_efrs_parity_reference().populated_layers
+        # microcosm#1106: property_wealth is formula-owned in policyengine-uk,
+        # so the release leaves it to the engine; it is an engine-derived
+        # exclusion, not parity debt, and its components stay required.
+        assert manifest.required_columns == (
+            frozenset(load_efrs_parity_reference().populated_layers)
+            - {"property_wealth"}
         )
-        assert manifest.reviewed_exclusions == {}
+        assert set(manifest.reviewed_exclusions) == {"property_wealth"}
         assert load_efrs_parity_known_gaps() == ()
+        assert [gap.variable for gap in load_efrs_engine_derived_exclusions()] == [
+            "property_wealth"
+        ]
         assert manifest.required_build_stages == frozenset(
             {
-                "hmrc_spi_income",
+                "frs_hmrc_spine_leaves",
+                "spi_support_channel",
+                "spi_income_band_donors",
+                "hmrc_spi_income_spine",
+                "cgt_support_split",
                 "cgt_incidence_clone",
-                "cgt_band_donors",
                 "hmrc_cgt_gains_spine",
-                "hmrc_cgt_asset_type_spine",
                 "cgt_incidence_anchor",
+                "cgt_residential_split",
+                "hmrc_cgt_asset_type_spine",
                 "salary_sacrifice",
                 "student_loans",
                 "was_wealth",
+                "was_lisa",
                 "regional_property_uprating",
+                "property_components",
                 "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",
@@ -569,43 +582,48 @@ class TestUKManifest:
             assert_uk_release_input_coverage_build_stages((), manifest=manifest)
 
         result = assert_uk_release_input_coverage_build_stages(
-            ("hmrc_spi_income",),
+            ("hmrc_spi_income_spine",),
             manifest=manifest,
         )
         assert result is None
 
-    def test_spine_posture_satisfies_superseded_required_families(self) -> None:
+    def test_canonical_producers_and_predecessors_satisfy_required_families(
+        self,
+    ) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        spine_stages = tuple(
-            stage
-            for stage in manifest.required_build_stages
-            if stage != "hmrc_spi_income"
+        assert_uk_release_input_coverage_build_stages(
+            tuple(manifest.required_build_stages), manifest=manifest
         )
-        result = assert_uk_release_input_coverage_build_stages(
-            (*spine_stages, "hmrc_spi_income_spine"),
-            manifest=manifest,
-        )
-        assert result is None
-        assert (
-            manifest.family_coverage["hmrc_spi_income"]["superseded_by"]["stage"]
-            == "hmrc_spi_income_spine"
+        assert {
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+            "hmrc_spi_income_spine",
+        } <= manifest.required_build_stages
+        assert {"hmrc_spi_income", "hmrc_cgt_gains"}.isdisjoint(
+            manifest.required_build_stages
         )
         assert "hmrc_cgt_gains" not in manifest.family_coverage
-
-    def test_supersession_does_not_hide_a_genuinely_missing_family(self) -> None:
-        manifest = load_uk_release_input_coverage_manifest()
-        spine_stages = tuple(
-            stage
-            for stage in manifest.required_build_stages
-            if stage
-            not in {
-                "hmrc_spi_income",
-                "student_loans",
-            }
+        assert all(
+            "superseded_by" not in family
+            for family in manifest.family_coverage.values()
         )
-        with pytest.raises(ValueError, match="student_loans"):
+
+    @pytest.mark.parametrize(
+        "missing_stage",
+        [
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+            "hmrc_spi_income_spine",
+            "student_loans",
+        ],
+    )
+    def test_each_canonical_family_dependency_is_required(self, missing_stage) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        with pytest.raises(ValueError, match="hmrc_spi_income|student_loans"):
             assert_uk_release_input_coverage_build_stages(
-                (*spine_stages, "hmrc_spi_income_spine"),
+                tuple(manifest.required_build_stages - {missing_stage}),
                 manifest=manifest,
             )
 
@@ -760,7 +778,15 @@ class TestUKManifest:
             reference["engine"]["formula_owned_persisted_overrides_included"]
         )
         assert len(overrides) == 13
-        assert overrides <= set(manifest.required_columns)
+        # The one exception is declared: property_wealth, whose persisted copy
+        # overrides the engine's component sum and is never uprated, so the
+        # release leaves it to the formula (microcosm#1106). Every other
+        # formula-owned override stays required.
+        engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
+        assert engine_derived == {"property_wealth"}
+        assert engine_derived <= overrides
+        assert overrides - engine_derived <= set(manifest.required_columns)
+        assert engine_derived.isdisjoint(manifest.required_columns)
 
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
         engine = PolicyEngineUKCoverageEngine()

@@ -30,19 +30,31 @@ from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     CGT_ASSET_TYPE_RESIDENTIAL,
+    CGT_RESIDENTIAL_GAINS_COLUMN,
+    HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS,
     HMRCCGTAssetTypeFacts,
+    HMRCCGTBADRBand,
     HMRCCGTTable7Type,
     UKCGTAssetTypeStageTransform,
+    UKCGTBADRParameters,
+    uk_cgt_badr_parameters,
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UKCGTPolicyParameters,
     uk_cgt_policy_parameters,
     uk_cgt_spine_stage_transform,
 )
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    UKCGTResidentialSplitStageTransform,
+    split_cgt_residential_households,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
-    UKCGTBandDonorStageTransform,
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
+)
+from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
+from microcosm.build.uk_runtime.child_benefit_take_up import (
+    UKChildBenefitTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
@@ -71,7 +83,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -89,11 +101,23 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeSourceProvenance,
     HMRCIncomeTargetSet,
 )
+from microcosm.build.uk_runtime.hmrc_property_rental import (
+    HMRC_PROPERTY_RENTAL_EXPENSE_TYPES,
+    HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS,
+    HMRCPropertyRentalBand,
+    HMRCPropertyRentalFacts,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.property_components import (
+    UKPropertyComponentsStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -102,6 +126,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
+)
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
 )
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
@@ -123,6 +150,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -144,11 +172,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 34
+UK_FIXTURE_STAGE_COUNT = 40
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 34-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 40-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -324,6 +352,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BEDROOM6": 1 + household_id % 4,
                 "CTANNUAL": 900.0 + household_id * 10.0,
                 "CTBAND": 1 + household_id % 7,
+                "CTDISC": 1 if household_id % 3 == 0 else 2,
+                "CT25D50D": (
+                    (2 if household_id % 9 == 0 else 1) if household_id % 3 == 0 else ""
+                ),
+                "CTREB": 1 if household_id % 3 or household_id % 7 == 0 else 2,
                 "CTREBAMT": float(household_id % 3),
                 "ADULTH": 1,
                 "HRPNUM": 1,
@@ -340,6 +373,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "MORTINT": 7.0,
                 "STRUINS": 8.0,
                 **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
+                # Interviews from 15 October 2024 (SAS dates, days since
+                # 1 January 1960).
+                "INTDATE": float(23664 + household_id % 120),
+                # Every eleventh household is shared (HHSTAT 2).
+                "HHSTAT": 2 if household_id % 11 == 0 else 1,
             }
         )
         benunits.append(
@@ -349,6 +387,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "FAMTYPB2": 5,
                 "DEPCHLDB": int(has_child),
                 "TOTCAPB4": 100.0 + household_id,
+                "HBOTHAMT": 0.0,
             }
         )
         adult = {
@@ -368,6 +407,15 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             **({"R02": 7} if has_child else {}),
             "MARITAL": 1 + household_id % 3,
             "EMPSTATI": 1 + household_id % 8,
+            "SAMESIT": 2 if household_id % 2 else 1,
+            "SRENTAMT": "",
+            # CVPAY (below) is board and lodging on odd households, lodging alone
+            # on even ones.
+            "CONVBL": 1 if household_id % 2 else 2,
+            **{
+                f"SDEMP{month:02d}": 3 if household_id % 8 in (2, 3) else 1
+                for month in range(1, 13)
+            },
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
             "FTED": 2,
@@ -401,6 +449,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "SMPADJ": 0.5,
             "TUBORR": 500.0,
             "ACCSSAMT": 1.0,
+            "ACCSSPD": 52.0,
+            # Registered blind (SPCREG1 1) on every seventh adult; the
+            # partial-sight registration (SPCREG2) is never read.
+            "SPCREG1": 1 if household_id % 7 == 0 else 2,
+            "SPCREG2": 1 if household_id % 5 == 0 else 2,
             "GRTDIR1": 2.0,
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,
@@ -432,6 +485,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FSFVVAL": 1.0,
                     "FSBVAL": 2.0,
                     "HEARTVAL": 4.0,
+                    "SPCREG1": 1 if household_id % 9 == 0 else 2,
                 }
             )
         accounts.extend(
@@ -464,6 +518,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BENEFIT": benefit,
                 "VAR2": variant,
                 "BENAMT": amount,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
                 (14, 1, 2.0),
@@ -475,6 +531,21 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 (3, 0, 7.0),
             )
         )
+        if household_id % 3 == 0:
+            # Universal Credit on every third household: a claim linked to a
+            # recent start, one linked to an old start, and one unlinked.
+            benefits.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "BENEFIT": 95,
+                    "VAR2": 0,
+                    "BENAMT": 8.0,
+                    "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
+                    "UCHOUSEL": 50.0 if household_id % 2 else "",
+                }
+            )
         jobs.append(
             {
                 "SERNUM": household_id,
@@ -483,6 +554,15 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "DEDUC1": 2.0,
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
+                "JOBSECT": 1 + household_id % 2,
+                # Self-employed ("working for myself") where EMPSTATI is.
+                "ETYPE": 4 if household_id % 8 in (2, 3) else 1,
+                "JOBTYPE": 1,
+                "SEEND": "",
+                "SEJBLONG": float(household_id % 3)
+                if household_id % 8 in (2, 3)
+                else "",
+                "JOBBUS": 2 if household_id % 2 else 1,
             }
         )
         pensions.append(
@@ -507,6 +587,18 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PENAMT": 4.0,
             }
         )
+        if household_id % 2 == 0:
+            # An occupational scheme for the employer contribution draw
+            # (microcosm#1069 c9); the FRS spine reads only personal pensions.
+            penprov.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "STEMPPEN": 2,
+                    "PENAMT": 0.0,
+                }
+            )
         oddjobs.append(
             {
                 "SERNUM": household_id,
@@ -576,47 +668,167 @@ def _write_frs_raw(root: Path) -> dict[str, dict[str, object]]:
     return artifacts
 
 
+def _was_person_donor() -> pd.DataFrame:
+    """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
+
+    Mixed-case raw names as in the deposit. Adults and dependent children per
+    household follow the household tab's NumAdultR8/NumChildR8; Lifetime ISA
+    holders are younger adults with small values (below the households' gross
+    financial wealth, which WAS counts them in), one banded value, one
+    ONS-imputed holder, one ONS-imputed non-holder, one self-employment
+    sentinel and one holder in an age band the product rules exclude (recoded
+    by the stage's credibility rule).
+    """
+
+    rows: list[dict[str, float]] = []
+    for household in range(_DONOR_ROWS):
+        adults = 1 + household % 3
+        children = household % 3
+        for person in range(adults + children):
+            adult = person < adults
+            band = (
+                4 + (household * 3 + person * 5) % 14
+                if adult
+                else 1 + (household + person) % 3
+            )
+            holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
+            impossible = adult and person == 0 and household == 5
+            if impossible:
+                band = 13
+            value = float(5 + household % 20) if (holder or impossible) else 0.0
+            banded = holder and household == 10
+            rows.append(
+                {
+                    "CASER8": float(household + 1),
+                    "PersonR8": float(person + 1),
+                    "IsDepR8": 2.0 if adult else 1.0,
+                    "DVAge17R8": float(band),
+                    "SexR8": float(1 + (household + person) % 2),
+                    # Household 3's first adult carries a sentinel earnings code,
+                    # which the stage recodes to zero and receipts.
+                    "DVGIEmpR8": (
+                        (
+                            -8.0
+                            if household == 3 and person == 0
+                            else 15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        )
+                        if adult
+                        else -9.0
+                    ),
+                    "fisa_binary3r8_i": 1.0 if value > 0 else (0.0 if adult else -9.0),
+                    "fisa_binary3r8_iflag": (
+                        1.0 if (holder and household == 14) or household == 7 else 0.0
+                    ),
+                    "FLISAVR8": (-8.0 if banded else value) if value > 0 else -9.0,
+                    "flisavr8_iflag": 1.0 if banded else 0.0,
+                    "FLISABR8": 1.0 if banded else -9.0,
+                    "flisabr8_iflag": 0.0,
+                    "DVFLISAvR8": value,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _was_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
+    position = rows.astype(int)
+    lisa_totals = (
+        _was_person_donor()
+        .groupby("CASER8")["DVFLISAvR8"]
+        .sum()
+        .reindex(rows + 1.0, fill_value=0.0)
+        .to_numpy()
+    )
+    # Tenure in the round-8 codebook: 1 owns outright, 2 buys with a mortgage,
+    # 3 part rent / part mortgage, 4 rents, 5 lives rent-free. DVPriRntR8 is 1
+    # for a private renting household, 2 for a council or housing-association
+    # tenant and -9 (not applicable) for owners.
+    tenure = np.take([1, 2, 3, 4, 4, 5], position % 6)
+    owner = np.isin(tenure, [1, 2, 3])
+    mortgaged = np.isin(tenure, [2, 3])
+    private_rent = np.where(owner, -9, np.where(position % 6 == 4, 2, 1))
+    # The accounting identities of the real tab hold on every row: the
+    # property total is the sum of the property values, gross financial
+    # wealth covers the listed assets, and net is gross less the liabilities.
+    main_residence = np.where(owner, 100_000.0 + rows * 2_000.0, 0.0)
+    other_houses = np.where(position % 3 == 0, 1_000.0 + rows * 50.0, 0.0)
+    buy_to_let = np.where(position % 6 == 1, 40_000.0 + rows * 500.0, 0.0)
+    buildings = np.where(position % 4 == 0, 3_000.0 + rows * 60.0, 0.0)
+    land = np.where(position % 5 == 0, 10.0 + rows, 0.0)
+    other_property = np.where(position % 7 == 0, 500.0 + rows * 5.0, 0.0)
+    employee_shares = 1.0 + rows
+    uk_shares = 3.0 + rows
+    stocks_isa = 5.0 + rows
+    cash_isa = 7.0 + rows
+    collectives = 9.0 + rows
+    savings = 500.0 + rows * 20.0
+    gross_financial = (
+        savings
+        + cash_isa
+        + stocks_isa
+        + employee_shares
+        + uk_shares
+        + collectives
+        + 30.0
+        + rows
+    )
+    consumer_debt = (position % 5) * 40.0
+    student_loans = np.where(position % 3 == 1, 5_000.0 + rows * 5.0, 0.0)
+    main_mortgage = np.where(mortgaged, 10_000.0 + rows * 100.0, 0.0)
+    # A mortgage on other property, held off a mortgaged tenure by a few
+    # owners outright and renters, as on the real tab.
+    other_mortgage = np.where(
+        ~mortgaged & (other_houses > 0.0) & (position % 2 == 0), 2_000.0 + rows, 0.0
+    )
     return pd.DataFrame(
         {
+            "CASER8": rows + 1.0,
+            "DVFLISAVR8_aggr": lisa_totals,
             "R8xshhwgt": 1.0 + rows % 7 / 10.0,
-            "DVLUKValR8_sum": 10.0 + rows,
-            "DVPropertyR8": 20_000.0 + rows * 500.0,
-            "DVFESHARESR8_aggr": 1.0 + rows,
-            "DVFShUKVR8_aggr": 3.0 + rows,
-            "DVIISAVR8_aggR": 5.0 + rows,
-            "DVCISAVR8_aggr": 7.0 + rows,
-            "DVFCollVR8_aggr": 9.0 + rows,
+            "DVLUKValR8_sum": land,
+            "DVPropertyR8": main_residence
+            + other_houses
+            + buy_to_let
+            + buildings
+            + land
+            + other_property,
+            "DVFESHARESR8_aggr": employee_shares,
+            "DVFShUKVR8_aggr": uk_shares,
+            "DVIISAVR8_aggR": stocks_isa,
+            "DVCISAVR8_aggr": cash_isa,
+            "DVFCollVR8_aggr": collectives,
             "totalpenr8_aggr": 100.0 + rows * 10.0,
             "dvvaldbt_scaper8_aggr": 40.0 + rows,
-            "NumAdultR8": 1 + rows.astype(int) % 3,
-            "NumCh18R8": rows.astype(int) % 3,
+            "NumAdultR8": 1 + position % 3,
+            "NumChildR8": position % 3,
             "DVGIPPENR8_AGGR": 11.0 + rows,
             "DVGISER8_AGGR": 13.0 + rows,
             "DVGIINVR8_aggr": 15.0 + rows,
             "DVGIEMPR8_AGGR": 17.0 + rows,
-            "HBedRmR8": 1 + rows.astype(int) % 5,
-            "GORR8": np.take([8, 11, 12, 1], rows.astype(int) % 4),
-            "DVPriRntR8": 1 + rows.astype(int) % 2,
-            "CTAmtR8": 900.0 + rows * 10.0,
-            "HFINWNTR8_Sum": -50.0 + rows * 4.0,
-            "HFINWNTR8_exSLC_Sum": 20.0 + rows - rows % 5,
-            "HMortGR8": np.where(
-                np.isin(np.take([1, 2, 3, 4], rows.astype(int) % 4), [2, 3]),
-                10_000.0 + rows * 100.0,
-                0.0,
+            "HBedRmR8": 1 + position % 5,
+            "GORR8": np.take([8, 11, 12, 1], position % 4),
+            "DVPriRntR8": private_rent,
+            "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
+            # Net rent where the household holds property beyond its home.
+            "DVNetRentAmtAnnualR8_aggr": np.where(
+                (other_houses > 0.0) | (buy_to_let > 0.0), 2_000.0 + rows * 40.0, 0.0
             ),
-            "Ten1R8": np.take([1, 2, 3, 4], rows.astype(int) % 4),
-            "HFINWR8_SUM": 30.0 + rows,
-            "DVhvalueR8": 100_000.0 + rows * 2_000.0,
-            "DVHseValR8_sum": 1_000.0 + rows * 50.0,
-            "DVBlDValR8_sum": 3_000.0 + rows * 60.0,
+            "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
+            "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
+            "HMortGR8": main_mortgage + other_mortgage,
+            "TotMortR8": main_mortgage,
+            "OthMortR8_sum": other_mortgage,
+            "Ten1R8": tenure,
+            "HFINWR8_SUM": gross_financial,
+            "DVhvalueR8": main_residence,
+            "DVHseValR8_sum": other_houses,
+            "DVBltValR8_sum": buy_to_let,
+            "DVBlDValR8_sum": buildings,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
-            "DVSaValR8_aggr": 500.0 + rows * 20.0,
-            "vcarnr8": rows.astype(int) % 4,
-            "Tot_LosR8_aggr": 9_000.0 + rows * 10.0,
-            "Tot_los_exc_SLCR8_aggr": 4_000.0 + rows * 5.0,
+            "DVSaValR8_aggr": savings,
+            "vcarnr8": position % 4,
+            "Tot_LosR8_aggr": 9_000.0 + rows * 10.0 + student_loans,
+            "Tot_los_exc_SLCR8_aggr": 9_000.0 + rows * 10.0,
         }
     )
 
@@ -631,14 +843,32 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
-        "weighta": 1.0 + rows % 7 / 10.0,
+        "cal_weight_annual": 1.0 + rows % 7 / 10.0,
         "a122": 1 + rows.astype(int) % 8,
         "a121": 1 + rows.astype(int) % 8,
-        "b226": 6.0 + rows % 3,
-        "b489": 2.0 + rows % 5,
-        "b490": 1.0 + rows % 4,
         "p537": 10.0 + rows,
     }
+    # The labelled fuel, light and power parts (microcosm#1164): an electricity
+    # account everywhere, a gas account on most diaries, combined bills on a
+    # third (gas and electricity components), prepayment meters on a sixth,
+    # and oil on a few.
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_ENERGY_CODES
+
+    for code in UK_LCFS_ENERGY_CODES:
+        if code != "p537":
+            household[code] = np.zeros(_DONOR_ROWS)
+    combined = rows.astype(int) % 3 == 0
+    prepay = rows.astype(int) % 6 == 1
+    household["b175"] = np.where(combined | prepay, 0.0, 8.0 + rows % 5)
+    household["b489"] = household["b175"]
+    household["b170"] = np.where(combined | prepay, 0.0, 4.0 + rows % 4)
+    household["b490"] = household["b170"]
+    household["b231"] = np.where(combined, 10.0 + rows % 3, 0.0)
+    household["b226"] = np.where(combined, 4.0, 0.0)
+    household["b227"] = np.where(combined, 6.0 + rows % 3, 0.0)
+    household["b1751"] = np.where(prepay, 5.0 + rows % 2, 0.0)
+    household["b1701"] = np.where(prepay & (rows.astype(int) % 12 == 1), 3.0, 0.0)
+    household["b017"] = np.where(rows.astype(int) % 10 == 7, 2.5, 0.0)
     for position, source in enumerate(
         (
             "p601",
@@ -666,6 +896,9 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     # must reach zero or every non-user recipient would clip low.
     for source in BUS_FARE_LCFS_CODES:
         household[source] = np.where(rows.astype(int) % 3 == 0, 0.0, household[source])
+    # Other motor fuels (c72213): the level_road_fuel step nets the donor's own
+    # share of them from ONS 07.2.2 (microcosm#1113), so a few diaries buy some.
+    household["c72213"] = np.where(rows.astype(int) % 5 == 0, 0.5, 0.0)
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
@@ -859,6 +1092,11 @@ def _spi_donor() -> pd.DataFrame:
                 "GIFTINV": 1.0 + index % 3,
             }
         )
+        # Every third landlord carries restricted residential finance costs,
+        # with the tape's 20% relief in TAX_CRED (microcosm#1106).
+        if row["INCPROP"] > 0.0 and index % 3 == 0:
+            row["LLIR_RESTRICT_AMT_TOT"] = row["INCPROP"] * 0.4
+            row["TAX_CRED"] = 0.2 * row["LLIR_RESTRICT_AMT_TOT"]
         employment = (
             max(row["PAY"] + row["EPB"] - row["EXPS"], 0.0)
             + row["INCPBEN"]
@@ -1032,15 +1270,27 @@ _FIXTURE_TABLE7_ROWS: tuple[tuple[str, str, float, float], ...] = (
 )
 
 
+#: Share of each Table 4.1 band's non-residential pool the synthetic BADR
+#: facts claim, at the pool's own mean gain so the band solve has zero slope.
+_FIXTURE_BADR_POOL_SHARE = 0.25
+
+
 def _cgt_asset_type_facts(
-    frame: Frame, parameters: UKCGTPolicyParameters
+    frame: Frame,
+    parameters: UKCGTPolicyParameters,
+    badr_parameters: UKCGTBADRParameters,
 ) -> HMRCCGTAssetTypeFacts:
-    """Synthetic Table 7/8 facts sized to the fixture frame after the redraw.
+    """Synthetic Table 4.1/7/8 facts sized to the fixture frame after the anchor.
 
     The residential targets are a fixed share of the liable mass and of the
     liable gains, so their mean is the population mean and the logistic
     solve is always attainable on the tiny fixture; the data-only payload
-    the graph side reads is then exactly these numbers.
+    the graph side reads is then exactly these numbers. The Table 4.1 bands
+    are sized in a second pass: the residential split runs once on these
+    targets (it is deterministic, so its arms are the ones the real run
+    makes), and each band then claims a fixed share of the non-residential
+    arms' pool at the pool's own mean gain, the open top band the same share
+    at the lifetime limit. A band with no pool carries zero and is skipped.
     """
 
     person = frame.table("person")
@@ -1071,30 +1321,189 @@ def _cgt_asset_type_facts(
         CGT_ASSET_TYPE_RESIDENTIAL,
         *CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     }
-    return HMRCCGTAssetTypeFacts(
-        table8a_taxpayers_total=count,
-        table8a_gains_total=total_gains,
-        table8a_disposals_total=1.1 * count,
-        table8a_tax_total=0.2 * total_gains,
-        table8b_individuals_taxpayers=count,
-        table8b_individuals_gains=total_gains,
-        table8b_all_taxpayers=count,
-        table8b_all_gains=total_gains,
-        table7_types=rows,
-        table7_total_gains=sum(row.gains for row in rows),
-        table7_total_disposals=sum(row.disposals for row in rows),
-        resource="synthetic-cgt-asset-type.json",
-        resource_sha256="synthetic",
-        source_commit="synthetic",
+
+    def facts_with(bands: tuple[HMRCCGTBADRBand, ...]) -> HMRCCGTAssetTypeFacts:
+        return HMRCCGTAssetTypeFacts(
+            table8a_taxpayers_total=count,
+            table8a_gains_total=total_gains,
+            table8a_disposals_total=1.1 * count,
+            table8a_tax_total=0.2 * total_gains,
+            table8b_individuals_taxpayers=count,
+            table8b_individuals_gains=total_gains,
+            table8b_all_taxpayers=count,
+            table8b_all_gains=total_gains,
+            table7_types=rows,
+            table7_total_gains=sum(row.gains for row in rows),
+            table7_total_disposals=sum(row.disposals for row in rows),
+            table4_bands=bands,
+            table4_individuals_taxpayers=sum(band.taxpayers for band in bands),
+            table4_individuals_gains=sum(band.gains for band in bands),
+            table4_individuals_tax=0.0,
+            table4_trusts_gains=0.0,
+            table4_trusts_tax=0.0,
+            table4_all_taxpayers=sum(band.taxpayers for band in bands),
+            table4_all_gains=sum(band.gains for band in bands),
+            table4_all_tax=0.0,
+            resource="synthetic-cgt-asset-type.json",
+            resource_sha256="synthetic",
+            source_commit="synthetic",
+        )
+
+    lowers = HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS
+    uppers = (*lowers[1:], None)
+    empty = tuple(
+        HMRCCGTBADRBand(
+            lower_bound=lower, upper_bound=upper, taxpayers=0.0, gains=0.0, tax=None
+        )
+        for lower, upper in zip(lowers, uppers, strict=True)
     )
+    split = split_cgt_residential_households(
+        frame, facts=facts_with(empty), parameters=parameters
+    ).frame
+    split_person = split.table("person")
+    split_household = split.table("household")
+    split_weights = pd.Series(
+        split.weights_for("household").values, index=split_household["household_id"]
+    )
+    person_weight = (
+        split_person["person_household_id"].map(split_weights).to_numpy(dtype=float)
+    )
+    gains = pd.to_numeric(split_person["capital_gains"], errors="raise").to_numpy(
+        dtype=float
+    )
+    residential = split_person[CGT_RESIDENTIAL_GAINS_COLUMN].to_numpy(dtype=float) > 0.0
+    pool = (gains > parameters.annual_exempt_amount) & ~residential
+    limit = float(badr_parameters.lifetime_limit)
+    bands = []
+    for lower, upper in zip(lowers, uppers, strict=True):
+        in_band = (
+            pool & (gains >= lower) & (gains < (np.inf if upper is None else upper))
+        )
+        mass = _FIXTURE_BADR_POOL_SHARE * float(person_weight[in_band].sum())
+        band_gains = (
+            mass * limit
+            if upper is None
+            else _FIXTURE_BADR_POOL_SHARE
+            * float((person_weight[in_band] * gains[in_band]).sum())
+        )
+        bands.append(
+            HMRCCGTBADRBand(
+                lower_bound=lower,
+                upper_bound=upper,
+                taxpayers=mass,
+                gains=band_gains,
+                tax=None,
+            )
+        )
+    return facts_with(tuple(bands))
+
+
+#: PRIS 2024-25 Table 13 landlord counts (thousands, all tax entities) and
+#: Table 8 expense amounts (GBP m): shares only, spread over the fixture.
+_FIXTURE_PRIS_BAND_COUNTS = (1300, 860, 330, 150, 80, 50, 30, 20, 10, 10, 40)
+_FIXTURE_PRIS_EXPENSE_AMOUNTS = (3810, 6410, 12820, 1330, 4160, 1640, 4580)
+#: Receipts and allowable expenses (residential finance costs included) per
+#: pound of the landlords' profit, near PRIS against the SPI's profit.
+_FIXTURE_PRIS_RECEIPTS_PER_PROFIT = 1.6
+_FIXTURE_PRIS_EXPENSES_PER_PROFIT = 1.0
+_FIXTURE_PRIS_INDIVIDUALS_SHARE = 0.99
+
+
+def _property_rental_facts(frame: Frame) -> HMRCPropertyRentalFacts:
+    """Synthetic PRIS facts sized to the frame ``property_components`` reads.
+
+    Table 13's published band shares spread the fixture's landlord mass
+    (individuals at a fixed share of all tax entities) and receipts are a
+    fixed multiple of the landlords' profit, so the walk fills every band
+    in proportion and the data-only payload the graph side reads is exactly
+    these numbers.
+    """
+
+    person = frame.table("person")
+    household = frame.table("household")
+    weights = pd.Series(
+        frame.weights_for("household").values, index=household["household_id"]
+    )
+    person_weight = person["person_household_id"].map(weights).to_numpy(dtype=float)
+    profit = pd.to_numeric(person["property_income"], errors="raise").to_numpy(
+        dtype=float
+    )
+    landlord = profit > 0.0
+    mass = float(person_weight[landlord].sum())
+    total_profit = float((person_weight[landlord] * profit[landlord]).sum())
+    if mass <= 0.0 or total_profit <= 0.0:
+        raise RuntimeError("The fixture frame has no landlords to give receipts.")
+    share = _FIXTURE_PRIS_INDIVIDUALS_SHARE
+    all_landlords = mass / share
+    total_count = float(sum(_FIXTURE_PRIS_BAND_COUNTS))
+    bounds = HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS
+    bands = tuple(
+        HMRCPropertyRentalBand(
+            lower_bound=lower,
+            upper_bound=bounds[index + 1] if index + 1 < len(bounds) else None,
+            landlords=all_landlords * count / total_count,
+        )
+        for index, (lower, count) in enumerate(
+            zip(bounds, _FIXTURE_PRIS_BAND_COUNTS, strict=True)
+        )
+    )
+    receipts = _FIXTURE_PRIS_RECEIPTS_PER_PROFIT * total_profit
+    expenses = _FIXTURE_PRIS_EXPENSES_PER_PROFIT * total_profit
+    expense_total = float(sum(_FIXTURE_PRIS_EXPENSE_AMOUNTS))
+    expenses_all = expenses / share
+    return HMRCPropertyRentalFacts(
+        tax_year=2024,
+        landlords={
+            "individual": mass,
+            "partnership": all_landlords - mass,
+            "all": all_landlords,
+        },
+        receipts={
+            "individual": receipts,
+            "partnership": receipts / share - receipts,
+            "all": receipts / share,
+        },
+        expenses={
+            "individual": expenses,
+            "partnership": expenses_all - expenses,
+            "all": expenses_all,
+        },
+        expenses_by_type={
+            kind: expenses_all * amount / expense_total
+            for kind, amount in zip(
+                HMRC_PROPERTY_RENTAL_EXPENSE_TYPES,
+                _FIXTURE_PRIS_EXPENSE_AMOUNTS,
+                strict=True,
+            )
+        },
+        expense_landlords_by_type={
+            kind: all_landlords / 2.0 for kind in HMRC_PROPERTY_RENTAL_EXPENSE_TYPES
+        },
+        receipts_bands=bands,
+        resource_sha256="synthetic-fixture",
+    )
+
+
+def _property_rental_facts_payload(facts: HMRCPropertyRentalFacts) -> dict[str, object]:
+    return {
+        **{
+            key: (dict(value) if isinstance(value, Mapping) else value)
+            for key, value in facts.__dict__.items()
+            if key != "receipts_bands"
+        },
+        "receipts_bands": [dict(band.__dict__) for band in facts.receipts_bands],
+    }
 
 
 def _cgt_asset_type_facts_payload(facts: HMRCCGTAssetTypeFacts) -> dict[str, object]:
     return {
         **{
-            key: value for key, value in facts.__dict__.items() if key != "table7_types"
+            key: value
+            for key, value in facts.__dict__.items()
+            if key not in ("table7_types", "table4_bands")
         },
         "table7_types": [dict(row.__dict__) for row in facts.table7_types],
+        "table4_bands": [dict(band.__dict__) for band in facts.table4_bands],
     }
 
 
@@ -1118,8 +1527,6 @@ def _fixture_stages(
     assert spec.sources is not None
     stages: list[SourceStageSpec] = []
     for committed in spec.sources.stages:
-        if committed.stage in UK_SPINE_EXCLUSIONS:
-            continue
         artifacts = [
             dict(frs_artifacts[str(artifact["table"])])
             if artifact.get("table") in frs_artifacts
@@ -1132,6 +1539,10 @@ def _fixture_stages(
         if stage.stage == "was_wealth":
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
+            )
+        elif stage.stage == "was_lisa":
+            stage = _replace_operation(
+                stage, "impute_lifetime_isa_balance", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "nts_bus_travel":
             stage = _replace_operation(
@@ -1293,6 +1704,7 @@ def _build_implementations(
     stages: Mapping[str, SourceStageSpec],
     raw_dir: Path,
     was: pd.DataFrame,
+    was_person: pd.DataFrame,
     nts_household: pd.DataFrame,
     nts_individual: pd.DataFrame,
     nts_trip: pd.DataFrame,
@@ -1305,7 +1717,9 @@ def _build_implementations(
     income_targets: HMRCIncomeTargetSet,
     cgt_distribution: HMRCCapitalGainsJointDistribution,
     cgt_parameters: UKCGTPolicyParameters,
+    cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
+    property_rental_facts: HMRCPropertyRentalFacts | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
     contract = load_uk_take_up_contract()
@@ -1365,6 +1779,12 @@ def _build_implementations(
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
         ),
+        "was_lisa": UKWASLISAStageTransform(
+            stage=stages["was_lisa"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
+        ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
             stage=stages["nts_bus_travel"],
             engine=engine,
@@ -1376,6 +1796,12 @@ def _build_implementations(
         ),
         "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
             stage=stages["regional_property_uprating"]
+        ),
+        "property_components": UKPropertyComponentsStageTransform(
+            stage=stages["property_components"],
+            spi_tab_path=raw_dir.parent / "spi_donor.csv",
+            donor_table=spi_donor,
+            facts=property_rental_facts,
         ),
         "lcfs_consumption": UKLCFSConsumptionStageTransform(
             stage=stages["lcfs_consumption"],
@@ -1418,30 +1844,47 @@ def _build_implementations(
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine
         ),
+        "spi_benefit_coherence": UKSPIBenefitCoherenceStageTransform(
+            stage=stages["spi_benefit_coherence"], contract=contract
+        ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
+        ),
+        "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
+            stage=stages["pension_credit_take_up"], engine=engine
+        ),
+        "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
+            stage=stages["child_benefit_take_up"], engine=engine
         ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
+        "cgt_support_split": UKCGTSupportSplitStageTransform(
+            stage=stages["cgt_support_split"],
+            distribution=cgt_distribution,
+            parameters=cgt_parameters,
+        ),
         "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
             stage=stages["cgt_incidence_clone"]
-        ),
-        "cgt_band_donors": UKCGTBandDonorStageTransform(
-            stage=stages["cgt_band_donors"]
         ),
         "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
             stages["hmrc_cgt_gains_spine"],
             distribution=cgt_distribution,
             parameters=cgt_parameters,
         ),
+        "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+            stage=stages["cgt_incidence_anchor"], parameters=cgt_parameters
+        ),
+        "cgt_residential_split": UKCGTResidentialSplitStageTransform(
+            stage=stages["cgt_residential_split"],
+            facts=cgt_asset_type_facts,
+            parameters=cgt_parameters,
+        ),
         "hmrc_cgt_asset_type_spine": UKCGTAssetTypeStageTransform(
             stage=stages["hmrc_cgt_asset_type_spine"],
             facts=cgt_asset_type_facts,
             parameters=cgt_parameters,
-        ),
-        "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
-            stage=stages["cgt_incidence_anchor"], parameters=cgt_parameters
+            badr_parameters=cgt_badr_parameters,
         ),
         "salary_sacrifice": UKSalarySacrificeStageTransform(
             stage=stages["salary_sacrifice"]
@@ -1458,7 +1901,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 34-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 40-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1528,11 +1971,13 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
+    was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
+    _write_csv(sources / "was_person.csv", was_person)
     _write_csv(sources / "nts_household.csv", nts_household)
     _write_csv(sources / "nts_individual.csv", nts_individual)
     _write_csv(sources / "nts_trip.csv", nts_trip)
@@ -1546,6 +1991,7 @@ def generate(output: Path) -> None:
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
     cgt_distribution = _cgt_distribution()
     cgt_parameters = uk_cgt_policy_parameters("2024")
+    cgt_badr_parameters = uk_cgt_badr_parameters("2024")
     _write_json(
         sources / "hmrc_income_targets.json", _hmrc_target_payload(income_targets)
     )
@@ -1558,6 +2004,7 @@ def generate(output: Path) -> None:
         stages=stage_map,
         raw_dir=raw_dir,
         was=was,
+        was_person=was_person,
         nts_household=nts_household,
         nts_individual=nts_individual,
         nts_trip=nts_trip,
@@ -1570,19 +2017,36 @@ def generate(output: Path) -> None:
         income_targets=income_targets,
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
+        cgt_badr_parameters=cgt_badr_parameters,
     )
-    # The asset-type facts are sized to the frame the amounts redraw leaves,
-    # so run the oracle up to that stage once, derive them, and only then
+    # The PRIS facts are sized to the frame property_components reads and the
+    # asset-type facts to the frame the amounts redraw and the anchor leave,
+    # so run the oracle up to each stage once, derive the facts, and only then
     # run the full plan on fresh transforms.
     implementations, _ = _build_implementations(**build_kwargs)
     stage_names = [stage.stage for stage in stages]
-    prefix = stages[: stage_names.index("hmrc_cgt_asset_type_spine")]
+    prefix = stages[: stage_names.index("property_components")]
+    prefix_names = {stage.stage for stage in prefix}
+    before_receipts = _run_legacy_plan(
+        prefix,
+        {name: impl for name, impl in implementations.items() if name in prefix_names},
+    )
+    property_rental_facts = _property_rental_facts(before_receipts)
+    _write_json(
+        sources / "property_rental_facts.json",
+        _property_rental_facts_payload(property_rental_facts),
+    )
+    build_kwargs["property_rental_facts"] = property_rental_facts
+    implementations, _ = _build_implementations(**build_kwargs)
+    prefix = stages[: stage_names.index("cgt_residential_split")]
     prefix_names = {stage.stage for stage in prefix}
     after_redraw = _run_legacy_plan(
         prefix,
         {name: impl for name, impl in implementations.items() if name in prefix_names},
     )
-    cgt_asset_type_facts = _cgt_asset_type_facts(after_redraw, cgt_parameters)
+    cgt_asset_type_facts = _cgt_asset_type_facts(
+        after_redraw, cgt_parameters, cgt_badr_parameters
+    )
     _write_json(
         sources / "cgt_asset_type_facts.json",
         _cgt_asset_type_facts_payload(cgt_asset_type_facts),
@@ -1613,6 +2077,7 @@ def generate(output: Path) -> None:
         "inputs": {
             "frs_raw": "frs_raw",
             "was": "was.csv",
+            "was_person": "was_person.csv",
             "nts_household": "nts_household.csv",
             "nts_individual": "nts_individual.csv",
             "nts_trip": "nts_trip.csv",
@@ -1625,8 +2090,10 @@ def generate(output: Path) -> None:
             "hmrc_income_targets": "hmrc_income_targets.json",
             "cgt_distribution": "cgt_distribution.json",
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
+            "property_rental_facts": "property_rental_facts.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
+        "cgt_badr_parameters": cgt_badr_parameters.__dict__,
     }
     _write_json(sources / "fixture.json", descriptor)
 
