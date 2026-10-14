@@ -636,6 +636,11 @@ class UKLCFSConsumptionStageTransform:
             donor_support=donor_realized_ranges(donor),
             uprating_factors=uprating_factors,
         )
+        energy_split = donor.attrs.get(UK_LCFS_ENERGY_SPLIT_RECEIPT)
+        if recomposed_totals_receipt is not None and isinstance(energy_split, Mapping):
+            recomposed_totals_receipt["uncarried"] = uncarried_beside_donor(
+                recomposed_totals_receipt["uncarried"], energy_split
+            )
         uprating = uprating_operation(self.stage)
         capture = (
             None
@@ -644,6 +649,7 @@ class UKLCFSConsumptionStageTransform:
                 household_draws,
                 weights=weights,
                 period_value=int(uprating["to_period"]),
+                donor=donor,
             )
         )
         litres_audit = fuel_litres_audit(
@@ -778,7 +784,11 @@ def _ons_annual_value(
 
 
 def division_capture(
-    household_draws: pd.DataFrame, *, weights: Sequence[float], period_value: int
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    period_value: int,
+    donor: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """How much of ONS household spending each LCFS division captures.
 
@@ -789,11 +799,38 @@ def division_capture(
     non-residents' spending in the UK and exclude residents' spending abroad,
     and the tourism adjustment is published for the total only, so only the
     total is also compared on the national concept. Nothing is gated on it.
+
+    With ``donor`` (the annualised donor the chain drew from, carried to the
+    base year), each division and the total also record the donor's weighted
+    total and the frame's over it, in all and per household: whether the chain
+    draws a division above its own donor, as microcosm#1167 found it did for
+    the transport remainder (microcosm#1207's furnishings and health item).
     """
 
     weight = np.asarray(weights, dtype=float)
+    donor_weight = (
+        None
+        if donor is None
+        else _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    )
+    frame_households = float(weight.sum())
+    donor_households = None if donor_weight is None else float(donor_weight.sum())
+
+    def beside_donor(frame: float, donor_total: float) -> dict[str, Any]:
+        usable = donor_total > 0 and frame_households > 0 and bool(donor_households)
+        return {
+            "donor": donor_total,
+            "frame_over_donor": frame / donor_total if donor_total > 0 else None,
+            "frame_over_donor_per_household": (
+                (frame / frame_households) / (donor_total / donor_households)
+                if usable
+                else None
+            ),
+        }
+
     divisions: dict[str, Any] = {}
     frame_total = 0.0
+    donor_grand_total = 0.0
     out_of_scope_total = 0.0
     for column, coicop in UK_LCFS_DIVISION_COICOP.items():
         published, record_id = _ons_annual_value(
@@ -823,6 +860,12 @@ def division_capture(
             "frame": frame,
             "capture": frame / survey_scope if survey_scope > 0 else None,
         }
+        if donor_weight is not None:
+            donor_total = float(
+                np.dot(donor_weight, _numeric(donor[column]).to_numpy(dtype=float))
+            )
+            donor_grand_total += donor_total
+            divisions[column].update(beside_donor(frame, donor_total))
     domestic, _ = _ons_annual_value(
         "0",
         source_sheet="0CN",
@@ -835,26 +878,33 @@ def division_capture(
         consumption_concept="national",
         period_value=period_value,
     )
+    total = {
+        "frame": frame_total,
+        "published_domestic": domestic,
+        "published_national": national,
+        "out_of_scope": out_of_scope_total,
+        "capture_domestic": frame_total / (domestic - out_of_scope_total),
+        "capture_national": frame_total / (national - out_of_scope_total),
+    }
+    if donor_weight is not None:
+        total.update(beside_donor(frame_total, donor_grand_total))
     return {
         "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
         "concept": UK_ONS_HFCE_CONCEPT,
         "period_type": "calendar_year",
         "period_value": int(period_value),
         "divisions": divisions,
-        "total": {
-            "frame": frame_total,
-            "published_domestic": domestic,
-            "published_national": national,
-            "out_of_scope": out_of_scope_total,
-            "capture_domestic": frame_total / (domestic - out_of_scope_total),
-            "capture_national": frame_total / (national - out_of_scope_total),
-        },
+        "total": total,
         "gated": False,
     }
 
 
 def division_capture_or_reason(
-    household_draws: pd.DataFrame, *, weights: Sequence[float], period_value: int
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    period_value: int,
+    donor: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """The division capture, or why it has no figures for this year.
 
@@ -865,7 +915,7 @@ def division_capture_or_reason(
 
     try:
         return division_capture(
-            household_draws, weights=weights, period_value=period_value
+            household_draws, weights=weights, period_value=period_value, donor=donor
         )
     except DiagnosticUnavailableError as error:
         return {
@@ -1661,6 +1711,28 @@ def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
         "period_value": period_value,
         "classes": classes,
         "total": float(sum(entry["value"] for entry in classes)),
+    }
+
+
+def uncarried_beside_donor(
+    uncarried: Mapping[str, Any], energy_split: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The published liquid and solid fuels beside the donor's own other fuels.
+
+    Report-only (microcosm#1207's liquid and solid fuels item): the donor's
+    other fuels, the diary codes the energy split leaves in the housing total
+    (``UK_LCFS_OTHER_FUEL_PARTS``), are its weighted annual diary total at
+    diary prices, before the donor is carried to the base year, so the ratio
+    reads how much of ONS 04.5.3 and 04.5.4 the survey captures, not a level
+    the stage sets.
+    """
+
+    donor_other = float(energy_split["other_fuels"])
+    published = float(uncarried["total"])
+    return {
+        **uncarried,
+        "donor_other_fuels_at_diary_prices": donor_other,
+        "donor_over_published": donor_other / published if published > 0 else None,
     }
 
 
