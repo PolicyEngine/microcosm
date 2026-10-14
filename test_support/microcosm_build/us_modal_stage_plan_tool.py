@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import sys
 
 from test_support.paths import paths_for
 
-ROOT = paths_for("microcosm-build").repository
+_PATHS = paths_for("microcosm-build")
+ROOT = _PATHS.repository
+#: The committed plan for Route A's base stage.
+ROUTE_A_BASE_PLAN = ROOT / "docs" / "us-modal-stage-route-a-base-plan.json"
+#: Route A's base command (base-config.json for 4b57d15a287c), paths tokenized.
+ROUTE_A_BASE_COMMAND = (
+    _PATHS.tests
+    / "fixtures"
+    / "modal_us_stage"
+    / "route_a_base_command_4b57d15a287c.json"
+)
 
 
 def _load():
@@ -22,6 +34,39 @@ def _load():
 
 
 plan_lib = _load()
+
+
+def load_app(monkeypatch):
+    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
+
+    The stub answers ``is_local()`` with False, so the module defines its
+    image and functions without reading a plan or contacting Modal; volume
+    calls (commit, reload) are recorded, not performed. Each
+    ``@app.function`` keeps its function and records its Modal options as
+    ``modal_options``.
+    """
+
+    from unittest.mock import MagicMock
+
+    stub = MagicMock(name="modal")
+    stub.is_local.return_value = False
+    stub.App.return_value.function.side_effect = lambda **options: (
+        lambda function: setattr(function, "modal_options", options) or function
+    )
+    stub.App.return_value.local_entrypoint.side_effect = lambda **_: lambda f: f
+    stub.current_input_id.return_value = "in-test"
+    stub.current_function_call_id.return_value = "fc-test"
+    monkeypatch.setitem(sys.modules, "modal", stub)
+    monkeypatch.setitem(sys.modules, "modal_us_stage_plan", plan_lib)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    spec = importlib.util.spec_from_file_location(
+        "modal_us_stage_under_test", ROOT / "tools" / "modal_us_stage.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
 
 COMMIT = "4d773a4785a1e2c7f0b9d3e6a8c5b1f2e3d4c5b6"
 STAGING_SHA = "a" * 64
@@ -64,6 +109,14 @@ def plan_data(stage: str = "materialize", **overrides) -> dict:
         },
         "options": {"soi_mode": "totals", "hh_chunk": 20000},
     }
+    data.update(overrides)
+    return data
+
+
+def base_plan_data(**overrides) -> dict:
+    """A deep copy of the committed Route A base plan, with top-level overrides."""
+
+    data = copy.deepcopy(json.loads(ROUTE_A_BASE_PLAN.read_text()))
     data.update(overrides)
     return data
 

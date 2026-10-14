@@ -115,6 +115,8 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "aggregate_admin",
         "area_support",
         "calibration_reference_coverage",
+        "cell_support",
+        "cell_support_target",
         "cgt_projection_entrants",
         "column_implication",
         "degenerate_release_surface",

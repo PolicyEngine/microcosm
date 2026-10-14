@@ -47,6 +47,10 @@ from microcosm.build.uk_runtime.bus_use_incidence import (
     nts_band_shares,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_GROSS_INCOME_VARIABLES,
+    hbai_gross_income,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
@@ -880,7 +884,12 @@ def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
 # Recipient predictors
 # --------------------------------------------------------------------------
 
-UK_NTS_ENGINE_PREDICTORS: tuple[str, ...] = ("household_gross_income",)
+#: The engine variables the recipient's income band is built from: the HBAI
+#: net income and the deductions that, added back, give gross cash income, the
+#: concept of the NTS household income band (microcosm#1164; the engine's
+#: ``household_gross_income`` adds capital gains and imputed NHS, education and
+#: transport spending, which put a fifth of households a band too high).
+UK_NTS_ENGINE_PREDICTORS: tuple[str, ...] = UK_HBAI_GROSS_INCOME_VARIABLES
 
 
 def _enum_name(value: object) -> str:
@@ -929,11 +938,7 @@ def recipient_predictors(
             f"recipient regions {unknown} are outside the donor's regions; declare a "
             "region_remap for them."
         )
-    gross = np.asarray(materialized["household_gross_income"], dtype=float)
-    if len(gross) != len(household):
-        raise NTSBusTravelError(
-            "household_gross_income did not materialize at household grain."
-        )
+    gross = hbai_gross_income(frame, engine, materialized)
     gross_by_household = (
         pd.Series(gross, index=by_household.index).reindex(hh_ids).to_numpy()
     )

@@ -4,17 +4,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import runpy
 from argparse import ArgumentParser, Namespace
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    ChronicleFeedPinMismatchError,
     LedgerConsumerArtifact,
     add_ledger_artifact_args,
     load_ledger_consumer_artifact,
     resolve_ledger_artifact,
+    validate_chronicle_feed_pin,
 )
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.paths import paths_for
 
 
 def _fact_row(**overrides):
@@ -113,6 +123,24 @@ def test_rejects_facts_pin_mismatch(tmp_path):
         )
 
 
+@pytest.mark.parametrize("hash_kind", ["facts", "manifest"])
+def test_rejects_hash_pin_mismatch_before_parsing_malformed_rows(tmp_path, hash_kind):
+    artifact_dir = _write_artifact_dir(tmp_path, [_fact_row()])
+    facts_path = artifact_dir / "consumer_facts.jsonl"
+    facts_path.write_text("{broken json}\n")
+    facts_sha256 = hashlib.sha256(facts_path.read_bytes()).hexdigest()
+    _rewrite_manifest(artifact_dir, facts_sha256=facts_sha256)
+    if hash_kind == "facts":
+        message = "Ledger consumer facts do not match the pinned hash"
+    else:
+        message = "Ledger consumer artifact manifest does not match the pinned hash"
+
+    with pytest.raises(ValueError, match=message):
+        load_ledger_consumer_artifact(
+            artifact_dir, **{f"expected_{hash_kind}_sha256": "0" * 64}
+        )
+
+
 def test_rejects_manifest_pin_mismatch_and_bare_manifest_pin(tmp_path):
     artifact_dir = _write_artifact_dir(tmp_path, [_fact_row()])
     with pytest.raises(ValueError, match="manifest does not match"):
@@ -198,3 +226,297 @@ def test_shared_cli_resolver_allows_absent_artifact_but_not_orphan_pins():
                 ledger_manifest_sha256=None,
             )
         )
+
+
+def _rewrite_manifest(artifact_dir, **overrides):
+    manifest_path = artifact_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(overrides)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    return hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+
+
+def _assert_pin_mismatch(error, field, expected, actual):
+    assert isinstance(error, ChronicleFeedPinMismatchError)
+    assert error.field == field
+    assert error.expected == expected
+    assert error.actual == actual
+    message = str(error)
+    assert field in message
+    assert str(expected) in message
+    assert str(actual) in message
+
+
+def test_complete_feed_pin_accepts_exact_match(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert artifact.facts_sha256 == pin["facts_sha256"]
+    assert artifact.manifest_sha256 == pin["manifest_sha256"]
+    assert artifact.fact_row_count == pin["fact_row_count"]
+
+
+def test_feed_pin_rejects_changed_facts_with_self_consistent_manifest(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    facts_path = artifact_dir / "consumer_facts.jsonl"
+    rows = [json.loads(line) for line in facts_path.read_text().splitlines()]
+    rows[0]["value"] = 999
+    changed_facts_sha256 = _write_facts(facts_path, rows)
+    _rewrite_manifest(artifact_dir, facts_sha256=changed_facts_sha256)
+    # The artifact's own checksum is valid; the reviewed feed pin must still
+    # reject it before any consumer can use the substituted facts.
+    assert load_ledger_consumer_artifact(artifact_dir).facts[0]["value"] == 999
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    _assert_pin_mismatch(
+        exc.value, "facts_sha256", pin["facts_sha256"], changed_facts_sha256
+    )
+
+
+def test_feed_pin_rejects_manifest_only_change(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    changed_manifest_sha256 = _rewrite_manifest(artifact_dir, producer_note="changed")
+    assert (
+        load_ledger_consumer_artifact(artifact_dir).facts_sha256 == pin["facts_sha256"]
+    )
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    _assert_pin_mismatch(
+        exc.value, "manifest_sha256", pin["manifest_sha256"], changed_manifest_sha256
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "altered"),
+    [
+        ("facts_sha256", "0" * 64),
+        ("manifest_sha256", "0" * 64),
+        ("artifact_schema_version", "policyengine_ledger.consumer_artifact.v2"),
+        ("consumer_fact_schema_versions", ["chronicle.consumer_fact.v5"]),
+        ("consumer_fact_schema_sha256", "0" * 64),
+        ("fact_row_count", 2),
+    ],
+    ids=[
+        "facts_sha256",
+        "manifest_sha256",
+        "artifact_schema_version",
+        "consumer_fact_schema_versions",
+        "consumer_fact_schema_sha256",
+        "fact_row_count",
+    ],
+)
+def test_feed_pin_rejects_each_identity_field(tmp_path, field, altered):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    changed_pin = {**pin, field: altered}
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=changed_pin)
+
+    _assert_pin_mismatch(exc.value, field, altered, pin[field])
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "facts_sha256",
+        "manifest_sha256",
+        "artifact_schema_version",
+        "consumer_fact_schema_versions",
+        "consumer_fact_schema_sha256",
+        "fact_row_count",
+    ],
+)
+def test_feed_pin_requires_every_identity_field(tmp_path, field):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    del pin[field]
+
+    with pytest.raises(ValueError, match=field):
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+
+@pytest.mark.parametrize(
+    ("field", "manifest_value"),
+    [
+        ("consumer_fact_schema_versions", ["chronicle.consumer_fact.v5"]),
+        ("fact_row_count", 2),
+    ],
+)
+def test_feed_pin_checks_manifest_declarations_against_observed_rows(
+    tmp_path, field, manifest_value
+):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    # Re-pin the changed manifest bytes to isolate its false declaration from
+    # the separate byte-identity check. Rows still declare v4 and number one.
+    pin["manifest_sha256"] = _rewrite_manifest(artifact_dir, **{field: manifest_value})
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    _assert_pin_mismatch(exc.value, field, pin[field], manifest_value)
+
+
+def test_feed_pin_checks_observed_rows_when_manifest_matches_pin(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    artifact = load_ledger_consumer_artifact(artifact_dir)
+    changed_row = {**artifact.facts[0], "schema_version": "chronicle.consumer_fact.v5"}
+    changed_artifact = replace(artifact, facts=(changed_row,))
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        validate_chronicle_feed_pin(changed_artifact, pin)
+
+    _assert_pin_mismatch(
+        exc.value,
+        "consumer_fact_schema_versions",
+        pin["consumer_fact_schema_versions"],
+        ["chronicle.consumer_fact.v5"],
+    )
+
+
+def test_feed_pin_requires_artifact_manifest(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(
+            artifact_dir / "consumer_facts.jsonl", feed_pin=pin
+        )
+
+    _assert_pin_mismatch(exc.value, "manifest_sha256", pin["manifest_sha256"], None)
+
+
+def test_feed_pin_cannot_omit_schema_digest_even_when_manifest_omits_it(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    pin["manifest_sha256"] = _rewrite_manifest(
+        artifact_dir, consumer_fact_schema_sha256=None
+    )
+    pin["consumer_fact_schema_sha256"] = None
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+    _assert_pin_mismatch(exc.value, "consumer_fact_schema_sha256", None, None)
+
+
+def test_full_feed_pin_error_precedes_legacy_hash_error(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    facts_path = artifact_dir / "consumer_facts.jsonl"
+    rows = [json.loads(line) for line in facts_path.read_text().splitlines()]
+    rows[0]["value"] = 999
+    changed_hash = _write_facts(facts_path, rows)
+    _rewrite_manifest(artifact_dir, facts_sha256=changed_hash)
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(
+            artifact_dir, feed_pin=pin, expected_facts_sha256=pin["facts_sha256"]
+        )
+    _assert_pin_mismatch(exc.value, "facts_sha256", pin["facts_sha256"], changed_hash)
+
+
+@pytest.mark.parametrize("hash_kind", ["facts", "manifest"])
+@pytest.mark.parametrize(
+    ("field", "altered"),
+    [
+        ("consumer_fact_schema_versions", ["chronicle.consumer_fact.v5"]),
+        ("fact_row_count", 2),
+    ],
+)
+def test_full_feed_row_pin_error_precedes_legacy_hash_error(
+    tmp_path, hash_kind, field, altered
+):
+    artifact_dir, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        load_ledger_consumer_artifact(
+            artifact_dir,
+            feed_pin={**pin, field: altered},
+            **{f"expected_{hash_kind}_sha256": "0" * 64},
+        )
+    _assert_pin_mismatch(exc.value, field, altered, pin[field])
+
+
+@pytest.fixture(scope="module")
+def valid_feed_artifact(tmp_path_factory):
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path_factory.mktemp("feed-pin-property"), [_fact_row()]
+    )
+    return load_ledger_consumer_artifact(artifact_dir), pin
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@given(
+    field=st.sampled_from(
+        [
+            "facts_sha256",
+            "manifest_sha256",
+            "artifact_schema_version",
+            "consumer_fact_schema_versions",
+            "consumer_fact_schema_sha256",
+            "fact_row_count",
+        ]
+    ),
+    delta=st.integers(min_value=1, max_value=65535),
+)
+def test_single_field_feed_pin_perturbation_is_always_rejected(
+    valid_feed_artifact, field, delta
+):
+    artifact, pin = valid_feed_artifact
+    validate_chronicle_feed_pin(artifact, pin)
+    previous = pin[field]
+    if field.endswith("sha256"):
+        index = delta % len(previous)
+        replacement = format((int(previous[index], 16) + 1 + delta % 15) % 16, "x")
+        altered = previous[:index] + replacement + previous[index + 1 :]
+    elif field == "fact_row_count":
+        altered = previous + delta
+    elif field == "consumer_fact_schema_versions":
+        altered = [f"chronicle.consumer_fact.v{4 + delta}"]
+    else:
+        altered = f"policyengine_ledger.consumer_artifact.v{1 + delta}"
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as exc:
+        validate_chronicle_feed_pin(artifact, {**pin, field: altered})
+
+    _assert_pin_mismatch(exc.value, field, altered, previous)
+
+
+def test_committed_feed_pin_preserves_uk_runtime_expectations():
+    build_root = paths_for("microcosm-build").package / "src/microcosm/build"
+    # Run the unchanged reader without importing the entire country runtime.
+    # Its resource lookup and parsing remain exactly the shipped implementation.
+    reader = runpy.run_path(str(build_root / "uk_runtime/chronicle_feed.py"))
+    resource = build_root / "uk/chronicle_feed.json"
+    raw = json.loads(resource.read_text())
+    runtime_pin = reader["load_uk_chronicle_feed"]().to_dict()
+
+    assert {key: runtime_pin[key] for key in raw} == raw
+    assert (
+        runtime_pin["resource_sha256"]
+        == hashlib.sha256(resource.read_bytes()).hexdigest()
+    )
+    assert runtime_pin["resource_size_bytes"] == resource.stat().st_size
+
+
+def test_real_nz_artifact_matches_committed_feed_pin():
+    artifact_path = os.environ.get("NZ_CHRONICLE_ARTIFACT")
+    if not artifact_path:
+        pytest.skip(
+            "NZ_CHRONICLE_ARTIFACT is unset; real NZ Chronicle artifact unavailable"
+        )
+
+    from microcosm.build import load_country_spec
+
+    spec = load_country_spec("nz")
+    assert "chronicle_feed.json" in spec.resources
+    resource = (
+        paths_for("microcosm-build").package
+        / "src/microcosm/build/nz/chronicle_feed.json"
+    )
+    pin = json.loads(resource.read_text())
+
+    artifact = load_ledger_consumer_artifact(Path(artifact_path), feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert artifact.fact_row_count == pin["fact_row_count"]
+    assert artifact.schema_version == pin["artifact_schema_version"]
+    assert list(artifact.fact_schema_versions) == pin["consumer_fact_schema_versions"]

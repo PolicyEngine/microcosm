@@ -124,6 +124,8 @@ from microcosm.build.gates import (  # noqa: E402 - after the compat gate
     weights_audit_gate,
 )
 from microcosm.build.holdout import (  # noqa: E402 - after the compat gate
+    hash_holdout_uniform,
+    hash_holdout_unit,
     rotated_folds,
     summarize_rotations,
 )
@@ -188,7 +190,7 @@ from microcosm.build.staging import (  # noqa: E402 - after the compat gate
     LATEST_STAGING_POINTER,
     RUNS_INDEX,
     STAGING_SCHEMA_VERSION,
-    StagingTelemetry,
+    StagingRunBundleWriter,
 )
 
 __version__ = "0.1.0"
@@ -231,7 +233,7 @@ __all__ = [
     "LATEST_STAGING_POINTER",
     "RUNS_INDEX",
     "STAGING_SCHEMA_VERSION",
-    "StagingTelemetry",
+    "StagingRunBundleWriter",
     "TargetCoverageRequirement",
     "TargetFitRequirement",
     "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",
@@ -270,6 +272,8 @@ __all__ = [
     "export_surface_gate",
     "exported_nonzero_gate",
     "formula_owned_export_gate",
+    "hash_holdout_uniform",
+    "hash_holdout_unit",
     "input_column_coverage_gate",
     "input_mass_parity_gate",
     "ledger_compile_parity_gate",

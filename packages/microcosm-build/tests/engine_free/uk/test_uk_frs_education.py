@@ -80,6 +80,15 @@ def test_training_qyp_ema_and_benefits_in_own_right() -> None:
     result = derive_frs_education(person, raw)
 
     assert result["is_in_approved_training"].tolist() == [True, False, False]
+    # FRS 2024-25 renames the variable to train2 and recodes it: 9 is "None
+    # of these" and 10 the Kickstart Scheme (microcosm#1063 c9).
+    recoded = derive_frs_education(
+        person, raw.drop(columns=["train"]).assign(train2=[9, 10, 1])
+    )
+    assert recoded["is_in_approved_training"].tolist() == [False, True, True]
+    assert derive_frs_education(person, raw.drop(columns=["train"]))[
+        "is_in_approved_training"
+    ].tolist() == [False, False, False]
     assert result["age_started_or_accepted_current_education_or_training"].tolist() == [
         18,
         1000,

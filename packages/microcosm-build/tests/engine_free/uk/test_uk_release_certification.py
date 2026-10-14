@@ -165,17 +165,50 @@ def test_compose_green_certification(green_certification_inputs):
         green_certification_inputs["certification_path"].read_text(encoding="utf-8")
     )
     assert written["attestation"]["signature"]
-    # The certification's own signature verifies under the release key.
+    # The certification's own signature verifies under the release key, over
+    # the gate battery's canonical bytes (the form every signed UK report
+    # and the data contract's verifier share).
     import hmac as hmac_module
 
-    from microcosm.build.logbook import canonical_json_bytes
+    from microcosm.build.gate_battery import canonical_report_bytes
 
     unsigned = json.loads(json.dumps(written))
     unsigned["attestation"]["signature"] = None
     recomputed = hmac_module.new(
-        base64.b64decode(_TEST_KEY), canonical_json_bytes(unsigned), hashlib.sha256
+        base64.b64decode(_TEST_KEY), canonical_report_bytes(unsigned), hashlib.sha256
     ).hexdigest()
     assert recomputed == written["attestation"]["signature"]
+
+
+def test_compose_verifies_parts_the_battery_signed_over_floats(
+    green_certification_inputs,
+):
+    """A real battery report carries floats such as 1.0 and 1e-05.
+
+    The battery signs over its own canonical bytes, which render them as
+    Python does; the logbook's #628 form renders them as 1 and 0.00001, so
+    a verifier using it refused every real spine report while agreeing with
+    the float-free synthetic fixtures (the 3 October 2026 certifier run on
+    microcosm#1063's final build). The seam part gets such floats here and
+    must still compose.
+    """
+
+    seam_path = green_certification_inputs["seam_report_path"]
+    payload = json.loads(seam_path.read_text(encoding="utf-8"))
+    payload["aggregate_admin_measurement"] = {
+        "whole_ratio": 1.0,
+        "tiny_share": 1e-05,
+        "plain": 0.5,
+    }
+    _FIXTURES.resign_uk_gate_report(payload)
+    seam_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    green_certification_inputs["build_record"]["artifacts"]["terminal_gate_json"][
+        "sha256"
+    ] = _sha(seam_path)
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["attestation"]["signature"]
 
 
 def test_compose_refuses_tampered_part_signature(green_certification_inputs):
@@ -462,6 +495,33 @@ def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypa
         compose_uk_release_certification(**green_certification_inputs)
 
 
+def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_report(
+    tmp_path: Path,
+):
+    # The compile-parity gates read an unresolved reference as ledger_absent
+    # only from the compile's own report, so a period that was compiled must
+    # bring its report, empty or not.
+    with pytest.raises(ValueError, match=r"national compile reported no .*\['2025'\]"):
+        run_uk_release_cut_battery(
+            object(),
+            report_path=tmp_path / "release_cut_gates.json",
+            release_id="uk-757-first-certified-cut",
+            diagnostics_sha256="a" * 64,
+            coverage_engine=object(),
+            build_stage_names=("frs_spine",),
+            ledger_registries={2025: object()},
+            local_ledger_registries={2025: object()},
+            ledger_unsupported={},
+            local_ledger_unsupported={2025: ()},
+            parity_evidence=object(),
+            fit_weight_records=None,
+            input_mass_reference={},
+            exclusions_evaluated_on=date(2026, 8, 27),
+            gate_registry=_stub_registry(),
+            spine_frame=object(),
+        )
+
+
 def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         release_certification,
@@ -476,8 +536,10 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         diagnostics_sha256="a" * 64,
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
-        ledger_registries={2023: object(), 2025: object()},
+        ledger_registries={2025: object()},
         local_ledger_registries={2025: object()},
+        ledger_unsupported={2025: ()},
+        local_ledger_unsupported={2025: ()},
         parity_evidence=object(),
         fit_weight_records=None,
         input_mass_reference={},

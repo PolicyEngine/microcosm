@@ -1,0 +1,28 @@
+{
+ "donor_rate": {},
+ "donor_uprating": null,
+ "gates": {
+  "uk_stage_etb_vat_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "predictors": [
+  "is_adult",
+  "is_child",
+  "is_SP_age",
+  "household_net_income"
+ ],
+ "seconds": 29.2,
+ "share_at_one": 0.0009901460084848679,
+ "share_at_zero": 0.0008410857216555647,
+ "spine": "uk_frs_spine_2024_25.h5",
+ "weighted_mean_rate": 0.40076272139580627,
+ "weighted_mean_rate_by_hbai_net_income_quintile": {
+  "1": 0.3579249503925194,
+  "2": 0.411715705441751,
+  "3": 0.4125187453448363,
+  "4": 0.41645590029393303,
+  "5": 0.40519413816224603
+ }
+}

@@ -562,14 +562,18 @@ def test_driver_ladder_spine_lineage_plan_manifest_parity(
             "household_support_clone_index",
             "household_is_spi_synthetic",
             "household_is_capital_gains_clone",
-            "household_is_cgt_band_donor",
+            "household_is_cgt_support_copy",
+            "cgt_support_copy_index",
+            "household_is_cgt_residential_clone",
+            "cgt_residential_clone_index",
         ],
         "distinct_source_households": 3,
         "distinct_by_support_channel": {"frs": 1, "spi": 2},
         "flag_counts": {
             "household_is_spi_synthetic": 2,
             "household_is_capital_gains_clone": 1,
-            "household_is_cgt_band_donor": 1,
+            "household_is_cgt_support_copy": 1,
+            "household_is_cgt_residential_clone": 0,
         },
     }
 

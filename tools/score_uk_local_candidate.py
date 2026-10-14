@@ -19,7 +19,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
+from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_TARGET_LOSS_CAP,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
+)
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TargetRegistry,
@@ -27,7 +30,12 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 20_885
+#: The compiled local reference count the score covers. microcosm#1123
+#: regenerated the UK target surface on the 942a1fa feed and moved it from
+#: 20,885 to 21,804 (docs/evidence/uk-target-surface-1123/surface-diff.json,
+#: ``register_completeness.compiled_local_reference_count``).
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 21_804
+_LOCAL_GRAINS = ("constituency", "local_authority", "la")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -153,7 +161,7 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
             f"at {float(UK_LOCAL_TARGET_LOSS_CAP)!r}; re-measure the candidate "
             "rather than reporting the two on different scales."
         )
-    if holdout.get("target_weight_rule") not in ("uniform", "grain_equal"):
+    if holdout.get("target_weight_rule") not in UK_LOCAL_TARGET_WEIGHT_RULES:
         raise ValueError("candidate holdout target_weight_rule is missing or invalid.")
     if holdout.get("loss_weight_scale") != "held_local_grains_only":
         raise ValueError(
@@ -549,6 +557,35 @@ def _read_json(path: Path) -> dict[str, object]:
     return payload
 
 
+def load_scored_registry(path: Path) -> TargetRegistry:
+    """The registry the score covers, from a registry artifact or a graph build.
+
+    A graph-built candidate records its selected registry inside its target
+    selection (the manifest's ``outputs.target_registry``), national and local
+    rows together; the local rows are the surface this scorer covers.
+    """
+
+    payload = _read_json(path)
+    if not {"registry", "receipt"} <= set(payload):
+        return TargetRegistry.from_json(path)
+    from microcosm.build.uk_runtime.graph_targets import registry_from_payload
+
+    selected = registry_from_payload(payload["registry"])
+    return TargetRegistry(
+        [
+            spec
+            for spec in selected.specs
+            if str(
+                spec.metadata.get(
+                    "ledger_geography_level", spec.metadata.get("geography_level", "")
+                )
+            )
+            in _LOCAL_GRAINS
+        ],
+        country=selected.country,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-diagnostics-json", required=True, type=Path)
@@ -557,7 +594,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--incumbent-weights-sha256", required=True)
     parser.add_argument("--incumbent-household-metrics-csv", required=True, type=Path)
     parser.add_argument("--incumbent-household-metrics-sha256", required=True)
-    parser.add_argument("--registry-json", required=True, type=Path)
+    parser.add_argument(
+        "--registry-json",
+        required=True,
+        type=Path,
+        help=(
+            "the frozen local target registry artifact, or a graph-built "
+            "candidate's target selection (manifest outputs.target_registry)"
+        ),
+    )
     parser.add_argument("--registry-sha256", required=True)
     parser.add_argument("--output-json", required=True, type=Path)
     args = parser.parse_args(argv)
@@ -584,7 +629,7 @@ def main(argv: list[str] | None = None) -> int:
         candidate_diagnostics=_read_json(args.candidate_diagnostics_json),
         incumbent_weights=pd.read_csv(args.incumbent_weights_csv),
         incumbent_metrics=pd.read_csv(args.incumbent_household_metrics_csv),
-        target_registry=TargetRegistry.from_json(args.registry_json),
+        target_registry=load_scored_registry(args.registry_json),
     )
     score["artifacts"] = artifacts
     args.output_json.write_text(

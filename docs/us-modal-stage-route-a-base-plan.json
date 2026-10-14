@@ -1,0 +1,61 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "us-puf-support-base",
+  "stage": "all",
+  "run_id": "route-a-base-4b57d15a287c",
+  "source": {
+    "commit": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
+    "branch": "main"
+  },
+  "inputs": {
+    "asec_2024_h5": {
+      "uri": "volume://cas/sha256/ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d/census_cps_2024.h5",
+      "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d"
+    },
+    "asec_2023_h5": {
+      "uri": "volume://cas/sha256/cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88/census_cps_2023.h5",
+      "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88"
+    },
+    "asec_2022_h5": {
+      "uri": "volume://cas/sha256/7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e/census_cps_2022.h5",
+      "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e"
+    },
+    "puf_2024_h5": {
+      "uri": "volume://cas/sha256/7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df/puf_2024.h5",
+      "sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df"
+    },
+    "puf_2015_csv": {
+      "uri": "volume://cas/sha256/0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df/puf_2015.csv",
+      "sha256": "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df"
+    },
+    "acs_2022_h5": {
+      "uri": "volume://cas/sha256/0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4/acs_2022.h5",
+      "sha256": "0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4"
+    },
+    "asec_education_2022_zip": {
+      "uri": "volume://cas/sha256/d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11/asecpub23csv.zip",
+      "sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11"
+    },
+    "asec_education_2023_zip": {
+      "uri": "volume://cas/sha256/cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09/asecpub24csv.zip",
+      "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+    },
+    "asec_education_2024_zip": {
+      "uri": "volume://cas/sha256/318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b/asecpub25csv.zip",
+      "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+    },
+    "base_ledger_facts": {
+      "uri": "volume://cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl",
+      "sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+    },
+    "block_ladder_npz": {
+      "uri": "volume://cas/sha256/7ba39b959068181b56a7ce1dc8f2477b31af33f28d0a1803ff6cba84cdfab06b/us_block_ladder_2020.npz",
+      "sha256": "7ba39b959068181b56a7ce1dc8f2477b31af33f28d0a1803ff6cba84cdfab06b"
+    }
+  },
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "max_wall_seconds": 14400,
+  "nonpreemptible": true
+}
