@@ -1,0 +1,151 @@
+{
+  "purpose": "Aggregate-only provenance audit of the feed-declared zero EITC controls dominating the national fixed-scale error mean.",
+  "feed": {
+    "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
+    "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+    "sha256_verified": true
+  },
+  "fresh_national_design1": {
+    "source_file": "national_all_design1.json",
+    "n_targets": 504,
+    "n_zero_valued_targets": 26
+  },
+  "facts": [
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+      "feed_line": 22564,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:22564",
+      "value": 0,
+      "value_type": "integer",
+      "unit": "count",
+      "assertion": "observation",
+      "schema_version": "chronicle.consumer_fact.v3",
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "geography": {
+        "id": "0100000US",
+        "level": "country",
+        "name": "United States",
+        "vintage": "2020_census"
+      },
+      "source_cell_keys": [
+        "ledger.source_cell.v1:d079e19d89e2a1a7f426b439",
+        "ledger.source_cell.v1:1a340fdcaf95dcc9c2506e3f",
+        "ledger.source_cell.v1:b45a802f459714f0c8da116d",
+        "ledger.source_cell.v1:662f56d0b5e4aa0bef8b99ec",
+        "ledger.source_cell.v1:eeb447fb00d785aa74ff5327",
+        "ledger.source_cell.v1:726855f7ae231f94ade489e1"
+      ],
+      "source_row_keys": [],
+      "source": {
+        "source_file": "23in25ic.xls",
+        "source_table": "Publication 1304 Table 2.5 EITC by AGI and qualifying children",
+        "source_sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "url": "https://www.irs.gov/pub/irs-soi/23in25ic.xls",
+        "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+        "extracted_at": "2026-05-11"
+      },
+      "missing_suppression_quality_status_flags": {}
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+      "feed_line": 27766,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:27766",
+      "value": 0,
+      "value_type": "integer",
+      "unit": "usd",
+      "assertion": "observation",
+      "schema_version": "chronicle.consumer_fact.v3",
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "geography": {
+        "id": "0100000US",
+        "level": "country",
+        "name": "United States",
+        "vintage": "2020_census"
+      },
+      "source_cell_keys": [
+        "ledger.source_cell.v1:0d74aeec12c638ea228d3b42",
+        "ledger.source_cell.v1:f5ac97c57cdb509a43f6d3bb",
+        "ledger.source_cell.v1:b45a802f459714f0c8da116d",
+        "ledger.source_cell.v1:662f56d0b5e4aa0bef8b99ec",
+        "ledger.source_cell.v1:eeb447fb00d785aa74ff5327",
+        "ledger.source_cell.v1:726855f7ae231f94ade489e1"
+      ],
+      "source_row_keys": [],
+      "source": {
+        "source_file": "23in25ic.xls",
+        "source_table": "Publication 1304 Table 2.5 EITC by AGI and qualifying children",
+        "source_sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "url": "https://www.irs.gov/pub/irs-soi/23in25ic.xls",
+        "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+        "extracted_at": "2026-05-11"
+      },
+      "missing_suppression_quality_status_flags": {}
+    }
+  ],
+  "metric": {
+    "scale_definition": "max(abs(target), 1)",
+    "zero_target_scale": 1,
+    "objective_per_target_cap": 10,
+    "target_loss_weights": "equal",
+    "interpretation": "For a zero-valued target, the uncapped fixed-scale error equals the absolute miss divided by one unit of that measure; it is not a conventional percentage relative to a nonzero target. The capped objective bounds each such contribution at 10."
+  },
+  "source_code_evidence": [
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:901",
+      "finding": "The numeric-fact validator rejects missing, invalid, or non-finite values; finite zero is accepted."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:773",
+      "finding": "Identity references use the source numeric value."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:820",
+      "finding": "The numeric value becomes the TargetSpec value."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:2130",
+      "finding": "Latest-observation selection can skip a zero only through the zero-as-missing helper."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:2148",
+      "finding": "The zero-as-missing helper applies only to specified CMS Medicaid roles, not IRS EITC."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:1245",
+      "finding": "EITC AGI-control uprating multiplies the source target value by a factor, preserving zero."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:1259",
+      "finding": "The all-return EITC uprating fallback also multiplies the target value by a factor, preserving zero."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:594",
+      "finding": "Default fixed target scales use the absolute target with a one-unit floor."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:532",
+      "finding": "The reported canonical objective caps scaled absolute errors before averaging."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:576",
+      "finding": "The optimization loss applies the same cap using torch.clamp."
+    }
+  ],
+  "conclusions": {
+    "declared_zero_in_consumer_feed": true,
+    "explicit_missing_or_suppression_flag_found": false,
+    "underlying_workbook_checked": false,
+    "underlying_source_cells_checked": false,
+    "zero_semantics_verified": false,
+    "interpretation": "The feed declares numeric observations equal to zero. Available metadata does not establish whether those zeros reflect the substantive source data or an extraction/source-data issue. They must not be described as suppressed or missing on this evidence.",
+    "deduction": "Capped-fit improvement can coexist with higher uncapped error because errors beyond the cap make equal contributions to the fitted objective. This alone does not establish more accurate EITC estimation.",
+    "targets_changed_for_this_audit": false,
+    "target_handling": "All targets remain unchanged across the designs in this run."
+  }
+}

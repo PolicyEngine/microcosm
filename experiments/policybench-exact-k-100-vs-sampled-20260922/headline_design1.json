@@ -1,0 +1,130 @@
+{
+  "settings": {
+    "target_set": "headline"
+  },
+  "result": {
+    "weight_each": 1232343.8385038802,
+    "fit": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.3864857311652927,
+      "uncapped_mape": 0.3864857311652927,
+      "median_abs_rel_error": 0.42520793239287114,
+      "share_within_10pct": 0.0625,
+      "share_within_25pct": 0.28125,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.6918368455038286
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.6024550673738137
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 0.5775903328169364
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.15_to_19.population",
+          "relative_error": -0.5594016887408155
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.6918368455038286
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.6024550673738137
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 0.5775903328169364
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.15_to_19.population",
+          "relative_error": -0.5594016887408155
+        }
+      ]
+    },
+    "weights": {
+      "n": 100,
+      "total": 123234383.85038804,
+      "max_over_mean": 0.9999999999999998,
+      "min_over_mean": 0.9999999999999998,
+      "top10_share": 0.09999999999999999,
+      "kish_ess": 100.00000000000007,
+      "n_above_5x_own_median": 0,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 0,
+      "n_above_10x_equal_share": 0
+    }
+  },
+  "file_total_sensitivity": {
+    "weight_each": 1601598.7092574474,
+    "fit": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.30872494277706264,
+      "uncapped_mape": 0.30872494277706264,
+      "median_abs_rel_error": 0.2995264953698369,
+      "share_within_10pct": 0.1875,
+      "share_within_25pct": 0.4375,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 1.0502935640463111
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": 0.7360307908203959
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.5994999974349956
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.4833361996284011
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 1.0502935640463111
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": 0.7360307908203959
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.5994999974349956
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.4833361996284011
+        }
+      ]
+    }
+  }
+}
