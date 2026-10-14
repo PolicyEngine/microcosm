@@ -722,8 +722,6 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
                 "columns": {
                     "housing_water_and_electricity_consumption": {
                         "rows_raised": 250,
-                        "negative_mass": -1.0e6,
-                        "minimum_before": -14_165.0,
                     }
                 },
                 **floor_changes,
@@ -766,7 +764,7 @@ def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
     below = evidence()
     below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
         "donor_min"
-    ] = -14_165.0
+    ] = -50.0
     assert any("below the donor floor" in f for f in gate(below).failures)
     # Without a declared floor (the WAS clip gate) the receipt is not required.
     undeclared = {**parameters}
@@ -1824,7 +1822,14 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
         }
     )
     _, receipt = recompose_parent_totals(
-        draws, drawn=drawn, parameters=declared, weights=np.array([2.0, 1.0])
+        draws,
+        drawn=drawn,
+        parameters=declared,
+        weights=np.array([2.0, 1.0]),
+        donor_support={
+            "housing_water_and_electricity_consumption": (0.0, 6000.0),
+            "transport_consumption": (0.0, 1e9),
+        },
     )
 
     def run(ev):
@@ -1848,6 +1853,21 @@ def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     assert passed.passed, passed.failures
     assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
     housing = "housing_water_and_electricity_consumption"
+    # 7000 - 2000 + 1600 is held at 6000 (microcosm#1164).
+    assert receipt["parents"][housing]["rows_held_at_maximum"] == 1
+    assert receipt["parents"][housing]["weighted_held_mass"] == 2.0 * 600.0
+    failing(
+        lambda r: r["parents"][housing].update(weighted_held_mass=0.0),
+        "is not its remainder plus components",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(maximum_total="none"),
+        "declared maximum_total",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(rows_held_at_maximum=-1),
+        "rows held at the maximum",
+    )
     failing(
         lambda r: r["parents"][housing].update(minimum_remainder=-1.0),
         "negative remainder",

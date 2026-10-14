@@ -442,13 +442,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "bb727d8c8af98b9d3376d5e8eabb2eaeb708a2dd26379cbc3599af38f29a03c4"
+    "60f9a05a74023604684478038516477b5eb4cd2674fe76fddfc1848edc402850"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a34f6782a2f2f2da7126d2e3a59881745130ff4d73733b8bd4c38eb425549061"
+    "e3c3b0a0dd1fe87964f0c45a894e56bb6a1ce6def56c061ab5ae9074d64c44ba"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7fffef7f4f2aaeb25a42c06f94388416858ac8d6305d64f0c59d8bc840333872"
+    "4560684d4f936f86766cf921f745a6971b2ec2bed2aaf4e7ab73a2081349c771"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -886,10 +886,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "d9257e187f8afaca9e64a58c2ad48bf0e68762322f93b18f778f99f5d76f5476"
+            "5bdabd730cf1073624b109f2a51caa340129d647520a6a7e7461e44f99a0cd28"
         ),
         "policy_sha256": (
-            "56fb5272f0cb23c290de5274331abf2bf434f4f480c9417a007ee2f5122edf5d"
+            "4890cb7d519165f0e4d32905b75a498d28ed10d2442cf00d36ec89ee762dcb7b"
         ),
     },
     "calibration_seam": {
@@ -902,10 +902,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "9b99952cec1a04d81ccad45838f6b5d3e493a142ce39c51e7c184efb31d087bb"
+            "e2424457d6e4654ef1151c2e8c189af95c379930a990572950d1c4768a5e06d9"
         ),
         "policy_sha256": (
-            "bd9a569e80f666eda0fb1346908c8408b331e89be7f57b081cdf1504a0b15af5"
+            "5377ce013d9ffd1ecb66f378b34b83c7947d053bf9ebc7c084fb9d81109bbc8f"
         ),
     },
 }

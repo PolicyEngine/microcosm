@@ -1602,7 +1602,8 @@ class TestUKGatesManifest:
             "accommodation",
             "region",
         ]
-        assert energy_rake["maximum_relative_deviation"] == 0.025
+        # María's ruling of 2026-10-12 (microcosm#1164).
+        assert energy_rake["maximum_relative_deviation"] == 0.035
         assert energy_rake["convergence_window_sweeps"] == 10
         assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
