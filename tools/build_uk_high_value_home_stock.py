@@ -27,13 +27,12 @@ from __future__ import annotations
 
 import argparse
 import csv
-import datetime as _dt
 import hashlib
 import io
 import json
 import sys
 import zipfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +82,33 @@ DEFAULT_BOUNDS_OUT = UK_PACKAGE / "price_paid_property_support_bounds.json"
 WAS_BOUNDS = UK_PACKAGE / "was_wealth_support_bounds.json"
 
 METHOD_VERSION = "uk-high-value-home-stock-v1"
+#: The inputs' licences and the attribution statements their publishers ask
+#: for on derived data (microcosm#1240 review). The derived resources carry
+#: aggregates only; no address data is published.
+LICENCE = {
+    "licence": "Open Government Licence v3.0 (every input); NSPL third-party notices below",
+    "attribution": [
+        (
+            "Contains HM Land Registry data © Crown copyright and database right 2026. "
+            "This data is licensed under the Open Government Licence v3.0."
+        ),
+        "Contains OS data © Crown copyright and database right 2026",
+        "Contains Royal Mail data © Royal Mail copyright and database right 2026",
+        "Source: Office for National Statistics licensed under the Open Government Licence v.3.0",
+        (
+            "Contains public sector information licensed under the Open Government Licence v3.0 "
+            "(Valuation Office Agency CTSOP1.1; Office for Budget Responsibility)"
+        ),
+    ],
+    "inputs": {
+        "price_paid": "HM Land Registry Price Paid Data, OGL v3.0 (address data under Royal Mail and Ordnance Survey terms; none is published here)",
+        "uk_hpi": "HM Land Registry UK House Price Index, OGL v3.0",
+        "nspl": "ONS National Statistics Postcode Lookup, OGL v3.0 with OS and Royal Mail notices (England and Wales postcodes only)",
+        "voa_ctsop": "Valuation Office Agency CTSOP1.1, OGL v3.0",
+        "census_ts054": "ONS Census 2021 TS054, OGL v3.0",
+        "obr_hvcts": "Office for Budget Responsibility costing note, OGL v3.0",
+    },
+}
 FACT_KEY_PREFIX = "microcosm.derived_fact.high_value_home_stock.v1:"
 SEMANTIC_KEY_PREFIX = "microcosm.semantic_fact.high_value_home_stock.v1:"
 ROW_SCHEMA_VERSION = "microcosm.derived_consumer_fact.v1"
@@ -186,7 +212,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "predates chronicle#349 (recorded as a parameter, not a fact)."
         ),
     )
-    parser.add_argument("--built-on", default=_dt.date.today().isoformat())
+    parser.add_argument(
+        "--built-on",
+        required=True,
+        help=(
+            "Build date recorded in the resources (YYYY-MM-DD); passed explicitly "
+            "so a rerun reproduces the committed bytes."
+        ),
+    )
     parser.add_argument("--facts-out", type=Path, default=DEFAULT_FACTS_OUT)
     parser.add_argument("--knots-out", type=Path, default=DEFAULT_KNOTS_OUT)
     parser.add_argument("--provenance-out", type=Path, default=DEFAULT_PROVENANCE_OUT)
@@ -419,24 +452,144 @@ def _obr_non_owner_share(facts: Iterable[Mapping]) -> tuple[float, str]:
     )
 
 
-def _hpssa_parity(
-    facts: Iterable[Mapping], transfers_by_seat_fy: pd.DataFrame | None
-) -> dict[str, object]:
-    """Seat sales counts by fiscal year in the feed, for the parity receipt."""
-    sales: dict[tuple[str, str], float] = {}
+#: HPSSA property-type labels by the library's ``ptype`` code; ``all`` is the
+#: feed's dimensionless row.
+HPSSA_TYPE_LABELS = {
+    hv._TYPE_CODE["D"]: "detached",
+    hv._TYPE_CODE["S"]: "semi_detached",
+    hv._TYPE_CODE["T"]: "terraced",
+    hv._TYPE_CODE["F"]: "flat_maisonette",
+}
+#: Parity tolerances: chronicle#343 accepted the registration at seat sales
+#: within 0.3 per cent for the years to March 2025; medians are rounded by
+#: ONS to the pound, so one per cent covers rounding and late registrations.
+HPSSA_SALES_TOLERANCE = 0.003
+HPSSA_MEDIAN_TOLERANCE = 0.01
+
+
+def _hpssa_feed_cells(facts: Iterable[Mapping]) -> dict[str, dict[tuple, float]]:
+    """The HPSSA seat cells in the feed: ``{measure: {(seat, fy, type): value}}``."""
+    cells: dict[str, dict[tuple, float]] = {"sales": {}, "median": {}}
     for fact in facts:
         observed = fact.get("observed_measure") or {}
-        if observed.get("source_concept") != HPSSA_SALES_CONCEPT:
-            continue
-        dims = fact.get("dimensions") or {}
-        if dims.get("property_type") not in (None, "", "all"):
+        concept = observed.get("source_concept")
+        if concept == HPSSA_SALES_CONCEPT:
+            measure = "sales"
+        elif concept == HPSSA_MEDIAN_CONCEPT:
+            measure = "median"
+        else:
             continue
         geography = fact.get("geography") or {}
         if geography.get("level") != "constituency":
             continue
-        period = str((fact.get("period") or {}).get("value"))
-        sales[(str(geography.get("id")), period)] = float(fact["value"])
-    return {"hpssa_seat_fiscal_year_cells": len(sales), "cells": sales}
+        ptype = (fact.get("dimensions") or {}).get("property_type") or "all"
+        period = int((fact.get("period") or {}).get("value"))
+        value = fact.get("value")
+        if value is None:
+            continue
+        cells[measure][(str(geography.get("id")), period, str(ptype))] = float(value)
+    return cells
+
+
+def _hpssa_price_paid_cells(
+    ppd_dir: Path,
+    ppd_files: Mapping[str, Mapping[str, object]],
+    *,
+    fiscal_years: Sequence[int],
+    postcode_index: pd.Index,
+    postcode_oa: pd.Series,
+    support: Mapping[str, np.ndarray],
+) -> dict[str, dict[tuple, float]]:
+    """Category A residential sales by seat, fiscal year and type, with medians.
+
+    Every transfer of the HPSSA years counts, bulk transfers included (each is
+    a dwelling sold); the seat is the 2024 constituency of the transfer's
+    output area in the committed support, so the comparison shares the frame's
+    geography rather than the NSPL's own constituency column.
+    """
+    oa_index = pd.Index(np.asarray(support["area"]).astype(str))
+    oa_seat = np.asarray(support["constituency_code"]).astype(str)
+    years = sorted({fy for fy in fiscal_years} | {fy + 1 for fy in fiscal_years})
+    frames = []
+    for key in sorted(ppd_files, key=int):
+        if int(key) not in years:
+            continue
+        path = ppd_dir / str(ppd_files[key]["filename"])
+        frame = hv.read_price_paid_file(path, postcode_index=postcode_index)
+        frame = frame[frame["postcode_row"] >= 0]
+        oa = postcode_oa.to_numpy().astype(str)[frame["postcode_row"].to_numpy()]
+        position = oa_index.get_indexer(oa)
+        frame = frame[position >= 0]
+        seat = oa_seat[position[position >= 0]]
+        year = frame["yyyymm"].to_numpy() // 100
+        month = frame["yyyymm"].to_numpy() % 100
+        fiscal = np.where(month >= 4, year, year - 1)
+        frames.append(
+            pd.DataFrame(
+                {
+                    "seat": seat,
+                    "fy": fiscal,
+                    "ptype": frame["ptype"].to_numpy(),
+                    "price": frame["price"].to_numpy(),
+                }
+            )
+        )
+    sales = pd.concat(frames, ignore_index=True)
+    sales = sales[sales["fy"].isin(list(fiscal_years))]
+    sales["type"] = sales["ptype"].map(HPSSA_TYPE_LABELS)
+    by_type = sales.groupby(["seat", "fy", "type"])["price"].agg(["size", "median"])
+    all_types = sales.groupby(["seat", "fy"])["price"].agg(["size", "median"])
+    cells: dict[str, dict[tuple, float]] = {"sales": {}, "median": {}}
+    for (seat, fy, ptype), row in by_type.iterrows():
+        cells["sales"][(str(seat), int(fy), str(ptype))] = float(row["size"])
+        cells["median"][(str(seat), int(fy), str(ptype))] = float(row["median"])
+    for (seat, fy), row in all_types.iterrows():
+        cells["sales"][(str(seat), int(fy), "all")] = float(row["size"])
+        cells["median"][(str(seat), int(fy), "all")] = float(row["median"])
+    return cells
+
+
+def _hpssa_parity(
+    feed: Mapping[str, Mapping[tuple, float]],
+    computed: Mapping[str, Mapping[tuple, float]],
+) -> dict[str, object]:
+    """Compare the feed's HPSSA seat cells with the Price Paid reduction.
+
+    Per fiscal year and property type: cells compared, the median and the
+    90th percentile of the absolute relative difference, the share of cells
+    within the tolerance, and the largest difference. Aggregates only.
+    """
+    receipt: dict[str, object] = {}
+    for measure, tolerance in (
+        ("sales", HPSSA_SALES_TOLERANCE),
+        ("median", HPSSA_MEDIAN_TOLERANCE),
+    ):
+        rows = []
+        for key, published in feed[measure].items():
+            ours = computed[measure].get(key)
+            if ours is None or published <= 0:
+                continue
+            seat, fy, ptype = key
+            rows.append((fy, ptype, abs(ours - published) / published))
+        table = pd.DataFrame(rows, columns=["fy", "type", "abs_rel_diff"])
+        summary: dict[str, object] = {}
+        for (fy, ptype), group in table.groupby(["fy", "type"]):
+            diffs = group["abs_rel_diff"].to_numpy()
+            summary[f"fy{fy}:{ptype}"] = {
+                "cells": int(len(diffs)),
+                "median_abs_rel_diff": round(float(np.median(diffs)), 5),
+                "p90_abs_rel_diff": round(float(np.quantile(diffs, 0.9)), 5),
+                "share_within_tolerance": round(float((diffs <= tolerance).mean()), 4),
+                "max_abs_rel_diff": round(float(diffs.max()), 5),
+            }
+        receipt[measure] = {
+            "tolerance": tolerance,
+            "feed_cells": int(len(feed[measure])),
+            "cells_compared": int(len(table)),
+            "cells_missing_from_price_paid": int(len(feed[measure]) - len(table)),
+            "by_fiscal_year_and_type": summary,
+        }
+    return receipt
 
 
 # ----------------------------------------------------------------------------
@@ -903,9 +1056,27 @@ def main(argv: list[str] | None = None) -> int:
             )
         },
     }
-    hpssa = _hpssa_parity(facts, None)
+    _log("Comparing seat sales and medians with the HPSSA rows in the feed ...")
+    hpssa_feed = _hpssa_feed_cells(facts)
+    hpssa_years = sorted({fy for (_, fy, _) in hpssa_feed["sales"]})
     receipts["hpssa"] = {
-        "seat_fiscal_year_cells_in_feed": hpssa["hpssa_seat_fiscal_year_cells"]
+        "fiscal_years": hpssa_years,
+        "basis": (
+            "category A residential sales (detached, semi-detached, terraced, flats) by "
+            "the output area's 2024 constituency in the committed support; fiscal years "
+            "run April to March as the HPSSA year-ending-March tables do"
+        ),
+        **_hpssa_parity(
+            hpssa_feed,
+            _hpssa_price_paid_cells(
+                args.ppd_dir,
+                ppd_files,
+                fiscal_years=hpssa_years,
+                postcode_index=postcode_index,
+                postcode_oa=postcodes["oa21cd"],
+                support=support,
+            ),
+        ),
     }
     receipts["knots"] = {
         "cap": args.cap,
@@ -968,6 +1139,7 @@ def main(argv: list[str] | None = None) -> int:
             "version": METHOD_VERSION,
         },
         "built_on": args.built_on,
+        "licence": LICENCE,
         "inputs": inputs_payload,
         "inputs_sha256": inputs_sha256,
         "parameters": {
@@ -1001,6 +1173,7 @@ def main(argv: list[str] | None = None) -> int:
         "kind": KNOTS_KIND,
         "resource": args.knots_out.name,
         "built_on": args.built_on,
+        "licence": LICENCE,
         "inputs_sha256": inputs_sha256,
         "method": METHOD_VERSION,
         "basis_year": args.basis_year,
@@ -1022,6 +1195,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "tool": "tools/build_uk_high_value_home_stock.py",
         "method": METHOD_VERSION,
+        "licence": LICENCE,
         "inputs": inputs_payload,
         "inputs_sha256": inputs_sha256,
         "ledger_feed": _feed_identity(args.ledger_manifest),
@@ -1036,6 +1210,7 @@ def main(argv: list[str] | None = None) -> int:
     bounds_payload = {
         "version": 1,
         "country": "uk",
+        "licence": LICENCE,
         "policy": (
             "Support bounds for the two household columns the post-geography value "
             "node rewrites (microcosm#1240): main_residence_value is winsorised at the "

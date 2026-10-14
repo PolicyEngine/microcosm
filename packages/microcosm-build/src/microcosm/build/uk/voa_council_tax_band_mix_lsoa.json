@@ -13,6 +13,11 @@
  "built_on": "2026-10-13",
  "description": "Cumulative share of domestic properties by council-tax band (A to I) for every England and Wales 2021 LSOA, from VOA CTSOP1.1 at 31 March 2025. Read by the post-geography band node (microcosm#1240, fix 4).",
  "kind": "uk_voa_council_tax_band_mix_lsoa",
+ "licence": {
+  "attribution": "Contains public sector information licensed under the Open Government Licence v3.0. Source: Valuation Office Agency, Council Tax: stock of properties, 31 March 2025.",
+  "licence": "Open Government Licence v3.0",
+  "source": "Valuation Office Agency, Council Tax: stock of properties 2025 (CTSOP1.1)"
+ },
  "lsoa": {
   "E01000001": {
    "all_properties": 1050,

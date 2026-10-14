@@ -25880,6 +25880,24 @@
       }
     }
   },
+  "licence": {
+    "attribution": [
+      "Contains HM Land Registry data \u00a9 Crown copyright and database right 2026. This data is licensed under the Open Government Licence v3.0.",
+      "Contains OS data \u00a9 Crown copyright and database right 2026",
+      "Contains Royal Mail data \u00a9 Royal Mail copyright and database right 2026",
+      "Source: Office for National Statistics licensed under the Open Government Licence v.3.0",
+      "Contains public sector information licensed under the Open Government Licence v3.0 (Valuation Office Agency CTSOP1.1; Office for Budget Responsibility)"
+    ],
+    "inputs": {
+      "census_ts054": "ONS Census 2021 TS054, OGL v3.0",
+      "nspl": "ONS National Statistics Postcode Lookup, OGL v3.0 with OS and Royal Mail notices (England and Wales postcodes only)",
+      "obr_hvcts": "Office for Budget Responsibility costing note, OGL v3.0",
+      "price_paid": "HM Land Registry Price Paid Data, OGL v3.0 (address data under Royal Mail and Ordnance Survey terms; none is published here)",
+      "uk_hpi": "HM Land Registry UK House Price Index, OGL v3.0",
+      "voa_ctsop": "Valuation Office Agency CTSOP1.1, OGL v3.0"
+    },
+    "licence": "Open Government Licence v3.0 (every input); NSPL third-party notices below"
+  },
   "method": "uk-high-value-home-stock-v1",
   "minimum_count": 50,
   "resource": "high_value_home_value_knots.json",

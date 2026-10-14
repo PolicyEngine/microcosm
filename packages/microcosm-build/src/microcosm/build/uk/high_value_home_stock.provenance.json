@@ -290,6 +290,24 @@
     "facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
     "schema_version": "policyengine_ledger.consumer_artifact.v2"
   },
+  "licence": {
+    "attribution": [
+      "Contains HM Land Registry data \u00a9 Crown copyright and database right 2026. This data is licensed under the Open Government Licence v3.0.",
+      "Contains OS data \u00a9 Crown copyright and database right 2026",
+      "Contains Royal Mail data \u00a9 Royal Mail copyright and database right 2026",
+      "Source: Office for National Statistics licensed under the Open Government Licence v.3.0",
+      "Contains public sector information licensed under the Open Government Licence v3.0 (Valuation Office Agency CTSOP1.1; Office for Budget Responsibility)"
+    ],
+    "inputs": {
+      "census_ts054": "ONS Census 2021 TS054, OGL v3.0",
+      "nspl": "ONS National Statistics Postcode Lookup, OGL v3.0 with OS and Royal Mail notices (England and Wales postcodes only)",
+      "obr_hvcts": "Office for Budget Responsibility costing note, OGL v3.0",
+      "price_paid": "HM Land Registry Price Paid Data, OGL v3.0 (address data under Royal Mail and Ordnance Survey terms; none is published here)",
+      "uk_hpi": "HM Land Registry UK House Price Index, OGL v3.0",
+      "voa_ctsop": "Valuation Office Agency CTSOP1.1, OGL v3.0"
+    },
+    "licence": "Open Government Licence v3.0 (every input); NSPL third-party notices below"
+  },
   "method": "uk-high-value-home-stock-v1",
   "parameters": {
     "basis_year": 2024,
@@ -553,7 +571,309 @@
       "scilly_fallback": "E06000052"
     },
     "hpssa": {
-      "seat_fiscal_year_cells_in_feed": 2300
+      "basis": "category A residential sales (detached, semi-detached, terraced, flats) by the output area's 2024 constituency in the committed support; fiscal years run April to March as the HPSSA year-ending-March tables do",
+      "fiscal_years": [
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "median": {
+        "by_fiscal_year_and_type": {
+          "fy2022:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01379,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 7e-05,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:detached": {
+            "cells": 566,
+            "max_abs_rel_diff": 0.01613,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.04294,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01081,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9983
+          },
+          "fy2022:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.00885,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 1.0
+          },
+          "fy2023:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01176,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00155,
+            "share_within_tolerance": 0.9983
+          },
+          "fy2023:detached": {
+            "cells": 559,
+            "max_abs_rel_diff": 0.05333,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 1e-05,
+            "share_within_tolerance": 0.9982
+          },
+          "fy2023:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.06818,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00092,
+            "share_within_tolerance": 0.9843
+          },
+          "fy2023:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.01316,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9948
+          },
+          "fy2023:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.00985,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 1.0
+          },
+          "fy2024:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.02612,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0023,
+            "share_within_tolerance": 0.9826
+          },
+          "fy2024:detached": {
+            "cells": 564,
+            "max_abs_rel_diff": 0.01632,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00314,
+            "share_within_tolerance": 0.9823
+          },
+          "fy2024:flat_maisonette": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.04515,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00429,
+            "share_within_tolerance": 0.9669
+          },
+          "fy2024:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.02778,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00201,
+            "share_within_tolerance": 0.993
+          },
+          "fy2024:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01449,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00167,
+            "share_within_tolerance": 0.993
+          },
+          "fy2025:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.05469,
+            "median_abs_rel_diff": 0.00465,
+            "p90_abs_rel_diff": 0.01818,
+            "share_within_tolerance": 0.6991
+          },
+          "fy2025:detached": {
+            "cells": 556,
+            "max_abs_rel_diff": 0.35172,
+            "median_abs_rel_diff": 0.00576,
+            "p90_abs_rel_diff": 0.02064,
+            "share_within_tolerance": 0.6709
+          },
+          "fy2025:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.26316,
+            "median_abs_rel_diff": 0.00472,
+            "p90_abs_rel_diff": 0.02619,
+            "share_within_tolerance": 0.6661
+          },
+          "fy2025:semi_detached": {
+            "cells": 573,
+            "max_abs_rel_diff": 0.25,
+            "median_abs_rel_diff": 0.00238,
+            "p90_abs_rel_diff": 0.01491,
+            "share_within_tolerance": 0.7976
+          },
+          "fy2025:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03333,
+            "median_abs_rel_diff": 0.00209,
+            "p90_abs_rel_diff": 0.01302,
+            "share_within_tolerance": 0.8487
+          }
+        },
+        "cells_compared": 11440,
+        "cells_missing_from_price_paid": 0,
+        "feed_cells": 11440,
+        "tolerance": 0.01
+      },
+      "sales": {
+        "by_fiscal_year_and_type": {
+          "fy2022:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01374,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00104,
+            "share_within_tolerance": 0.9861
+          },
+          "fy2022:detached": {
+            "cells": 573,
+            "max_abs_rel_diff": 0.03136,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00145,
+            "share_within_tolerance": 0.9634
+          },
+          "fy2022:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03684,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00312,
+            "share_within_tolerance": 0.8957
+          },
+          "fy2022:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.02045,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00169,
+            "share_within_tolerance": 0.9809
+          },
+          "fy2022:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01493,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9635
+          },
+          "fy2023:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01372,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00201,
+            "share_within_tolerance": 0.9391
+          },
+          "fy2023:detached": {
+            "cells": 572,
+            "max_abs_rel_diff": 0.03226,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00319,
+            "share_within_tolerance": 0.8899
+          },
+          "fy2023:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.17857,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.006,
+            "share_within_tolerance": 0.8365
+          },
+          "fy2023:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.01521,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00246,
+            "share_within_tolerance": 0.9443
+          },
+          "fy2023:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01515,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00248,
+            "share_within_tolerance": 0.9235
+          },
+          "fy2024:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.05007,
+            "median_abs_rel_diff": 0.00126,
+            "p90_abs_rel_diff": 0.00536,
+            "share_within_tolerance": 0.7913
+          },
+          "fy2024:detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.09859,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00695,
+            "share_within_tolerance": 0.7287
+          },
+          "fy2024:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.13636,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0101,
+            "share_within_tolerance": 0.6783
+          },
+          "fy2024:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.08863,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00544,
+            "share_within_tolerance": 0.7878
+          },
+          "fy2024:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03513,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00401,
+            "share_within_tolerance": 0.8139
+          },
+          "fy2025:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.1812,
+            "median_abs_rel_diff": 0.07132,
+            "p90_abs_rel_diff": 0.09615,
+            "share_within_tolerance": 0.0
+          },
+          "fy2025:detached": {
+            "cells": 572,
+            "max_abs_rel_diff": 2.0,
+            "median_abs_rel_diff": 0.08464,
+            "p90_abs_rel_diff": 0.13719,
+            "share_within_tolerance": 0.0297
+          },
+          "fy2025:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.45455,
+            "median_abs_rel_diff": 0.06038,
+            "p90_abs_rel_diff": 0.11346,
+            "share_within_tolerance": 0.0348
+          },
+          "fy2025:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.3,
+            "median_abs_rel_diff": 0.07317,
+            "p90_abs_rel_diff": 0.10942,
+            "share_within_tolerance": 0.0087
+          },
+          "fy2025:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.17687,
+            "median_abs_rel_diff": 0.05539,
+            "p90_abs_rel_diff": 0.08568,
+            "share_within_tolerance": 0.0
+          }
+        },
+        "cells_compared": 11491,
+        "cells_missing_from_price_paid": 9,
+        "feed_cells": 11500,
+        "tolerance": 0.003
+      }
     },
     "knots": {
       "cap": 20000000,

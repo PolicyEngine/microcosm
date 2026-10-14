@@ -17,7 +17,6 @@ table are written.
 from __future__ import annotations
 
 import argparse
-import datetime as _dt
 import hashlib
 import io
 import json
@@ -51,7 +50,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--voa-zip", type=Path, required=True)
     parser.add_argument("--voa-manifest", type=Path, required=True)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--built-on", default=_dt.date.today().isoformat())
+    parser.add_argument(
+        "--built-on",
+        required=True,
+        help=(
+            "Build date recorded in the resource (YYYY-MM-DD); passed explicitly "
+            "so a rerun reproduces the committed bytes."
+        ),
+    )
     parser.add_argument(
         "--check", action="store_true", help="fail if the committed resource is stale"
     )
@@ -120,6 +126,18 @@ def band_mix(
     return out, receipts
 
 
+#: The source's licence and the attribution it asks for on derived data.
+LICENCE = {
+    "source": "Valuation Office Agency, Council Tax: stock of properties 2025 (CTSOP1.1)",
+    "licence": "Open Government Licence v3.0",
+    "attribution": (
+        "Contains public sector information licensed under the Open Government "
+        "Licence v3.0. Source: Valuation Office Agency, Council Tax: stock of "
+        "properties, 31 March 2025."
+    ),
+}
+
+
 def build(args: argparse.Namespace) -> dict[str, object]:
     manifest = yaml.safe_load(args.voa_manifest.read_text(encoding="utf-8"))
     ((year, entry),) = manifest["files"].items()
@@ -156,6 +174,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
             "csv_member": VOA_CSV_MEMBER,
             "lsoa_vintage": "2021_census",
         },
+        "licence": LICENCE,
         "bands": list(BANDS),
         "receipts": receipts,
         "lsoa": mix,
