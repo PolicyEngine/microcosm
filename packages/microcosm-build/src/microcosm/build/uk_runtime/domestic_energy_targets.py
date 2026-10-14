@@ -124,7 +124,9 @@ def household_energy_kwh(
     """Each household's electricity and gas kWh from its stored spend.
 
     The inverse of the stage's kWh-to-spend step: every household pays for
-    electricity, and a household is gas-connected when it pays for gas.
+    electricity, and a household is gas-connected when it pays for gas. A
+    household that pays nothing for a fuel uses none of it, whatever its
+    region, so only paying households are priced.
     """
 
     electricity = np.asarray(electricity_spend, dtype=float)
@@ -135,18 +137,19 @@ def household_energy_kwh(
             "household energy spend and region must align: got "
             f"{len(electricity)}, {len(gas)} and {len(regions)} rows."
         )
-    return {
-        ELECTRICITY_KWH: spend_to_kwh(
-            electricity, frs_region=regions, fuel=ELECTRICITY_FUEL, prices=prices
-        ),
-        GAS_KWH: spend_to_kwh(
-            gas,
-            frs_region=regions,
-            fuel=GAS_FUEL,
-            prices=prices,
-            connected=gas > 0,
-        ),
-    }
+    kwh: dict[str, np.ndarray] = {}
+    for column, fuel, spend in (
+        (ELECTRICITY_KWH, ELECTRICITY_FUEL, electricity),
+        (GAS_KWH, GAS_FUEL, gas),
+    ):
+        paying = spend > 0
+        values = np.zeros(len(spend), dtype=float)
+        if paying.any():
+            values[paying] = spend_to_kwh(
+                spend[paying], frs_region=regions[paying], fuel=fuel, prices=prices
+            )
+        kwh[column] = values
+    return kwh
 
 
 def _one_value(rows: list[dict[str, Any]], *, what: str, unit: str) -> float:

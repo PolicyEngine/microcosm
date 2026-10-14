@@ -419,7 +419,7 @@ def compute_household_metrics(
         energy = household_energy_kwh(
             electricity_spend,
             gas_spend,
-            region=_values(_calculate(sim, "region", stored_period)),
+            region=_decoded(_calculate(sim, "region", stored_period)),
             prices=household_energy_prices(),
         )
         electricity_metric, gas_metric, connected_metric = LA_ENERGY_METRICS
@@ -540,6 +540,14 @@ def _values(result: Any) -> np.ndarray:
     if hasattr(result, "values"):
         return np.asarray(result.values)
     return np.asarray(result)
+
+
+def _decoded(result: Any) -> np.ndarray:
+    """An enum result as its names (a plain engine Simulation returns codes)."""
+
+    if hasattr(result, "decode_to_str"):
+        return np.asarray(result.decode_to_str())
+    return _values(result)
 
 
 def _map_result(
