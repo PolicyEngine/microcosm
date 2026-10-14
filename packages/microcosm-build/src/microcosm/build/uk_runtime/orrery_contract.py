@@ -286,7 +286,8 @@ UK_GROUPS = (
         "population",
         "Population pool",
         "Checkpoint admission, sampling, normalisation, expansion into K "
-        "geographic copies and the pooled problem checkpoint.",
+        "geographic copies, BRMA spreading across clones and the pooled problem "
+        "checkpoint.",
     ),
     (
         "geography",
@@ -321,7 +322,9 @@ _FULL_BUILD_GROUPS = {
         "uk.full.spine_checkpoint",
         "uk.full.sample",
         "uk.full.normalize",
+        "uk.full.brma_table",
         "uk.full.expand",
+        "uk.full.brma",
         "uk.full.pool",
     ),
     "geography": (

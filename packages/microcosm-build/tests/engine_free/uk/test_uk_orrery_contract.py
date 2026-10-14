@@ -116,9 +116,13 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
     assert set(groups["enrichment"]["operations"]) == {
         node.id for node in spine.nodes if not node.id.startswith("spine.gates.")
     }
-    assert {"uk.full.pool", "uk.full.expand", "uk.full.expand.owned"} <= set(
-        groups["population"]["operations"]
-    )
+    assert {
+        "uk.full.pool",
+        "uk.full.brma_table",
+        "uk.full.expand",
+        "uk.full.expand.owned",
+        "uk.full.brma",
+    } <= set(groups["population"]["operations"])
     assert set(groups["checks"]["operations"]) >= {
         "spine.gates.assembled",
         "uk.full.gates.preflight",

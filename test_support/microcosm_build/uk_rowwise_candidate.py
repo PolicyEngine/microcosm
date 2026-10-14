@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime import (
     rowwise_staging,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.frs_brma import load_brma_count_resource
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
 )
@@ -243,6 +244,7 @@ def _write_staging_h5(
         "SCOTLAND",
         "NORTHERN_IRELAND",
     )
+    brma_cells = load_brma_count_resource()["cells"]
     household_ids = list(range(1, 4 * households_per_region + 1))
     source_household_ids: list[int] = []
     support_clone_indices: list[int] = []
@@ -264,6 +266,16 @@ def _write_staging_h5(
             ],
             "region": [
                 region for region in region_names for _ in range(households_per_region)
+            ],
+            "brma": [
+                next(
+                    name
+                    for counts in brma_cells[region].values()
+                    for name, count in counts.items()
+                    if count > 0
+                )
+                for region in region_names
+                for _ in range(households_per_region)
             ],
             "source_household_id": source_household_ids,
             "source_household_key": [
