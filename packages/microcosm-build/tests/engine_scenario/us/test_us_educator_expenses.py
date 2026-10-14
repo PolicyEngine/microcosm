@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_educator_expenses.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_educator_expenses import *
 
 
@@ -115,31 +118,24 @@ def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> N
     assert "educator_expense" in system.parameters.gov.irs.ald.deductions("2024-01-01")
 
 
-def test_shipped_abolition_probe_has_positive_sign_and_binds_live() -> None:
-    from policyengine_core.reforms import Reform
-    from policyengine_us import CountryTaxBenefitSystem, Simulation
+_ALD_DEDUCTIONS = "gov.irs.ald.deductions"
 
-    probe = next(
+
+def _abolition_probe():
+    return next(
         probe
         for probe in us_release_reform_coverage_probes()
         if probe.id == "educator_expense_ald_abolition"
     )
-    assert probe.period == 2024
-    assert probe.expected_sign == "positive"
-    assert probe.effect_direction == "reform_minus_baseline"
-    assert probe.budget_measure == "income_tax"
-    assert probe.binding_inputs == ("educator_expense",)
-    assert probe.min_abs_effect == 1_000_000.0
-    deductions = probe.parameter_changes["gov.irs.ald.deductions"]
-    assert set(deductions) == {"2024-01-01.2024-12-31"}
-    assert "educator_expense" not in deductions["2024-01-01.2024-12-31"]
 
-    situation = {
+
+def _educator_household(educator_expense: float, employment_income: float) -> dict:
+    return {
         "people": {
             "adult": {
                 "age": {"2024": 40},
-                "employment_income": {"2024": 100_000},
-                "educator_expense": {"2024": 300},
+                "employment_income": {"2024": employment_income},
+                "educator_expense": {"2024": educator_expense},
             }
         },
         "tax_units": {
@@ -155,12 +151,65 @@ def test_shipped_abolition_probe_has_positive_sign_and_binds_live() -> None:
             }
         },
     }
-    reform = Reform.from_dict(dict(probe.parameter_changes), country_id="us")
-    baseline = Simulation(situation=situation)
-    reformed = Simulation(
-        tax_benefit_system=CountryTaxBenefitSystem(reform=(reform,)),
-        situation=situation,
+
+
+@pytest.fixture(scope="module")
+def abolition():
+    """The smoke's own reform and the reform system the release scorer builds."""
+    from policyengine_us import CountryTaxBenefitSystem
+
+    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
+
+    reform = _build_reform(_abolition_probe())
+    return reform, CountryTaxBenefitSystem(reform=(reform,))
+
+
+def test_shipped_abolition_probe_has_positive_sign_and_binds_live(abolition) -> None:
+    from datetime import date, timedelta
+
+    from policyengine_us import Simulation
+
+    from microcosm.build.us_runtime.release_input_coverage import (
+        ListParameterEdit,
+        resolve_probe_parameter_changes,
     )
+
+    probe = _abolition_probe()
+    assert probe.period == 2024
+    assert probe.expected_sign == "positive"
+    assert probe.effect_direction == "reform_minus_baseline"
+    assert probe.budget_measure == "income_tax"
+    assert probe.binding_inputs == ("educator_expense",)
+    assert probe.min_abs_effect == 1_000_000.0
+    assert probe.parameter_changes == {}
+    edit = ListParameterEdit(
+        period="2024-01-01.2024-12-31", remove=("educator_expense",)
+    )
+    assert probe.list_edits == {_ALD_DEDUCTIONS: edit}
+
+    reform, reformed_system = abolition
+    situation = _educator_household(300.0, 100_000.0)
+    baseline = Simulation(situation=situation)
+    reformed = Simulation(tax_benefit_system=reformed_system, situation=situation)
+
+    # Not a no-op: the installed engine resolves the declared removal to its
+    # own deduction list minus the educator expense, and the reformed engine
+    # holds exactly that list over the edit period and the baseline outside it.
+    deductions = baseline.tax_benefit_system.parameters.get_child(_ALD_DEDUCTIONS)
+    reformed_deductions = reformed_system.parameters.get_child(_ALD_DEDUCTIONS)
+    assert "educator_expense" in deductions(edit.start)
+    expected = [item for item in deductions(edit.start) if item != "educator_expense"]
+    assert resolve_probe_parameter_changes(probe) == {
+        _ALD_DEDUCTIONS: {edit.period: expected}
+    }
+    assert reform.resolved_list_edits == {_ALD_DEDUCTIONS: expected}
+    for instant in (edit.start, edit.stop):
+        assert list(reformed_deductions(instant)) == expected
+    for instant in (
+        date.fromisoformat(edit.start) - timedelta(days=1),
+        date.fromisoformat(edit.stop) + timedelta(days=1),
+    ):
+        assert list(reformed_deductions(str(instant))) == list(deductions(str(instant)))
 
     assert baseline.calculate("above_the_line_deductions", 2024)[0] == 300.0
     assert reformed.calculate("above_the_line_deductions", 2024)[0] == 0.0
@@ -168,4 +217,33 @@ def test_shipped_abolition_probe_has_positive_sign_and_binds_live() -> None:
         reformed.calculate("income_tax", 2024)[0]
         - baseline.calculate("income_tax", 2024)[0]
         > 0.0
+    )
+
+
+@settings(max_examples=15, deadline=None)
+@given(
+    educator_expense=st.integers(min_value=0, max_value=5_000),
+    employment_income=st.integers(min_value=0, max_value=300_000),
+)
+def test_abolition_probe_removes_exactly_the_educator_deduction(
+    abolition, educator_expense: int, employment_income: int
+) -> None:
+    # Invariant: for any educator expense and wage, the reform lowers
+    # above-the-line deductions by exactly the expense and never lowers income
+    # tax, so the probe's positive reform-minus-baseline sign holds per unit.
+    from policyengine_us import Simulation
+
+    _, reformed_system = abolition
+    situation = _educator_household(float(educator_expense), float(employment_income))
+    baseline = Simulation(situation=situation)
+    reformed = Simulation(tax_benefit_system=reformed_system, situation=situation)
+
+    deduction_drop = (
+        baseline.calculate("above_the_line_deductions", 2024)[0]
+        - reformed.calculate("above_the_line_deductions", 2024)[0]
+    )
+    assert deduction_drop == pytest.approx(float(educator_expense), abs=0.01)
+    assert (
+        reformed.calculate("income_tax", 2024)[0]
+        >= baseline.calculate("income_tax", 2024)[0] - 0.01
     )
