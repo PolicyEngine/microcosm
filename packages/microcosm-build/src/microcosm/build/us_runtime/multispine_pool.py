@@ -367,11 +367,11 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 763),
+    ("declared_absent_engine_input", 762),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 122),
+    ("materialized_pool_input_surface", 123),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
     ("unprovisioned_source_input", 1),
@@ -383,7 +383,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
+    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
@@ -1292,6 +1292,7 @@ def pool_remaining_stage_input_manifest(
         )
     for variable in (
         "partnership_income",
+        "s_corp_income",
         "estate_income",
         "non_qualified_dividend_income",
     ):
@@ -1304,15 +1305,6 @@ def pool_remaining_stage_input_manifest(
             provision=surface_provision(variable),
             available_by="transferred",
         )
-    register(
-        "derive",
-        "with_us_qbi_input_reconciliation",
-        "person",
-        "s_corp_income",
-        execution_scope="whole_pool",
-        provision="primary_puf_exact_zero_universe",
-        available_by="transferred",
-    )
     for variable, provision in (
         ("age", "assembled_native_person_input"),
         ("SEMP", "assembled_raw_acs_source_authority"),

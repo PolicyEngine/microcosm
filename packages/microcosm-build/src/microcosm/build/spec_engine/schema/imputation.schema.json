@@ -402,6 +402,62 @@
         "contract"
        ]
       },
+      "passive_partnership_s_corp": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "all_targets"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "line_32": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "mutable_rows": {
+           "type": "string"
+          },
+          "rule": {
+           "type": "string"
+          },
+          "subset": {
+           "type": "string"
+          },
+          "tax_unit_link": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "line_32",
+          "mutable_rows",
+          "rule",
+          "subset",
+          "tax_unit_link"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+        "contract"
+       ]
+      },
       "schedule_d_capital_gain_distributions": {
        "type": "object",
        "additionalProperties": false,
@@ -526,6 +582,7 @@
      },
      "required": [
       "adult_care",
+      "passive_partnership_s_corp",
       "schedule_d_capital_gain_distributions"
      ]
     },
@@ -3169,73 +3226,11 @@
                 },
                 "require_complete_recipient_predictors": {
                  "type": "boolean"
-                },
-                "whole_pool_output_universes": {
-                 "type": "object",
-                 "additionalProperties": false,
-                 "properties": {
-                  "person.s_corp_income": {
-                   "type": "object",
-                   "additionalProperties": false,
-                   "properties": {
-                    "assignment": {
-                     "type": "string"
-                    },
-                    "column": {
-                     "type": "string"
-                    },
-                    "coverage_scope": {
-                     "type": "string"
-                    },
-                    "donor_precondition": {
-                     "type": "string"
-                    },
-                    "entity": {
-                     "type": "string"
-                    },
-                    "materialized_value": {
-                     "type": "number"
-                    },
-                    "native_precondition": {
-                     "type": "string"
-                    },
-                    "puf_clone_precondition": {
-                     "type": "string"
-                    },
-                    "rule_id": {
-                     "type": "string"
-                    },
-                    "schema_version": {
-                     "type": "integer"
-                    },
-                    "source_semantics": {
-                     "type": "string"
-                    }
-                   },
-                   "required": [
-                    "assignment",
-                    "column",
-                    "coverage_scope",
-                    "donor_precondition",
-                    "entity",
-                    "materialized_value",
-                    "native_precondition",
-                    "puf_clone_precondition",
-                    "rule_id",
-                    "schema_version",
-                    "source_semantics"
-                   ]
-                  }
-                 },
-                 "required": [
-                  "person.s_corp_income"
-                 ]
                 }
                },
                "required": [
                 "absent_cells",
-                "require_complete_recipient_predictors",
-                "whole_pool_output_universes"
+                "require_complete_recipient_predictors"
                ]
               },
               "qrf": {

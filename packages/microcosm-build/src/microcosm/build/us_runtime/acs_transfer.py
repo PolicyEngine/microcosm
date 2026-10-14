@@ -285,6 +285,7 @@ def acs_transfer_execution_contract_identity(
         requested_targets & {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
+    passive_enabled = _PASSIVE_PARTNERSHIP_S_CORP in requested_targets
     payload: dict[str, object] = {
         "schema_version": 2,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
@@ -339,6 +340,14 @@ def acs_transfer_execution_contract_identity(
                 "tax_unit_link": _ADULT_CARE_UNIT,
                 "mutable_rows": "newly_imputed_expense_cells_only",
             },
+            "passive_partnership_s_corp": {
+                "enabled": passive_enabled,
+                "subset": _PASSIVE_PARTNERSHIP_S_CORP,
+                "line_32": list(_LINE_32_COMPONENTS),
+                "tax_unit_link": _ADULT_CARE_UNIT,
+                "rule": "zero_subset_where_person_or_tax_unit_line_32_is_zero",
+                "mutable_rows": "newly_imputed_subset_cells_only",
+            },
         },
     }
     payload["sha256"] = hashlib.sha256(
@@ -364,17 +373,14 @@ type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 # transfer, and post-transfer coverage audit all consume the exact same plan.
 _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = {
     "person": {
-        # The buildl-era donor excluded both partnership leaves because it
-        # carried only combined partnership_income. The 23-stage base now
-        # observes partnership_self_employment_net_earnings (restored below
-        # via the default outputs), but s_corp_income remains an all-zero
-        # schema column on the certified donor — combined income still
-        # lives in partnership_income — so its exclusion stands until the
-        # base disaggregates it.
+        # Every PUF person output the ACS does not observe natively. Schedule E
+        # line 32 travels by entity: the donor carries partnership_income and
+        # s_corp_income as separate leaves (microcosm#1258), so neither is an
+        # exact-zero universe that the transfer must leave alone.
         "puf_tax_itemization": tuple(
             target
             for target in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-            if target not in ACS_NATIVE_PERSON_INPUTS | {"s_corp_income"}
+            if target not in ACS_NATIVE_PERSON_INPUTS
         ),
         # The Schedule D capital-gain-distributions memo leg is deliberately
         # NOT a QRF target: the base derives it deterministically as a
@@ -671,6 +677,13 @@ _SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"
 
 _ADULT_CARE_FLAG = "is_incapable_of_self_care"
 _ADULT_CARE_EXPENSE = "pre_subsidy_care_expenses"
+# Schedule E line 32 by entity and its section 469 passive subset
+# (microcosm#1239, #1258). The primary PUF pass places the subset on the people
+# who carry line 32 and zeros it where the unit drew none; a person-grain
+# transfer draw must keep the same coherence, so the post-transfer step below
+# restores it on cells it filled.
+_PASSIVE_PARTNERSHIP_S_CORP = "passive_partnership_s_corp_income"
+_LINE_32_COMPONENTS = ("partnership_income", "s_corp_income")
 _ADULT_CARE_ROLE = "tax_unit_role_input"
 _ADULT_CARE_UNIT = "person_tax_unit_id"
 
@@ -802,6 +815,62 @@ def reconcile_acs_adult_care(
         "cleared_ineligible_carriers": cleared_ineligible,
         "cleared_multi_carrier_rows": cleared_multi_carrier,
         "remaining_carriers": int((reconciled > 0.0).sum()),
+    }
+    return reconciled, counts
+
+
+def reconcile_acs_passive_partnership_s_corp(
+    person: pd.DataFrame,
+    *,
+    mutable_rows: np.ndarray | pd.Series,
+) -> tuple[pd.Series, dict[str, int]]:
+    """Zero a transferred passive subset that has no line-32 total under it.
+
+    The passive amount is a subset of Schedule E line 32. On every cell this
+    transfer filled, it is set to zero when the person's own line-32 amount
+    (``partnership_income`` plus ``s_corp_income``) is zero, or when the
+    person's tax unit has a zero line-32 total. Cells the transfer did not fill
+    keep their values, and nonzero subsets under a nonzero total are kept in
+    full: a passive amount larger than, or of the other sign from, line 32 is
+    lawful when nonpassive losses offset it.
+    """
+
+    missing_components = [
+        component
+        for component in _LINE_32_COMPONENTS
+        if component not in person.columns
+    ]
+    if missing_components:
+        raise ValueError(
+            "Passive partnership/S-corp reconciliation requires both "
+            "transferred line-32 components (partnership_income and "
+            f"s_corp_income) on the recipient; missing {missing_components}."
+        )
+    if _ADULT_CARE_UNIT not in person.columns:
+        raise ValueError(
+            "Passive partnership/S-corp reconciliation requires person_tax_unit_id."
+        )
+    mutable = np.asarray(mutable_rows, dtype=bool)
+    if mutable.ndim != 1 or len(mutable) != len(person):
+        raise ValueError(
+            "mutable_rows must be a one-dimensional mask aligned to person."
+        )
+    raw = pd.to_numeric(person[_PASSIVE_PARTNERSHIP_S_CORP], errors="coerce")
+    person_total = pd.Series(0.0, index=person.index)
+    for component in _LINE_32_COMPONENTS:
+        person_total = person_total + pd.to_numeric(
+            person[component], errors="coerce"
+        ).fillna(0.0)
+    unit_total = person_total.groupby(person[_ADULT_CARE_UNIT]).transform("sum")
+    no_line_32 = ((person_total == 0.0) | (unit_total == 0.0)).to_numpy()
+    clear = mutable & no_line_32 & raw.fillna(0.0).ne(0.0).to_numpy()
+    reconciled = raw.copy()
+    reconciled.loc[clear] = 0.0
+    counts = {
+        "cleared_subset_without_line_32": int(clear.sum()),
+        "remaining_nonzero_subset_rows": int(
+            (mutable & reconciled.fillna(0.0).ne(0.0).to_numpy()).sum()
+        ),
     }
     return reconciled, counts
 
@@ -1696,6 +1765,8 @@ def _apply_post_transfer_structure(
       capital-gain parents at the packaged share with route exclusivity.
     - The adult-care expense surface is reconciled to the statute structure
       (qualifying carriers only, at most one per tax unit).
+    - The passive partnership/S-corp subset is zeroed where it has no line-32
+      total under it (microcosm#1239).
     """
 
     person = output_tables.get("person")
@@ -1804,6 +1875,24 @@ def _apply_post_transfer_structure(
         person[_ADULT_CARE_EXPENSE] = expenses
         for index, item in enumerate(provenance):
             if item.column == _ADULT_CARE_EXPENSE and item.entity == "person":
+                provenance[index] = replace(item, reconciliation=counts)
+                break
+
+    passive_contract = post_transfer_contract.get("passive_partnership_s_corp")
+    passive_mask = imputed_masks.get(("person", _PASSIVE_PARTNERSHIP_S_CORP))
+    if (
+        isinstance(passive_contract, Mapping)
+        and passive_contract["enabled"] is True
+        and passive_mask is not None
+        and passive_mask.any()
+    ):
+        passive, counts = reconcile_acs_passive_partnership_s_corp(
+            person,
+            mutable_rows=passive_mask,
+        )
+        person[_PASSIVE_PARTNERSHIP_S_CORP] = passive
+        for index, item in enumerate(provenance):
+            if item.column == _PASSIVE_PARTNERSHIP_S_CORP and item.entity == "person":
                 provenance[index] = replace(item, reconciliation=counts)
                 break
 
