@@ -81,7 +81,6 @@ UK_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
-    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "filename": "enhanced_frs_2024_25.h5",
@@ -399,11 +398,6 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
-    "uk_qrf_tail_concentration": (
-        "tail_concentration",
-        "terminal",
-        "qrf_tail_concentration",
-    ),
     "uk_local_geography_ladder_post_calibration": (
         "spine_agreement",
         "terminal",
@@ -1107,29 +1101,6 @@ def _terminal_gate_details(name: str) -> dict:
             "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
             "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-        }
-    if name == "qrf_tail_concentration":
-        return {
-            "columns_checked": 1,
-            "top_k": 100,
-            "max_top_share": 0.9994670564654868,
-            "min_nonzero_records": 104,
-            "top_share": {"self_employment_income": 0.5},
-            "carrier_counts": {"self_employment_income": 274},
-            "thin_columns": {},
-            "reviewed_exclusions": {},
-            "stale_exclusions": [],
-            "dormant_exclusions": [],
-            "expired_exclusions": [],
-            "premature_exclusions": [],
-            "exclusions_evaluated_on": "2026-08-11",
-            "surface": {
-                "declared_qrf_outputs": 1,
-                "checked_columns": ["self_employment_income"],
-                "absent_columns": [],
-                "non_numeric_columns": [],
-                "density_filter": "none: every declared output is checked (#609)",
-            },
         }
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
@@ -2910,13 +2881,10 @@ def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
         ("release_parity",),
         ("hmrc_spi_income", "release_parity"),
         ("input_mass_parity",),
-        ("qrf_tail_concentration",),
-        ("input_mass_parity", "qrf_tail_concentration"),
         (
             "hmrc_spi_income",
             "release_parity",
             "input_mass_parity",
-            "qrf_tail_concentration",
         ),
     ],
 )
@@ -3016,74 +2984,6 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
 
     failures = "\n".join(excinfo.value.failures)
     assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
-
-
-def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["columns_checked"] = 0
-    details["top_share"] = {}
-    details["carrier_counts"] = {}
-    details["surface"]["checked_columns"] = []
-    details["surface"]["absent_columns"] = ["declared_but_absent"]
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = evidence
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "requires details.columns_checked to be positive" in failures
-    assert "requires details.surface.absent_columns to be empty" in failures
-
-
-def test_exact_k_uk_terminal_rejects_partially_omitted_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, _evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    payload["gates"]["qrf_tail_concentration"]["details"]["surface"][
-        "declared_qrf_outputs"
-    ] = 2
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "must reconcile declared, checked, absent, nonnumeric" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
@@ -4615,7 +4515,7 @@ def test_us_release_table_1_4_returns_rows_are_outside_the_dollar_blanket(
     validate_release_dir(release_dir)
 
 
-def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
+def _resignable_release(tmp_path: Path) -> tuple[Path, dict]:
     directory = _write_uk_release_dir(
         tmp_path,
         UK_EXACT_K_RELEASE_ID,
@@ -4626,7 +4526,7 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
         calibration_diagnostics_sha256=_sha256(
             directory / "calibration_diagnostics.json"
         ),
-        evidence_stages=("qrf_tail_concentration",),
+        evidence_stages=("input_mass_parity",),
     )
     build_path = directory / "build_manifest.json"
     build = json.loads(build_path.read_text())
@@ -4635,89 +4535,9 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
     return directory, payload
 
 
-def _write_resigned_qrf_release(directory: Path, payload: dict) -> None:
+def _write_resigned_release(directory: Path, payload: dict) -> None:
     _refresh_terminal_gate_attestation(payload)
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-
-def test_exact_k_uk_terminal_rejects_unexcluded_high_qrf_share(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "columns above details.max_top_share" in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_qrf_thin_count_at_minimum(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["thin_columns"]["invented_thin_output"] = details["min_nonzero_records"]
-    details["surface"]["declared_qrf_outputs"] = 2
-    details["surface"]["checked_columns"].append("invented_thin_output")
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.thin_columns values" in failures
-    assert "must reconcile declared, checked, absent, nonnumeric" not in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "match"),
-    [
-        ("top_k", True, "details.top_k"),
-        ("top_k", 0, "details.top_k"),
-        ("max_top_share", True, "details.max_top_share"),
-        ("max_top_share", 1.0, "details.max_top_share"),
-        ("min_nonzero_records", True, "details.min_nonzero_records"),
-        ("min_nonzero_records", 1, "details.min_nonzero_records"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_thresholds(
-    tmp_path: Path,
-    field: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    payload["gates"]["qrf_tail_concentration"]["details"][field] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["carrier_counts"]["self_employment_income"] = True
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.carrier_counts values" in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
@@ -4728,10 +4548,10 @@ def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
     (adversarial-review finding: expiry enforcement was otherwise
     invisible to the contract)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     degenerate["exclusions_evaluated_on"] = "2020-01-01"
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
@@ -4747,64 +4567,16 @@ def test_exact_k_uk_terminal_requires_the_exclusion_receipt_fields(
     schema (adversarial-review finding — the checks previously defaulted
     absent fields to empty)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     del degenerate["expired_exclusions"]
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
     failures = "\n".join(excinfo.value.failures)
     assert "honest aggregator detail schema" in failures
     assert "expired_exclusions" in failures
-
-
-def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    details["reviewed_exclusions"] = {
-        "self_employment_income": "Reviewed concentrated QRF instrument."
-    }
-    _write_resigned_qrf_release(directory, payload)
-
-    validate_release_dir(directory)
-
-
-@pytest.mark.parametrize(
-    ("observable", "value", "match"),
-    [
-        ("top_share", True, "details.top_share values"),
-        ("top_share", -0.1, "details.top_share values"),
-        ("carrier_counts", 1, "details.carrier_counts values"),
-        ("thin_columns", True, "details.thin_columns values"),
-        ("thin_columns", -1, "details.thin_columns values"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
-    tmp_path: Path,
-    observable: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    column = "self_employment_income"
-    if observable == "thin_columns":
-        column = "invented_thin_output"
-        details["surface"]["declared_qrf_outputs"] = 2
-        details["surface"]["checked_columns"].append(column)
-    details[observable][column] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 # ---------------------------------------------------------------------------
@@ -4897,33 +4669,6 @@ def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     assert "relative_tolerance must equal the committed spec value" in (
         _battery_failures(directory)
     )
-
-
-def test_exact_k_uk_gate_battery_rejects_loosened_qrf_thresholds(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["max_top_share"] = 0.999999
-    _rewrite_battery_report(directory, payload)
-
-    assert "max_top_share to equal the committed spec value" in (
-        _battery_failures(directory)
-    )
-
-
-def test_exact_k_uk_gate_battery_rejects_shrunken_qrf_tail(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["top_k"] = 5
-    details["min_nonzero_records"] = 6
-    _rewrite_battery_report(directory, payload)
-
-    failures = _battery_failures(directory)
-    assert "top_k to equal the committed spec value" in failures
-    assert "min_nonzero_records to equal the committed spec value" in failures
 
 
 def test_exact_k_uk_gate_battery_rejects_a_blocked_report(tmp_path: Path) -> None:
@@ -5224,7 +4969,7 @@ def test_exact_k_uk_gate_battery_rejects_a_not_applicable_excuse(
     # No entry in this spec vintage declares an excuse, so not_applicable
     # cannot skip a gate's observables or drop its evidence requirement.
     directory, payload = _write_battery_release(tmp_path)
-    entry = payload["gates"]["uk_qrf_tail_concentration"]
+    entry = payload["gates"]["uk_input_mass_parity"]
     entry["status"] = "not_applicable"
     entry["details"] = {}
     entry["reason"] = "declared excused"
