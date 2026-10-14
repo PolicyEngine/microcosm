@@ -42,7 +42,10 @@ package; each is separately resumable):
                 weights onto a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
-                signature, measured rather than assumed).
+                signature, measured rather than assumed) and an
+                informational December-eligible SNAP take-up snapshot
+                (unit- and person-weighted; not the FNS fiscal-year
+                participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
@@ -2373,8 +2376,8 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
     return composition
 
 
-#: Engine variables the QA probe reads to report SNAP take-up among
-#: engine-eligible SPM units (microcosm#1051 review). Informational only.
+#: Engine variables the QA probe reads for its December-eligible SNAP take-up
+#: snapshot (microcosm#1051 review). Informational only.
 _QA_SNAP_VARIABLES: tuple[str, ...] = (
     "is_snap_eligible",
     "takes_up_snap_if_eligible",
@@ -2383,7 +2386,7 @@ _QA_SNAP_VARIABLES: tuple[str, ...] = (
     "spm_unit_count_children",
     "snap_earned_income",
 )
-#: Household types of the SNAP take-up table. They overlap (a unit with
+#: Household types of the SNAP snapshot. They overlap (a unit with
 #: children and earnings is in both); ``childless_adults`` units have neither
 #: children nor an elderly or disabled member.
 _QA_SNAP_HOUSEHOLD_TYPES: tuple[str, ...] = (
@@ -2396,9 +2399,20 @@ _QA_SNAP_UNIT_COLUMNS: tuple[str, ...] = (
     "spine",
     "state",
     "weight",
+    "persons",
     "takes_up",
     "receives",
     *_QA_SNAP_HOUSEHOLD_TYPES,
+)
+#: What the QA's SNAP table is, and what it is not (microcosm#1051 review).
+SNAP_DECEMBER_SNAPSHOT_LABEL = "December-eligible snapshot (unit- and person-weighted)"
+SNAP_DECEMBER_SNAPSHOT_NOT_FNS = (
+    "Not the FNS fiscal-year participation rate. USDA FNS participation "
+    "rates are among eligible people over a federal fiscal year; this "
+    "snapshot counts the SPM units the engine finds SNAP-eligible in "
+    "December of the calendar year, and the people in them, and its "
+    "receiving rates count a positive annual modeled benefit. It is "
+    "informational and never graded."
 )
 
 
@@ -2409,11 +2423,14 @@ def _qa_snap_eligible_units(
     household_weights: np.ndarray,
     position_by_id: pd.Series,
 ) -> pd.DataFrame:
-    """One row per engine-eligible SPM unit of a QA chunk.
+    """One row per SPM unit of a QA chunk that is SNAP-eligible in December.
 
-    Each row carries the unit's spine, state, household weight, stored
-    take-up flag, whether its modeled ``snap`` is positive, and the
-    household-type flags of :data:`_QA_SNAP_HOUSEHOLD_TYPES`.
+    PolicyEngine reads the monthly ``is_snap_eligible`` at a year period as
+    its last month. Each row carries the unit's spine, state, household
+    weight, member count (``persons``; every member carries the household
+    weight, as the frame weights people), stored take-up flag, whether its
+    annual modeled ``snap`` is positive, and the household-type flags of
+    :data:`_QA_SNAP_HOUSEHOLD_TYPES`.
     """
 
     from microcosm.build.us_runtime.base_pool import spine_column
@@ -2431,6 +2448,12 @@ def _qa_snap_eligible_units(
     )
     if unit_household.isna().any():
         raise ValueError("QA: an SPM unit has no member person.")
+    persons = (
+        person["person_spm_unit_id"]
+        .value_counts()
+        .reindex(spm_unit["spm_unit_id"].to_numpy(), fill_value=0)
+        .to_numpy(dtype=np.int64)
+    )
     household_ids = unit_household.to_numpy()
     positions = position_by_id.reindex(household_ids).to_numpy()
     state = (
@@ -2454,6 +2477,7 @@ def _qa_snap_eligible_units(
             "spine": spine,
             "state": state,
             "weight": household_weights[positions.astype(np.int64)],
+            "persons": persons,
             "takes_up": np.asarray(values["takes_up_snap_if_eligible"], dtype=bool),
             "receives": np.asarray(values["snap"], dtype=np.float64) > 0,
             "elderly_or_disabled": elderly_or_disabled,
@@ -2469,30 +2493,58 @@ def _qa_snap_eligible_units(
     return units.loc[eligible].reset_index(drop=True)
 
 
-def snap_take_up_among_eligible(units: pd.DataFrame) -> dict[str, object]:
-    """Weighted SNAP take-up among engine-eligible SPM units (informational).
+def snap_december_eligible_snapshot(units: pd.DataFrame) -> dict[str, object]:
+    """SNAP take-up in a December-eligible snapshot, unit- and person-weighted.
 
-    ``units`` holds one row per eligible unit (:func:`_qa_snap_eligible_units`).
-    ``take_up_rate`` is the eligible weight whose stored
-    ``takes_up_snap_if_eligible`` is true over all eligible weight, the
-    quantity FNS participation rates measure; ``receiving_rate`` counts a
-    positive modeled benefit instead. Reported overall, by household type,
-    by spine (and type), and by state. Never graded (microcosm#1051 review).
+    ``units`` holds one row per SPM unit that is SNAP-eligible in December
+    (:func:`_qa_snap_eligible_units`). Every cell reports two rates over
+    that population:
+
+    - ``unit_take_up_rate``: the household weight of eligible units whose
+      stored ``takes_up_snap_if_eligible`` is true, over all eligible unit
+      weight;
+    - ``person_take_up_rate``: eligible persons who take up over eligible
+      persons, weighting each unit by its weight times its member count, as
+      the frame weights people.
+
+    The ``*_receiving_rate`` fields count a positive annual modeled ``snap``
+    instead. This is not the FNS participation rate, which is among
+    eligible people over a federal fiscal year
+    (:data:`SNAP_DECEMBER_SNAPSHOT_NOT_FNS`). Reported overall, by household
+    type, by spine (and type) and by state. Never graded (microcosm#1051
+    review).
     """
 
     def cell(rows: pd.DataFrame) -> dict[str, object]:
-        weights = rows["weight"].to_numpy(dtype=np.float64)
-        weight = float(weights.sum())
-        taking_up = float(weights[rows["takes_up"].to_numpy(dtype=bool)].sum())
-        receiving = float(weights[rows["receives"].to_numpy(dtype=bool)].sum())
-        return {
+        unit_weights = rows["weight"].to_numpy(dtype=np.float64)
+        members = rows["persons"].to_numpy(dtype=np.float64)
+        takes_up = rows["takes_up"].to_numpy(dtype=bool)
+        receives = rows["receives"].to_numpy(dtype=bool)
+        result: dict[str, object] = {
             "eligible_units": int(len(rows)),
-            "eligible_weight": weight,
-            "take_up_weight": taking_up,
-            "take_up_rate": taking_up / weight if weight > 0 else None,
-            "receiving_weight": receiving,
-            "receiving_rate": receiving / weight if weight > 0 else None,
+            "eligible_persons": int(members.sum()),
         }
+        for basis, weights in (
+            ("unit", unit_weights),
+            ("person", unit_weights * members),
+        ):
+            weight = float(weights.sum())
+            taking_up = float(weights[takes_up].sum())
+            receiving = float(weights[receives].sum())
+            result.update(
+                {
+                    f"eligible_{basis}_weight": weight,
+                    f"{basis}_take_up_weight": taking_up,
+                    f"{basis}_take_up_rate": (
+                        taking_up / weight if weight > 0 else None
+                    ),
+                    f"{basis}_receiving_weight": receiving,
+                    f"{basis}_receiving_rate": (
+                        receiving / weight if weight > 0 else None
+                    ),
+                }
+            )
+        return result
 
     def by_type(rows: pd.DataFrame) -> dict[str, object]:
         return {
@@ -2501,6 +2553,7 @@ def snap_take_up_among_eligible(units: pd.DataFrame) -> dict[str, object]:
         }
 
     return {
+        "label": SNAP_DECEMBER_SNAPSHOT_LABEL,
         "graded": False,
         "all": cell(units),
         "by_household_type": by_type(units),
@@ -2517,9 +2570,10 @@ def snap_take_up_among_eligible(units: pd.DataFrame) -> dict[str, object]:
 def do_qa(args) -> None:
     """Chunked engine probe on the calibrated artifact.
 
-    Records per-spine SSI incidence and, informationally, SNAP take-up among
-    engine-eligible SPM units by spine, state and household type
-    (microcosm#1051 review). Loads the packaged artifact bytes PLAIN — no
+    Records per-spine SSI incidence and, informationally, a December-eligible
+    SNAP take-up snapshot (unit- and person-weighted; not the FNS fiscal-year
+    participation rate) by spine, state and household type (microcosm#1051
+    review). Loads the packaged artifact bytes PLAIN — no
     private projection or fill — so the probe doubles as the proof that
     ordinary ``USSingleYearDataset``/``Microsimulation`` consumers can load
     the file (the engine-pass contract was applied at export).
@@ -2605,18 +2659,23 @@ def do_qa(args) -> None:
         "artifact_sha256": _sha256(args.out_h5),
         "plain_consumption": True,
         "per_spine": per_spine,
-        "snap_take_up_among_eligible": {
+        "snap_december_eligible_snapshot": {
             "issue": "microcosm#1051 review",
+            "not_fns_participation_rate": SNAP_DECEMBER_SNAPSHOT_NOT_FNS,
             "definition": (
-                "SPM units with is_snap_eligible for the period (PolicyEngine "
-                "reads a monthly boolean at a year period as its last month); "
-                "take_up_rate = weighted share of those units whose stored "
-                "takes_up_snap_if_eligible is true; receiving_rate = weighted "
-                "share with positive modeled snap. Household types overlap; "
-                "childless_adults have no children and no elderly or "
-                "disabled member."
+                "SPM units with is_snap_eligible in December (PolicyEngine "
+                "reads a monthly boolean at a year period as its last month) "
+                "and the people in them. unit_* fields weight each unit by "
+                "its household weight; person_* fields weight it by household "
+                "weight times member count, so person_take_up_rate is "
+                "eligible persons who take up over eligible persons. "
+                "*_take_up_rate reads the stored takes_up_snap_if_eligible; "
+                "*_receiving_rate counts a positive annual modeled snap, a "
+                "different window from the December eligibility. Household "
+                "types overlap; childless_adults have no children and no "
+                "elderly or disabled member."
             ),
-            **snap_take_up_among_eligible(
+            **snap_december_eligible_snapshot(
                 pd.concat(snap_units, ignore_index=True)
                 if snap_units
                 else pd.DataFrame(columns=list(_QA_SNAP_UNIT_COLUMNS))
@@ -2626,9 +2685,10 @@ def do_qa(args) -> None:
             "microcosm#403 re-measure: per-spine SSI incidence and intensity, "
             "computed by loading the packaged artifact bytes PLAIN (no "
             "private projection or fill) — the probe doubles as the "
-            "consumer-loadability proof. SNAP take-up among engine-eligible "
-            "units is reported alongside (microcosm#1051 review). Recorded "
-            "as evidence, not gated."
+            "consumer-loadability proof. A December-eligible SNAP take-up "
+            "snapshot (unit- and person-weighted; not the FNS fiscal-year "
+            "participation rate) is reported alongside (microcosm#1051 "
+            "review). Recorded as evidence, not gated."
         ),
     }
     (args.checkpoint_dir / "spine_qa.json").write_text(json.dumps(payload, indent=2))
@@ -2791,7 +2851,11 @@ def finalize_reviewed_limitations(
                 "(microcosm#1019). The other runtime-owned takes_up_* flags "
                 "(EITC, ACA, Medicaid, SSI, Medicare, Head Start and the "
                 "rest) are neither transferred nor seeded on ACS rows, so "
-                "they ship at the engine default, universal take-up."
+                "they ship at the engine default, universal take-up. The QA "
+                "probe's SNAP take-up table is a December-eligible snapshot "
+                "(unit- and person-weighted), informational and never "
+                "graded; it is not the FNS fiscal-year participation rate, "
+                "which is among eligible people over a federal fiscal year."
             ),
             "treatment": "Tracked via microcosm#1022.",
             "calibration_blocker": False,

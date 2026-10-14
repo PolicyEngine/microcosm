@@ -169,44 +169,51 @@ def test_spine_composition_reports_per_spine_weight_and_size() -> None:
     )
 
 
-def test_do_qa_reports_snap_take_up_among_eligible_units(tmp_path, monkeypatch):
-    """#1051 review: informational SNAP take-up by spine, state and type.
+def _snap_qa_frame(*, households, spm_unit_columns, person_spines=None):
+    """A tiny calibrated frame for the QA SNAP snapshot.
 
-    Six one-person households (household = SPM unit), weights 1..6, probed in
-    two chunks. Units 1, 2, 3, 5 and 6 are eligible (weight 17); 1, 3 and 6
-    take up (10), and 1 and 3 receive a positive benefit (4).
+    ``households`` maps household id -> (weight, state, member count); each
+    household is one SPM unit (and one unit of every other group entity).
+    ``spm_unit_columns`` adds the fake engine's per-unit inputs.
     """
 
     from microcosm.build.us_runtime.base_pool import spine_column
     from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
-    from microcosm.frame.adapters import policyengine_us as adapter_module
 
-    module = _load_tool_module()
-    ids = np.arange(1, 7)
-    spines = ["asec_puf"] * 2 + ["acs_2024_1yr"] * 4
-    person = pd.DataFrame({"person_id": ids, spine_column("person"): spines})
+    unit_ids = np.asarray(list(households), dtype=np.int64)
+    members = np.repeat(unit_ids, [size for _, _, size in households.values()])
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, len(members) + 1),
+            spine_column("person"): (
+                person_spines
+                if person_spines is not None
+                else ["acs_2024_1yr"] * len(members)
+            ),
+        }
+    )
     tables = {"person": person}
     for entity in US_SCHEMA.entities:
         if entity != "person":
-            person[f"person_{entity}_id"] = ids
-            tables[entity] = pd.DataFrame({f"{entity}_id": ids})
-    tables["household"]["_state"] = ["CA", "CA", "TX", "TX", "CA", "TX"]
-    tables["spm_unit"] = tables["spm_unit"].assign(
-        **{
-            spine_column("spm_unit"): spines,
-            "takes_up_snap_if_eligible": [True, False, True, True, False, True],
-            "_eligible": [True, True, True, False, True, True],
-            "_snap": [100.0, 0.0, 50.0, 0.0, 0.0, 0.0],
-            "_elderly_or_disabled": [False, True, False, False, False, True],
-            "_children": [0, 0, 2, 1, 0, 0],
-            "_earned": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
-        }
+            person[f"person_{entity}_id"] = members
+            tables[entity] = pd.DataFrame({f"{entity}_id": unit_ids})
+    tables["household"]["_state"] = [state for _, state, _ in households.values()]
+    tables["spm_unit"] = tables["spm_unit"].assign(**spm_unit_columns)
+    weights = np.asarray(
+        [weight for weight, _, _ in households.values()], dtype=np.float64
     )
-    frame = Frame(
+    return Frame(
         tables,
         US_SCHEMA,
-        {"household": Weights(ids.astype(np.float64), WeightKind.CALIBRATED)},
+        {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+
+
+def _run_snap_qa(module, frame, tmp_path, monkeypatch, *, hh_chunk):
+    """Run do_qa on ``frame`` under a fake engine; return (calls, payload)."""
+
+    from microcosm.frame.adapters import policyengine_us as adapter_module
+
     calls: list[tuple[str, ...]] = []
 
     class _Engine:
@@ -230,28 +237,73 @@ def test_do_qa_reports_snap_take_up_among_eligible_units(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: frame)
     monkeypatch.setattr(module, "_sha256", lambda *_a, **_k: "artifact-sha")
     args = SimpleNamespace(
-        out_h5=tmp_path / "calibrated.h5", hh_chunk=4, checkpoint_dir=tmp_path
+        out_h5=tmp_path / "calibrated.h5", hh_chunk=hh_chunk, checkpoint_dir=tmp_path
     )
     module.do_qa(args)
+    return calls, json.loads((tmp_path / "spine_qa.json").read_text())
+
+
+def test_do_qa_reports_a_december_eligible_snap_snapshot(tmp_path, monkeypatch):
+    """#1051 review: informational SNAP take-up by spine, state and type.
+
+    Six one-person households (household = SPM unit), weights 1..6, probed in
+    two chunks. Units 1, 2, 3, 5 and 6 are eligible (weight 17); 1, 3 and 6
+    take up (10), and 1 and 3 receive a positive benefit (4). With one-person
+    units the person-weighted rates equal the unit-weighted ones.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    spines = ["asec_puf"] * 2 + ["acs_2024_1yr"] * 4
+    frame = _snap_qa_frame(
+        households={
+            unit: (float(unit), state, 1)
+            for unit, state in zip(
+                range(1, 7), ["CA", "CA", "TX", "TX", "CA", "TX"], strict=True
+            )
+        },
+        spm_unit_columns={
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, False, True, True, False, True],
+            "_eligible": [True, True, True, False, True, True],
+            "_snap": [100.0, 0.0, 50.0, 0.0, 0.0, 0.0],
+            "_elderly_or_disabled": [False, True, False, False, False, True],
+            "_children": [0, 0, 2, 1, 0, 0],
+            "_earned": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+        },
+        person_spines=spines,
+    )
+    calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=4)
 
     # One engine pass per chunk reads SSI and the SNAP variables together.
     assert len(calls) == 2
     assert set(calls[0]) == {"ssi", "state_code_str", *module._QA_SNAP_VARIABLES}
-    payload = json.loads((tmp_path / "spine_qa.json").read_text())
     assert set(payload["per_spine"]) == {"asec_puf", "acs_2024_1yr"}
-    table = payload["snap_take_up_among_eligible"]
+    assert "snap_take_up_among_eligible" not in payload
+    table = payload["snap_december_eligible_snapshot"]
     assert table["graded"] is False
+    assert table["label"] == "December-eligible snapshot (unit- and person-weighted)"
+    assert table["not_fns_participation_rate"].startswith(
+        "Not the FNS fiscal-year participation rate."
+    )
+    assert "December" in table["definition"]
+    assert "not the FNS fiscal-year participation rate" in payload["note"]
 
     def rates(cell):
         return (
             cell["eligible_units"],
-            cell["eligible_weight"],
-            pytest.approx(cell["take_up_rate"]),
+            cell["eligible_unit_weight"],
+            pytest.approx(cell["unit_take_up_rate"]),
         )
 
     overall = table["all"]
     assert rates(overall) == (5, 17.0, pytest.approx(10 / 17))
-    assert overall["receiving_rate"] == pytest.approx(4 / 17)
+    assert overall["unit_receiving_rate"] == pytest.approx(4 / 17)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(17.0)
+    assert overall["person_take_up_rate"] == pytest.approx(10 / 17)
+    assert overall["person_receiving_rate"] == pytest.approx(4 / 17)
     assert {k: rates(v) for k, v in table["by_household_type"].items()} == {
         "elderly_or_disabled": (2, 8.0, pytest.approx(0.75)),
         "with_children": (1, 3.0, pytest.approx(1.0)),
@@ -272,12 +324,50 @@ def test_do_qa_reports_snap_take_up_among_eligible_units(tmp_path, monkeypatch):
     }
 
 
-def test_snap_take_up_among_eligible_handles_no_eligible_units() -> None:
+def test_do_qa_snap_snapshot_weights_people_by_unit_size(tmp_path, monkeypatch) -> None:
+    """#1051 review A1 (round 4): her example, through do_qa.
+
+    One eligible one-person unit that does not take up and one eligible
+    four-person unit that does, at equal weights: half the units take up, but
+    four of the five eligible people do.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    frame = _snap_qa_frame(
+        households={1: (10.0, "CA", 1), 2: (10.0, "CA", 4)},
+        spm_unit_columns={
+            spine_column("spm_unit"): ["acs_2024_1yr"] * 2,
+            "takes_up_snap_if_eligible": [False, True],
+            "_eligible": [True, True],
+            "_snap": [0.0, 300.0],
+            "_elderly_or_disabled": [False, False],
+            "_children": [0, 2],
+            "_earned": [0.0, 100.0],
+        },
+    )
+    _calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=1)
+    overall = payload["snap_december_eligible_snapshot"]["all"]
+    assert overall["eligible_units"] == 2
+    assert overall["eligible_unit_weight"] == pytest.approx(20.0)
+    assert overall["unit_take_up_rate"] == pytest.approx(0.5)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(50.0)
+    assert overall["person_take_up_weight"] == pytest.approx(40.0)
+    assert overall["person_take_up_rate"] == pytest.approx(0.8)
+    assert overall["unit_receiving_rate"] == pytest.approx(0.5)
+    assert overall["person_receiving_rate"] == pytest.approx(0.8)
+
+
+def test_snap_december_snapshot_handles_no_eligible_units() -> None:
     module = _load_tool_module()
     empty = pd.DataFrame(columns=list(module._QA_SNAP_UNIT_COLUMNS))
-    table = module.snap_take_up_among_eligible(empty)
+    table = module.snap_december_eligible_snapshot(empty)
     assert table["all"]["eligible_units"] == 0
-    assert table["all"]["take_up_rate"] is None
+    assert table["all"]["eligible_persons"] == 0
+    assert table["all"]["unit_take_up_rate"] is None
+    assert table["all"]["person_take_up_rate"] is None
     assert table["by_spine"] == {}
     assert table["by_state"] == {}
 
