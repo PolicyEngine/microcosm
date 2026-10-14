@@ -863,6 +863,37 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/microcosm#298",
     },
     {
+        "id": "niit_passive_pass_through_exclusion",
+        "name": "Exclude passive partnership and S-corp income from the NIIT base",
+        "parameter_changes": {
+            "gov.irs.investment.income.sources": {
+                "2024-01-01.2024-12-31": [
+                    "taxable_interest_income",
+                    "dividend_income",
+                    "rental_income",
+                    "loss_limited_net_capital_gains",
+                    "non_sch_d_capital_gains",
+                ]
+            }
+        },
+        "budget_measure": "net_investment_income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["passive_partnership_s_corp_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only passive_partnership_s_corp_income from the 2024 "
+            "net investment income sources isolates the section 1411(c)(1)(A)"
+            "(ii) pass-through leg, which the PUF channel carries from "
+            "Schedule E line 28 columns (g) minus (f) (microcosm#1239). The "
+            "donor's passive leg is net positive and concentrated at high "
+            "AGI, so baseline-minus-reform NIIT must be positive; without the "
+            "leaf the reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/microcosm#1239",
+    },
+    {
         "id": "domestic_production_ald_reactivation",
         "name": "Former Section 199 domestic-production deduction reactivation",
         "parameter_changes": {

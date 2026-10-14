@@ -1,8 +1,9 @@
 """Bounded file loading for the processed-PUF tax-unit donor.
 
 This module owns only the input boundary: it reads the root arrays from one
-explicit processed PUF HDF5 file, aligns them to E00100 from one explicit
-source-year PUF CSV, and delegates donor construction to the shared runtime.
+explicit processed PUF HDF5 file, aligns them to E00100 and to Schedule E
+line 32 and its passive subset from one explicit source-year PUF CSV, and
+delegates donor construction to the shared runtime.
 It does not acquire data, choose a donor source, or relax the source-year
 alignment checks.
 """
@@ -16,6 +17,10 @@ import pandas as pd
 
 from microcosm.build.us_runtime.puf_source_agi import (
     source_year_puf_adjusted_gross_income,
+)
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    processed_puf_tax_unit_partnership_s_corp_income,
+    source_year_puf_partnership_s_corp_income,
 )
 from microcosm.build.us_runtime.puf_support import puf_tax_unit_donor_from_arrays
 
@@ -35,10 +40,12 @@ def load_puf_tax_unit_donor(
             root-level dataset is passed unchanged to
             :func:`puf_tax_unit_donor_from_arrays`.
         source_year_puf_csv: Explicit restricted source-year PUF CSV used only
-            by :func:`source_year_puf_adjusted_gross_income`.
+            by :func:`source_year_puf_adjusted_gross_income` and
+            :func:`source_year_puf_partnership_s_corp_income`.
         donor_build_summary: Optional mutable receipt populated by shared donor
             construction, including capital-gains and mortgage-quarantine
-            diagnostics.
+            diagnostics, and the Schedule E line-32 alignment receipt under
+            ``schedule_e_line_32``.
 
     Returns:
         The tax-unit-grain PUF donor used by the support-transfer stages.
@@ -59,11 +66,25 @@ def load_puf_tax_unit_donor(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = source_year_puf_partnership_s_corp_income(
+        Path(source_year_puf_csv),
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _read_processed_puf_arrays(path: Path) -> dict[str, np.ndarray]:
