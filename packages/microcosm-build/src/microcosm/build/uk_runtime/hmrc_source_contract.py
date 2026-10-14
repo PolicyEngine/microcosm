@@ -64,6 +64,7 @@ __all__ = [
     "HMRC_DISTRIBUTIONAL_INPUTS",
     "assert_uk_hmrc_income_source_contract_current",
     "uk_hmrc_weighted_qrf_output_columns",
+    "uk_spi_coherence_superseded_columns",
 ]
 
 UK_CANONICAL_SOURCE_STAGES_RESOURCE = "source_stages.json"
@@ -915,6 +916,62 @@ def uk_hmrc_weighted_qrf_output_columns(
             "an empty tail-concentration surface would make the gate vacuous."
         )
     return tuple(outputs)
+
+
+#: The stage whose declared report replacements take QRF outputs off the
+#: tail-concentration surface, and the operations that replace them.
+_SPI_COHERENCE_STAGE = "spi_benefit_coherence"
+_SPI_COHERENCE_SUPERSEDING_KINDS = frozenset(
+    {"zero_spi_channel_reports", "restore_spi_channel_reports_from_source"}
+)
+
+
+def uk_spi_coherence_superseded_columns(resource: Any | None = None) -> tuple[str, ...]:
+    """Report columns ``spi_benefit_coherence`` replaces on every SPI-channel row.
+
+    The stage (microcosm#1100) zeroes the income-tested legacy reports and
+    restores IIDB, AFCS and bereavement support from the FRS twin, so after it
+    these columns hold only FRS respondents' own reports: no stage-2 forest
+    draw survives in them, and the donor-tail broadcast the tail-concentration
+    gate looks for (#462) cannot occur there. Read from the stage's declared
+    operations in the committed source manifest, in declaration order.
+    """
+
+    target = (
+        files("microcosm.build.uk").joinpath(UK_CANONICAL_SOURCE_STAGES_RESOURCE)
+        if resource is None
+        else resource
+    )
+    raw = (
+        target.read_text(encoding="utf-8")
+        if hasattr(target, "read_text")
+        else Path(target).read_text(encoding="utf-8")
+    )
+    stages = json.loads(raw).get("stages")
+    matches = [
+        stage
+        for stage in stages or ()
+        if isinstance(stage, Mapping) and stage.get("stage") == _SPI_COHERENCE_STAGE
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"UK source manifest must contain exactly one {_SPI_COHERENCE_STAGE} stage."
+        )
+    columns: dict[str, None] = {}
+    for operation in matches[0].get("operations", ()):
+        if operation.get("kind") not in _SPI_COHERENCE_SUPERSEDING_KINDS:
+            continue
+        for column in operation.get("columns", ()):
+            if not isinstance(column, str) or not column:
+                raise ValueError(
+                    f"{_SPI_COHERENCE_STAGE} declares a non-string or empty column."
+                )
+            columns[column] = None
+    if not columns:
+        raise ValueError(
+            f"{_SPI_COHERENCE_STAGE} declares no zeroed or restored report columns."
+        )
+    return tuple(columns)
 
 
 def _load_payload(resource: Any | None) -> Mapping[str, Any]:

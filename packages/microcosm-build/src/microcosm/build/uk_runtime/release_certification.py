@@ -352,6 +352,7 @@ def run_uk_release_cut_battery(
         "parity_evidence": parity_evidence,
         "aggregate_admin": admin_totals,
         "input_mass_reference": input_mass_reference,
+        "release_line": "national",
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records

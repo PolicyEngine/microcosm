@@ -192,13 +192,13 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
         "git_commit": "b" * 40,
         "parameters": {
             "release_candidate": True,
-            "epochs": 1500,
+            "epochs": 2000,
             "n_clones": 15,
             "skip_holdout": False,
             "doctrine": {
                 "max_weight_ratio": 10.0,
-                "target_weight_rule": "grain_equal",
-                "solve_epochs": 1500,
+                "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+                "solve_epochs": 2000,
                 "clone_count": 15,
                 "target_loss_cap": 10.0,
                 "scale_rule": "default_target_loss_scales",
@@ -865,10 +865,18 @@ def test_assembler_refuses_a_national_role_manifest(
         )
 
 
+@pytest.mark.parametrize(
+    "sized",
+    [False, True],
+    ids=["whole-pool", "doctrine-sized"],
+)
 def test_assembler_stages_a_graph_built_dense_candidate(
-    tmp_path: Path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch, capsys, sized: bool
 ) -> None:
     """The graph driver's bundle assembles like a rowwise-tool bundle.
+
+    A release candidate sized at the size doctrine (microcosm#1124, ruling of
+    2026-10-13) assembles on the same contract as the whole pool.
 
     ``main`` runs the synthetic graph with local-only staging, so the manifest
     carries the staging receipt, the staged-dataset sidecars and the Logbook
@@ -888,10 +896,12 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     monkeypatch.setattr(cli, "git_commit", lambda: "b" * 40)
     monkeypatch.setattr(cli, "git_dirty", lambda: False)
+    size = ("--dataset-households", "100000") if sized else ()
     candidate = graph_dense_bundle(
         tmp_path,
         monkeypatch,
         "--release-candidate",
+        *size,
         staging="--staging-local-only",
     )
     # The graph driver prints the finished manifest to stdout, as the tool does.
@@ -903,6 +913,14 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     manifest = json.loads(manifest_path.read_text())
     assert manifest["staging_delivery"]["mode"] == "local_only"
     assert manifest["staged_dataset"]["status"] == "skipped"
+    assert manifest["releasable"] is True
+    if sized:
+        assert manifest["parameters"]["dataset_households"] == 100_000
+        assert manifest["release_posture"]["size_doctrine"] is True
+        assert manifest["solve"]["dataset_size"]["realized_households"] == 100_000
+    else:
+        assert manifest["solve"]["dataset_size"] is None
+        assert "size_doctrine" not in manifest["release_posture"]
     report_path = candidate / f"{STEM}.local_gates.json"
     report = json.loads(report_path.read_text())
     assert report["release_id"] == row.build_id and report["shippable"] is True

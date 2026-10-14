@@ -943,6 +943,7 @@ class UKNationalGateKernel(_NationalKernel):
             "exclusions_evaluated_on": date.fromisoformat(
                 str(context.params["review_date"])
             ),
+            "release_line": "national",
         }
         report = evaluate_phase(
             gates,

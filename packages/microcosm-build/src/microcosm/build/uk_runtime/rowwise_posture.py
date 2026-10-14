@@ -36,6 +36,7 @@ from microcosm.build.uk_runtime.calibration_run import (
 )
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_CLONE_COUNT,
+    UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_SOLVE_EPOCHS,
     UKLocalSolveDoctrine,
@@ -264,7 +265,13 @@ UK_ROWWISE_DENSE_POSTURE = UKRowwisePosture(
     learning_rate=UK_DENSE_LEARNING_RATE,
     seed=UK_DENSE_SEED,
     target_weight_rule=UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
-    allowed_target_weight_rules=("grain_equal", "uniform"),
+    # microcosm#1124: the row-metadata rules are receipted candidate-only
+    # overrides; a release candidate still refuses any rule but the default.
+    allowed_target_weight_rules=(
+        "grain_equal",
+        "uniform",
+        *UK_LOCAL_ROW_METADATA_RULES,
+    ),
     expected_constituency_vintage=UK_DENSE_CONSTITUENCY_VINTAGE,
     gate_scope=tuple(UK_LOCAL_GATE_SCOPE),
     gate_posture="local_candidate",

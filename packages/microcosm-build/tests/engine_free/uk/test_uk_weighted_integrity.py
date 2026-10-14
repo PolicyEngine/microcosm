@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     coerce_input_mass_reference_registry,
+    coerce_reviewed_exclusions,
     load_uk_input_mass_reference,
     load_uk_local_area_support_exclusion_register,
     load_uk_reference_scoped_exclusion_register,
@@ -464,7 +465,22 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    assert surface["declared_qrf_outputs"] >= 47
+    # The 48 declared outputs, less the ten spi_benefit_coherence replaces on
+    # every SPI-channel row (microcosm#1100); they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 38
+    assert surface["superseded_by_spi_benefit_coherence"] == [
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "sda_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_income_reported",
+    ]
+    assert not set(surface["superseded_by_spi_benefit_coherence"]) & set(values)
 
 
 def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
@@ -541,6 +557,24 @@ def test_qrf_surface_rejects_partially_omitted_declared_outputs() -> None:
     assert "QRF surface declarations must reconcile exactly" in gate.failures[0]
 
 
+def test_the_superseded_columns_are_the_coherence_stage_declaration() -> None:
+    """The gate reads the stage's declaration, which names the same columns
+    the stage's transform zeroes and restores."""
+
+    from microcosm.build.uk_runtime.hmrc_source_contract import (
+        uk_spi_coherence_superseded_columns,
+    )
+    from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_RESTORED_REPORT_COLUMNS,
+        SPI_ZEROED_REPORT_COLUMNS,
+    )
+
+    assert uk_spi_coherence_superseded_columns() == (
+        *SPI_ZEROED_REPORT_COLUMNS,
+        *SPI_RESTORED_REPORT_COLUMNS,
+    )
+
+
 def test_concentrated_qrf_column_fails_by_name() -> None:
     n = 10
     concentrated = np.ones(n)
@@ -562,7 +596,7 @@ def test_concentrated_qrf_column_fails_by_name() -> None:
     assert gate.name == "qrf_tail_concentration"
     assert not gate.passed
     assert "self_employment_income" in gate.failures[0]
-    assert gate.details["surface"]["declared_qrf_outputs"] >= 47
+    assert gate.details["surface"]["declared_qrf_outputs"] == 38
 
 
 def test_thin_qrf_column_is_reported_not_checked() -> None:
@@ -648,6 +682,29 @@ def test_qrf_policy_validation() -> None:
         )
 
 
+def test_release_lines_scope_a_receipt_without_moving_unscoped_payloads() -> None:
+    plain = coerce_reviewed_exclusions({"x": _entry("r")}, label="t")["x"]
+    # Unscoped receipts keep the pre-scope payload, so pinned digests hold.
+    assert set(plain.policy_payload()) == set(_entry("r"))
+    assert plain.applies_on("local") and plain.applies_on(None)
+
+    scoped = coerce_reviewed_exclusions(
+        {"x": {**_entry("r"), "release_lines": ["national"]}}, label="t"
+    )["x"]
+    assert scoped.policy_payload()["release_lines"] == ["national"]
+    assert scoped.applies_on("national") and not scoped.applies_on("local")
+    # A scoped entry fails closed where no line is declared.
+    assert not scoped.applies_on(None)
+
+    for bad in ([], ["regional"], ["local", "local"], "national"):
+        with pytest.raises(ValueError, match="release_lines"):
+            coerce_reviewed_exclusions(
+                {"x": {**_entry("r"), "release_lines": bad}}, label="t"
+            )
+    with pytest.raises(ValueError, match="optionally with"):
+        coerce_reviewed_exclusions({"x": {**_entry("r"), "scope": "x"}}, label="t")
+
+
 def test_committed_exclusion_registers_load() -> None:
     input_mass = load_uk_reference_scoped_exclusion_register(
         None,
@@ -682,18 +739,33 @@ def test_committed_exclusion_registers_load() -> None:
         "dfe_education_spending",
         "property_wealth",
     }
-    assert set(qrf_tail) == {"charitable_investment_gifts"}
+    assert set(qrf_tail) == {
+        "charitable_investment_gifts",
+        "hmrc_spi_other_income",
+        "hmrc_spi_taxable_termination_pay",
+    }
+    # All three were earned on the national line's evidence.
+    assert {record.release_lines for record in qrf_tail.values()} == {("national",)}
     for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-04", "2026-10-11"}
+        assert record.approved_on in {
+            "2026-10-02",
+            "2026-10-04",
+            "2026-10-11",
+            "2026-10-14",
+        }
         assert record.expires_on in {
             "2027-04-02",
             "2027-01-04",
             "2027-04-04",
             "2027-04-11",
+            # Time-boxed until the tail gate counts independent draws.
+            "2027-01-14",
         }
-        assert "microcosm#1063" in record.adjudication or (
-            "microcosm#1106" in record.adjudication
+        assert (
+            "microcosm#1063" in record.adjudication
+            or "microcosm#1106" in record.adjudication
+            or "microcosm#1277" in record.adjudication
         )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()

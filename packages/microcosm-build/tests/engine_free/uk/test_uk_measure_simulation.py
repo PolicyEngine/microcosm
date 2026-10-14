@@ -826,11 +826,15 @@ def test_packaged_exclusions_load():
     # retired on 2026-09-16 with their repairs; the any-tenure housing row (a
     # structural bias: DWP's 'Yes' includes an other/unknown tenure the model
     # cannot carry) remains, adjudicated to microcosm#882 and the committed
-    # baseline doc, signed in review of microcosm#921, windowed to one month.
-    elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
+    # baseline doc, signed in review of microcosm#921, windowed to one month,
+    # and renewed one month on 2026-10-14 (microcosm#1124 local release), so
+    # nothing remains on the 2026-09-15 clock.
+    assert [e for e in exclusions if e["approved_on"] == "2026-09-15"] == []
+    elements = [e for e in exclusions if e["approved_on"] == "2026-10-14"]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
-        assert entry["expires_on"] == "2026-10-15", entry["name"]
+        assert entry["expires_on"] == "2026-11-14", entry["name"]
+        assert "renewed one month on 2026-10-14" in entry["adjudication"]
         assert entry["tracking"] == "microcosm#882", entry["name"]
         assert entry["approved_by"] == "juaristi22", entry["name"]
         assert "microcosm#882" in entry["adjudication"], entry["name"]

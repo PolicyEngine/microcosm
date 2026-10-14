@@ -291,6 +291,9 @@ def build_full_gate_context(
             "aggregate_admin": admin_totals,
             "aggregate_admin_measurement": admin_receipt,
             "full_gate_scope": uk_full_gate_scope_receipt(selection_receipt),
+            # The full build is the local line's K-clone pool; line-scoped
+            # register entries earned on the national seam stand aside here.
+            "release_line": "local",
         }
     )
     if "rules_engine" not in artifacts and "coverage_engine" in artifacts:

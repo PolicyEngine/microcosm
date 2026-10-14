@@ -110,6 +110,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKQRFTailConcentrationPolicy,
@@ -959,6 +960,46 @@ def _exclusion_clock(context: EvidenceContext) -> date:
     return clock
 
 
+def _release_line(context: EvidenceContext) -> str | None:
+    """The release line the gate context declares (``release_line``), if any."""
+
+    line = context.artifacts.get("release_line")
+    if line is not None and line not in UK_RELEASE_LINES:
+        raise ValueError(
+            f"release_line must be one of {sorted(UK_RELEASE_LINES)}, got {line!r}."
+        )
+    return line
+
+
+def _in_line(
+    records: Mapping[str, UKReviewedExclusion], context: EvidenceContext
+) -> tuple[Mapping[str, UKReviewedExclusion], list[str]]:
+    """The records in scope on the context's line, and the names out of line."""
+
+    line = _release_line(context)
+    applied = {
+        name: record for name, record in records.items() if record.applies_on(line)
+    }
+    return MappingProxyType(applied), sorted(set(records) - set(applied))
+
+
+def _with_out_of_line(
+    result: GateResult, context: EvidenceContext, out_of_line: list[str]
+) -> GateResult:
+    """Record the register entries a line-scoped evaluation set aside."""
+
+    if not out_of_line:
+        return result
+    return replace(
+        result,
+        details={
+            **dict(result.details),
+            "release_line": _release_line(context),
+            "out_of_line_exclusions": out_of_line,
+        },
+    )
+
+
 def _resolve_degenerate_exclusions(
     context: EvidenceContext,
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
@@ -1073,7 +1114,8 @@ def _evaluate_degenerate_release_surface(
             f"runtime loads {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     resolved, _source = _resolve_degenerate_exclusions(context)
-    return uk_degenerate_release_surface_gate(
+    resolved, out_of_line = _in_line(resolved, context)
+    result = uk_degenerate_release_surface_gate(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
@@ -1083,6 +1125,7 @@ def _evaluate_degenerate_release_surface(
         dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _degenerate_exclusions_evidence(
@@ -1531,13 +1574,15 @@ def _evaluate_target_fit(
             f"runtime loads {UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_target_fit_exclusions(context)
+    exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(
+    result = uk_target_fit_gate(
         parity.target_relative_errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _target_fit_required_artifacts(
@@ -1579,6 +1624,7 @@ def _evaluate_input_mass_parity(
     exclusions, _source = _resolve_input_mass_exclusions(
         context, reference=reference_name
     )
+    exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
@@ -1590,7 +1636,7 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
-    return uk_input_mass_parity_gate(
+    result = uk_input_mass_parity_gate(
         uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
@@ -1598,6 +1644,7 @@ def _evaluate_input_mass_parity(
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _input_mass_reference_evidence(
@@ -1630,6 +1677,7 @@ def _evaluate_tail_concentration(
             f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_qrf_tail_exclusions(context)
+    exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKQRFTailConcentrationPolicy(
         top_k=top_k,
         max_top_share=max_top_share,
@@ -1657,7 +1705,7 @@ def _evaluate_tail_concentration(
             ],
             "export_dropped_checked_on_spine": sorted(checked_on_spine),
         }
-    return uk_qrf_tail_concentration_gate(
+    result = uk_qrf_tail_concentration_gate(
         values,
         weights,
         policy=policy,
@@ -1665,6 +1713,7 @@ def _evaluate_tail_concentration(
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _evaluate_ledger_compile_parity(
