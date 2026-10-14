@@ -16,7 +16,10 @@ identity-keyed uniforms, so adding or reordering rows never moves a draw.
 Support rules learned from the training rows then hold the bundle together: an
 amount is zero wherever the FRS has no positive value for that tenure or
 region, and Housing Benefit needs a rented tenure because the engine pays it to
-renting reporters only. FRS base rows are never modified.
+renting reporters only. A council-tax band its nation does not use (band I
+outside Wales, any band but the placeholder in Northern Ireland) is drawn again
+from the classifier's probabilities over that nation's bands. FRS base rows are
+never modified.
 """
 
 from __future__ import annotations
@@ -30,6 +33,11 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS_BY_NATION,
+    UK_COUNCIL_TAX_BANDS_BY_REGION,
+    UK_NATION_BY_REGION,
+)
 
 __all__ = [
     "HOUSING_AMOUNT_COLUMNS",
@@ -41,6 +49,7 @@ __all__ = [
     "household_housing_predictors",
     "household_housing_targets",
     "impute_spi_housing_shell",
+    "restrict_bands_to_nation",
 ]
 
 UK_SPI_HOUSING_SHELL_STAGE_NAME = "spi_housing_shell"
@@ -210,6 +219,55 @@ def _one_hot(
     return pd.concat(parts, axis=1)
 
 
+def restrict_bands_to_nation(
+    choice: np.ndarray,
+    probabilities: np.ndarray,
+    classes: np.ndarray,
+    regions: np.ndarray,
+    uniforms: np.ndarray,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Redraw each band its household's nation does not use.
+
+    A drawn band outside the nation's bands is replaced by an inverse-CDF draw
+    over the classifier's probabilities restricted to those bands, with its
+    own identity-keyed uniform. A row keeps its first draw whenever that draw
+    is valid, so the restricted rows end up distributed as the classifier
+    conditioned on the nation's bands, and no valid row moves.
+
+    Returns the corrected class indices and the rows redrawn, by nation.
+    """
+
+    unknown = sorted(set(regions) - set(UK_COUNCIL_TAX_BANDS_BY_REGION))
+    if unknown:
+        raise ValueError(f"Council-tax bands need a nation for regions {unknown}.")
+    allowed = np.zeros(probabilities.shape, dtype=bool)
+    for region, bands in UK_COUNCIL_TAX_BANDS_BY_REGION.items():
+        rows = regions == region
+        if rows.any():
+            allowed[np.ix_(rows, np.isin(classes, bands))] = True
+    outside = ~allowed[np.arange(len(choice)), choice]
+    redrawn = {
+        f"council_tax_band:redrawn:{nation}": int(
+            (outside & (pd.Series(regions).map(UK_NATION_BY_REGION) == nation)).sum()
+        )
+        for nation in UK_COUNCIL_TAX_BANDS_BY_NATION
+    }
+    if not outside.any():
+        return choice, redrawn
+    restricted = np.where(allowed[outside], probabilities[outside], 0.0)
+    cumulative = np.cumsum(restricted, axis=1)
+    total = cumulative[:, -1]
+    if not (total > 0.0).all():
+        raise ValueError(
+            "A household's nation has no council-tax band the classifier can draw."
+        )
+    corrected = choice.copy()
+    corrected[outside] = (cumulative > (uniforms[outside] * total)[:, None]).argmax(
+        axis=1
+    )
+    return corrected, redrawn
+
+
 @dataclass
 class FittedHousingModel:
     """The fitted categorical steps and the chained amount model."""
@@ -231,8 +289,18 @@ class FittedHousingModel:
         ]
         return _one_hot(frame, categorical, self.levels)
 
-    def draw(self, predictors: pd.DataFrame) -> pd.DataFrame:
-        """Draw the housing bundle for ``predictors`` (indexed by household id)."""
+    def draw(
+        self,
+        predictors: pd.DataFrame,
+        *,
+        firings: dict[str, int] | None = None,
+    ) -> pd.DataFrame:
+        """Draw the housing bundle for ``predictors`` (indexed by household id).
+
+        The council-tax band is kept inside the household's nation's bands
+        (:func:`restrict_bands_to_nation`); ``firings`` receives the rows
+        redrawn, by nation.
+        """
 
         ids = predictors.index.to_numpy()
         drawn = pd.DataFrame(index=predictors.index)
@@ -246,7 +314,22 @@ class FittedHousingModel:
             cumulative = np.cumsum(probabilities, axis=1)
             cumulative[:, -1] = 1.0
             choice = (cumulative > uniforms[:, None]).argmax(axis=1)
-            drawn[column] = np.asarray(classifier.classes_)[choice].astype(str)
+            classes = np.asarray(classifier.classes_).astype(str)
+            if column == "council_tax_band":
+                choice, redrawn = restrict_bands_to_nation(
+                    choice,
+                    probabilities,
+                    classes,
+                    predictors["region"].astype(str).to_numpy(),
+                    stable_identity_uniforms(
+                        ids,
+                        seed=self.seed,
+                        salt=f"{UK_SPI_HOUSING_SHELL_STAGE_NAME}:{column}:nation",
+                    ),
+                )
+                if firings is not None:
+                    firings.update(redrawn)
+            drawn[column] = classes[choice]
         features = self._features(predictors, drawn)
         quantiles = {
             target: stable_identity_uniforms(
@@ -431,10 +514,12 @@ def impute_spi_housing_shell(
         seed=seed,
         n_estimators=n_estimators,
     )
-    raw = model.draw(predictors.loc[recipient_ids])
+    band_redraws: dict[str, int] = {}
+    raw = model.draw(predictors.loc[recipient_ids], firings=band_redraws)
     draws, fired = apply_structural_rules(
         raw, predictors["region"], model.structural_zeros
     )
+    fired.update(band_redraws)
 
     household_out = household.copy()
     recipients = household_out["household_id"].isin(recipient_ids).to_numpy()
@@ -512,6 +597,7 @@ UK_SPI_HOUSING_SHELL_OPERATION: dict[str, Any] = {
         "housing_benefit_requires_rented_tenure",
         "council_tax_benefit_capped_at_council_tax",
         "council_tax_rebate_equals_hrp_council_tax_benefit",
+        "council_tax_band_within_its_nation",
     ],
     "landing": "household_reference_person",
     "n_estimators": 100,

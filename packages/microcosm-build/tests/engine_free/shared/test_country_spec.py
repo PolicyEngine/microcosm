@@ -1462,6 +1462,7 @@ class TestUKGatesManifest:
             "uk_brma_enum_domain",
             "uk_ons_household_type_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_council_tax_band_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",

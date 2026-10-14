@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "214b09ea87bc37ac832c73e59fc04ff507b1f45db132906aeb75210480f4b598"
+    "094fdca9928a6686e4d58f73d40420e71aac6174a732ca03fc065958d41b2627"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9b597286621f1c0e4eb4e4f0c197bb4c38afa663ae456205483a082a6aac73fa"
+    "b0bd495444ec9e9c4e0c1281bf0efe1a52ddfa0d99e27b27f2a840ddbf7fb6a4"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "91d8d1a660a3823a95d2d13935f1af9a6927d8d647c9a24dc8c0511c104fcd3d"
+    "e2c05d5185e48881200792b0c1618be173a71762498b90d742f670b5ee67ba07"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -447,6 +447,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
@@ -538,6 +539,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
     "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -795,6 +797,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_brma_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_council_tax_band_domain",
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_support_split_mass",
@@ -870,10 +873,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "075efba197b35648b64dae294d41ced01d49c4853f7ef7756ee335247ddce479"
+            "b34c6fba43a1b27af137e88dc91ff3d34d0fe6bc096f29d5f5cb95a02df4f62d"
         ),
         "policy_sha256": (
-            "65113710ee51bdc832b5de3d58b3f20b62cccfc7bbe51948368a9137aba452dc"
+            "a6f270c51127486617f007c5f70127f1d5994f113658d528bcfe556db11e64ff"
         ),
     },
     "calibration_seam": {

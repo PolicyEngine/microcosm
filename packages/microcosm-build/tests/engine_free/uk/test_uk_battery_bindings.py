@@ -211,7 +211,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="enum_domain", passed=True
             ),
-            parameter_keys=frozenset({"columns"}),
+            parameter_keys=UK_GATE_REGISTRY["enum_domain"].parameter_keys,
         ),
     }
 
@@ -2064,6 +2064,94 @@ class TestEnumDomainResolution:
             _evaluate_enum_domain(
                 EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
                 {"columns": ["student_loan_plan"]},
+            )
+
+
+class TestCouncilTaxBandDomain:
+    """Each household's band must be one its nation uses (microcosm#1278)."""
+
+    _REGIONS = ["NORTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND"]
+
+    @staticmethod
+    def _parameters() -> dict:
+        entry = next(
+            entry
+            for entry in load_country_spec("uk").gates.gates
+            if entry.id == "uk_council_tax_band_domain"
+        )
+        return dict(entry.parameters)
+
+    def _context(self, bands, regions=None) -> EvidenceContext:
+        person, benunit, household = _tables(n=4)
+        household["region"] = regions or self._REGIONS
+        household["council_tax_band"] = bands
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "council_tax_band"
+                return tuple("ABCDEFGHI")
+
+        return EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()})
+
+    def test_the_declaration_is_the_shared_constant(self) -> None:
+        from microcosm.build.uk_runtime.council_tax_constants import (
+            UK_COUNCIL_TAX_BANDS_BY_NATION,
+        )
+
+        parameters = self._parameters()
+        assert parameters["partition_column"] == "region"
+        assert {
+            nation: tuple(bands)
+            for nation, bands in parameters["domains_by_nation"].items()
+        } == dict(UK_COUNCIL_TAX_BANDS_BY_NATION)
+
+    def test_each_nation_holds_its_own_bands(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        result = _evaluate_enum_domain(
+            self._context(["H", "I", "H", "D"]), self._parameters()
+        )
+        assert result.passed, result.failures
+
+    @pytest.mark.parametrize(
+        ("bands", "invalid"),
+        [
+            (["I", "I", "H", "D"], ["I@ENGLAND"]),
+            (["H", "I", "I", "D"], ["I@SCOTLAND"]),
+            (["H", "I", "H", "A"], ["A@NORTHERN_IRELAND"]),
+        ],
+    )
+    def test_a_band_its_nation_does_not_use_fails(self, bands, invalid) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        result = _evaluate_enum_domain(self._context(bands), self._parameters())
+        assert not result.passed
+        assert result.details["invalid_examples"] == {"council_tax_band": invalid}
+
+    def test_a_declaration_other_than_the_constant_is_refused(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        parameters = self._parameters()
+        parameters["domains_by_nation"] = {
+            **parameters["domains_by_nation"],
+            "ENGLAND": list("ABCDEFGHI"),
+        }
+        with pytest.raises(ValueError, match="must equal the shared constant"):
+            _evaluate_enum_domain(self._context(["H", "I", "H", "D"]), parameters)
+
+    def test_a_region_without_a_nation_is_refused(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        with pytest.raises(ValueError, match="regions with no nation"):
+            _evaluate_enum_domain(
+                self._context(
+                    ["H", "I", "H", "D"],
+                    regions=["UNKNOWN", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
+                ),
+                self._parameters(),
             )
 
 

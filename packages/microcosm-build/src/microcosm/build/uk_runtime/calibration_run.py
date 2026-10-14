@@ -137,6 +137,10 @@ UK_SPINE_GATE_SCOPE = (
     # onward, so it is checked at the transferred boundary, and its domain is
     # declared by the stage module (microcosm#725).
     "uk_capital_gains_asset_type_enum_domain",
+    # Weight-independent; spi_housing_shell is the last spine stage that writes
+    # the band, so the transferred boundary checks every row's nation
+    # (microcosm#1278).
+    "uk_council_tax_band_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",

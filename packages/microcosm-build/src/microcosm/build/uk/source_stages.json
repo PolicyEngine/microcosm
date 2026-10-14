@@ -2476,7 +2476,8 @@
       "mortgage_requires_mortgaged_tenure",
       "housing_benefit_requires_rented_tenure",
       "council_tax_benefit_capped_at_council_tax",
-      "council_tax_rebate_equals_hrp_council_tax_benefit"
+      "council_tax_rebate_equals_hrp_council_tax_benefit",
+      "council_tax_band_within_its_nation"
      ],
      "landing": "household_reference_person",
      "n_estimators": 100,

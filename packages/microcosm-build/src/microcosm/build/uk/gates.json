@@ -1152,6 +1152,55 @@
       "notes": "The person capital_gains_asset_type value must be one of the eight values the hmrc_cgt_asset_type_spine stage declares (none, sub_aea, the Chronicle Table 7 asset-type value ids); the build supplies the declared domain as evidence because the column is a frame input, not a PolicyEngine-UK enum (microcosm#725). Evaluated at the transferred boundary, after the stage that writes the column has run."
     },
     {
+      "id": "uk_council_tax_band_domain",
+      "gate": "enum_domain",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "council_tax_band"
+        ],
+        "partition_column": "region",
+        "domains_by_nation": {
+          "ENGLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "WALES": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I"
+          ],
+          "SCOTLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "NORTHERN_IRELAND": [
+            "D"
+          ]
+        }
+      },
+      "notes": "Each household's council-tax band must be one its nation uses: A-H in England and Scotland, A-I in Wales, and only the FRS placeholder D in Northern Ireland, which pays domestic rates (microcosm#1278). The engine enum holds A-I for every nation, so its domain alone passes a band I in England: no English target counts that band, and a computed council tax would charge it at the Band D ratio. The nation comes from the household region through the region tier, and the declared domains must equal UK_COUNCIL_TAX_BANDS_BY_NATION. Evaluated at the transferred boundary, after spi_housing_shell, the last spine stage that writes the band."
+    },
+    {
       "id": "uk_uc_deduction_combination_enum_domain",
       "gate": "enum_domain",
       "phase": "terminal",

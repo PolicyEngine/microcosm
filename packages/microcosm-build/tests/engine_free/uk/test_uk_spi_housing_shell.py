@@ -7,6 +7,11 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS,
+    UK_COUNCIL_TAX_BANDS_BY_REGION,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_housing_shell import (
     HOUSING_AMOUNT_COLUMNS,
@@ -17,6 +22,7 @@ from microcosm.build.uk_runtime.spi_housing_shell import (
     _assert_invariants,
     _assert_stage_parameters,
     impute_spi_housing_shell,
+    restrict_bands_to_nation,
 )
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_spi_housing_shell import housing_shell_tables
@@ -122,3 +128,124 @@ def test_a_frame_without_frs_training_rows_is_refused() -> None:
     household = household.assign(household_support_channel="spi")
     with pytest.raises(ValueError, match="FRS training rows"):
         impute_spi_housing_shell(person, household, weights, seed=0, n_estimators=20)
+
+
+def test_a_band_inside_its_nation_keeps_its_draw() -> None:
+    classes = np.asarray(UK_COUNCIL_TAX_BANDS)
+    probabilities = np.full((3, len(classes)), 1.0 / len(classes))
+    choice = np.array([7, 8, 3])  # H in England, I in Wales, D in Northern Ireland
+    regions = np.array(["LONDON", "WALES", "NORTHERN_IRELAND"])
+    corrected, redrawn = restrict_bands_to_nation(
+        choice, probabilities, classes, regions, np.full(3, 0.5)
+    )
+    np.testing.assert_array_equal(corrected, choice)
+    assert sum(redrawn.values()) == 0
+    assert set(redrawn) == {
+        "council_tax_band:redrawn:ENGLAND",
+        "council_tax_band:redrawn:WALES",
+        "council_tax_band:redrawn:SCOTLAND",
+        "council_tax_band:redrawn:NORTHERN_IRELAND",
+    }
+
+
+def test_a_band_outside_its_nation_is_redrawn_from_the_nations_bands() -> None:
+    classes = np.asarray(UK_COUNCIL_TAX_BANDS)
+    regions = np.array(["LONDON", "SCOTLAND", "NORTHERN_IRELAND", "NORTHERN_IRELAND"])
+    probabilities = np.full((4, len(classes)), 1.0 / len(classes))
+    choice = np.array([8, 8, 0, 3])  # I, I, A, D
+    corrected, redrawn = restrict_bands_to_nation(
+        choice, probabilities, classes, regions, np.array([0.99, 0.0, 0.5, 0.5])
+    )
+    bands = classes[corrected]
+    for band, region in zip(bands, regions, strict=True):
+        assert band in UK_COUNCIL_TAX_BANDS_BY_REGION[region]
+    assert list(bands[2:]) == ["D", "D"]
+    assert corrected[3] == choice[3]
+    assert redrawn["council_tax_band:redrawn:ENGLAND"] == 1
+    assert redrawn["council_tax_band:redrawn:SCOTLAND"] == 1
+    assert redrawn["council_tax_band:redrawn:NORTHERN_IRELAND"] == 1
+
+
+def test_redrawn_bands_follow_the_classifier_over_the_nations_bands() -> None:
+    # Every English row drew band I; the redraw must spread them over A-H in
+    # proportion to the classifier's own probabilities.
+    n = 40_000
+    classes = np.asarray(UK_COUNCIL_TAX_BANDS)
+    weights = np.array([1, 2, 3, 4, 3, 2, 1, 1, 3], dtype=float)
+    probabilities = np.tile(weights / weights.sum(), (n, 1))
+    uniforms = stable_identity_uniforms(np.arange(n), seed=0, salt="test")
+    corrected, _ = restrict_bands_to_nation(
+        np.full(n, 8), probabilities, classes, np.full(n, "LONDON"), uniforms
+    )
+    observed = np.bincount(corrected, minlength=len(classes)) / n
+    expected = np.append(weights[:8] / weights[:8].sum(), 0.0)
+    np.testing.assert_allclose(observed, expected, atol=0.01)
+
+
+def test_a_nation_the_classifier_cannot_serve_is_refused() -> None:
+    classes = np.array(["B", "F"])
+    with pytest.raises(ValueError, match="no council-tax band the classifier"):
+        restrict_bands_to_nation(
+            np.array([0]),
+            np.array([[0.5, 0.5]]),
+            classes,
+            np.array(["NORTHERN_IRELAND"]),
+            np.array([0.5]),
+        )
+    with pytest.raises(ValueError, match="need a nation for regions"):
+        restrict_bands_to_nation(
+            np.array([0]),
+            np.array([[0.5, 0.5]]),
+            classes,
+            np.array(["ATLANTIS"]),
+            np.array([0.5]),
+        )
+
+
+def _band_i_everywhere():
+    """FRS training rows that hold band I in every region, so SPI rows draw it."""
+
+    person, benunit, household, weights = housing_shell_tables()
+    frs = (household["household_support_channel"] == "frs").to_numpy()
+    plant = frs & (np.arange(len(household)) % 3 == 0)
+    household.loc[plant, "council_tax_band"] = "I"
+    return person, benunit, household, weights
+
+
+def test_the_stage_keeps_every_spi_band_inside_its_nation() -> None:
+    person, _, household, weights = _band_i_everywhere()
+    _, household_out, receipt = impute_spi_housing_shell(
+        person, household, weights, seed=0, n_estimators=20
+    )
+    spi = household_out[household_out["household_support_channel"] == "spi"]
+    allowed = spi["region"].map(UK_COUNCIL_TAX_BANDS_BY_REGION)
+    assert all(
+        band in bands
+        for band, bands in zip(spi["council_tax_band"], allowed, strict=True)
+    )
+    firings = receipt["rule_firings"]
+    assert firings["council_tax_band:redrawn:ENGLAND"] > 0
+    frs = household["household_support_channel"] == "frs"
+    pd.testing.assert_frame_equal(household.loc[frs], household_out.loc[frs])
+
+
+def test_without_the_restriction_spi_rows_leave_their_nation(monkeypatch) -> None:
+    # Mutation check: the planted case does reach out-of-nation bands when the
+    # restriction is removed, so the test above can fail.
+    import microcosm.build.uk_runtime.spi_housing_shell as shell
+
+    monkeypatch.setattr(
+        shell,
+        "restrict_bands_to_nation",
+        lambda choice, *_args: (choice, {}),
+    )
+    person, _, household, weights = _band_i_everywhere()
+    _, household_out, _ = impute_spi_housing_shell(
+        person, household, weights, seed=0, n_estimators=20
+    )
+    spi = household_out[household_out["household_support_channel"] == "spi"]
+    allowed = spi["region"].map(UK_COUNCIL_TAX_BANDS_BY_REGION)
+    assert not all(
+        band in bands
+        for band, bands in zip(spi["council_tax_band"], allowed, strict=True)
+    )

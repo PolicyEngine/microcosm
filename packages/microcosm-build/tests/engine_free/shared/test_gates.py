@@ -1595,6 +1595,69 @@ class TestEnumDomainGate:
         result = enum_domain_gate({"race": [Race.WHITE, "BLACK"]}, {"race": Race})
         assert result.passed
 
+    def test_partition_domains_restrict_each_row(self) -> None:
+        result = enum_domain_gate(
+            {"band": ["A", "I", "I", "D"]},
+            {"band": tuple("ABCDEFGHI")},
+            partitions={"band": ["north", "west", "north", "isle"]},
+            partition_domains={
+                "band": {
+                    "north": tuple("ABCDEFGH"),
+                    "west": tuple("ABCDEFGHI"),
+                    "isle": ("D",),
+                }
+            },
+        )
+        assert not result.passed
+        assert result.details["invalid_counts"] == {"band": 1}
+        assert result.details["invalid_examples"] == {"band": ["I@north"]}
+        assert result.details["partition_allowed_values"]["band"]["isle"] == ["D"]
+        assert "outside its partition's domain" in result.failures[0]
+
+    def test_a_label_without_a_domain_fails_its_rows(self) -> None:
+        result = enum_domain_gate(
+            {"band": ["A", "A"]},
+            {"band": ("A", "B")},
+            partitions={"band": ["north", "south"]},
+            partition_domains={"band": {"north": ("A", "B")}},
+        )
+        assert not result.passed
+        assert result.details["invalid_examples"] == {"band": ["A@south"]}
+
+    def test_a_partition_domain_must_lie_inside_the_enum(self) -> None:
+        with pytest.raises(ValueError, match="outside the enum domain"):
+            enum_domain_gate(
+                {"band": ["A"]},
+                {"band": ("A", "B")},
+                partitions={"band": ["north"]},
+                partition_domains={"band": {"north": ("A", "Z")}},
+            )
+
+    def test_partition_labels_must_match_the_values(self) -> None:
+        with pytest.raises(ValueError, match="1 partition labels for 2 values"):
+            enum_domain_gate(
+                {"band": ["A", "B"]},
+                {"band": ("A", "B")},
+                partitions={"band": ["north"]},
+                partition_domains={"band": {"north": ("A", "B")}},
+            )
+        with pytest.raises(ValueError, match="need the rows' partition labels"):
+            enum_domain_gate(
+                {"band": ["A"]},
+                {"band": ("A", "B")},
+                partition_domains={"band": {"north": ("A",)}},
+            )
+
+    def test_an_unpartitioned_column_reports_as_before(self) -> None:
+        result = enum_domain_gate({"band": ["A", "Z"]}, {"band": ("A", "B")})
+        assert sorted(result.details) == [
+            "allowed_values",
+            "columns_checked",
+            "invalid_counts",
+            "invalid_examples",
+        ]
+        assert "outside enum domain" in result.failures[0]
+
 
 class TestSourceCoverageGate:
     def test_hard_targets_must_be_active_or_reviewed(self) -> None:

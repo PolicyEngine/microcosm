@@ -17,11 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.uk_runtime.high_value_homes import (
-    high_value_home_mask,
-    uk_high_value_home_metric_names,
-    uk_high_value_home_thresholds,
-)
+from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
     UK_TENURE_OWNED_WITH_MORTGAGE,
@@ -58,11 +54,6 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-#: Bands A-H are the England and Scotland systems; band I exists in Wales only
-#: (the 2005 revaluation) and is carried by the spine (FRS ``ctband`` 9) and
-#: the engine enum, so it binds the Welsh cells that publish it. Appended
-#: last, so the positional metric indices of A-H are unchanged.
-COUNCIL_TAX_BANDS = tuple("ABCDEFGHI")
 #: Local tenure metric -> the shared tenure category it counts, in matrix order.
 _TENURE_METRIC_CATEGORIES = {
     "tenure/owned_outright": UK_TENURE_OWNED_OUTRIGHT,
@@ -123,7 +114,9 @@ def metric_names(
     # displacing it.
     names.append("households")
     if area_type == "la":
-        names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
+        names.extend(
+            f"council_tax/band_{band.lower()}" for band in UK_COUNCIL_TAX_BANDS
+        )
     names.append(HIGHER_RATE_TAXPAYERS_METRIC)
     # microcosm#1240: owner-occupied homes above value thresholds, both grains,
     # appended after every earlier family under the same append-only rule.
@@ -379,7 +372,7 @@ def compute_household_metrics(
         matrix["rent/private_rent"] = household_rent * is_private_renter
 
         council_tax_band = _values(_calculate(sim, "council_tax_band", period))
-        for band in COUNCIL_TAX_BANDS:
+        for band in UK_COUNCIL_TAX_BANDS:
             matrix[f"council_tax/band_{band.lower()}"] = (
                 council_tax_band == band
             ).astype(float)

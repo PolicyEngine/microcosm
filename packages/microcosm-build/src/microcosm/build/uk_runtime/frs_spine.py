@@ -16,6 +16,10 @@ from microcosm.build.uk_runtime.birth_month import (
     UK_BIRTH_MONTH_COLUMN,
     uk_months_since_last_birthday,
 )
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS,
+    UK_COUNCIL_TAX_PLACEHOLDER_BAND,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
@@ -112,16 +116,10 @@ ACCOMMODATION_MAP = {
     7: "OTHER",
 }
 
+#: FRS ``ctband`` codes 1-9 are the engine's bands A-I in order; any other
+#: code, and every Northern Ireland household, takes the placeholder band.
 COUNCIL_TAX_BAND_MAP = {
-    1: "A",
-    2: "B",
-    3: "C",
-    4: "D",
-    5: "E",
-    6: "F",
-    7: "G",
-    8: "H",
-    9: "I",
+    code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
 }
 
 MARITAL_MAP = {
@@ -996,7 +994,7 @@ def _add_household_columns(
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
     pe_household["council_tax_band"] = _map_codes(
-        household, "ctband", COUNCIL_TAX_BAND_MAP, "D"
+        household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
     )
     pe_household["council_tax_rebate"] = (
         _positive(household, "ctrebamt") * WEEKS_IN_YEAR
