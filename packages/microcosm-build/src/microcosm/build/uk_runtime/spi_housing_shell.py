@@ -48,6 +48,7 @@ __all__ = [
     "fit_housing_model",
     "household_housing_predictors",
     "household_housing_targets",
+    "class_scores",
     "impute_spi_housing_shell",
     "restrict_bands_to_nation",
 ]
@@ -219,9 +220,22 @@ def _one_hot(
     return pd.concat(parts, axis=1)
 
 
+def class_scores(classifier: Any, features: np.ndarray) -> np.ndarray:
+    """The classifier's raw class scores, one column per class.
+
+    A softmax of these rows is ``predict_proba``; a binary classifier scores
+    ``classes_[1]`` against ``classes_[0]``, so its column for class 0 is zero.
+    """
+
+    scores = np.asarray(classifier.decision_function(features), dtype=float)
+    if scores.ndim == 1:
+        scores = np.column_stack([np.zeros_like(scores), scores])
+    return scores
+
+
 def restrict_bands_to_nation(
     choice: np.ndarray,
-    probabilities: np.ndarray,
+    scores: np.ndarray,
     classes: np.ndarray,
     regions: np.ndarray,
     uniforms: np.ndarray,
@@ -229,10 +243,13 @@ def restrict_bands_to_nation(
     """Redraw each band its household's nation does not use.
 
     A drawn band outside the nation's bands is replaced by an inverse-CDF draw
-    over the classifier's probabilities restricted to those bands, with its
-    own identity-keyed uniform. A row keeps its first draw whenever that draw
-    is valid, so the restricted rows end up distributed as the classifier
-    conditioned on the nation's bands, and no valid row moves.
+    from the classifier conditioned on those bands: a softmax of the raw class
+    scores over the nation's bands, with its own identity-keyed uniform. On the
+    scores, the conditional survives a softmax that rounded the nation's bands
+    to probability zero, as it does for a few English rows on licensed data. A
+    row keeps its first draw whenever that draw is valid, so the redrawn rows
+    end up distributed as the classifier conditioned on the nation's bands, and
+    no valid row moves.
 
     Returns the corrected class indices and the rows redrawn, by nation.
     """
@@ -240,7 +257,7 @@ def restrict_bands_to_nation(
     unknown = sorted(set(regions) - set(UK_COUNCIL_TAX_BANDS_BY_REGION))
     if unknown:
         raise ValueError(f"Council-tax bands need a nation for regions {unknown}.")
-    allowed = np.zeros(probabilities.shape, dtype=bool)
+    allowed = np.zeros(scores.shape, dtype=bool)
     for region, bands in UK_COUNCIL_TAX_BANDS_BY_REGION.items():
         rows = regions == region
         if rows.any():
@@ -254,17 +271,17 @@ def restrict_bands_to_nation(
     }
     if not outside.any():
         return choice, redrawn
-    restricted = np.where(allowed[outside], probabilities[outside], 0.0)
-    cumulative = np.cumsum(restricted, axis=1)
-    total = cumulative[:, -1]
-    if not (total > 0.0).all():
+    logits = np.where(allowed[outside], scores[outside], -np.inf)
+    top = logits.max(axis=1)
+    if not np.isfinite(top).all():
         raise ValueError(
-            "A household's nation has no council-tax band the classifier can draw."
+            "A household's nation has no council-tax band the classifier knows."
         )
+    cumulative = np.cumsum(np.exp(logits - top[:, None]), axis=1)
     corrected = choice.copy()
-    corrected[outside] = (cumulative > (uniforms[outside] * total)[:, None]).argmax(
-        axis=1
-    )
+    corrected[outside] = (
+        cumulative > (uniforms[outside] * cumulative[:, -1])[:, None]
+    ).argmax(axis=1)
     return corrected, redrawn
 
 
@@ -307,7 +324,8 @@ class FittedHousingModel:
         for column in HOUSING_CATEGORICAL_COLUMNS:
             features = self._features(predictors, drawn)
             classifier = self.classifiers[column]
-            probabilities = classifier.predict_proba(features.to_numpy(dtype=float))
+            matrix = features.to_numpy(dtype=float)
+            probabilities = classifier.predict_proba(matrix)
             uniforms = stable_identity_uniforms(
                 ids, seed=self.seed, salt=f"{UK_SPI_HOUSING_SHELL_STAGE_NAME}:{column}"
             )
@@ -318,7 +336,7 @@ class FittedHousingModel:
             if column == "council_tax_band":
                 choice, redrawn = restrict_bands_to_nation(
                     choice,
-                    probabilities,
+                    class_scores(classifier, matrix),
                     classes,
                     predictors["region"].astype(str).to_numpy(),
                     stable_identity_uniforms(

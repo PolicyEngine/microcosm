@@ -132,11 +132,11 @@ def test_a_frame_without_frs_training_rows_is_refused() -> None:
 
 def test_a_band_inside_its_nation_keeps_its_draw() -> None:
     classes = np.asarray(UK_COUNCIL_TAX_BANDS)
-    probabilities = np.full((3, len(classes)), 1.0 / len(classes))
+    scores = np.zeros((3, len(classes)))
     choice = np.array([7, 8, 3])  # H in England, I in Wales, D in Northern Ireland
     regions = np.array(["LONDON", "WALES", "NORTHERN_IRELAND"])
     corrected, redrawn = restrict_bands_to_nation(
-        choice, probabilities, classes, regions, np.full(3, 0.5)
+        choice, scores, classes, regions, np.full(3, 0.5)
     )
     np.testing.assert_array_equal(corrected, choice)
     assert sum(redrawn.values()) == 0
@@ -151,10 +151,10 @@ def test_a_band_inside_its_nation_keeps_its_draw() -> None:
 def test_a_band_outside_its_nation_is_redrawn_from_the_nations_bands() -> None:
     classes = np.asarray(UK_COUNCIL_TAX_BANDS)
     regions = np.array(["LONDON", "SCOTLAND", "NORTHERN_IRELAND", "NORTHERN_IRELAND"])
-    probabilities = np.full((4, len(classes)), 1.0 / len(classes))
+    scores = np.zeros((4, len(classes)))
     choice = np.array([8, 8, 0, 3])  # I, I, A, D
     corrected, redrawn = restrict_bands_to_nation(
-        choice, probabilities, classes, regions, np.array([0.99, 0.0, 0.5, 0.5])
+        choice, scores, classes, regions, np.array([0.99, 0.0, 0.5, 0.5])
     )
     bands = classes[corrected]
     for band, region in zip(bands, regions, strict=True):
@@ -172,14 +172,53 @@ def test_redrawn_bands_follow_the_classifier_over_the_nations_bands() -> None:
     n = 40_000
     classes = np.asarray(UK_COUNCIL_TAX_BANDS)
     weights = np.array([1, 2, 3, 4, 3, 2, 1, 1, 3], dtype=float)
-    probabilities = np.tile(weights / weights.sum(), (n, 1))
+    scores = np.tile(np.log(weights), (n, 1))
     uniforms = stable_identity_uniforms(np.arange(n), seed=0, salt="test")
     corrected, _ = restrict_bands_to_nation(
-        np.full(n, 8), probabilities, classes, np.full(n, "LONDON"), uniforms
+        np.full(n, 8), scores, classes, np.full(n, "LONDON"), uniforms
     )
     observed = np.bincount(corrected, minlength=len(classes)) / n
     expected = np.append(weights[:8] / weights[:8].sum(), 0.0)
     np.testing.assert_allclose(observed, expected, atol=0.01)
+
+
+def test_bands_the_softmax_rounded_to_zero_are_still_drawn() -> None:
+    # On licensed data a few English rows score band I so far above A-H that
+    # the softmax gives A-H probability exactly zero; the conditional draw on
+    # the raw scores still spreads them over A-H.
+    classes = np.asarray(UK_COUNCIL_TAX_BANDS)
+    scores = np.tile(np.append(np.linspace(-1000.0, -999.0, 8), 0.0), (4, 1))
+    probabilities = np.exp(scores - scores.max(axis=1, keepdims=True))
+    assert (probabilities[:, :8] == 0.0).all()
+    corrected, redrawn = restrict_bands_to_nation(
+        np.full(4, 8),
+        scores,
+        classes,
+        np.full(4, "NORTH_WEST"),
+        np.array([0.0, 0.3, 0.6, 0.99]),
+    )
+    assert set(classes[corrected]) <= set("ABCDEFGH")
+    assert redrawn["council_tax_band:redrawn:ENGLAND"] == 4
+
+
+def test_class_scores_soften_into_the_classifiers_probabilities() -> None:
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    from microcosm.build.uk_runtime.spi_housing_shell import class_scores
+
+    rng = np.random.default_rng(0)
+    features = rng.normal(size=(300, 3))
+    for labels in (
+        np.where(features[:, 0] > 0, "A", "B"),
+        np.select([features[:, 0] > 0.5, features[:, 0] < -0.5], ["A", "C"], "B"),
+    ):
+        classifier = HistGradientBoostingClassifier(max_iter=20).fit(features, labels)
+        scores = class_scores(classifier, features)
+        softmax = np.exp(scores - scores.max(axis=1, keepdims=True))
+        softmax /= softmax.sum(axis=1, keepdims=True)
+        np.testing.assert_allclose(
+            softmax, classifier.predict_proba(features), atol=1e-9
+        )
 
 
 def test_a_nation_the_classifier_cannot_serve_is_refused() -> None:
