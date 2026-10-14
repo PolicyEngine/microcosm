@@ -125,7 +125,67 @@ def test_prices_recompute_from_the_vendored_rows() -> None:
             * area.yield_per_fare_paying_boarding
             * area.calendar_price_factor
         )
-    assert ni.receipt["price_index"]["basis"] == "england_index_as_proxy"
+    assert ni.receipt["price_index"]["basis"] == "own_fiscal_yields"
+
+
+def _ni_fiscal_yield(fiscal_start: str) -> float:
+    def total(concept: str) -> float:
+        return sum(
+            float(row["value"])
+            for row in vendored_rows(
+                "devolved_bus_finance.json", concept=concept, fiscal_start=fiscal_start
+            )
+        )
+
+    return total("dfi_ni.translink_bus.passenger_receipts") / (
+        total("dfi_ni.translink_bus.passenger_journeys")
+        - total("dfi_ni.translink_bus.full_fare_concession_passenger_journeys")
+    )
+
+
+def test_northern_ireland_reprices_from_its_own_yields() -> None:
+    """NI has no fares index: three months of 2023-24's yield, nine of 2024-25's (#1207)."""
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    ni = prices.other_by_region["NORTHERN_IRELAND"]
+    earlier = _ni_fiscal_yield("2023-04-01")
+    later = _ni_fiscal_yield("2024-04-01")
+    assert ni.yield_per_fare_paying_boarding == pytest.approx(later)
+    assert ni.calendar_price_factor == pytest.approx(
+        (0.25 * earlier + 0.75 * later) / later
+    )
+    years = ni.receipt["price_index"]["fiscal_years"]
+    assert {start: year["weight"] for start, year in years.items()} == {
+        "2023-04-01": 0.25,
+        "2024-04-01": 0.75,
+    }
+    assert all(year["source_record_ids"] for year in years.values())
+
+
+def test_own_fiscal_yields_refuses_extra_keys_and_a_mismatched_year() -> None:
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        own_fiscal_yield_price_factor,
+    )
+
+    declared = _declared()
+    ni = next(area for area in declared["areas"] if area["label"] == "northern_ireland")
+    with pytest.raises(BusFarePricingError, match="declares only its basis"):
+        own_fiscal_yield_price_factor(
+            {
+                **ni,
+                "price_index": {"basis": "own_fiscal_yields", "frequency": "annual"},
+            },
+            price_year=2024,
+            fiscal_start="2024-04-01",
+            allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+        )
+    with pytest.raises(BusFarePricingError, match="does not open in 2025"):
+        own_fiscal_yield_price_factor(
+            ni,
+            price_year=2025,
+            fiscal_start="2024-04-01",
+            allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+        )
 
 
 def test_calendar_price_factor_reprices_a_fiscal_year_yield() -> None:

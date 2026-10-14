@@ -27,7 +27,10 @@ The receipts and journeys are fiscal-year figures. When the declaration names a
 ``price_year``, each area's yield is re-priced to that calendar year with a
 published fares index (the DfT local bus fares index by quarter, Scotland's
 calendar-year index), so bus fares sit on calendar 2024 with every other LCFS
-spend column (microcosm#1113).
+spend column (microcosm#1113). Northern Ireland publishes no fares index; its
+yield is re-priced from its own published yields of the two fiscal years the
+calendar year overlaps (microcosm#1207), not from England's index, which
+carries the January 2025 rise in the English fare cap.
 
 Every input is a vendored Chronicle row; the receipt records every factor, the
 frame-implied boardings beside the published ones, and the frame's eligible
@@ -46,10 +49,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.ledger_targets import CALENDAR_YEAR_WINDOW_WEIGHTS
 from microcosm.build.uk_runtime.energy_pricing import period_quarters
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 PRICE_BUS_JOURNEYS_KIND = "price_bus_journeys"
+#: ``price_index.basis`` of an area re-priced from its own published yields
+#: rather than a fares index (microcosm#1207).
+OWN_FISCAL_YIELDS_BASIS = "own_fiscal_yields"
 UK_DFT_BUS_JOURNEYS_RESOURCE = "dft_bus_journeys.json"
 BUS_IN_LONDON = "bus_in_london"
 OTHER_LOCAL_BUS = "other_local_bus"
@@ -262,6 +269,87 @@ def calendar_price_factor(
     return factor, receipt
 
 
+def own_fiscal_yield_price_factor(
+    area: Mapping[str, Any],
+    *,
+    price_year: int,
+    fiscal_start: str,
+    allowed_resources: Sequence[str],
+) -> tuple[float, dict[str, Any]]:
+    """Re-price an area's fiscal-year yield to a calendar year from its own yields.
+
+    For an area with no published fares index (Northern Ireland,
+    microcosm#1207): the yield ``y = R / (B - C)`` of the fiscal year opening
+    in the calendar year and of the one opening the year before, each from the
+    area's own declared receipts, boardings and concessionary selectors, are
+    weighted by the months each contributes to the calendar year (the
+    ``calendar_year_window`` weights: three months of the earlier year, nine
+    of the later one), over the later year's yield. A yield moves with fares
+    and with the mix of tickets, so the factor is the area's own published
+    price movement, not an index.
+    """
+
+    label = str(area.get("label", ""))
+    spec = _mapping(area.get("price_index"), f"{label}.price_index")
+    if set(spec) != {"basis"} or spec["basis"] != OWN_FISCAL_YIELDS_BASIS:
+        raise BusFarePricingError(
+            f"area {label!r}: an {OWN_FISCAL_YIELDS_BASIS} price index declares "
+            "only its basis; the yields come from the area's own selectors."
+        )
+    if not fiscal_start.endswith("-04-01"):
+        raise BusFarePricingError("fiscal_start must be an April 1st.")
+    fiscal_year = int(fiscal_start[:4])
+    if fiscal_year != int(price_year):
+        raise BusFarePricingError(
+            f"area {label!r}: {OWN_FISCAL_YIELDS_BASIS} re-prices the fiscal year "
+            f"opening in the price year; fiscal_start {fiscal_start} does not open "
+            f"in {price_year}."
+        )
+    years: dict[str, dict[str, Any]] = {}
+    calendar_value = 0.0
+    for offset, weight in sorted(CALENDAR_YEAR_WINDOW_WEIGHTS.items()):
+        start = f"{fiscal_year + offset}-04-01"
+        facts = {}
+        records: list[str] = []
+        for key, unit in (
+            ("receipts", "gbp"),
+            ("boardings", "count"),
+            ("concessionary", "count"),
+        ):
+            value, fact_receipt = published_fact(
+                _mapping(area[key], f"{label}.{key}"),
+                unit=unit,
+                allowed_resources=allowed_resources,
+                fiscal_start=start,
+            )
+            facts[key] = value
+            records.extend(fact_receipt["source_record_ids"])
+        if facts["concessionary"] >= facts["boardings"]:
+            raise BusFarePricingError(
+                f"area {label!r}: concessionary journeys of the fiscal year opening "
+                f"{start} are not below its total journeys."
+            )
+        fiscal_yield = facts["receipts"] / (facts["boardings"] - facts["concessionary"])
+        calendar_value += weight * fiscal_yield
+        years[start] = {
+            **facts,
+            "yield_per_fare_paying_boarding": fiscal_yield,
+            "weight": weight,
+            "source_record_ids": records,
+        }
+    fiscal_value = years[fiscal_start]["yield_per_fare_paying_boarding"]
+    factor = calendar_value / fiscal_value
+    return factor, {
+        "basis": OWN_FISCAL_YIELDS_BASIS,
+        "price_year": int(price_year),
+        "fiscal_start": fiscal_start,
+        "fiscal_years": years,
+        "calendar_value": calendar_value,
+        "fiscal_value": fiscal_value,
+        "factor": factor,
+    }
+
+
 def bus_fare_prices(
     parameters: Mapping[str, Any], *, allowed_resources: Sequence[str]
 ) -> BusFarePrices:
@@ -352,12 +440,20 @@ def bus_fare_prices(
                 raise BusFarePricingError(
                     f"area {label!r} declares no price_index for price_year {price_year}."
                 )
-            factor, index_receipt = calendar_price_factor(
-                area["price_index"],
-                price_year=int(price_year),
-                fiscal_start=fiscal_start,
-                allowed_resources=allowed_resources,
-            )
+            if area["price_index"].get("basis") == OWN_FISCAL_YIELDS_BASIS:
+                factor, index_receipt = own_fiscal_yield_price_factor(
+                    area,
+                    price_year=int(price_year),
+                    fiscal_start=fiscal_start,
+                    allowed_resources=allowed_resources,
+                )
+            else:
+                factor, index_receipt = calendar_price_factor(
+                    area["price_index"],
+                    price_year=int(price_year),
+                    fiscal_start=fiscal_start,
+                    allowed_resources=allowed_resources,
+                )
         price = AreaPrice(
             label=label,
             series=series,
