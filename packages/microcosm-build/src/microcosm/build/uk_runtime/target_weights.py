@@ -51,6 +51,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -73,6 +74,9 @@ __all__ = [
     "uk_target_loss_weight_receipt",
     "uk_target_loss_weights_for_rows",
     "uk_target_loss_weights_sha256",
+    "UK_TARGET_LOSS_SCALE_RULE",
+    "UK_LOCAL_LOSS_SCALE_FLOORS",
+    "uk_family_floored_loss_scales",
     "uk_target_rows",
     "uk_target_rows_from_problem",
     "uk_target_rows_from_targets",
@@ -87,6 +91,19 @@ UK_TARGET_WEIGHT_RULE_VERSION = 1
 LOCAL_SURFACE_MATERIALIZATION = "uk_local_surface"
 
 _COUNT, _AMOUNT = "count", "amount"
+#: The reviewed scale rule of the UK local solve: the canonical target-defined
+#: default (``max(|target|, 1)``) with a floor per local count family whose
+#: cells are too thin for a unit-scale miss to mean anything. microcosm#1240
+#: review (PR #1270, finding 5): the high_value_homes cells are derived
+#: aggregates, fractional and coverage-scaled, with hundreds of seats under
+#: ten homes over 2 million; one clone carrying a weight of tens of
+#: households there must not be charged a miss of that many units. The
+#: floor is the support gate's assessment threshold (100 homes), so a cell
+#: below it is tolerated to the same scale the gate deems reliable.
+UK_TARGET_LOSS_SCALE_RULE = "default_target_loss_scales_with_family_floors"
+UK_LOCAL_LOSS_SCALE_FLOORS: Mapping[str, float] = MappingProxyType(
+    {"high_value_homes/": 100.0}
+)
 _LOCAL_AMOUNT_METRIC_PREFIXES = ("rent/", "ons/equiv_")
 _LOCAL_COUNT_METRIC_PREFIXES = (
     "age/",
@@ -376,6 +393,45 @@ def _check_row_rule(rule: str) -> None:
             f"row-metadata target_weight_rule must be one of "
             f"{UK_LOCAL_ROW_METADATA_RULES}, got {rule!r}."
         )
+
+
+def uk_family_floored_loss_scales(
+    targets: np.ndarray,
+    *,
+    local_metrics: Sequence[str],
+) -> tuple[np.ndarray, dict[str, object]]:
+    """The rule's row scales for ``targets`` whose first rows are the local rows.
+
+    ``local_metrics`` names the local rows' metrics in order; every later row
+    is national and keeps the default scale. The receipt names the rule, the
+    floors and how many rows each floor raised.
+    """
+    from microcosm.calibrate import default_target_loss_scales
+
+    values = np.asarray(targets, dtype=np.float64)
+    scales = np.asarray(default_target_loss_scales(values), dtype=np.float64).copy()
+    metrics = np.asarray([str(metric) for metric in local_metrics], dtype=object)
+    if len(metrics) > len(scales):
+        raise ValueError(f"{len(metrics)} local metrics for {len(scales)} target rows.")
+    raised: dict[str, int] = {}
+    for prefix, floor in UK_LOCAL_LOSS_SCALE_FLOORS.items():
+        mask = np.array([metric.startswith(prefix) for metric in metrics], dtype=bool)
+        if mask.any():
+            local = scales[: len(metrics)]
+            below = mask & (local < floor)
+            local[below] = floor
+            scales[: len(metrics)] = local
+            raised[prefix] = int(below.sum())
+        else:
+            raised[prefix] = 0
+    receipt = {
+        "rule": UK_TARGET_LOSS_SCALE_RULE,
+        "floors": {
+            prefix: float(floor) for prefix, floor in UK_LOCAL_LOSS_SCALE_FLOORS.items()
+        },
+        "rows_raised_to_floor": raised,
+    }
+    return scales, receipt
 
 
 def uk_target_loss_weights_for_rows(rows: UKTargetRows, *, rule: str) -> np.ndarray:
