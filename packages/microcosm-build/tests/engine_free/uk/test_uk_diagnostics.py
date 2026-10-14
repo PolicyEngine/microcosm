@@ -261,7 +261,26 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
     assert areas["bottom_by_fit"][0]["area_code"] == "E14000001"
 
 
-def _diagnostics_case(*, with_skipped: bool = False):
+def _consumption_columns(n: int) -> dict[str, np.ndarray]:
+    """The lcfs_consumption columns the drift block reads, two houses with gas."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+    )
+
+    columns = {name: np.full(n, 10.0) for name in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    columns["electricity_consumption"] = np.full(n, 2.0)
+    columns["gas_consumption"] = np.where(np.arange(n) < 2, 3.0, 0.0)
+    columns["domestic_energy_consumption"] = (
+        columns["electricity_consumption"] + columns["gas_consumption"]
+    )
+    columns["petrol_spending"] = np.where(np.arange(n) % 2 == 0, 4.0, 0.0)
+    columns["diesel_spending"] = np.zeros(n)
+    columns["has_fuel_consumption"] = np.arange(n) % 2 == 0
+    return columns
+
+
+def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
     levels_and_weights = (
         ("national", 11.0),
         ("region", 12.0),
@@ -277,6 +296,9 @@ def _diagnostics_case(*, with_skipped: bool = False):
             _CG_COLUMN: [False, False, True, True, False] * 2,
         }
     )
+    if with_consumption:
+        for name, values in _consumption_columns(n_households).items():
+            household[name] = values
     specs = []
     geography = {}
     for row_index, (level, _) in enumerate(levels_and_weights):
@@ -586,6 +608,71 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
 
 
+def test_consumption_drift_compares_design_and_final_weights() -> None:
+    """Stage-levelled spend and composition, design against final (#1113)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    assert drift["report_only"] is True
+    assert drift["totals"]["gas_consumption"] == {
+        "design": 6.0,
+        "final": 6.0,
+        "change": 0.0,
+        "relative_change": 0.0,
+    }
+    assert drift["totals"]["petrol_spending"]["final"] == 12.0
+    assert drift["totals"]["petrol_spending"]["relative_change"] == pytest.approx(0.5)
+    assert drift["totals"]["consumption"]["design"] == 4 * 120.0
+    assert drift["shares"]["gas_connected_households"]["design"] == 0.5
+    assert drift["shares"]["gas_connected_households"]["final"] == 0.5
+    assert drift["shares"]["fuel_buying_households"]["final"] == 0.75
+    assert drift["shares"]["fuel_car_households_without_fuel"] == {
+        "design": 0.0,
+        "final": 0.0,
+        "change": 0.0,
+        "relative_change": None,
+    }
+    assert (
+        uk_consumption_drift(household.drop(columns="gas_consumption"), design, final)
+        is None
+    )
+    with pytest.raises(ValueError, match="align"):
+        uk_consumption_drift(household, design[:3], final)
+
+
+def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    drift = payload["uk_diagnostics"]["consumption_drift"]
+    assert set(drift["totals"]) == {
+        "electricity_consumption",
+        "gas_consumption",
+        "domestic_energy_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "consumption",
+    }
+    assert drift["totals"]["electricity_consumption"]["design"] == pytest.approx(
+        2.0 * frame.n("household")
+    )
+    assert drift["totals"]["electricity_consumption"]["final"] == pytest.approx(
+        2.0 * float(np.sum(frame.weights_for("household").values))
+    )
+
+
 def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
     result, frame, registry, geography = _diagnostics_case()
     build = {"release_id": "fixture"}
@@ -879,3 +966,109 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "local_authority",
         "constituency",
     )
+
+
+class TestSupportFamilyWeights:
+    """Folding support-split families back to one weight (microcosm#1045)."""
+
+    @staticmethod
+    def _household(copies: bool) -> pd.DataFrame:
+        from microcosm.build.uk_runtime.diagnostics import UK_SUPPORT_COPY_FLAG_COLUMN
+
+        # Root 1 split into three (ids 1, 11, 21); root 2 whole; the clone
+        # side (ids +100) repeats the pattern at half weight.
+        ids = [1, 2, 11, 21, 101, 102, 111, 121]
+        household = pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": [10.0, 30.0, 10.0, 10.0, 5.0, 15.0, 5.0, 5.0],
+                "source_household_id": [1, 2, 1, 1, 1, 2, 1, 1],
+                "household_support_channel": ["frs"] * 8,
+                "household_support_clone_index": [0] * 8,
+                "household_is_capital_gains_clone": [False] * 4 + [True] * 4,
+            }
+        )
+        if copies:
+            household[UK_SUPPORT_COPY_FLAG_COLUMN] = [
+                False,
+                False,
+                True,
+                True,
+                False,
+                False,
+                True,
+                True,
+            ]
+        return household
+
+    def test_families_sum_to_one_weight_per_root_on_each_clone_side(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        folded, receipt = uk_support_family_weights(self._household(copies=True))
+        assert sorted(folded.tolist()) == [15.0, 15.0, 30.0, 30.0]
+        assert receipt == {
+            "basis": "support_family_fold",
+            "key_columns": [
+                "source_household_id",
+                "household_support_channel",
+                "household_support_clone_index",
+                "household_is_capital_gains_clone",
+            ],
+            "geographic_clone_index_in_key": False,
+            "families": 4,
+            "support_copy_rows": 4,
+            "rows_folded": 4,
+        }
+
+    def test_geographic_clones_stay_apart_on_an_expanded_frame(self) -> None:
+        """Round 2 of the #1045 review: the dense line's K clones fold only
+        their own copies, never each other."""
+        from microcosm.build.uk_runtime.diagnostics import (
+            uk_support_family_geographic_clone_column,
+            uk_support_family_weights,
+        )
+
+        base = self._household(copies=True)
+        k = 3
+        clone_column = uk_support_family_geographic_clone_column()
+        expanded = pd.concat(
+            [
+                base.assign(
+                    household_id=base["household_id"] + 1_000 * clone,
+                    household_weight=base["household_weight"] / k,
+                    **{clone_column: clone},
+                )
+                for clone in range(k)
+            ],
+            ignore_index=True,
+        )
+        folded, receipt = uk_support_family_weights(expanded)
+        copies = int(expanded["household_is_cgt_support_copy"].sum())
+        assert receipt["geographic_clone_index_in_key"] is True
+        assert receipt["key_columns"][-1] == clone_column
+        assert receipt["families"] == len(expanded) - copies == 4 * k
+        assert receipt["rows_folded"] == copies == 4 * k
+        np.testing.assert_allclose(
+            sorted(folded.tolist()),
+            sorted([w / k for w in [15.0, 15.0, 30.0, 30.0] * k]),
+        )
+
+    def test_a_table_without_copies_folds_to_itself(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=False)
+        folded, receipt = uk_support_family_weights(household)
+        assert folded.tolist() == household["household_weight"].tolist()
+        assert receipt == {
+            "basis": "rows",
+            "families": 8,
+            "support_copy_rows": 0,
+            "rows_folded": 0,
+        }
+
+    def test_copies_without_the_lineage_key_refuse(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=True).drop(columns=["source_household_id"])
+        with pytest.raises(ValueError, match="source_household_id"):
+            uk_support_family_weights(household)

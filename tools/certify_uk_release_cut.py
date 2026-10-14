@@ -69,7 +69,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PIPELINE = "uk-frs-release-certification"
-_LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
+_LEDGER_COMPILE_PARITY_PERIODS = (2025,)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
@@ -248,15 +248,25 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
     ledger_registries = {}
+    # The compile's own report of the references that did not resolve at each
+    # parity period travels with the registry: the parity gate needs it to
+    # reproduce the ledger_absent rows the signed resources carry. Unlike the
+    # full build, which refuses an unresolved calibration-year reference, this
+    # producer keeps the partial registry and leaves the verdict to the gates.
+    ledger_unsupported = {}
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
         compilation = compile_uk_target_registry(artifact.facts, target_period=period)
         ledger_registries[period] = compilation.registry
+        ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
         artifact.facts,
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )
     local_ledger_registries = {_LOCAL_COMPILE_PARITY_PERIOD: local_compilation.registry}
+    local_ledger_unsupported = {
+        _LOCAL_COMPILE_PARITY_PERIOD: local_compilation.unsupported
+    }
     calibration_year = load_uk_frs_release().calibration_year
     if calibration_year in ledger_registries:
         reference_compiled = ledger_registries[calibration_year]
@@ -291,6 +301,8 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         build_stage_names=sidecar["stages"],
         ledger_registries=ledger_registries,
         local_ledger_registries=local_ledger_registries,
+        ledger_unsupported=ledger_unsupported,
+        local_ledger_unsupported=local_ledger_unsupported,
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
         input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),

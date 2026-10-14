@@ -557,7 +557,7 @@ def _fixture_geography_assignment(
                         "source:us_congressional_district_vintage_crosswalk_117_to_119"
                     ),
                     "sha256": (
-                        "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+                        "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
                     ),
                     "source_vintage_ref": "vintage:cd_117",
                     "source_vintage": "117th_congress",
@@ -1680,6 +1680,62 @@ def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
         written_manifest["pool_h5"]["path"]
     )
     assert frame.n("household") == 3
+
+
+@pytest.mark.parametrize(
+    "materializer_version",
+    (
+        pytest.param(2, id="older-version"),
+        pytest.param(5, id="unknown-version"),
+        pytest.param("3", id="string-version"),
+        pytest.param(True, id="boolean-version"),
+        pytest.param(3.0, id="float-version"),
+        pytest.param(None, id="missing-version"),
+        pytest.param([3], id="list-version"),
+        pytest.param({"version": 3}, id="mapping-version"),
+    ),
+)
+def test_ready_legacy_pool_manifest_reader_rejects_unsupported_checkpoint_version(
+    tmp_path: Path,
+    materializer_version: object,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["stage_checkpoints"]["materializer_version"] = materializer_version
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"stage_checkpoints\.identity"):
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("envelope_version", "stage_version"),
+    (
+        pytest.param(3, 4, id="v3-envelope-v4-stage"),
+        pytest.param(4, 3, id="v4-envelope-v3-stage"),
+        pytest.param(3, 3.0, id="v3-envelope-float-stage"),
+        pytest.param(4, 4.0, id="v4-envelope-float-stage"),
+    ),
+)
+def test_ready_legacy_pool_manifest_reader_rejects_mismatched_checkpoint_stages(
+    tmp_path: Path,
+    envelope_version: int,
+    stage_version: object,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    checkpoints = manifest["stage_checkpoints"]
+    checkpoints["materializer_version"] = envelope_version
+    checkpoints["stages"] = {
+        "transferred": {"materializer_version": envelope_version},
+        "simulated": {"materializer_version": stage_version},
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"stage_checkpoints\.stages"):
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
 
 
 def test_ready_legacy_pool_loader_rejects_current_stacked_envelope(

@@ -24,7 +24,7 @@
       "source": {
         "source": "Child Benefit statistics: 2022 annual release",
         "agency": "HMRC",
-        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022.",
+        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022. Since microcosm#1063 this is only frs_take_up's early draw, which the intermediate engine simulations read; child_benefit_take_up replaces it after the SPI income chain with HMRC's August 2025 claim rates of eligible children by single year of age (hmrc_child_benefit_statistics.json).",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative"
       }
@@ -39,7 +39,7 @@
       "source": {
         "source": "Child Benefit Statistics: Annual Release, August 2022",
         "agency": "HMRC",
-        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS.",
+        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS. Since microcosm#1063 this is only frs_take_up's early draw over every benefit unit; child_benefit_take_up replaces it after the SPI income chain with the published opted-out share of registered families (August 2025), drawn among claiming families charged the whole benefit.",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative_derived"
       }
@@ -54,8 +54,53 @@
       "source": {
         "source": "Income-related benefits: estimates of take-up, financial year 2019 to 2020",
         "agency": "DWP",
-        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline.",
+        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline. Since microcosm#1069 (R9) this is only frs_take_up's early draw on FRS incomes, which the intermediate engine simulations read; pension_credit_take_up replaces it after the SPI income chain with the FYE 2024 component rates.",
         "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_guarantee_credit",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.69
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Guarantee Credit: 69% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_savings_credit_only",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.37
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Savings Credit only: 37% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_newly_entitled",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.37
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Savings Credit only: 37% in FYE 2024, the component with the smallest awards. Applied by pension_credit_take_up to a benefit unit with no Pension Credit entitlement at the calibration year that does not report it: the rate at which such a unit claims once a reform or a later year entitles it, as uk-data#510 sets it (microcosm#1095).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
         "status": "sourced_administrative"
       }
     },
@@ -69,14 +114,14 @@
       "source": {
         "source": "U8 adjudication and upstream issue uk-data#452; lever run receipts in data/ukds/acceptance/757-swap (2026-08-26)",
         "agency": "PolicyEngine",
-        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline. The pre-registered U8 lever (a raise to 0.85 at build year 2024) was run and measured on 2026-08-26 per the #757 uk_target_fit dispositions and REVERTED on the receipts: the raise left every failing UC caseload cell unchanged (dwp.uc.households -44.9% at both rates) while destroying the legacy housing-benefit surface (obr.housing_benefit -0.0% at 0.55, -52.4% at 0.85 - the raise moves claimants off legacy benefits) and polluting the QRF predictor surface through engine-computed household_net_income. The binding constraint on UC caseload is capital-test support (uk-data#452 mechanism 2, microcosm#750), not take-up support. Re-signed 2026-09-16 (#882, microcosm#867): the rate is a share of the benefit units with an adult under State Pension age; units with every adult at or over State Pension age cannot claim Universal Credit (the engine's is_uc_eligible requires a working-age adult) and are no longer drawn, which restores the reported Housing Benefit the draw had zeroed for 407k pension-age units on spine-q; those units have no Universal Credit either way, while the working-age draw moves with the population definition (see below). The 0.55 value is unchanged. Measured on the control and repaired twins at design weights (experiments/882-uc-repairs-receipts.md R5): the old all-units draw realized a 0.582 share among units with a working-age adult, because the reported-UC anchors sit almost entirely there while the count target was taken over every unit; the population draw realizes 0.559 among them and paid UC moves -1.8 percent at design weights. María's ruling of 2026-09-16: keep the rate over the eligible population; the calibrated UC rows absorb the level.",
+        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline. The pre-registered U8 lever (a raise to 0.85 at build year 2024) was run and measured on 2026-08-26 per the #757 uk_target_fit dispositions and REVERTED on the receipts: the raise left every failing UC caseload cell unchanged (dwp.uc.households -44.9% at both rates) while destroying the legacy housing-benefit surface (obr.housing_benefit -0.0% at 0.55, -52.4% at 0.85 - the raise moves claimants off legacy benefits) and polluting the QRF predictor surface through engine-computed household_net_income. The binding constraint on UC caseload is capital-test support (uk-data#452 mechanism 2, microcosm#750), not take-up support. Re-signed 2026-09-16 (#882, microcosm#867): the rate is a share of the benefit units with an adult under State Pension age; units with every adult at or over State Pension age cannot claim Universal Credit (the engine's is_uc_eligible requires a working-age adult) and are no longer drawn, which restores the reported Housing Benefit the draw had zeroed for 407k pension-age units on spine-q; those units have no Universal Credit either way, while the working-age draw moves with the population definition (see below). The 0.55 value is unchanged. Measured on the control and repaired twins at design weights (experiments/882-uc-repairs-receipts.md R5): the old all-units draw realized a 0.582 share among units with a working-age adult, because the reported-UC anchors sit almost entirely there while the count target was taken over every unit; the population draw realizes 0.559 among them and paid UC moves -1.8 percent at design weights. María's ruling of 2026-09-16: keep the rate over the eligible population; the calibrated UC rows absorb the level. Re-signed 2026-10-09 (microcosm#1095, the third ports PR, approved in María's plan of 2026-10-09): the population follows policyengine-uk's is_uc_eligible (2.122.2 when signed; the same in the locked 2.123.0), whose age conditions read the benefit unit's UC claimant or partner (is_uc_claimant) rather than any adult, so a unit whose only member aged 18 to under Pension Credit qualifying age is a dependant is no longer drawn. The 0.55 value is unchanged.",
         "status": "frozen_by_adjudication",
         "freeze": {
-          "decision": "U8 (re-opened and re-frozen by the 2026-08-26 lever run; population re-signed 2026-09-16 to benefit units with an adult under State Pension age, rate unchanged)",
+          "decision": "U8 (re-opened and re-frozen by the 2026-08-26 lever run; population re-signed 2026-09-16 to benefit units with an adult under State Pension age, and 2026-10-09 to benefit units with a UC claimant or partner aged 18 to under Pension Credit qualifying age, rate unchanged)",
           "followup": "uk-data#452"
         }
       },
-      "population": "benefit units with an adult under State Pension age"
+      "population": "benefit units with a UC claimant or partner aged 18 or over and under Pension Credit qualifying age"
     },
     {
       "key": "marriage_allowance",

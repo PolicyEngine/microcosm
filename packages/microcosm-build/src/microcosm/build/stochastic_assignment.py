@@ -64,8 +64,8 @@ def assign_binary_with_anchored_residual(
 
     The target count is ``int(rate * n_units)`` over the unweighted
     population; ``population`` restricts that population to the rows the
-    programme can reach (a benefit unit with no adult under State Pension age
-    cannot claim Universal Credit), so the rate is a share of the reachable
+    programme can reach (a benefit unit with no claimant or partner of working
+    age cannot claim Universal Credit), so the rate is a share of the reachable
     rows and rows outside it are never drawn. Anchored overshoot is accepted,
     an anchor outside the population stays true (reported receipt is a fact),
     and the residual fills only non-anchored rows inside the population.

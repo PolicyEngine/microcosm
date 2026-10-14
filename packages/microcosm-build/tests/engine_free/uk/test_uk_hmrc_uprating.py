@@ -11,9 +11,14 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
         "hmrc.itl_2026.total_income_growth_by_total_income_band",
         "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+        "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+        "hmrc.itl_2026.total_income_growth_all_bands",
+        UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
-    assert len(UK_ENGINE_INDEX_PARAMETERS) == 6
+    assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
+
 
 def test_engine_index_moves_the_amount_by_the_parameter_ratio_and_receipts_it() -> None:
     registry = TargetRegistry(
@@ -45,6 +50,7 @@ def test_engine_index_moves_the_amount_by_the_parameter_ratio_and_receipts_it() 
     assert spec.metadata["uprating_index_engine"].startswith("policyengine-uk ")
     assert "2026-09-22" in spec.metadata["uprating_adjudication"]
 
+
 def test_engine_index_applier_passes_through_a_reference_declaring_another_index() -> (
     None
 ):
@@ -63,10 +69,11 @@ def test_engine_index_applier_passes_through_a_reference_declaring_another_index
         is registry
     )
 
+
 def test_a_fact_opening_in_the_calibration_year_binds_as_published_with_a_receipt() -> (
     None
 ):
-    """The production-2023 parity surface compiles the same references at 2023."""
+    """A fact dated in the compile's own year, 2025 here, reads the index as an identity."""
     registry = TargetRegistry(
         (_spec(name="x", value=7.0, lower_bound=20_000, period="2025"),), country="uk"
     )
@@ -86,6 +93,7 @@ def test_a_fact_opening_in_the_calibration_year_binds_as_published_with_a_receip
     ).specs
     assert count.value == 7.0 and count.metadata["uprating_factor"] == "1"
 
+
 def test_a_fact_opening_after_the_calibration_year_is_refused() -> None:
     registry = TargetRegistry(
         (_spec(name="x", value=1.0, lower_bound=20_000, period="2026"),), country="uk"
@@ -98,6 +106,7 @@ def test_a_fact_opening_after_the_calibration_year_is_refused() -> None:
             parameter_path=EARNINGS,
             parameter_value=_fake_parameter,
         )
+
 
 def test_count_growth_uses_the_containing_table_2_5_band_and_the_calendar_window() -> (
     None
@@ -138,6 +147,7 @@ def test_count_growth_uses_the_containing_table_2_5_band_and_the_calendar_window
     assert million.metadata["uprating_index_itl_bands"] == "1000000-2000000;2000000-inf"
     assert CALENDAR_YEAR_WINDOW_WEIGHTS == {-1: 0.25, 0: 0.75}
 
+
 def test_count_growth_refuses_a_band_without_a_vendored_count() -> None:
     registry = TargetRegistry(
         (_spec(name="x", value=1.0, lower_bound=12_570),), country="uk"
@@ -149,6 +159,7 @@ def test_count_growth_refuses_a_band_without_a_vendored_count() -> None:
             registry,
             count_rows=_count_rows(),
         )
+
 
 def test_every_spi_band_maps_to_table_2_5_bands_that_tile_the_range() -> None:
     assert sorted(SPI_BAND_TO_ITL_BANDS) == [
@@ -170,6 +181,7 @@ def test_every_spi_band_maps_to_table_2_5_bands_that_tile_the_range() -> None:
         assert bands[0][0] <= lower
         for (_a_low, a_high), (b_low, _) in zip(bands, bands[1:], strict=False):
             assert a_high == b_low
+
 
 def test_itl_bands_spanned_tiles_every_spi_band_and_the_regional_open_top_band() -> (
     None
@@ -202,6 +214,7 @@ def test_itl_bands_spanned_tiles_every_spi_band_and_the_regional_open_top_band()
     with pytest.raises(ValueError, match="no declared Table 2.5 band"):
         itl_bands_spanned(250_000, None)
 
+
 def test_a_regional_open_top_band_sums_every_table_2_5_band_above_it() -> None:
     rows = _count_rows()
     for year, value in ((2023, 100.0), (2024, 110.0), (2025, 120.0)):
@@ -228,3 +241,209 @@ def test_a_regional_open_top_band_sums_every_table_2_5_band_above_it() -> None:
     assert spec.metadata["uprating_index_itl_bands"] == (
         "200000-500000;500000-1000000;1000000-2000000;2000000-inf"
     )
+
+
+def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate() -> (
+    None
+):
+    """microcosm#1069: amount = recipients (the count row's growth) x the rate."""
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/state_pension_income_band_40_000_to_50_000@2025",
+                value=6.0e9,
+                lower_bound=40_000,
+            ),
+        ),
+        country="uk",
+    )
+
+    def rate(path: str, instant: str) -> float:
+        assert path == UK_SPI_STATE_PENSION_RATE_PARAMETER
+        return {"2023-01-01": 200.0, "2025-01-01": 230.0}[instant]
+
+    (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT),
+        registry,
+        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        parameter_value=rate,
+        rows=_count_rows(),
+    ).specs
+
+    # The count row's factor for the band (the 30-50k Table 2.5 band's window
+    # over 2023) times the rate ratio: the mean per recipient moves by the rate.
+    (count,) = align_hmrc_count_row_by_taxpayer_growth(
+        _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+        registry,
+        count_rows=_count_rows(),
+    ).specs
+    count_factor = float(count.metadata["uprating_factor"])
+    assert count_factor == pytest.approx(1.175)
+    assert spec.value == pytest.approx(6.0e9 * 1.175 * 1.15)
+    assert spec.metadata["uprating_index"] == UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT
+    assert float(spec.metadata["uprating_count_factor"]) == pytest.approx(1.175)
+    assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.15)
+    assert (
+        spec.metadata["uprating_rate_parameter"] == UK_SPI_STATE_PENSION_RATE_PARAMETER
+    )
+    assert spec.metadata["uprating_index_itl_bands"] == "30000-50000"
+    assert spec.metadata["ledger_value_before_alignment"] == "6000000000"
+    # Another index passes through untouched.
+    assert (
+        align_hmrc_amount_by_recipient_growth_and_rate(
+            _reference(EARNINGS_INDEX),
+            registry,
+            index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+            parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+            parameter_value=rate,
+            rows=_count_rows(),
+        )
+        is registry
+    )
+    # Compiled at its own year, the row stays as published with a complete
+    # receipt rather than dropping out.
+    (own_year,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT, period=2023),
+        registry,
+        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        parameter_value=rate,
+        rows=_count_rows(),
+    ).specs
+    assert own_year.value == 6.0e9
+    assert own_year.metadata["uprating_factor"] == "1"
+    assert own_year.metadata["uprating_rate_from_instant"] == "2023-01-01"
+    assert "uprating_rate_from_value" not in own_year.metadata
+
+
+def _two_leg_parameter(path: str, instant: str) -> float:
+    return {
+        (UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER, "2023-01-01"): 5.0,
+        (UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER, "2024-01-01"): 6.0,
+        (UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER, "2024-01-01"): 2.0,
+        (UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER, "2025-01-01"): 2.1,
+    }[(path, instant)]
+
+
+def _align_two_legs(registry, *, period: int = 2025, dataset_year: int = 2024):
+    return align_hmrc_row_by_history_then_projection(
+        _reference(UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT, period=period),
+        registry,
+        index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+        history_path=UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+        projection_path=UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+        dataset_year=dataset_year,
+        parameter_value=_two_leg_parameter,
+    )
+
+
+def test_savings_interest_moves_by_its_history_then_the_dataset_projection() -> None:
+    # A 2023 fact reaches the dataset's year (2024) by the history index and
+    # the calibration year by the projection's (microcosm#1095).
+    registry = TargetRegistry(
+        (_spec(name="x", value=100.0, lower_bound=20_000),), country="uk"
+    )
+
+    (spec,) = _align_two_legs(registry).specs
+
+    assert spec.value == pytest.approx(100.0 * (6.0 / 5.0) * (2.1 / 2.0))
+    assert spec.metadata["uprating_index"] == UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT
+    assert spec.metadata["uprating_index_from_instant"] == "2023-01-01"
+    assert spec.metadata["uprating_index_pivot_instant"] == "2024-01-01"
+    assert spec.metadata["uprating_index_to_instant"] == "2025-01-01"
+    assert float(spec.metadata["uprating_history_factor"]) == pytest.approx(1.2)
+    assert float(spec.metadata["uprating_projection_factor"]) == pytest.approx(1.05)
+    assert float(spec.metadata["uprating_factor"]) == pytest.approx(1.26)
+    assert spec.metadata["ledger_value_before_alignment"] == "100"
+    assert spec.metadata["uprating_history_parameter"] == (
+        UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER
+    )
+    assert spec.metadata["uprating_projection_parameter"] == (
+        UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
+    )
+
+
+def test_the_two_leg_index_keeps_to_one_leg_outside_the_datasets_year() -> None:
+    # A fact that opens in the dataset's year takes the projection leg alone.
+    registry = TargetRegistry(
+        (_spec(name="x", value=100.0, lower_bound=20_000, period="2024"),),
+        country="uk",
+    )
+    (spec,) = _align_two_legs(registry).specs
+    assert spec.value == pytest.approx(105.0)
+    assert float(spec.metadata["uprating_history_factor"]) == 1.0
+
+    # A fact compiled at its own year binds as published.
+    registry = TargetRegistry(
+        (_spec(name="x", value=7.0, lower_bound=20_000),), country="uk"
+    )
+    (spec,) = _align_two_legs(registry, period=2023).specs
+    assert spec.value == 7.0
+    assert spec.metadata["uprating_factor"] == "1"
+
+    # Another index passes through, and a fact after the target is refused.
+    assert (
+        align_hmrc_row_by_history_then_projection(
+            _reference(EARNINGS_INDEX),
+            registry,
+            index_concept=UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
+            history_path=UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+            projection_path=UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+            dataset_year=2024,
+        )
+        is registry
+    )
+    late = TargetRegistry(
+        (_spec(name="x", value=7.0, lower_bound=20_000, period="2026"),),
+        country="uk",
+    )
+    with pytest.raises(ValueError, match="never moves a value backwards"):
+        _align_two_legs(late)
+
+
+def test_all_band_growth_moves_an_unbanded_area_row_by_the_all_ranges_window() -> None:
+    """The SPI income-by-area cells carry no band: they move by HMRC's
+    projected growth of all taxpayers (counts) and their total income
+    (amounts), Table 2.5's all-ranges rows in the calendar-2025 window
+    (microcosm#1123)."""
+
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        align_hmrc_row_by_itl_all_band_growth,
+    )
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc.employment_income.count@E14001063@2025",
+                value=40_000.0,
+                lower_bound=None,
+            ),
+        ),
+        country="uk",
+    )
+    counted = align_hmrc_row_by_itl_all_band_growth(
+        _reference("hmrc.itl_2026.taxpayer_count_growth_all_bands"),
+        registry,
+        index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
+    )
+    expected_count = (0.25 * 38.6e6 + 0.75 * 39.8e6) / 36.7e6
+    (count,) = counted.specs
+    assert float(count.metadata["uprating_factor"]) == pytest.approx(expected_count)
+    assert count.value == pytest.approx(40_000.0 * expected_count)
+    amounted = align_hmrc_row_by_itl_all_band_growth(
+        _reference("hmrc.itl_2026.total_income_growth_all_bands"),
+        registry,
+        index_concept="hmrc.itl_2026.total_income_growth_all_bands",
+    )
+    (amount,) = amounted.specs
+    assert float(amount.metadata["uprating_factor"]) == pytest.approx(
+        (0.25 * 1.66e12 + 0.75 * 1.76e12) / 1.53e12
+    )
+    passthrough = align_hmrc_row_by_itl_all_band_growth(
+        _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+        registry,
+        index_concept="hmrc.itl_2026.taxpayer_count_growth_all_bands",
+    )
+    assert passthrough is registry

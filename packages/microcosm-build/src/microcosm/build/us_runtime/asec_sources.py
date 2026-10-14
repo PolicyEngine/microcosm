@@ -1,12 +1,22 @@
 """Pinned processed CPS ASEC inputs for the US support-base build.
 
-The base stage reads three processed ASEC HDF5 files (income years 2022, 2023
-and 2024) through ``--asec-h5 YEAR=PATH``. Until 2026-09-18 they existed only
-in one untracked directory on one build machine, and the build recorded their
-digests without comparing them to anything. They are now mirrored, unchanged,
-to the public Hugging Face dataset repository
-``policyengine/microcosm-us-sources``, and this module owns the immutable
-coordinates: repository, revision, per-year filename, SHA-256 and byte size.
+The base stage reads processed ASEC HDF5 files, one per income year, through
+``--asec-h5 YEAR=PATH``. Four are pinned: income years 2022, 2023 and 2024
+(mirrored unchanged on 2026-09-18; until then they existed only in one
+untracked directory on one build machine) and income year 2025 (built from the
+ASEC 2026 public-use file on 2026-09-27; see
+``docs/us-asec-source-pins.md``). They live in the public Hugging Face dataset
+repository ``policyengine/microcosm-us-sources``, and this module owns the
+immutable coordinates: repository, per-file upload revision, per-year
+filename, SHA-256 and byte size.
+
+Each artifact is addressed at the revision of the upload that added it, so
+adding a year never moves the URL an earlier year resolves to.
+
+:data:`ASEC_DEFAULT_POOL_INCOME_YEARS` is the pool a new build uses: the newest
+three pinned income years, derived from :data:`ASEC_SOURCE_ARTIFACTS` rather
+than written out. Every pinned year stays selectable, so a historical
+income-2022..2024 build remains byte-reproducible.
 
 ``fetch_asec_source`` resolves one year's file the way
 :func:`microcosm.build.us_runtime.sipp_financial_assets.fetch_sipp_2023_financial_asset_donor`
@@ -15,33 +25,43 @@ revision-pinned ``huggingface_hub`` download, with every candidate — the
 download included — verified against the pinned byte length and SHA-256
 before it is returned.
 
-The same digests are recorded, independently, in the hermetic-input evidence
-of ``microcosm/build/us/ecps_parity_known_gaps.json``; a test asserts the two
-rosters agree so there is one source of truth.
+The income-2022..2024 digests are also recorded, independently, in the
+hermetic-input evidence of ``microcosm/build/us/ecps_parity_known_gaps.json``
+(the historical Build J inputs); a test asserts the two agree wherever both
+name a year.
 """
 
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
 __all__ = [
+    "ASEC_DEFAULT_POOL_INCOME_YEARS",
+    "ASEC_DEFAULT_POOL_SIZE",
     "ASEC_SOURCE_REPOSITORY_ID",
     "ASEC_SOURCE_REPOSITORY_TYPE",
     "ASEC_SOURCE_REVISION",
+    "ASEC_SOURCE_REVISION_2025",
     "ASEC_SOURCE_ARTIFACTS",
     "AsecSourceArtifact",
     "asec_source_artifact",
     "fetch_asec_source",
+    "newest_pinned_income_years",
 ]
 
 ASEC_SOURCE_REPOSITORY_ID = "policyengine/microcosm-us-sources"
 ASEC_SOURCE_REPOSITORY_TYPE = "dataset"
-#: The upload commit of 2026-09-18. Files in this repository are addressed by
-#: revision, never by branch, so a later upload cannot move what a build reads.
+#: The upload commit of 2026-09-18, which added the income-year 2022, 2023 and
+#: 2024 files. Files in this repository are addressed by revision, never by
+#: branch, so a later upload cannot move what a build reads.
 ASEC_SOURCE_REVISION = "78acc83ea8b099a97cb0d658bbed91ea75aae8b0"
+#: The upload commit of 2026-09-27, which added the income-year 2025 file and
+#: left the three earlier files' bytes unchanged.
+ASEC_SOURCE_REVISION_2025 = "efe5e2107b252506ea9b868071967cf73cc410bc"
 
 
 @dataclass(frozen=True)
@@ -52,12 +72,14 @@ class AsecSourceArtifact:
     filename: str
     sha256: str
     size_bytes: int
+    #: The upload commit that added this file.
+    revision: str = ASEC_SOURCE_REVISION
 
     @property
     def url(self) -> str:
         return (
             f"https://huggingface.co/datasets/{ASEC_SOURCE_REPOSITORY_ID}"
-            f"/resolve/{ASEC_SOURCE_REVISION}/{self.filename}"
+            f"/resolve/{self.revision}/{self.filename}"
         )
 
 
@@ -81,8 +103,46 @@ ASEC_SOURCE_ARTIFACTS: MappingProxyType[int, AsecSourceArtifact] = MappingProxyT
             sha256=("ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d"),
             size_bytes=323_994_739,
         ),
+        2025: AsecSourceArtifact(
+            income_year=2025,
+            filename="census_cps_2025.h5",
+            sha256=("4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58"),
+            size_bytes=304_753_967,
+            revision=ASEC_SOURCE_REVISION_2025,
+        ),
     }
 )
+
+#: How many income years a new build pools.
+ASEC_DEFAULT_POOL_SIZE = 3
+
+
+def newest_pinned_income_years(
+    size: int = ASEC_DEFAULT_POOL_SIZE,
+    artifacts: Mapping[int, AsecSourceArtifact] = ASEC_SOURCE_ARTIFACTS,
+) -> tuple[int, ...]:
+    """Return the ``size`` newest pinned income years, oldest first."""
+
+    if size < 1:
+        raise ValueError(f"A pool needs at least one income year, got {size}.")
+    if size > len(artifacts):
+        raise ValueError(
+            f"Cannot pool the {size} newest income years; only "
+            f"{sorted(artifacts)} are pinned."
+        )
+    return tuple(sorted(artifacts)[-size:])
+
+
+#: The default pool: income years 2023, 2024 and 2025 (ASEC 2024-2026).
+#: Income year 2022 left the default on 2026-09-27 for two reasons. It is the
+#: oldest vintage, and its processed file carries only 2 of the 18 ``NOW_*``
+#: at-interview coverage recodes (``NOW_GRP``, ``NOW_MRK``; microcosm #720),
+#: so its reported-coverage inputs depend on
+#: :mod:`.asec_census_person_columns` restoring reviewed recodes from the
+#: Census archive. The 2025 file carries all 18. Income year 2023 has the same
+#: gap and stays in the default until a fourth newer year displaces it. 2022
+#: remains pinned and selectable.
+ASEC_DEFAULT_POOL_INCOME_YEARS: tuple[int, ...] = newest_pinned_income_years()
 
 
 def asec_source_artifact(income_year: int) -> AsecSourceArtifact:
@@ -166,7 +226,7 @@ def fetch_asec_source(
             repo_id=ASEC_SOURCE_REPOSITORY_ID,
             filename=artifact.filename,
             repo_type=ASEC_SOURCE_REPOSITORY_TYPE,
-            revision=ASEC_SOURCE_REVISION,
+            revision=artifact.revision,
             cache_dir=str(Path(cache_dir).expanduser())
             if cache_dir is not None
             else None,

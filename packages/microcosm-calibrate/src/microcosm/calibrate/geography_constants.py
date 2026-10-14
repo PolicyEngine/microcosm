@@ -15,6 +15,7 @@ __all__ = [
     "UK_LADDER_NATION_REGION_CODES",
     "UK_REGION_TIER",
     "UK_REGION_TIER_ENUM",
+    "UK_WIDE_GEOGRAPHY_IDS",
     "US_STATE_FIPS_TO_POSTAL",
     "US_STATE_NUMERIC_FIPS_TO_POSTAL",
     "US_STATE_POSTAL_TO_NUMERIC_FIPS",
@@ -25,6 +26,9 @@ UK_GEOGRAPHY_ID_TO_LABEL: Mapping[str, str] = MappingProxyType(
     {
         "K02000001": "United Kingdom",
         "K03000001": "Great Britain",
+        # DWP's Winter Fuel Payment statistics from winter 2024-25 (Scotland
+        # pays its own Pension Age Winter Heating Payment).
+        "K04000001": "England and Wales",
         "E92000001": "England",
         "W92000004": "Wales",
         "S92000003": "Scotland",
@@ -43,6 +47,14 @@ UK_GEOGRAPHY_ID_TO_LABEL: Mapping[str, str] = MappingProxyType(
     }
 )
 
+
+#: The UK-wide aggregates among ``UK_GEOGRAPHY_ID_TO_LABEL`` (the K-prefixed
+#: GSS codes: the United Kingdom, Great Britain, England and Wales). Every
+#: other national reference names a nation or an English region; the nation
+#: grain of the UK target-weight rules splits on this set (microcosm#1124).
+UK_WIDE_GEOGRAPHY_IDS: frozenset[str] = frozenset(
+    code for code in UK_GEOGRAPHY_ID_TO_LABEL if code.startswith("K")
+)
 
 #: The twelve-area region tier of the national calibration surface, in the
 #: order the FRS ``gvtregno`` coding and the incumbent's regional rows use:

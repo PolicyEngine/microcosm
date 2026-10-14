@@ -1,0 +1,85 @@
+{
+ "income_2024": {
+  "survey_year": 2025,
+  "households": 55762,
+  "persons": 142125,
+  "weighted_households_millions": 134.964,
+  "county_identified_households": 23021,
+  "county_identified_share": 0.41284387217101254,
+  "county_identified_share_weighted": 0.4527315190926383,
+  "distinct_coded_counties": 280,
+  "census_list4_counties": 277,
+  "coded_and_listed": 271,
+  "coded_not_listed": 9,
+  "listed_not_coded": 6,
+  "coded_not_listed_fips": [
+   6017,
+   6061,
+   6077,
+   6113,
+   25009,
+   25021,
+   48439,
+   53033,
+   53061
+  ],
+  "peinusyr_top_code_persons": {
+   "27": 1277,
+   "28": 2749,
+   "29": 0
+  }
+ },
+ "income_2025": {
+  "survey_year": 2026,
+  "households": 53344,
+  "persons": 134729,
+  "weighted_households_millions": 137.124,
+  "county_identified_households": 22267,
+  "county_identified_share": 0.4174227654469106,
+  "county_identified_share_weighted": 0.45391665873253445,
+  "distinct_coded_counties": 307,
+  "census_list4_counties": 361,
+  "coded_and_listed": 287,
+  "coded_not_listed": 20,
+  "listed_not_coded": 74,
+  "coded_not_listed_fips": [
+   1079,
+   1103,
+   1107,
+   1125,
+   6101,
+   6115,
+   9001,
+   9005,
+   9009,
+   9015,
+   12119,
+   22105,
+   26027,
+   37019,
+   37129,
+   37141,
+   42075,
+   45085,
+   54019,
+   54081
+  ],
+  "peinusyr_top_code_persons": {
+   "27": 1047,
+   "28": 1741,
+   "29": 1121
+  }
+ },
+ "rotation_income_2025_vs_2024": {
+  "shared_H_IDNUM": 16601,
+  "share_of_2025_households": 0.31120650869826033,
+  "share_of_2025_households_weighted": 0.31470292867802857,
+  "share_of_2024_households": 0.2977117033104982,
+  "linked_reference_person_sex_agrees": 0.9831335461719174,
+  "linked_reference_person_age_plus_0_to_2": 0.9637371242696223,
+  "random_pairs_sex_agrees": 0.49025,
+  "random_pairs_age_plus_0_to_2": 0.0463,
+  "shared_PERIDNUM": 39927,
+  "share_of_2025_persons": 0.29635045164738105
+ }
+}

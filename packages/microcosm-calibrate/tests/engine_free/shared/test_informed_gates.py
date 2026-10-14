@@ -287,3 +287,93 @@ def test_feasibility_aware_search_returns_the_closest_run_when_nothing_is_drawab
     assert search["selected_measure"] == 90
     assert abs(search["selected_measure"] - k) > search["tolerance"]
     assert result.gate_open_probabilities is not None
+
+
+def test_warm_start_probes_the_given_penalty_first_and_brackets_a_miss(monkeypatch):
+    """microcosm#1115: a known penalty is probed first; a hit ends the search
+    after one probe, a miss brackets within half a decade and interpolates."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.calibrate import Target, TargetSet, calibrate
+    from microcosm.calibrate import solve as solve_module
+    from microcosm.calibrate.solve import (
+        _L0_WARM_SPAN_DECADES,
+        BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+    )
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    n, k = 1000, 500
+    thresholds = -7.12 + 8.0 * (np.arange(n) + 0.5) / n
+    monkeypatch.setattr(
+        solve_module, "_optimize", _stub_polarised_optimizer(thresholds, 10.0)
+    )
+    household = pd.DataFrame({"household_id": np.arange(1, n + 1)})
+    person = pd.DataFrame(
+        {"person_id": np.arange(1, n + 1), "person_household_id": np.arange(1, n + 1)}
+    )
+    frame = Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        [Target("count", "household", lambda f: np.ones(f.n("household")), 500.0)]
+    )
+    common = dict(
+        epochs=3,
+        seed=1,
+        budget_iters=10,
+        target_records=k,
+        budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+        feasible_draw_pi_hi=0.95,
+    )
+
+    cold = calibrate(frame, targets, **common)
+    cold_search = cold.options["budget_search"]
+    # The cold path is untouched: mid-point first, no warm receipt.
+    assert cold_search["probes"][0]["l0_lambda"] == 1e-3
+    assert cold_search["initial_lambda"] is None
+    assert cold_search["warm_edge_probe"] is None
+    assert cold_search["stopped_on"] == "acceptable_within_tolerance"
+    known = cold_search["selected_l0_lambda"]
+    assert cold_search["evaluations"] > 2
+
+    # A hit: the known penalty is probed first and the search stops there.
+    warm = calibrate(frame, targets, l0_lambda=known, **common)
+    search = warm.options["budget_search"]
+    assert search["initial_lambda"] == known
+    assert search["evaluations"] == 1
+    assert search["probes"][0]["l0_lambda"] == known
+    assert search["warm_edge_probe"] is None
+    assert search["selected_feasible"] is True
+    assert warm.l0_lambda == known
+    np.testing.assert_array_equal(warm.weights, cold.weights)
+
+    # A miss on the over-pruned side: the next probe sits half a decade below
+    # the hint, the bracket closes on the measured ends, and the search lands
+    # within the probes bisection would have needed from the hint alone.
+    stale = known * 10**0.35
+    missed = calibrate(frame, targets, l0_lambda=stale, **common)
+    search = missed.options["budget_search"]
+    probes = search["probes"]
+    assert probes[0]["l0_lambda"] == pytest.approx(stale)
+    assert probes[0]["verdict"] in ("boundary_mass_short", "boundary_short_of_draw")
+    assert probes[1]["l0_lambda"] == pytest.approx(stale / 10**_L0_WARM_SPAN_DECADES)
+    assert search["warm_edge_probe"]["l0_lambda"] == pytest.approx(
+        probes[1]["l0_lambda"]
+    )
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["selected_feasible"] is True
+    assert search["evaluations"] <= 4
+    assert abs(search["selected_measure"] - k) <= search["tolerance"]
+
+    # A miss beyond the span hands the search the global bracket on that side
+    # and it still settles within the iteration budget.
+    far = known * 10**2.0
+    recovered = calibrate(frame, targets, l0_lambda=far, **common)
+    search = recovered.options["budget_search"]
+    assert search["probes"][0]["l0_lambda"] == pytest.approx(far)
+    assert search["warm_edge_probe"]["steer"] == "smaller_penalty"
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["selected_feasible"] is True

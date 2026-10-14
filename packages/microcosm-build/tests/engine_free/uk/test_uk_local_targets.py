@@ -20,15 +20,25 @@ class Result:
 class FakeUKSimulation:
     def __init__(self):
         self.person_household = np.asarray([0, 0, 1, 2])
+        self.person_benunit = np.asarray([0, 0, 1, 2])
         self.benunit_household = np.asarray([0, 1, 2])
         self.data = {
             "household_id": [101, 102, 103],
             "self_employment_income": [0.0, 100.0, 0.0, 50.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0],
+            "tax_band": ["HIGHER", "HIGHER", "BASIC", "HIGHER"],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
-            "num_children": [0, 0, 1],
+            # Benefit unit 2's only member is a 12-year-old the FRS records as
+            # a dependant: the UC family type counts one child there.
+            "is_uc_claimant": [False, True, True, False],
+            "is_child_or_qualifying_young_person_for_universal_credit": [
+                True,
+                False,
+                False,
+                True,
+            ],
             "is_child": [1.0, 0.0, 0.0, 1.0],
             "equiv_hbai_household_net_income": [100.0, 200.0, 300.0],
             "equiv_hbai_household_net_income_ahc": [80.0, 150.0, 260.0],
@@ -45,8 +55,14 @@ class FakeUKSimulation:
         return Result(self.data[variable])
 
     def map_result(self, values, from_entity, to_entity):
-        assert to_entity == "household"
         values = np.asarray(values, dtype=float)
+        if to_entity == "benunit":
+            assert from_entity == "person"
+            out = np.zeros(len(self.benunit_household), dtype=float)
+            for i, benunit_index in enumerate(self.person_benunit):
+                out[benunit_index] += values[i]
+            return out
+        assert to_entity == "household"
         out = np.zeros(3, dtype=float)
         if from_entity == "person":
             for i, household_index in enumerate(self.person_household):
@@ -70,13 +86,14 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-5:] == (
+    assert names[-6:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
         "uc_hh_3plus_children",
         # Appended last so incumbent metric positions never renumber.
         "households",
+        "hmrc/higher_rate_taxpayers/count",
     )
 
 
@@ -88,7 +105,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-10:] == (
+    assert names[-11:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -99,6 +116,7 @@ def test_metric_names_match_expected_la_surface() -> None:
         "council_tax/band_g",
         "council_tax/band_h",
         "council_tax/band_i",
+        "hmrc/higher_rate_taxpayers/count",
     )
 
 
@@ -192,6 +210,8 @@ def test_compute_constituency_household_metrics() -> None:
     assert metrics.columns.tolist() == list(metric_names("constituency"))
     assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 50.0]
     assert metrics["hmrc/employment_income/count"].tolist() == [1.0, 0.0, 1.0]
+    # Higher rate taxpayers only: the second person is HIGHER but pays no tax.
+    assert metrics["hmrc/higher_rate_taxpayers/count"].tolist() == [1.0, 0.0, 1.0]
     assert metrics["age/0_10"].tolist() == [1.0, 0.0, 0.0]
     assert metrics["age/70_80"].tolist() == [0.0, 1.0, 0.0]
     assert metrics["uc_households"].tolist() == [0.0, 1.0, 1.0]
@@ -202,22 +222,52 @@ def test_compute_constituency_household_metrics() -> None:
 def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
     class MultiBenunitUKSimulation(FakeUKSimulation):
         def __init__(self):
-            self.person_household = np.asarray([0, 0])
+            # Three benefit units in one household: a claimant with one, three
+            # and two children (the last two are 19 and 18, qualifying young
+            # people the engine's age-18 count would drop).
+            self.person_benunit = np.asarray([0, 0, 1, 1, 1, 1, 2, 2, 2])
+            self.person_household = np.zeros(9, dtype=int)
             self.benunit_household = np.asarray([0, 0, 0])
             self.data = {
                 "household_id": [101],
-                "self_employment_income": [0.0, 0.0],
-                "employment_income": [0.0, 0.0],
-                "income_tax": [0.0, 0.0],
-                "age": [35, 10],
+                "self_employment_income": [0.0] * 9,
+                "employment_income": [0.0] * 9,
+                "income_tax": [0.0] * 9,
+                "tax_band": ["NONE"] * 9,
+                "age": [35, 10, 40, 3, 6, 9, 45, 19, 18],
                 "universal_credit": [100.0, 50.0, 0.0],
-                "num_children": [1, 3, 2],
-                "is_child": [0.0, 1.0],
+                "is_uc_claimant": [
+                    True,
+                    False,
+                    True,
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                    False,
+                ],
+                "is_child_or_qualifying_young_person_for_universal_credit": [
+                    False,
+                    True,
+                    False,
+                    True,
+                    True,
+                    True,
+                    False,
+                    True,
+                    True,
+                ],
+                "is_child": [0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
             }
 
         def map_result(self, values, from_entity, to_entity):
-            assert to_entity == "household"
             values = np.asarray(values, dtype=float)
+            if to_entity == "benunit":
+                out = np.zeros(3, dtype=float)
+                for index, benunit_index in enumerate(self.person_benunit):
+                    out[benunit_index] += values[index]
+                return out
             out = np.zeros(1, dtype=float)
             links = (
                 self.person_household

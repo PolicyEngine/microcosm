@@ -472,7 +472,16 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
     method: Literal["rotated_folds"]
     target_loss_cap: PositiveFiniteFloat
     loss_weight_scale: Literal["held_local_grains_only"]
-    target_weight_rule: Literal["uniform", "grain_equal"]
+    # The UK local target-weight vocabulary (microcosm#1124); a microcosm-build
+    # test pins it to ``UK_LOCAL_TARGET_WEIGHT_RULES``.
+    target_weight_rule: Literal[
+        "uniform",
+        "grain_equal",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ]
     population: Literal["held_out_local_targets"]
     grains: list[Literal["constituency", "local_authority", "la"]] = Field(min_length=1)
     n_folds: Annotated[int, Field(ge=2)]
@@ -525,6 +534,38 @@ class UKSkippedRotatedHoldout(DiagnosticsModel):
 UKRotatedHoldout = UKMeasuredRotatedHoldout | UKSkippedRotatedHoldout
 
 
+class UKDriftValue(DiagnosticsModel):
+    """One quantity at the design weights and at the final weights."""
+
+    design: FiniteFloat
+    final: FiniteFloat
+    change: FiniteFloat
+    relative_change: FiniteFloat | None
+
+    @model_validator(mode="after")
+    def reconcile_change(self) -> UKDriftValue:
+        if not math.isclose(
+            self.change, self.final - self.design, rel_tol=1e-9, abs_tol=1e-9
+        ):
+            raise ValueError("UK drift change must equal final minus design")
+        if (self.relative_change is None) != (self.design == 0):
+            raise ValueError("UK drift relative change is undefined only at zero")
+        return self
+
+
+class UKConsumptionDrift(DiagnosticsModel):
+    """Stage-levelled spend and its composition, design against final weights.
+
+    Report only (microcosm#1113): the stage sets these levels and shares, so
+    calibration should barely move them; a large move means a bound row is
+    pulling weight onto the columns instead.
+    """
+
+    report_only: Literal[True]
+    totals: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
+    shares: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
+
+
 class UKDiagnosticsV1(DiagnosticsModel):
     schema_version: Literal[UK_DIAGNOSTICS_SCHEMA_VERSION]
     weights: UKWeightSummary
@@ -534,6 +575,7 @@ class UKDiagnosticsV1(DiagnosticsModel):
     weakest_families: list[UKWeakestFamily] | None = None
     weakest_areas_by_fit: UKWeakestAreasByFit | None = None
     rotated_holdout: UKRotatedHoldout | None = None
+    consumption_drift: UKConsumptionDrift | None = None
 
     @model_validator(mode="after")
     def reconcile_uk_diagnostics(self) -> UKDiagnosticsV1:
