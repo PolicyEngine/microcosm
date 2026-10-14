@@ -10,11 +10,15 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceOperationSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.student_loans import (
     PLAN_PRIORITY,
+    PLAN_SALTS,
     STUDENT_LOAN_ENUM_DOMAIN,
+    STUDENT_LOAN_SEED,
     _assert_student_loans_stage_parameters,
+    _walk_top_up,
     assign_student_loan_plans,
     load_slc_liable_stocks,
 )
@@ -36,6 +40,7 @@ def _frame(
     regions=None,
     education=None,
     weights=None,
+    household_columns=None,
 ):
     n = len(ages)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -53,7 +58,9 @@ def _frame(
             }
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
-        household=pd.DataFrame({"household_id": ids, "region": regions}),
+        household=pd.DataFrame(
+            {"household_id": ids, "region": regions, **(household_columns or {})}
+        ),
         household_weights=np.ones(n) if weights is None else weights,
         time_period="2024",
     )

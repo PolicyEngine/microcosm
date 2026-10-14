@@ -39,11 +39,6 @@ class ParityReceiptSpec:
 
 RECEIPTS = (
     ParityReceiptSpec(
-        fixture_resource="parity_fixture_production_2023.json",
-        output_resource="ledger_compile_parity_production_2023_signed_differences.json",
-        target_period=2023,
-    ),
-    ParityReceiptSpec(
         fixture_resource="registry_parity_fixture_2025.json",
         output_resource="ledger_compile_parity_incumbent_2025_signed_differences.json",
         target_period=2025,
@@ -69,12 +64,28 @@ _SPI_UPRATED_DRIFT_RATIONALE = (
     "one year forward with its own income-projection ratios."
 )
 
+_SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE = (
+    "The x1.9 adjustment is retired (microcosm#1106, María's ruling of "
+    "2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from "
+    "property, landlords' profit after allowable expenses and before "
+    "residential finance costs, moved to the 2025 calibration year by HMRC's "
+    "projected total income in the band (hmrc.itl_2026."
+    "total_income_growth_by_total_income_band, the index the count rows' "
+    "growth belongs with; María's ruling of 2026-10-11); the frozen incumbent "
+    "fixture holds "
+    "1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property "
+    "Rental Income Statistics receipts, which are before expenses, against "
+    "this net concept."
+)
+
 _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
     "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
-    "2023-24 savings-interest rows by band uprated by the household interest "
-    "index; the incumbent registry binds neither (chronicle#282)."
+    "2023-24 savings-interest rows by band, moved to the dataset's year by the "
+    "household interest index and from there to the calibration year by GDP "
+    "per head, the index the engine's dataset projection applies "
+    "(microcosm#1095); the incumbent registry binds neither (chronicle#282)."
 )
 
 _SPI_REGION_LEDGER_ONLY_RATIONALE = (
@@ -96,6 +107,17 @@ _OBR_WINDOW_DRIFT_RATIONALE = (
     "alone."
 )
 
+_OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
+    "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours "
+    "binds OBR table 4.1 row 15, the council tax receipts of England, Scotland "
+    "and Wales, over Great Britain's households, at the calendar-2025 window "
+    "(three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule "
+    "of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent "
+    "fixture holds the FY2025-26 value of row 19 alone, which adds Northern "
+    "Ireland domestic rates, the council tax accruals adjustment and the "
+    "high-value council tax surcharge."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -109,6 +131,47 @@ _ESA_CUBE_ROWS = (
     "dwp.esa_claimants",
     "dwp.esa_contrib_claimants",
     "dwp.esa_income_claimants",
+)
+
+#: microcosm#1069: the resident State Pension level replaces the OBR line in
+#: the fit (ruling R4); the exact OBR forecast stays as diagnostic provenance.
+_OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast "
+    "out of the fit: it counts Great Britain plus pensioners paid abroad and "
+    "leaves out Northern Ireland, a different quantity from the resident level "
+    "the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as "
+    "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
+_OBR_NI_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves "
+    "OBR's total NICs receipts out of the fit: a cash total against the three "
+    "accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 "
+    "and settlements that no household carries. The exact FY2025-26 figure is "
+    "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
+_DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS = frozenset(
+    {
+        "dwp.pip.daily_living_standard_claimants",
+        "dwp.pip.daily_living_enhanced_claimants",
+    }
+)
+_DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales "
+    "PIP daily living caseload (FOI2025/24990, end of January 2025) out of the "
+    "fit: the two rows resolve and fit, but they push the heaviest support "
+    "family's weight over the uk_weight_ratio fence. The exact figures are "
+    "retained as diagnostic provenance on obr.pip, so the frozen fixture's "
+    "fitted rows are fixture-only on the current surface."
+)
+_STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
+_STATE_PENSION_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
+    "Britain) and DfC (Northern Ireland) on the four quarterly points inside "
+    "calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by "
+    "sex by type, area by type and weekly amount band by type. The frozen fixture "
+    "has no State Pension caseload or resident-level row."
 )
 _INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
 
@@ -168,15 +231,22 @@ _CGT_NEW_ROW_PREFIXES = (
     "hmrc/capital_gains_band_10000",
     "hmrc.cgt.residential_property_taxpayers",
     "hmrc.cgt.residential_property_gains",
+    "hmrc.cgt.badr_ir_taxpayers_by_band.",
+    "hmrc.cgt.badr_ir_qualifying_gains_by_band.",
+    "hmrc.cgt.taxpayers_by_taxable_income_band.",
+    "hmrc.cgt.gains_by_taxable_income_band.",
 )
 _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
     "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
     "FY2024-25 individual rows by age band (Table 6), by country and region "
     "on the individuals basis via the Table 1 share (Table 5), and the "
-    "size-of-gain bands the incumbent never carried (Table 2.1a), and the "
+    "size-of-gain bands the incumbent never carried (Table 2.1a), the "
     "residential property taxpayers and gains on the individuals basis via "
-    "the Table 8b share (Table 8a). The frozen incumbent fixture has no "
-    "equivalent row (microcosm#725, #467)."
+    "the Table 8b share (Table 8a), the Business Asset Disposal Relief and "
+    "Investors' Relief claimants and qualifying gains by band of qualifying "
+    "gain (Table 4.1), and the all-gains taxpayers and gains by band of the "
+    "engine's CGT taxable income (Table 3). The frozen incumbent fixture has "
+    "no equivalent row (microcosm#725, #467, #1014)."
 )
 
 _UC_PAID_WINDOW_NAMES = frozenset(
@@ -545,21 +615,13 @@ def _add_signed_rationale_notes(
     *,
     fixture_resource: str,
 ) -> None:
-    if fixture_resource not in {
-        "registry_parity_fixture_2025.json",
-        "parity_fixture_production_2023.json",
-    }:
+    if fixture_resource != "registry_parity_fixture_2025.json":
         return
     for row in report.get("differences", ()):
         if not isinstance(row, dict):
             continue
         name = str(row.get("name", ""))
         if name in _UC_PAID_WINDOW_NAMES:
-            baseline = (
-                "2023 production"
-                if fixture_resource == "parity_fixture_production_2023.json"
-                else "2025 incumbent"
-            )
             inherited_change = (
                 "PR #891 contract with #892 source-window averaging"
                 if name.startswith("dwp.uc.households_children_")
@@ -568,8 +630,8 @@ def _add_signed_rationale_notes(
             row["reason"] = (
                 f"Inherited {inherited_change}: current paid-UC counts use the "
                 "explicit January-December 2025 source windows on the ec7169 "
-                f"national feed. This compares that declaration with the frozen {baseline} "
-                "baseline; it does not redatum the observations to the comparison "
+                "national feed. This compares that declaration with the frozen "
+                "2025 incumbent baseline; it does not redatum the observations to the comparison "
                 "year or create a new year ruling."
             )
         elif "_by_region@" in name and row.get("kind") == "calibration_drift":
@@ -586,10 +648,29 @@ def _add_signed_rationale_notes(
             row["reason"] = _WELSHGOV_COUNTRY_BASIS_RATIONALE
         elif name.startswith("welshgov.council_tax_stock.band_i"):
             row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
+        elif name == "obr.state_pension" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
+        elif name == "obr.ni" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_NI_DIAGNOSTIC_RATIONALE
+        elif (
+            name in _DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS
+            and row.get("kind") == "fixture_only"
+        ):
+            row["reason"] = _DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE
+        elif (
+            name.startswith(_STATE_PENSION_PREFIXES)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _STATE_PENSION_LEDGER_ONLY_RATIONALE
         elif fixture_resource != "registry_parity_fixture_2025.json":
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
             row["reason"] = _CGT_OBSERVED_RATIONALES[name]
+        elif (
+            name.startswith("hmrc/property_income_income_band_")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE
         elif (
             name.startswith("hmrc/")
             and "_income_band_" in name
@@ -605,6 +686,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
         elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
+        elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
+            row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
         elif (
             name.startswith("obr.")
             and row.get("kind") == "calibration_drift"

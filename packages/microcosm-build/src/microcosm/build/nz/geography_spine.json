@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "country": "nz",
+  "policy": "One national New Zealand dataset carries Stats NZ region codes for calibration and filtering. Region is target-assigned on US donor support records, never represented as observed donor geography. In the graph build each household draws one atomic unit (territorial authority intersected with Accommodation Supplement area) from population-weighted support built from Chronicle territorial-authority population facts and as_area_crosswalk.json; region, territorial authority and Accommodation Supplement area derive from that unit. Finer layers remain columns on this same national dataset, not separate files.",
+  "geography_spine": {
+    "stage": "assign_nz_regions",
+    "method": "clone_assign_uniform",
+    "geography_level": "region",
+    "code_system": "nz_stats_region",
+    "code_column": "region_code",
+    "vintage": "2025",
+    "vintage_policy": "error",
+    "clones_per_record": 1,
+    "collision_avoidance": true,
+    "constrain_to_column": "",
+    "assignment_source": {
+      "survey": "Stats NZ subnational population estimates at 30 June 2025",
+      "source": "https://www.stats.govt.nz/information-releases/subnational-population-estimates-at-30-june-2025/",
+      "notes": "Region follows from each household's atomic territorial-authority by Accommodation Supplement area draw, whose support weights come from Stats NZ population facts, and is broadcast to family and person tables; the age-by-sex-by-region cells are calibration targets. Chronicle must supply the complete current region and territorial-authority rosters and cell-level facts before the operator can run."
+    },
+    "notes": "One clone per record is the compile-safe national starting point. This generation-0 record describes the region layer only; the shared graph geography kernels execute assignment. The exact 16-region roster, the geography source artifact identity, the harvested territorial-authority to Accommodation Supplement area shares, and reviewed support diagnostics must land before execution."
+  }
+}

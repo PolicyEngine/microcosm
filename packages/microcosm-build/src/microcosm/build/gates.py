@@ -188,6 +188,7 @@ def ledger_compile_parity_gate(
     fixture: TargetRegistry | Mapping[str, object],
     *,
     signed_differences: Iterable[Mapping[str, object]] = (),
+    unsupported: Iterable[Mapping[str, object]] = (),
     signed_difference_tolerance: float = 1e-9,
     name: str = "ledger_compile_parity",
 ) -> GateResult:
@@ -197,6 +198,12 @@ def ledger_compile_parity_gate(
     absent or calibration-different on either side. Every unsigned row gap or
     target-value difference is still reported by the shared registry parity
     comparator.
+
+    ``unsupported`` is the compile's own report of the references that did not
+    resolve at this period. A fixture row whose reference is on it is
+    ``ledger_absent``, as the signed-differences resource classifies it. Without
+    the report the same row reads as ``fixture_only``, and a signed
+    ``ledger_absent`` row fails as a changed kind.
     """
 
     actual = _ledger_compile_value_registry(
@@ -207,7 +214,10 @@ def ledger_compile_parity_gate(
     )
     signed_rows = tuple(signed_differences)
     signed_keys = _signed_difference_keys(signed_rows)
-    live_signed_report = ledger_compile_parity_signed_differences(actual, expected)
+    unsupported_rows = tuple(unsupported)
+    live_signed_report = ledger_compile_parity_signed_differences(
+        actual, expected, unsupported=unsupported_rows
+    )
     signed_failures, checked_signed = _signed_difference_check_failures(
         signed_rows,
         live_signed_report["differences"],
@@ -232,6 +242,7 @@ def ledger_compile_parity_gate(
             "signed_difference_count": len(signed_keys),
             "signed_difference_tolerance": signed_difference_tolerance,
             "signed_differences": checked_signed,
+            "unsupported_reference_count": len(unsupported_rows),
         },
     )
 
@@ -1108,6 +1119,50 @@ def _unique_observed_values(values: np.ndarray) -> np.ndarray:
         return np.unique(values)
     except TypeError:
         return np.asarray(sorted({repr(value) for value in values}), dtype=object)
+
+
+def observed_value_counts(values: Iterable[object]) -> list[tuple[object, int]]:
+    """Each distinct observed value of a column and how many records carry it.
+
+    Observation is the degeneracy gates' own rule (:func:`default_valued_columns_gate`,
+    :func:`nonconstant_columns_gate`): nulls and non-finite floats are not
+    observed. Values are returned as JSON scalars, largest count first. The
+    release dry run bounds how many records a household selection must keep for
+    a column to stay non-degenerate or nonconstant.
+    """
+
+    observed = _observed_column_values(values)
+    if observed.size == 0:
+        return []
+    try:
+        unique, counts = np.unique(observed, return_counts=True)
+        pairs = [
+            (_json_scalar(value), int(count))
+            for value, count in zip(unique, counts, strict=True)
+        ]
+    except TypeError:
+        tallies: dict[str, tuple[object, int]] = {}
+        for value in observed:
+            key = repr(value)
+            first, count = tallies.get(key, (value, 0))
+            tallies[key] = (first, count + 1)
+        pairs = [(_json_scalar(value), count) for value, count in tallies.values()]
+    return sorted(pairs, key=lambda pair: -pair[1])
+
+
+def non_default_record_count(values: Iterable[object], default: object) -> int:
+    """How many observed records differ from the engine ``default``.
+
+    Uses :func:`default_valued_columns_gate`'s comparison, so a column whose
+    count is zero is exactly one that gate calls degenerate (or unobserved).
+    """
+
+    target = _json_scalar(default)
+    return sum(
+        count
+        for value, count in observed_value_counts(values)
+        if not _scalar_values_equal(value, target)
+    )
 
 
 def nonconstant_columns_gate(

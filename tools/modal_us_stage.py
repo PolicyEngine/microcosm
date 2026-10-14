@@ -13,8 +13,9 @@ is listed with its sha256 in a receipt written next to it.
 Check (cheap, the default; builds the image, verifies the clone and that
 the plan's branch contains its commit, the environment, the tool's own
 argument parser on the built argv, every input digest, the run's prior
-state against its latest receipt, its attempts and budget, without running
-the stage)::
+state against its latest receipt, its attempts and budget, and, for a stage
+that declares how much state it mirrors, the runs volume's write rate,
+without running the stage)::
 
     MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
@@ -137,6 +138,9 @@ def _git(*parts: str) -> str:
 def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
     head = _git("rev-parse", "HEAD")
     clean = _git("status", "--porcelain") == ""
+    # Files of the pinned tree the tool reads by path (the base's district
+    # crosswalk), hashed against the registration.
+    tree_files = plan_lib.tree_file_rows(plan.tool, plan_lib.IMAGE_REPO_ROOT)
     return {
         "head": head,
         "head_matches_plan": head == plan.commit,
@@ -145,6 +149,8 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
         **_verify_branch(plan),
         "tool_present": plan.tool.script is None
         or (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
+        "tree_files": tree_files,
+        "tree_files_verified": not any("problem" in row for row in tree_files),
     }
 
 
@@ -195,13 +201,17 @@ def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _runner_identity() -> dict[str, object]:
-    identity: dict[str, object] = {
-        "python": sys.version.split()[0],
-        # Platform and CPU visibility, for comparing a Modal run with a local
-        # one: BLAS and OpenMP size their thread pools from what they see.
-        "platform": platform.platform(),
-        "machine": platform.machine(),
+def _cpu_visibility() -> dict[str, object]:
+    """What this container shows a tool that sizes its pools from the CPUs.
+
+    The base's pinned tool sizes its primary-QRF predict pool from
+    ``os.cpu_count()`` when POPULACE_FIT_PREDICT_WORKERS is unset (4b57d15a2
+    microcosm-fit qrf.py ``_predict_workers``), and BLAS and OpenMP read the
+    ``*_NUM_THREADS`` variables. ``nproc`` is no measure of the first: GNU
+    nproc takes OMP_NUM_THREADS as its minimum.
+    """
+
+    return {
         "os_cpu_count": os.cpu_count(),
         "cpu_affinity": len(os.sched_getaffinity(0))
         if hasattr(os, "sched_getaffinity")
@@ -211,6 +221,18 @@ def _runner_identity() -> dict[str, object]:
             for key, value in sorted(os.environ.items())
             if key.endswith("_NUM_THREADS")
         },
+    }
+
+
+def _runner_identity() -> dict[str, object]:
+    identity: dict[str, object] = {
+        "python": sys.version.split()[0],
+        # Platform and CPU visibility, for comparing a Modal run with a local
+        # one: BLAS, OpenMP and the base's QRF pool size their thread pools
+        # from what they see.
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        **_cpu_visibility(),
     }
     for name, path in {
         "modal_us_stage_plan.py": PLAN_MODULE_REMOTE,
@@ -347,13 +369,67 @@ def _parse_check(
     }
 
 
-class _BudgetWatch(threading.Thread):
-    """Stop the tool once the plan's max_wall_seconds has passed."""
+def _write_probe(plan: plan_lib.Plan) -> dict[str, object]:
+    """Time a copy of WRITE_PROBE_BYTES to the runs volume, and its commit.
 
-    def __init__(self, proc: subprocess.Popen, max_wall_seconds: int | None) -> None:
+    Only for a stage that declares ``mirrored_state_gib`` (the base). The
+    copy is the one the runner's push makes (``plan_lib.copy_hashed`` to a
+    temporary name, then a rename) followed by ``runs_volume.commit()``; the
+    probe file is deleted afterwards, outside every run's directory.
+    """
+
+    stage = plan.stage_spec
+    if stage.mirrored_state_gib is None:
+        return plan_lib.write_probe_verdict(stage, 0, 0.0)
+    local = Path(plan_lib.WORK_ROOT) / "write-probe" / "probe.bin"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    chunk = 8 * 1024 * 1024
+    with open(local, "wb") as handle:
+        for _ in range(max(1, plan_lib.WRITE_PROBE_BYTES // chunk)):
+            handle.write(os.urandom(chunk))
+    probe_dir = Path(plan_lib.RUNS_MOUNT) / "write-probes"
+    target = (
+        probe_dir / f"{_modal_ids().get('input_id') or 'local'}-{time.time_ns()}.bin"
+    )
+    tmp = target.with_name(f".{target.name}{plan_lib.MIRROR_PARTIAL_SUFFIX}")
+    try:
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        _, size = plan_lib.copy_hashed(local, tmp)
+        os.replace(tmp, target)
+        runs_volume.commit()
+        seconds = time.monotonic() - started
+        verdict = plan_lib.write_probe_verdict(stage, size, seconds)
+    except Exception as error:  # noqa: BLE001 - reported as a check problem
+        verdict = {"problem": f"write probe failed: {type(error).__name__}: {error}"}
+    finally:
+        for path in (tmp, target, local):
+            path.unlink(missing_ok=True)
+        try:
+            runs_volume.commit()
+        except Exception as error:  # noqa: BLE001 - the probe's result stands
+            print(f"write probe cleanup commit failed: {error}", flush=True)
+    return verdict
+
+
+class _BudgetWatch(threading.Thread):
+    """Stop the tool once the plan's max_wall_seconds has passed.
+
+    The tool runs in its own process group (``process_group=0``), and the
+    whole group is stopped: a tool that runs stages as child interpreters
+    must not leave one running behind the hashing and mirroring.
+    """
+
+    def __init__(
+        self,
+        proc: subprocess.Popen,
+        max_wall_seconds: int | None,
+        grace_seconds: float = plan_lib.STOP_GRACE_SECONDS,
+    ) -> None:
         super().__init__(daemon=True)
         self.proc = proc
         self.max_wall_seconds = max_wall_seconds
+        self.grace_seconds = grace_seconds
         self.done = threading.Event()
         self.fired = False
 
@@ -362,11 +438,7 @@ class _BudgetWatch(threading.Thread):
             return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        plan_lib.stop_process_group(self.proc, grace_seconds=self.grace_seconds)
 
 
 def _modal_ids() -> dict[str, str | None]:
@@ -503,7 +575,7 @@ def _load_json(path: Path) -> dict | None:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
@@ -526,10 +598,50 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(f"branch not verified: {git['branch_check']}")
     if not git["tool_present"]:
         problems.append(f"{plan.tool.script} is not in commit {plan.commit}")
+    problems += [
+        f"tree file {row['name']} ({row['path']}): {row['problem']}"
+        for row in git["tree_files"]
+        if "problem" in row
+    ]
+    # What this (check-class) container shows a tool of its CPUs. The stage
+    # runs in its own class, whose receipt records the same fields
+    # (runner.os_cpu_count, cpu_affinity, thread_env); this is an early hint.
+    report["check_container_cpu"] = _cpu_visibility()
+    # What this (check-class) container's work disk reports. The stage's own
+    # container checks its own disk before staging; this is an early hint,
+    # but one the check fails on: it must not say OK for a stage whose run
+    # would refuse on a disk like this one.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    would_refuse = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
+    report["work_disk"] = {
+        "total_bytes": disk.total,
+        "free_bytes": disk.free,
+        "stage_needs_gib": plan.stage_spec.min_free_disk_gib,
+        "would_refuse": would_refuse,
+    }
+    if would_refuse:
+        problems.append(
+            f"work disk: {would_refuse} (measured in the check container; the "
+            "stage's own container measures its disk before staging and refuses "
+            "below the same floor)"
+        )
+    # Whether the stage's state could be mirrored inside the runner's reserve
+    # after the tool, at the write rate this container sees on the runs volume.
+    probe = _write_probe(plan)
+    report["runs_volume_write_probe"] = probe
+    if "problem" in probe:
+        problems.append(str(probe["problem"]))
 
     # The probe and the parser run in the environment the stage would get.
     tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     report["tool_env_removed"] = env_removed
+    report["python_hash_seed"] = plan_lib.hash_seed_record(
+        plan.tool, os.environ, tool_env
+    )
+    seed_problem = plan_lib.hash_seed_problem(tool_env)
+    if seed_problem:
+        problems.append(seed_problem)
     env_probe = subprocess.run(
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
@@ -622,6 +734,7 @@ def _run_stage(plan_data: dict) -> dict:
             "tree_clean",
             "branch_verified",
             "tool_present",
+            "tree_files_verified",
         )
     ):
         raise plan_lib.PlanError(f"image clone does not match the plan: {git}")
@@ -710,30 +823,89 @@ def _attempt_stage(
             flush=True,
         )
 
+    # 4b. A stage that declares its scratch need refuses a container whose
+    #     work disk is smaller, before paying to stage anything.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    work_disk = {"total_bytes": disk.total, "free_bytes_before_staging": disk.free}
+    disk_problem = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
+    if disk_problem:
+        raise _Refusal(disk_problem)
+
+    # 4c. The tool's environment, fixed before anything is pulled or staged:
+    #     credentials and the container's PYTHONHASHSEED withheld, the Hub
+    #     offline, the plan's overrides last. An environment that would give
+    #     the tool a hash seed other than none or "0" (what Route A's local
+    #     base recorded) is refused here, cheaply.
+    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
+    seed_problem = plan_lib.hash_seed_problem(env)
+    if seed_problem:
+        raise _Refusal(seed_problem)
+
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
-    #    verified against the run's latest receipt before anything uses it;
-    #    then the inputs to stable local paths, each digest verified.
-    pulled = plan_lib.mirror_tree(run_dir / "state", state)
+    #    hashed as it is copied and verified against the run's latest receipt
+    #    before anything uses it (one read of each file); then the inputs to
+    #    stable local paths, each digest verified.
+    pulled_outputs, pulled = plan_lib.mirror_tree_hashed(run_dir / "state", state)
     receipts = _receipts(run_dir)
     latest = plan_lib.latest_receipt(
         [(name, data) for name, data, _ in receipts], plan.run_id
     )
-    problems = plan_lib.pulled_state_problems(state, latest)
+    problems = plan_lib.pulled_outputs_problems(pulled_outputs, latest)
     if problems:
+        why = (
+            "because that receipt kept outputs off the volume "
+            "(outputs_not_mirrored: a finished stage with nothing to resume)"
+            if latest and latest[1].get("outputs_not_mirrored")
+            else "so a stage was cut short after changing it"
+        )
         raise plan_lib.PlanError(
             f"run {plan.run_id!r}: its state on {plan_lib.RUNS_VOLUME} is not what "
-            "its latest receipt lists, so a stage was cut short after changing it; "
-            "use a new run_id. " + "; ".join(problems[:10])
+            f"its latest receipt lists, {why}; use a new run_id. "
+            + "; ".join(problems[:10])
         )
+    # The pulled files' digests, so the push does not read them again when
+    # the tool leaves them untouched.
+    known = plan_lib.known_hashes(state, pulled_outputs)
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
+    # Files the tool would otherwise fetch into its home cache, copied from
+    # the staged inputs and verified (the base's 2023 ASEC archive).
+    home_seeds = plan_lib.seed_home_cache(
+        plan,
+        {
+            name: plan_lib.input_local_path(str(work), ref)
+            for name, ref in plan.inputs.items()
+        },
+        env.get("HOME") or Path.home(),
+    )
 
     # 6. The stage itself, in the pinned tree, logged to the state directory.
+    #    Its own process group, so the budget stops every process it spawns.
+    #    Its budget is the plan's remaining max_wall_seconds, cut to what the
+    #    container has left before the class timeout less the runner's
+    #    reserve: time spent above (pulling state, staging) comes out of the
+    #    tool, so hashing, mirroring and the receipt always fit.
+    tool_budget = plan_lib.tool_budget(
+        plan, budget_seconds, time.time() - attempt.started
+    )
+    if int(tool_budget["seconds"]) < plan_lib.MIN_ATTEMPT_SECONDS:
+        raise plan_lib.PlanError(
+            f"only {tool_budget['seconds']}s of tool time is left before the "
+            f"class timeout ({tool_budget}); pulling and staging took the "
+            "container's time"
+        )
+    if tool_budget["limited_by"] != "max_wall_seconds":
+        print(
+            f"BUDGET: the tool may run {tool_budget['seconds']}s "
+            f"(limited by {tool_budget['limited_by']})",
+            flush=True,
+        )
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     print(f"$ {' '.join(argv)}", flush=True)
     with open(log_path, "w") as log:
         proc = subprocess.Popen(
@@ -741,10 +913,12 @@ def _attempt_stage(
             cwd=plan_lib.IMAGE_REPO_ROOT,
             env=env,
             text=True,
+            stdin=subprocess.DEVNULL,  # a background group must not read a tty
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            process_group=0,
         )
-        budget = _BudgetWatch(proc, budget_seconds)
+        budget = _BudgetWatch(proc, int(tool_budget["seconds"]))
         budget.start()
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -756,10 +930,25 @@ def _attempt_stage(
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
 
-    # 7. Outputs: hash the whole state tree, mirror it to the volume, receipt.
-    #    The heartbeat keeps running, so this is charged too.
-    outputs = plan_lib.hash_tree(state)
-    pushed = plan_lib.mirror_tree(state, run_dir / "state")
+    # 7. Outputs: mirror the state tree to the volume, hashing each file as it
+    #    is copied (a file pulled and left untouched keeps its verified
+    #    digest), then the receipt. The stage's mirror_first paths (the base's
+    #    output and the evidence for it) go first, so a push the class
+    #    timeout cuts short has written them. After a clean exit a stage
+    #    whose other state only serves a resume copies just those paths and
+    #    hashes the rest (push_copy_only). The heartbeat keeps running, so
+    #    this is charged too.
+    copy_only = plan_lib.push_copy_only(
+        plan.stage_spec, returncode=returncode, stopped_at_budget=budget.fired
+    )
+    outputs, pushed, not_mirrored = plan_lib.push_state(
+        state,
+        run_dir / "state",
+        known=known,
+        first=plan.stage_spec.mirror_first,
+        copy_only=copy_only,
+    )
+    print(f"PUSH: {pushed}", flush=True)
     receipt = plan_lib.build_receipt(
         plan,
         plan_data,
@@ -777,7 +966,11 @@ def _attempt_stage(
             "state_pulled": pulled,
             "state_pushed": pushed,
             "tool_env_removed": env_removed,
+            "python_hash_seed": hash_seed,
             "modal": attempt.modal,
+            "work_disk": work_disk,
+            "home_seeds": home_seeds,
+            "tool_budget": tool_budget,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
@@ -786,6 +979,7 @@ def _attempt_stage(
         budget_seconds=budget_seconds,
         attempt_id=attempt.attempt_id,
         prior_state_verified_against=latest[0] if latest else None,
+        outputs_not_mirrored=not_mirrored,
     )
     receipts_dir = run_dir / "receipts"
     receipts_dir.mkdir(parents=True, exist_ok=True)
@@ -803,7 +997,7 @@ def _attempt_stage(
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -816,7 +1010,7 @@ def run_stage_heavy(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -830,7 +1024,7 @@ def run_stage_heavy_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -843,7 +1037,7 @@ def run_stage_light(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -857,12 +1051,47 @@ def run_stage_light_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
 )
 def run_stage_small(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+# The PUF-support base's class. Its CPU limit equals its request
+# (plan_lib.BASE.modal_cpu is (4.0, 4.0)), and Modal throttles CPU use above
+# the limit: without it Modal's default soft limit is 16 cores above the
+# request and use above the request is billed (modal.com/docs/guide/resources),
+# and the pinned tool sizes its QRF pools from the CPUs it sees. Memory stays
+# request-only (see plan_lib.BASE). No ephemeral_disk: the default
+# per-container quota (512 GiB, same page) holds its ~50 GB, and the stage
+# checks its free space before staging (StageSpec.min_free_disk_gib).
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.modal_cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+)
+def run_stage_base(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.modal_cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
@@ -872,6 +1101,8 @@ RUNNERS = {
     ("light", False): run_stage_light,
     ("light", True): run_stage_light_nonpreemptible,
     ("check", False): run_stage_small,
+    ("base", False): run_stage_base,
+    ("base", True): run_stage_base_nonpreemptible,
 }
 
 
