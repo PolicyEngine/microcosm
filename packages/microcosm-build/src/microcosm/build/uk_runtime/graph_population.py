@@ -555,14 +555,18 @@ class UKPropertyBandKernel(_PopulationKernel):
             Path(context.sources[property_localisation.BAND_MIX_SOURCE]).read_bytes()
         )
         band_dtype = household["council_tax_band"].dtype
+        tenure = household["tenure_type"].to_numpy()
         new_band, receipt = property_localisation.localise_bands(
             u=u,
             lsoa_code=household["lsoa_code"].to_numpy(),
             band=household["council_tax_band"].to_numpy(),
+            tenure_type=tenure,
             mix=mix,
         )
         lsoa = household["lsoa_code"].to_numpy().astype(str)
-        rewritten = np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
+        rewritten = (
+            np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
+        ) & property_localisation.owner_mask(tenure)
         violations = property_localisation.monotone_violations(
             u[rewritten], new_band[rewritten], lsoa[rewritten]
         )
@@ -1166,7 +1170,10 @@ def _property_localisation_nodes(
         kernel=UKPropertyBandKernel.ref,
         population="uk.full.expand",
         inputs=(
-            Slice("household", tuple(sorted({*_PROPERTY_BAND_COLUMNS, "lsoa_code"}))),
+            Slice(
+                "household",
+                tuple(sorted({*_PROPERTY_BAND_COLUMNS, "lsoa_code", "tenure_type"})),
+            ),
         ),
         outputs=(
             Owned(

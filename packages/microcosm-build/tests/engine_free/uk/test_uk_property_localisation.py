@@ -266,15 +266,21 @@ def test_localise_values_interpolates_caps_and_leaves_others_untouched() -> None
 def test_localise_bands_is_monotone_in_the_uniform_and_skips_scotland() -> None:
     mix = _mix()
     lsoa = next(iter(mix.cumulative))
-    u = np.array([0.0, 0.124, 0.126, 0.5, 0.999, 0.3])
-    codes = np.array([lsoa] * 5 + ["S01000001"])
-    band = np.array(["D", "D", "D", "D", "D", "A"])
-    new_band, receipt = pl.localise_bands(u=u, lsoa_code=codes, band=band, mix=mix)
+    u = np.array([0.0, 0.124, 0.126, 0.5, 0.999, 0.3, 0.999])
+    codes = np.array([lsoa] * 5 + ["S01000001", lsoa])
+    band = np.array(["D", "D", "D", "D", "D", "A", "C"])
+    tenure = np.array(["OWNED_OUTRIGHT"] * 6 + ["RENT_PRIVATELY"])
+    new_band, receipt = pl.localise_bands(
+        u=u, lsoa_code=codes, band=band, tenure_type=tenure, mix=mix
+    )
     assert list(new_band[:5]) == ["A", "A", "B", "E", "H"]
     assert new_band[5] == "A"
+    # An England renter keeps the spine's band whatever its uniform says.
+    assert new_band[6] == "C"
     assert (
         receipt["rows_rewritten"] == 5
         and receipt["rows_untouched_outside_england_wales"] == 1
+        and receipt["rows_untouched_renters_england_wales"] == 1
     )
     assert pl.monotone_violations(u[:5], new_band[:5], codes[:5]) == 0
     assert receipt["band_mix_after"]["I"] == 0

@@ -391,13 +391,21 @@ def localise_bands(
     u: np.ndarray,
     lsoa_code: np.ndarray,
     band: np.ndarray,
+    tenure_type: np.ndarray,
     mix: BandMix,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Draw each England-and-Wales row's band from its LSOA's cumulative shares at ``u``."""
+    """Draw each England-and-Wales owner's band from its LSOA's cumulative shares at ``u``.
+
+    Renters keep the spine's band: the VOA mix counts every dwelling in the
+    LSOA, and drawing a social tenant from it would hand the owners' share of
+    the high bands to households the value node leaves untouched.
+    """
     u = np.asarray(u, dtype=float)
     codes = np.asarray(lsoa_code).astype(str)
     current = np.asarray(band).astype(str)
-    target = _england_wales(codes)
+    owner = owner_mask(tenure_type)
+    england_wales = _england_wales(codes)
+    target = england_wales & owner
     missing = sorted(set(codes[target]) - set(mix.cumulative))
     if missing:
         raise ValueError(f"No VOA band mix for LSOA {missing[:5]}.")
@@ -413,7 +421,8 @@ def localise_bands(
         "rows": int(len(current)),
         "rows_rewritten": int(target.sum()),
         "rows_changed": int(changed.sum()),
-        "rows_untouched_outside_england_wales": int((~target).sum()),
+        "rows_untouched_outside_england_wales": int((~england_wales).sum()),
+        "rows_untouched_renters_england_wales": int((england_wales & ~owner).sum()),
         "lsoas": int(len(set(codes[target]))),
         "band_mix_before": {
             b: int((current[target] == b).sum()) for b in COUNCIL_TAX_BANDS
