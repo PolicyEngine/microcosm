@@ -195,12 +195,6 @@ def test_puf_support_marks_both_leaves_sparse_nonnegative_and_preserves_income()
     assert outputs <= set(puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
     assert outputs <= puf_support_module._PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS
     assert outputs <= puf_support_module._PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS
-    assert "alimony_income" in (
-        puf_support_module._PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS
-    )
-    assert "alimony_expense" not in (
-        puf_support_module._PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS
-    )
 
 
 def test_sparse_puf_splice_does_not_prune_reported_asec_alimony_income() -> None:

@@ -740,6 +740,58 @@ def test_preserve_nulls_sparsification_never_rewrites_native_rows() -> None:
     assert (detail_units == 0.0).any()
 
 
+def test_absent_cell_policies_agree_on_every_observed_sparse_cell() -> None:
+    """Differential check: the two policies differ only on absent cells.
+
+    Legacy zero fill and preserve-nulls must write identical PUF-arm draws and
+    leave the native ASEC arm's reported interest untouched. Before the fix the
+    legacy policy also pruned the native arm to the donor's filer rate.
+    """
+
+    cloned = _cloned_stacked_fixture()
+    predictions, donor = _finalize_fixture_predictions(cloned)
+    donor = donor.assign(taxable_interest_income=[100.0, 0.0, 0.0, 0.0])
+    before_person = cloned.table("person").copy(deep=True)
+    finalized = {
+        policy: finalize_us_puf_tax_detail_predictions(
+            cloned,
+            donor,
+            predictions.copy(),
+            person_outputs=("taxable_interest_income",),
+            tax_unit_outputs=("health_savings_account_ald",),
+            absent_cells=policy,
+        ).table("person")
+        for policy in (
+            PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+            PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        )
+    }
+
+    legacy = finalized[PUF_ABSENT_CELLS_LEGACY_ZERO_FILL]
+    preserved = finalized[PUF_ABSENT_CELLS_PRESERVE_NULLS]
+    clone_index = before_person[support_clone_index_column("person")].to_numpy()
+    channel = before_person[support_channel_column("person")].to_numpy()
+    native_asec = (clone_index == 0) & (channel == "asec")
+    detail = clone_index == 1
+    assert before_person.loc[native_asec, "taxable_interest_income"].gt(0.0).any()
+    for observed in (native_asec, detail):
+        legacy_values = legacy.loc[observed, "taxable_interest_income"].to_numpy(
+            dtype=np.float64
+        )
+        preserved_values = preserved.loc[observed, "taxable_interest_income"].to_numpy(
+            dtype=np.float64
+        )
+        np.testing.assert_array_equal(
+            legacy_values.view(np.uint64), preserved_values.view(np.uint64)
+        )
+    np.testing.assert_array_equal(
+        legacy.loc[native_asec, "taxable_interest_income"].to_numpy(dtype=np.float64),
+        before_person.loc[native_asec, "taxable_interest_income"].to_numpy(
+            dtype=np.float64
+        ),
+    )
+
+
 def test_strict_recipient_predictors_fail_closed_on_absence() -> None:
     cloned = _cloned_stacked_fixture()
     donor = pd.DataFrame(
