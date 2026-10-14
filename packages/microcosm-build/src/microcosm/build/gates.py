@@ -188,6 +188,7 @@ def ledger_compile_parity_gate(
     fixture: TargetRegistry | Mapping[str, object],
     *,
     signed_differences: Iterable[Mapping[str, object]] = (),
+    unsupported: Iterable[Mapping[str, object]] = (),
     signed_difference_tolerance: float = 1e-9,
     name: str = "ledger_compile_parity",
 ) -> GateResult:
@@ -197,6 +198,12 @@ def ledger_compile_parity_gate(
     absent or calibration-different on either side. Every unsigned row gap or
     target-value difference is still reported by the shared registry parity
     comparator.
+
+    ``unsupported`` is the compile's own report of the references that did not
+    resolve at this period. A fixture row whose reference is on it is
+    ``ledger_absent``, as the signed-differences resource classifies it. Without
+    the report the same row reads as ``fixture_only``, and a signed
+    ``ledger_absent`` row fails as a changed kind.
     """
 
     actual = _ledger_compile_value_registry(
@@ -207,7 +214,10 @@ def ledger_compile_parity_gate(
     )
     signed_rows = tuple(signed_differences)
     signed_keys = _signed_difference_keys(signed_rows)
-    live_signed_report = ledger_compile_parity_signed_differences(actual, expected)
+    unsupported_rows = tuple(unsupported)
+    live_signed_report = ledger_compile_parity_signed_differences(
+        actual, expected, unsupported=unsupported_rows
+    )
     signed_failures, checked_signed = _signed_difference_check_failures(
         signed_rows,
         live_signed_report["differences"],
@@ -232,6 +242,7 @@ def ledger_compile_parity_gate(
             "signed_difference_count": len(signed_keys),
             "signed_difference_tolerance": signed_difference_tolerance,
             "signed_differences": checked_signed,
+            "unsupported_reference_count": len(unsupported_rows),
         },
     )
 

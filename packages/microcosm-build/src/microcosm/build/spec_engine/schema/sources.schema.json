@@ -2072,6 +2072,29 @@
         "full_time_education_through_age"
        ]
       },
+      "looked_after_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "foster_child_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "foster_parent_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "below_age": {
+         "type": "integer",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "foster_child_code",
+        "foster_parent_code",
+        "below_age"
+       ]
+      },
       "one_person_age_split": {
        "type": "integer",
        "minimum": 0
@@ -2145,6 +2168,7 @@
       "head_label",
       "family_link_codes",
       "dependent_child",
+      "looked_after_child",
       "one_person_age_split",
       "family_role_values",
       "household_type_values",
@@ -6332,6 +6356,12 @@
         "survey_year",
         "calibration_year"
        ]
+      },
+      "dataset_year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year"
+       ]
       }
      }
     },
@@ -6394,7 +6424,9 @@
       "anchor",
       "bands",
       "weight_mapping",
-      "residual_rate"
+      "residual_rate",
+      "solve_scope",
+      "newly_entitled_rate_key"
      ],
      "properties": {
       "kind": {
@@ -6439,6 +6471,15 @@
        "type": "string"
       },
       "residual_rate": {
+       "type": "string"
+      },
+      "solve_scope": {
+       "type": "string",
+       "enum": [
+        "great_britain"
+       ]
+      },
+      "newly_entitled_rate_key": {
        "type": "string"
       }
      }
@@ -6821,6 +6862,9 @@
        "additionalProperties": {
         "type": "string"
        }
+      },
+      "role_column": {
+       "type": "string"
       }
      }
     },
@@ -9488,6 +9532,9 @@
          },
          "audit_parameter_path": {
           "type": "string"
+         },
+         "from_window": {
+          "const": "fiscal_year"
          }
         }
        }
@@ -9500,6 +9547,22 @@
       },
       "instant": {
        "const": "january_first"
+      },
+      "fiscal_year_bridge": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "start_year_weight",
+        "next_year_weight"
+       ],
+       "properties": {
+        "start_year_weight": {
+         "const": 0.75
+        },
+        "next_year_weight": {
+         "const": 0.25
+        }
+       }
       }
      }
     },
@@ -9608,7 +9671,8 @@
       "margins_resource",
       "margins_period_value",
       "level_resource",
-      "level_fiscal_start",
+      "level_period_type",
+      "level_period_value",
       "level_temperature_adjustment"
      ],
      "properties": {
@@ -9705,8 +9769,14 @@
       "level_resource": {
        "type": "string"
       },
-      "level_fiscal_start": {
-       "type": "string"
+      "level_period_type": {
+       "enum": [
+        "calendar_year",
+        "fiscal_year"
+       ]
+      },
+      "level_period_value": {
+       "type": "integer"
       },
       "level_temperature_adjustment": {
        "enum": [
@@ -10409,6 +10479,177 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "add_back_to",
+      "population",
+      "tape_preparation",
+      "tape_preparation_seed",
+      "donor_income_period",
+      "income_uprating_variables",
+      "donor",
+      "incidence_cells",
+      "incidence",
+      "incidence_seed",
+      "incidence_salt",
+      "model",
+      "n_estimators",
+      "training_rows",
+      "expected_regime",
+      "predictors",
+      "amount_seed",
+      "amount_salt",
+      "draw",
+      "add_back"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_frs_property_finance_costs"
+      },
+      "output": {
+       "type": "string"
+      },
+      "add_back_to": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "tape_preparation": {
+       "type": "string"
+      },
+      "tape_preparation_seed": {
+       "type": "integer"
+      },
+      "donor_income_period": {
+       "type": "integer"
+      },
+      "income_uprating_variables": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "donor": {
+       "type": "string"
+      },
+      "incidence_cells": {
+       "type": "integer"
+      },
+      "incidence": {
+       "type": "string"
+      },
+      "incidence_seed": {
+       "type": "integer"
+      },
+      "incidence_salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "regime_gated_qrf"
+       ]
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "expected_regime": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "amount_seed": {
+       "type": "integer"
+      },
+      "amount_salt": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "add_back": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "resource",
+      "population",
+      "band_lower_bounds",
+      "band_basis",
+      "order",
+      "walk",
+      "walk_seed",
+      "within_band",
+      "top_band",
+      "maximum_top_band_multiplier",
+      "sublet_receipts",
+      "residuals"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_property_rental_income"
+      },
+      "output": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "band_basis": {
+       "type": "string"
+      },
+      "order": {
+       "type": "string"
+      },
+      "walk": {
+       "type": "string"
+      },
+      "walk_seed": {
+       "type": "integer"
+      },
+      "within_band": {
+       "type": "string"
+      },
+      "top_band": {
+       "type": "string"
+      },
+      "maximum_top_band_multiplier": {
+       "type": "number"
+      },
+      "sublet_receipts": {
+       "type": "string"
+      },
+      "residuals": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "outputs",
       "household_output",
       "annualisation_weeks",
@@ -10536,6 +10777,9 @@
       },
       "fiscal_start": {
        "type": "string"
+      },
+      "price_year": {
+       "type": "integer"
       },
       "trip_rates_resource": {
        "type": "string"
@@ -10694,6 +10938,35 @@
          },
          "trips_concept": {
           "type": "string"
+         },
+         "price_index": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept",
+           "frequency"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "frequency": {
+            "enum": [
+             "quarterly",
+             "annual"
+            ]
+           },
+           "basis": {
+            "type": "string"
+           }
+          }
          },
          "trips_basis": {
           "enum": [
@@ -11132,6 +11405,178 @@
        "type": "array",
        "items": {
         "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "resource",
+      "concept",
+      "coicop",
+      "period_type",
+      "period_value",
+      "other_fuels_rule",
+      "other_fuels_codes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "resource": {
+       "type": "string"
+      },
+      "concept": {
+       "type": "string"
+      },
+      "coicop": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "calendar_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "other_fuels_rule": {
+       "type": "string"
+      },
+      "other_fuels_codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "flag",
+      "rule",
+      "seed",
+      "salt",
+      "n_estimators"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_zero_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "flag": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "parents",
+      "uncarried"
+     ],
+     "properties": {
+      "kind": {
+       "const": "recompose_from_remainder"
+      },
+      "parents": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "drawn_subtracts",
+         "components"
+        ],
+        "properties": {
+         "drawn_subtracts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "uncarried": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "resource",
+        "period_value",
+        "classes"
+       ],
+       "properties": {
+        "resource": {
+         "type": "string"
+        },
+        "period_value": {
+         "type": "integer"
+        },
+        "classes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "coicop",
+           "concept"
+          ],
+          "properties": {
+           "coicop": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           }
+          }
+         }
+        }
        }
       }
      }

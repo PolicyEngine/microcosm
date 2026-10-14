@@ -372,7 +372,7 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
         for node in snapshot["nodes"]
     )
     assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
-    assert not list(out.glob("*.orrery.json"))
+    assert json.loads((out / "graph.orrery.json").read_bytes()) == snapshot
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
     cold = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
     assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0
@@ -689,7 +689,7 @@ def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatc
     monkeypatch.setattr(
         cli,
         "start_telemetry_emitter",
-        lambda requested, *, build_id, run_kind: (
+        lambda requested, *, build_id, run_kind, close_service_on_finish: (
             events.append(("start", build_id, run_kind)) or FakeEmitter()
         ),
     )
@@ -733,7 +733,7 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
     monkeypatch.setattr(
         cli,
         "start_telemetry_emitter",
-        lambda requested, *, build_id, run_kind: (
+        lambda requested, *, build_id, run_kind, close_service_on_finish: (
             events.append(("start", build_id, run_kind)) or FakeEmitter()
         ),
     )

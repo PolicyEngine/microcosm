@@ -212,7 +212,20 @@ class _FakeSeries:
 
 _HOUSEHOLD_VARIABLES = frozenset({"state_code_str", "state_fips"})
 _PERSON_VARIABLES = frozenset(
-    {"age", "in_poverty", "is_child", "ssi", "medicare_cost", "head_start", "wic"}
+    {
+        "age",
+        "in_poverty",
+        "is_child",
+        "ssi",
+        "social_security",
+        "medicare_cost",
+        "head_start",
+        "wic",
+        "medicare_enrolled",
+        "base_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
+        "income_adjusted_part_d_premium_surcharge",
+    }
 )
 _SPM_UNIT_VARIABLES = frozenset({"snap", "housing_assistance", "spm_unit_benefits"})
 
@@ -248,6 +261,37 @@ def _household_positions(frame: Frame, entity: str) -> np.ndarray:
     return household_positions.reindex(unit_households.to_numpy()).to_numpy()
 
 
+_MEDICARE_HOLDOUT_FIXTURE_VARIABLES = frozenset(
+    {
+        "medicare_enrolled",
+        "base_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
+        "income_adjusted_part_d_premium_surcharge",
+    }
+)
+
+
+def _medicare_holdout_fixture_values(person: pd.DataFrame, variable: str):
+    """Fixture Medicare semantics spread over several households.
+
+    Not the law: people aged 30 or older are "eligible" so that payers sit
+    in several households. Eligible people with ``person_id % 5 == 0`` do not
+    enroll, yet carry the eligibility-gated base premium, as in
+    policyengine-us. Integer dollars keep batched sums exact.
+    """
+    person_id = person["person_id"].to_numpy()
+    eligible = person["age"].to_numpy() >= 30
+    enrolled = eligible & (person_id % 5 != 0)
+    tier = person_id % 3
+    if variable == "medicare_enrolled":
+        return enrolled
+    if variable == "base_part_b_premium":
+        return np.where(eligible, 2_096.0, 0.0)
+    if variable == "gross_medicare_part_b_premium_if_enrolled":
+        return np.where(enrolled, 2_096.0 + 840.0 * tier, 0.0)
+    return np.where(enrolled, 156.0 * tier, 0.0)
+
+
 def _native_values(frame: Frame, variable: str, period: int, delta: float):
     person = frame.table("person")
     state_fips = frame.table("household")["state_fips"].to_numpy()
@@ -264,6 +308,8 @@ def _native_values(frame: Frame, variable: str, period: int, delta: float):
         return (person["age"].to_numpy() < 18).astype(np.float64)
     if variable == "in_poverty":
         return person["person_id"].to_numpy() % 3 == 0
+    if variable in _MEDICARE_HOLDOUT_FIXTURE_VARIABLES:
+        return _medicare_holdout_fixture_values(person, variable)
     entity = _native_entity(variable)
     ids = frame.table(entity)[f"{entity}_id"].to_numpy()
     base = zlib.crc32(f"{variable}@{period}".encode()) % 89
@@ -497,23 +543,9 @@ def _batched_run(builder, frame, batch_size, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # (b)-(g) the engine contract
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -521,23 +553,11 @@ def _batched_run(builder, frame, batch_size, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
 _WALKER_VARIABLES = (
     "household_income_decile",
     "medicaid_slcsp_state_denominator",
     "other",
 )
-
-
-
-
-
-
-
-
 
 
 _POPULATION_AGGREGATE_MARKER = re.compile(
@@ -610,19 +630,9 @@ def _variables_reaching(modules, marker, *, weight_reads: bool = False) -> dict:
     return found
 
 
-
-
 # ---------------------------------------------------------------------------
 # (h) engine-free recording
 # ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -646,8 +656,6 @@ def _called_names(tree: ast.AST) -> list[str]:
                 else getattr(func, "id", None)
             )
     return names
-
-
 
 
 def _plan_args(**overrides) -> SimpleNamespace:
@@ -689,14 +697,6 @@ def engine_free_loader(builder, monkeypatch):
     return log, loads
 
 
-
-
-
-
-
-
-
-
 def _small_calibration_problem(n: int = 40):
     """A one-person-per-household frame and one household-total target."""
     rng = np.random.default_rng(0)
@@ -726,30 +726,14 @@ def _small_calibration_problem(n: int = 40):
     return frame, TargetRegistry([target], country="us").to_target_set()
 
 
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # (j) the scored bytes are the manifest's bytes
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # (k) the nesting premise
 # ---------------------------------------------------------------------------
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -869,16 +853,12 @@ def _engine_probe(probe_id, budget_measure, period, **reform) -> ReformCoverageP
     )
 
 
-
-
 # ---------------------------------------------------------------------------
 # The guards and the shipped request surface against policyengine-us
 # ---------------------------------------------------------------------------
 
 #: The (l) households (two in Maryland) and the four Medicaid ones.
 _GUARD_HOUSEHOLDS = (*_ENGINE_HOUSEHOLDS, *_MEDICAID_HOUSEHOLDS)
-
-
 
 
 def _load_sweep_module():
@@ -888,5 +868,6 @@ def _load_sweep_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

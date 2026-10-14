@@ -26,6 +26,10 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from test_support.git_repositories import (
+    NO_BACKGROUND_MAINTENANCE,
+    NO_BACKGROUND_MAINTENANCE_ENV,
+)
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     COMMIT,
     FEED_SHA,
@@ -690,6 +694,8 @@ def test_receipt_prices_earlier_preempted_attempts() -> None:
 # --------------------------------------------------------------------------- #
 
 
+# The branch check runs git itself, from os.environ, so the settings that
+# keep background maintenance out of these repositories travel as variables.
 _GIT_ENV = {
     "PATH": os.environ.get("PATH", ""),
     "HOME": os.environ.get("HOME", "/"),
@@ -699,6 +705,7 @@ _GIT_ENV = {
     "GIT_AUTHOR_EMAIL": "t@example.com",
     "GIT_COMMITTER_NAME": "t",
     "GIT_COMMITTER_EMAIL": "t@example.com",
+    **NO_BACKGROUND_MAINTENANCE_ENV,
 }
 
 
@@ -762,6 +769,56 @@ def test_branch_is_verified_against_the_remote(
     assert check in result["branch_check"]
     if verified:
         assert result["branch_tip"] == remote["c3"]
+
+
+def test_the_branch_check_starts_no_git_maintenance(
+    app, remote, monkeypatch, tmp_path
+) -> None:
+    """Its fetch leaves no maintenance process writing to the scratch clone."""
+
+    trace = tmp_path / "trace2-events"
+    for key, value in {**_GIT_ENV, "GIT_TRACE2_EVENT": str(trace)}.items():
+        monkeypatch.setenv(key, value)
+    plan = dataclasses.replace(
+        plan_lib.parse_plan(_plan_data()),
+        repo_url=remote["url"],
+        branch="feature/x",
+        commit=remote["c3"],
+    )
+    assert app._verify_branch(plan)["branch_verified"] is True
+    started = [
+        event["argv"]
+        for event in map(json.loads, trace.read_text(encoding="utf-8").splitlines())
+        if event["event"] in ("start", "child_start")
+    ]
+    # The trace is live: it holds the fetch's own start.
+    assert any("fetch" in argv for argv in started)
+    assert [argv for argv in started if {"maintenance", "gc"} & set(argv)] == []
+
+
+def test_the_maintenance_variables_set_what_the_options_set(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    base = {
+        key: value
+        for key, value in _GIT_ENV.items()
+        if key not in NO_BACKGROUND_MAINTENANCE_ENV
+    }
+
+    def command_scope(options: tuple[str, ...], extra: dict[str, str]) -> list[str]:
+        listed = subprocess.run(
+            ["git", *options, "config", "--list", "--show-scope"],
+            cwd=tmp_path,
+            env={**base, **extra},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        return [line for line in listed.splitlines() if line.startswith("command\t")]
+
+    by_options = command_scope(NO_BACKGROUND_MAINTENANCE, {})
+    assert len(by_options) == len(NO_BACKGROUND_MAINTENANCE) // 2
+    assert command_scope((), dict(NO_BACKGROUND_MAINTENANCE_ENV)) == by_options
 
 
 def test_branch_check_argvs_never_touch_the_pinned_clone() -> None:

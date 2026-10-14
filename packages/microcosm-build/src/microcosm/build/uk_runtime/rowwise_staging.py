@@ -108,6 +108,12 @@ _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
+    """The process-local emitter of the current UK build attempt, if started."""
+
+    return _ACTIVE_EMITTER
+
+
 def _hub_api() -> Any:
     """The Hub client used for the run bundle and staged dataset (test seam)."""
 
@@ -227,6 +233,7 @@ def start_telemetry_emitter(
     *,
     build_id: str,
     run_kind: str = "calibration",
+    close_service_on_finish: bool = True,
 ) -> LocalTelemetryEmitter:
     """Start or reuse the process-local emitter for one UK build attempt."""
 
@@ -247,6 +254,7 @@ def start_telemetry_emitter(
         pipeline=posture.pipeline,
         candidate_id=args.staging_candidate_id or build_id,
         run_kind=run_kind,
+        close_service_on_finish=close_service_on_finish,
     )
     return _ACTIVE_EMITTER
 

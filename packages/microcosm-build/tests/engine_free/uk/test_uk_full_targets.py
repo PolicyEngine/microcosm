@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -77,6 +78,20 @@ def prepared(monkeypatch):
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
     )
+    # The national reconciliation (#1123) has its own tests; these registers
+    # carry no geography, so it passes them through here.
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (registry, {"rows_moved_by_exact_signature": 0}),
+    )
+    # Nor do they carry fact periods: the hold declarations (#1123) are
+    # checked against the real compile in test_uk_uprating_holds.
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
     monkeypatch.setattr(
         runtime,
         "apply_uk_calibration_measure_exclusions",
@@ -104,8 +119,9 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["band_edge_registry"] is national
     assert result["national_registry"] is approved
     assert result["local_registry"] is local
+    # The calibration year (2024 here) and the one validation period, 2025.
+    # The 2023 production surface left the set with its gate.
     assert calls == [
-        ("national", 2023),
         ("national", 2024),
         ("national", 2025),
         ("local", 2024),
@@ -114,7 +130,7 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     assert result["register_completeness"]["compiled_reference_count"] == 2
     assert result["register_completeness"]["approved_reference_count"] == 1
     assert result["register_completeness"]["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert result["register_completeness"]["validation_periods_unsupported"] == {
@@ -187,26 +203,28 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 825406f feed re-pinned by microcosm#1069
-    # (PolicyEngine/chronicle#302 via #305, the UK pension facts).
+    # The identity is the 942a1fa feed re-pinned by microcosm#1123
+    # (PolicyEngine/chronicle#313 via #314, the 2025 calibration inputs). It
+    # holds the 1ee7dfe rows microcosm#1113 pinned (PolicyEngine/chronicle#322
+    # via #323: Consumer Trends by COICOP division, DESNZ road fuel).
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d")
+        == ("a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119")
+        == ("f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "825406f98913ab7324c834c3642804e9317a2256"
+        == "942a1fa0adc50d645734481c88f403ac2175e896"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 344402
+    assert national.fact_row_count == local["fact_row_count"] == 927239
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
@@ -247,6 +265,72 @@ def test_frozen_register_compares_complete_not_measure_pruned_surface(
         _load(register_json=path)
 
 
+def test_the_bound_and_frozen_registers_are_the_reconciled_ones(
+    prepared, monkeypatch, tmp_path
+):
+    national = prepared[0]
+    reconciled = TargetRegistry(
+        [replace(spec, value=2.0) for spec in national.specs], country="uk"
+    )
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (
+            seen.append(registry) or reconciled,
+            {"rows_moved_by_exact_signature": 2},
+        ),
+    )
+    excluded_from = []
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (
+            excluded_from.append(registry) or prepared[1],
+            {"excluded": {"reason": "reviewed"}},
+        ),
+    )
+    result = _load()
+    # Only the calibration year is reconciled; validation periods stay as
+    # compiled, since compile parity measures the facts themselves.
+    assert seen == [national]
+    assert excluded_from == [reconciled]
+    assert result["band_edge_registry"] is reconciled
+    assert result["national_reconciliation"] == {"rows_moved_by_exact_signature": 2}
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == national.version
+    assert completeness["reconciled_registry_version"] == reconciled.version
+    path = tmp_path / "register.json"
+    reconciled.to_json(path)
+    _load(register_json=path)
+    national.to_json(path)
+    with pytest.raises(ValueError, match="full national register differs"):
+        _load(register_json=path)
+
+
+def test_holds_are_checked_on_the_full_compiled_and_local_registers(
+    prepared, monkeypatch
+):
+    national, approved, local, artifact, calls = prepared
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: (
+            seen.append((kwargs["scope"], registry, kwargs["calibration_period"]))
+            or {"scope": kwargs["scope"]}
+        ),
+    )
+    result = _load()
+    # The full compiled register, not the approved one: a measure exclusion
+    # expires, and its target must re-enter already declared.
+    assert seen == [("national", national, 2024), ("local", local, 2024)]
+    assert result["uprating_holds"] == {
+        "national": {"scope": "national"},
+        "local": {"scope": "local"},
+    }
+
+
 def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
     monkeypatch.setattr(
         runtime,
@@ -255,7 +339,7 @@ def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
             registry=prepared[0], unsupported=({"target": "missing"},)
         ),
     )
-    # 2023 is a validation period and is skipped; the calibration year is not.
+    # 2025 is a validation period and is skipped; the calibration year is not.
     with pytest.raises(ValueError, match="failed to compile for 2024"):
         _load()
 
@@ -268,27 +352,36 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
 
     def compile_national(facts, *, target_period):
         calls.append(("national", target_period))
-        if target_period == 2023:
+        if target_period == 2025:
             return SimpleNamespace(
                 registry=partial,
                 unsupported=(
-                    {"name": "obr.income_tax", "period": 2023, "reason": "no fact"},
+                    {"name": "obr.income_tax", "period": 2025, "reason": "no fact"},
                 ),
             )
         return SimpleNamespace(registry=national, unsupported=())
 
     monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
     result = _load()
-    # The partial 2023 registry stays available to the parity gates, as the
+    # The partial 2025 registry stays available to the parity gates, as the
     # release-cut producer keeps it; the missing references are recorded.
-    assert set(result["uk_ledger_compiled_registries"]) == {2023, 2024, 2025}
-    assert result["uk_ledger_compiled_registries"][2023] is partial
+    assert set(result["uk_ledger_compiled_registries"]) == {2024, 2025}
+    assert result["uk_ledger_compiled_registries"][2025] is partial
+    # The compile's report travels beside each registry, one entry for every
+    # compiled period, so the parity gates can classify the missing row.
+    assert result["uk_ledger_compile_unsupported"] == {
+        2024: (),
+        2025: ({"name": "obr.income_tax", "period": 2025, "reason": "no fact"},),
+    }
+    assert set(result["uk_ledger_compile_local_unsupported"]) == set(
+        result["uk_ledger_compiled_local_registries"]
+    )
     completeness = result["register_completeness"]
     assert completeness["validation_periods"] == {
-        "national": [2023, 2025],
+        "national": [2025],
         "local": [2025],
     }
     assert completeness["validation_periods_unsupported"] == {
-        "national": {"2023": ["obr.income_tax"]},
+        "national": {"2025": ["obr.income_tax"]},
         "local": {},
     }

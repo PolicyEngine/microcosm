@@ -360,6 +360,10 @@ EXPECTED_HASHES = {
     "late_schedule": "285b4b44b1b31cf73fdec5d41d71d817dadffbf86bf9ea2e8f632352a05bece3",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
+    # #1178: puf_support's source bytes attest CPS Social Security preservation.
+    # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
+    # both again: the protocol attests microcosm.calibrate.solve.
+    # Joint retirement draws are retained; merged source hashes are re-observed.
     "seed_map": "6a643db89c428594acbd14e7fedee27575171bb6d706ca134ce84fe8709a7472",
     "seed_protocol": "00f57297391aeb32f2a9441d390f6f502b71714a42257217ce9a5b9a09dc8f5b",
     "source_manifest": "1a2ec96be93bf0e34a6c931d2a0638752e80e25bca077033f4acc5662a661202",

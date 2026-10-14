@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
@@ -570,10 +571,10 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 #: a drifting count is a register change that must be re-adjudicated,
 #: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
-    # microcosm#1069 c11: the live counterfactual route binds the two NICs
-    # relief rows and the income-tax relief total; the three rate bands wait
-    # for the band-test fix.
-    "hmrc.salary_sacrifice.": 3,
+    # microcosm#1069 c11 held the three salary-sacrifice rate bands out until
+    # a band test that reads the Scottish bands; microcosm#1095 binds them by
+    # rate class, so no salary-sacrifice entry remains.
+    "hmrc.salary_sacrifice.": 0,
     "_1_000_000_to_inf": 10,
     "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
@@ -612,6 +613,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # Two amount bands (200.01-300, 400.01-500) retired 2026-09-21 on the
     # v20 measurement (-10.1 % and -3.8 % unbound); the tail bands stay out.
     "dwp.benefit_cap.capped_households_": 11,
+    # microcosm#1113 and #1123 item 3 (2026-10-08): rows whose level the
+    # engine, a published-source residual or a scope the frame doesn't hold
+    # sets, held out and measured with tools/diagnose_uk_consumption_taxes.py.
+    "obr.vat": 1,
+    "obr.fuel_duties_cars": 1,
+    "ons.household_electricity_expenditure": 1,
+    "ons.household_gas_expenditure": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -637,7 +645,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 64
+    assert len(names) == len(set(names)) == 65
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -733,6 +741,38 @@ def test_packaged_exclusions_load():
         assert entry["expires_on"] == "2026-11-26"
         assert "microcosm#1095" in entry["adjudication"]
         assert "policyengine-uk 2.122.2" in entry["reason"]
+    # The 2026-10-08 consumption-tax tranche (microcosm#1113, #1123 item 3):
+    # VAT's level is an engine factor (policyengine-uk#1996) and the two ONS
+    # energy rows are a published-source residual against the stage's DESNZ
+    # volume at QEP prices. The OBR cars receipts include business-paid car
+    # fuel, so household road fuel is bound on ONS 07.2.2 in their place. A
+    # re-solve with the four masked together left the other rows fitting no
+    # worse, so they are held out of the objective and measured by the
+    # diagnose tool. The PR that added them closes microcosm#1113, so the
+    # three that tracked it track its follow-up issue, microcosm#1207.
+    consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
+    assert sorted(e["name"] for e in consumption_taxes) == [
+        "obr.fuel_duties_cars",
+        "obr.vat",
+        "ons.household_electricity_expenditure",
+        "ons.household_gas_expenditure",
+    ]
+    for entry in consumption_taxes:
+        assert entry["expires_on"] == "2027-01-08", entry["name"]
+        assert "tools/diagnose_uk_consumption_taxes.py" in entry["reason"], entry[
+            "name"
+        ]
+        assert (
+            "experiments/1113-consumption-tax-levels-receipts.md"
+            in entry["adjudication"]
+        ), entry["name"]
+    trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
+    assert trackings == {
+        "obr.vat": "policyengine-uk#1996",
+        "obr.fuel_duties_cars": "microcosm#1207",
+        "ons.household_electricity_expenditure": "microcosm#1207",
+        "ons.household_gas_expenditure": "microcosm#1207",
+    }
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
@@ -875,11 +915,87 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
     assert scratch.receipt()["mode"] == "scratch_frame_export"
+    # A frame carrying no export-dropped column is written as it is.
+    assert "engine_scratch_dropped_columns" not in scratch.receipt()
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [
         str(tmp_path / "input.h5"),
         str(tmp_path / "simulation-input.h5"),
     ]
+
+
+def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
+    monkeypatch, tmp_path: Path
+):
+    """microcosm#1106: a persisted ``property_wealth`` overrides the engine's
+    sum of the three property components and is never uprated, so the scratch
+    H5 the calibration engine loads drops it, as the release export does. The
+    resolver's own frame keeps it, and the receipt names what was left out."""
+
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append(frame) or path,
+    )
+    components = (
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [40, 50],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "main_residence_value": [300_000.0, 0.0],
+                "other_residential_property_value": [150_000.0, 0.0],
+                "non_residential_property_value": [0.0, 20_000.0],
+                # The WAS total also counts owned land and the remainder.
+                "property_wealth": [480_000.0, 20_000.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 1.0]),
+    )
+
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=frame,
+    )
+
+    (written,) = writes
+    household = written.table("household")
+    assert "property_wealth" not in household.columns
+    for component in components:
+        assert household[component].tolist() == (
+            frame.table("household")[component].tolist()
+        )
+    assert written.weights_for("household").values.tolist() == [1.0, 1.0]
+    assert resolver.frame is frame
+    assert "property_wealth" in resolver.frame.table("household").columns
+    assert resolver.receipt()["engine_scratch_dropped_columns"] == ["property_wealth"]
 
 
 def _resolver_over(sim, monkeypatch, tmp_path: Path) -> UKMeasureResolver:
@@ -1069,10 +1185,26 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         year=2025,
         frame=FrameStub(),
     )
-    with pytest.raises(ValueError, match="banded counterfactual measures are deferred"):
+    with pytest.raises(ValueError, match="banded counterfactual measures are refused"):
         resolver.counterfactual_delta(
             _relief_binding("income_tax", band={"variable": "adjusted_net_income"}),
             2025,
+        )
+    # A rate-class allocation must be exactly the declared one (microcosm#1095).
+    allocation = {**UK_RATE_CLASS_ALLOCATION, "rate_class": "basic"}
+    for drifted in (
+        {**allocation, "basic_below_rate": 0.25},
+        {**allocation, "rate_class": "starter"},
+        {**allocation, "taxable_income": "adjusted_net_income"},
+    ):
+        with pytest.raises(ValueError, match="rate-class allocation must declare"):
+            resolver.counterfactual_delta(
+                _relief_binding("earned_taxable_income", allocation=drifted),
+                2025,
+            )
+    with pytest.raises(ValueError, match="rate-class allocation must declare"):
+        resolver.counterfactual_delta(
+            _relief_binding("income_tax", allocation=allocation), 2025
         )
     with pytest.raises(ValueError, match="does not match target period"):
         resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)

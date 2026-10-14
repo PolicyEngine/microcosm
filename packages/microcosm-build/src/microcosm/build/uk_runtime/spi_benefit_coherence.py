@@ -69,6 +69,7 @@ from microcosm.build.uk_runtime.frs_education import (
 from microcosm.build.uk_runtime.frs_take_up import (
     UK_UC_AGE_ELIGIBLE_AGGREGATE,
     UK_UC_AGE_ELIGIBLE_METHOD,
+    UK_UC_AGE_ELIGIBLE_ROLE,
     UK_UC_AGE_ELIGIBLE_SOURCE,
     UK_UC_TAKE_UP_OUTPUT,
     UKTakeUpPopulationPolicy,
@@ -195,6 +196,7 @@ def spi_benefit_coherence_operations() -> tuple[tuple[str, dict[str, object]], .
                 "method": UK_UC_AGE_ELIGIBLE_METHOD,
                 "consumed_only": True,
                 "aggregates": {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE},
+                "role_column": UK_UC_AGE_ELIGIBLE_ROLE,
             },
         ),
         (

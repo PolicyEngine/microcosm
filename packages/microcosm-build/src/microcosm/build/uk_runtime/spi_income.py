@@ -27,6 +27,10 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_LANDLORD_CARRIER_COLUMN,
+    uc_gainful_self_employment,
+)
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -47,6 +51,7 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     support_channel_column,
@@ -81,6 +86,20 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
+#: The donor rebase moves each SPI component from the tape's year to the
+#: frame's survey year. Those years are history, so a component moves by the
+#: index its engine variable names (``Variable.uprating``). For every
+#: component but savings interest that is also the index policyengine-uk's
+#: dataset projection applies from the survey year on (``policyengine_uk/data/
+#: uprating_indices.yaml``). Savings interest's own index is ONS household
+#: interest income, x2.27 from 2022 to 2024 as rates rose, where the
+#: projection's GDP per head gives x1.09. The projection's index applies from
+#: the survey year on, where the engine runs it and the SPI band targets follow
+#: it (``hmrc_uprating.UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT``, uk-data#541,
+#: microcosm#1095). The engine lockstep test holds both statements.
+SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
+    "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+}
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
 # broader indexed benefit inputs do not establish a taxable SPI crosswalk.
@@ -103,6 +122,7 @@ SPI_INCOME_UPRATING_VARIABLES = {
     "hmrc_spi_miscellaneous_employment_income": "employment_income_before_lsr",
     "hmrc_spi_other_income": "miscellaneous_income",
     "hmrc_spi_state_pension_income": None,
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN: SPI_PROPERTY_FINANCE_COSTS_COLUMN,
 }
 SPI_DONOR_SHA256 = "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66"
 SPI_DONOR_SIZE_BYTES = 141_323_762
@@ -208,6 +228,10 @@ SPI_DONOR_REQUIRED_COLUMNS = (
     "OTHERINV",
     "GIFTAID",
     "GIFTINV",
+    # Restricted residential finance costs and the tax credits that carry
+    # their 20% relief (microcosm#1106).
+    "LLIR_RESTRICT_AMT_TOT",
+    "TAX_CRED",
     "TEI",
     "TII",
     "TI",
@@ -227,6 +251,7 @@ SPI_INCOME_SOURCE_COLUMNS = {
     **SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP,
     SPI_HMRC_OTHER_INCOME_COLUMN: ("OTHERINC",),
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN: ("SRP",),
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN: ("LLIR_RESTRICT_AMT_TOT",),
 }
 SPI_QRF_SOURCE_COLUMNS = {
     output: sources
@@ -540,6 +565,7 @@ class UKSPIIncomeImputationResult:
     income_uprating: Mapping[str, object] | None = None
     band_donor_resample: Mapping[str, object] | None = None
     donor_age_draw: Mapping[str, object] | None = None
+    donor_property_finance_costs: Mapping[str, object] | None = None
     state_pension_age_guard: tuple[Mapping[str, object], ...] = ()
     recipient_domain: Mapping[str, object] | None = None
 
@@ -984,6 +1010,8 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
+    person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
+    person = _refresh_landlord_carrier(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1009,6 +1037,7 @@ def impute_uk_spi_income_support(
         income_uprating=income_uprating,
         band_donor_resample=band_donor_receipt,
         donor_age_draw=donor_age_draw,
+        donor_property_finance_costs=donor_full.attrs.get("property_finance_costs"),
         state_pension_age_guard=tuple(guard_receipts),
         recipient_domain=recipient_domain,
     )
@@ -1139,13 +1168,24 @@ def _resample_band_donor_leaves(
         raise ValueError(f"band donor carriers name undeclared band(s) {unknown}.")
     columns = list(SPI_INCOME_QRF_OUTPUT_COLUMNS)
     factors = np.asarray([float(uprating_factors[column]) for column in columns])
+    # Restricted finance costs are a deduction the published total never held,
+    # so they take no part in a record's band: the pools are cut on the income
+    # leaves alone, and a drawn record's finance costs travel with its leaves
+    # (microcosm#1106).
+    income_columns = [
+        column for column in columns if column != SPI_PROPERTY_FINANCE_COSTS_COLUMN
+    ]
+    income_factors = np.asarray(
+        [float(uprating_factors[column]) for column in income_columns]
+    )
     published_total = donor["total_income"].to_numpy(dtype=float)
     leaf_values = donor[columns].to_numpy(dtype=np.float64)
-    # The total income a drawn record realises on the frame: its leaves at the
-    # stage's factors plus whatever of the published total the leaves do not
-    # carry, held nominal.
-    total_income = leaf_values @ factors + np.maximum(
-        published_total - leaf_values.sum(axis=1), 0.0
+    income_values = donor[income_columns].to_numpy(dtype=np.float64)
+    # The total income a drawn record realises on the frame: its income leaves
+    # at the stage's factors plus whatever of the published total the leaves do
+    # not carry, held nominal.
+    total_income = income_values @ income_factors + np.maximum(
+        published_total - income_values.sum(axis=1), 0.0
     )
     donor_region = donor["region"].astype(str).to_numpy()
     fact = donor["FACT"].to_numpy(dtype=float)
@@ -1281,8 +1321,9 @@ def _resample_band_donor_leaves(
         "carriers": int(carriers.sum()),
         "carriers_outside_band": int(outside.sum()),
         "pool_basis": (
-            "uprated total income: stage-1 leaves at the stage's uprating factors "
-            "plus the published remainder held nominal"
+            "uprated total income: stage-1 income leaves at the stage's uprating "
+            "factors plus the published remainder held nominal; restricted "
+            "finance costs cut no pool and are copied with the drawn record"
         ),
         "regional_pool_minimum": regional_pool_minimum,
         "age_pool_minimum": age_pool_minimum,
@@ -1342,6 +1383,10 @@ def _spi_income_uprating_factors(year: int):
             "factor": factor,
             "basis": "model_index" if path else "held_nominal",
         }
+        if variable_name in SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION:
+            columns[column]["dataset_projection_index"] = (
+                SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION[variable_name]
+            )
     return factors, {
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": year,
@@ -1478,6 +1523,7 @@ def _prepare_spi_donor(
         ),
         "cells": age_draw_receipt or [],
     }
+    donor.attrs["property_finance_costs"] = _check_spi_property_finance_costs(numeric)
     _require_finite_numeric(
         donor[["age", "FACT", *SPI_INCOME_QRF_OUTPUT_COLUMNS]],
         label="SPI 2022-23 derived donor",
@@ -1508,6 +1554,49 @@ def _prepare_spi_donor(
         if (donor[column] < 0.0).any():
             raise ValueError(f"SPI donor {column} must be non-negative.")
     return donor
+
+
+#: The tape's TAX_CRED carries the 20% basic-rate reduction on restricted
+#: residential finance costs (ITTOIA 2005 s. 274A; 2022-23) together with the
+#: other tax credits, so on landlords with restricted costs its median ratio
+#: to LLIR_RESTRICT_AMT_TOT sits at the relief rate. The band refuses a tape
+#: whose column means something else (microcosm#1106).
+SPI_PROPERTY_FINANCE_COST_RELIEF_RATIO_BOUNDS = (0.195, 0.205)
+
+
+def _check_spi_property_finance_costs(numeric: pd.DataFrame) -> dict[str, object]:
+    """Refuse a tape whose restricted finance costs do not carry 20% relief."""
+
+    costs = numeric["LLIR_RESTRICT_AMT_TOT"].to_numpy(dtype=np.float64)
+    credits = numeric["TAX_CRED"].to_numpy(dtype=np.float64)
+    weights = numeric["FACT"].to_numpy(dtype=np.float64)
+    if (costs < 0.0).any():
+        raise ValueError("SPI 2022-23 LLIR_RESTRICT_AMT_TOT contains negative costs.")
+    restricted = costs > 0.0
+    low, high = SPI_PROPERTY_FINANCE_COST_RELIEF_RATIO_BOUNDS
+    receipt: dict[str, object] = {
+        "column": "LLIR_RESTRICT_AMT_TOT",
+        "relief_column": "TAX_CRED",
+        "rows_with_restricted_costs": int(restricted.sum()),
+        "weighted_landlords_with_restricted_costs": float(weights[restricted].sum()),
+        "weighted_restricted_costs_gbp": float(np.dot(costs, weights)),
+        "median_relief_ratio_bounds": [low, high],
+    }
+    if not restricted.any():
+        # A tape without restricted costs (the synthetic test tapes) donates no
+        # finance costs; property_components refuses such a donor, so the
+        # build fails closed where the costs are consumed.
+        receipt["median_relief_ratio"] = None
+        return receipt
+    ratio = float(np.median(credits[restricted] / costs[restricted]))
+    receipt["median_relief_ratio"] = ratio
+    if not low <= ratio <= high:
+        raise ValueError(
+            "SPI 2022-23 TAX_CRED does not carry the 20% finance-cost relief on "
+            f"LLIR_RESTRICT_AMT_TOT: median ratio {ratio:.4f} outside "
+            f"[{low}, {high}]."
+        )
+    return receipt
 
 
 def _validate_spi_source_leaf_reconciliation(numeric: pd.DataFrame) -> None:
@@ -2044,6 +2133,61 @@ def _refresh_uc_start_up_period(
         spi_people,
         "uc_is_in_startup_period",
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
+    )
+    return person
+
+
+def _refresh_uc_gainful_self_employment(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Derive a redrawn row's UC gainful self-employment from its drawn incomes.
+
+    A redrawn row keeps the donor's employment status but takes new imputed
+    pay and profit, and the draw does not read the status (uk-data#529,
+    microcosm#840): on such a row the status says nothing about the drawn
+    trade. So the row takes the earnings route of the root's rule alone, a
+    profit above zero and above its pay (uk-data#525, ADM H4034). The main-job
+    route returns when the SPI draw follows employment status.
+    """
+
+    if "uc_is_in_gainful_self_employment" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_gainful_self_employment",
+        uc_gainful_self_employment(
+            np.zeros(len(rows), dtype=bool),
+            pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
+            pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
+        ),
+        default=False,
+    )
+    return person
+
+
+def _refresh_landlord_carrier(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Clear the FRS landlord carrier on a redrawn row.
+
+    The carrier records that the FRS respondent reported rent, at a profit or
+    a loss. A redrawn row takes its property income from an SPI donor that did
+    not read it, so the twin's answer says nothing about the row's letting,
+    and the tape has no letting-loss field to rebuild it from. The CGT stages
+    read the row's drawn ``property_income`` instead (microcosm#1095).
+    """
+
+    if FRS_LANDLORD_CARRIER_COLUMN not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        FRS_LANDLORD_CARRIER_COLUMN,
+        np.zeros(len(rows), dtype=bool),
         default=False,
     )
     return person

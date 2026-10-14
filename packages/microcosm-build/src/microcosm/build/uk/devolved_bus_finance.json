@@ -17,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 344402,
-    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+    "fact_row_count": 927239,
+    "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+    "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c"
   },
   "selections": [
     {
@@ -70,7 +70,15 @@
           "dfi_ni.translink_bus.passenger_journeys",
           "dfi_ni.translink_bus.passenger_receipts"
         ],
-        "period_type": "fiscal_year"
+        "period_type": "fiscal_year",
+        "period_value": [
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024"
+        ]
       },
       "row_count": 24
     },
@@ -408,9 +416,9 @@
       "value": 30380000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_01689386178d976b4b42562a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6409550dfaae3f8939bfa65e",
       "semantic_fact_key": "ledger_semantic_fact_v2_c5a7a6000a6d139e6f6432b6",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2019.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2019.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -434,7 +442,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2019",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2019",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -444,13 +452,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 37890000
+      "value": 37900000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_77bde798d3810c9dba8e2c0a",
@@ -498,9 +506,9 @@
       "value": 10210000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0323feee36a57c618db58a55",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_47efd475ce04289c666aba34",
       "semantic_fact_key": "ledger_semantic_fact_v2_c026cb7f62177e4452d54c31",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2020.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2020.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -524,7 +532,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2020",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2020",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -534,13 +542,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 12150000
+      "value": 12200000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_d52bfe6ff64ec2133ffdd5e1",
@@ -588,9 +596,9 @@
       "value": 20890000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_cb0de543eb6422a04155062b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1fbad9231dc856cc740797c0",
       "semantic_fact_key": "ledger_semantic_fact_v2_2250a49d913dce730bcf54b1",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2021.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2021.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -614,7 +622,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2021",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2021",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -624,13 +632,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 29650000
+      "value": 29600000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_fdc9bf25203f850fafb2933c",
@@ -678,9 +686,9 @@
       "value": 26501826.75
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc939d307529a6d96055619f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0da398c409b95e63b1f049dc",
       "semantic_fact_key": "ledger_semantic_fact_v2_3cc8f52d295c1f4eb2e958e0",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2022.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2022.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -704,7 +712,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2022",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2022",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -714,13 +722,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 34074689.339999996
+      "value": 34100000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_44b9692220201655060e1522",
@@ -768,9 +776,9 @@
       "value": 29085418
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_342898984873635ff3968502",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fde33abf43641fdd9805a6af",
       "semantic_fact_key": "ledger_semantic_fact_v2_daaced7b4545235f2f07d88d",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2023.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2023.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -794,7 +802,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2023",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2023",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -804,13 +812,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 35332414.420370005
+      "value": 35300000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_0cdf6882955dc3cd51d27eef",
@@ -858,9 +866,9 @@
       "value": 29838042.25
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_a2749650ee6fc1715a1df4c2",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7f9c0e2cf70a96320679643c",
       "semantic_fact_key": "ledger_semantic_fact_v2_74dc8752857eabdd5a4e2677",
-      "source_record_id": "dfi_ni.public_transport.figure_3.fy2024.ulsterbus.passenger_journeys",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_3.fy2024.ulsterbus.passenger_journeys",
       "concept": "dfi_ni.translink_bus.passenger_journeys",
       "measure_id": "passenger_journeys",
       "unit": "count",
@@ -884,7 +892,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_3.fy2024",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_3.fy2024",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -894,18 +902,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 37956509.1
+      "value": 38000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_b8567735f3e7c3f4d2463d8f",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_394a043b161a2526ba28fe90",
       "semantic_fact_key": "ledger_semantic_fact_v2_d4e126319d0e6e3a87c6a681",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2019.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2019.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -929,7 +937,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2019",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2019",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -939,18 +947,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 40260000
+      "value": 40300000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_28a8603c48a0816234f0fcc3",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fcf652b3f844a3084d99a7c",
       "semantic_fact_key": "ledger_semantic_fact_v2_44adcbb75a08e8938620780b",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2019.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2019.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -974,7 +982,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2019",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2019",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -984,18 +992,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 89690000
+      "value": 89700000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d71579dbe4020118bdf0da9",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bac7a3622bef90614f48b87e",
       "semantic_fact_key": "ledger_semantic_fact_v2_ab2b7b013969b98bb2c63e5d",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2020.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2020.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1019,7 +1027,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2020",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2020",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -1029,18 +1037,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 15190000
+      "value": 15200000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_11913cfa8495e0a5182fb060",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e0d2801cd2757a501204f19",
       "semantic_fact_key": "ledger_semantic_fact_v2_dd57a8987d117715a25341da",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2020.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2020.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1064,7 +1072,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2020",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2020",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -1074,18 +1082,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 51020000
+      "value": 51000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_e6b260bf1cdb57193dc9b2cc",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1af9cb789377bb9aea6c95e1",
       "semantic_fact_key": "ledger_semantic_fact_v2_3fee0d324d8a5c2316345a4a",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2021.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2021.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1109,7 +1117,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2021",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2021",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -1119,18 +1127,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 28290000
+      "value": 28300000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_29d8ac3baf65bb71087dfd53",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1876a6ecec7f7ed74e40d033",
       "semantic_fact_key": "ledger_semantic_fact_v2_49b8ab1c1a9ea1464739cfb4",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2021.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2021.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1154,7 +1162,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2021",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2021",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -1164,18 +1172,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
       "value": 68300000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_3293cf1f700ae8e80cb2e999",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2e1c8a2807b3ce204cdab231",
       "semantic_fact_key": "ledger_semantic_fact_v2_37f04a86bafcfc297f058769",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2022.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2022.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1199,7 +1207,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2022",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2022",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -1209,18 +1217,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 38420000
+      "value": 38400000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5cb178c89cd4009f3b969a9c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1f9734a4859d72f78721239a",
       "semantic_fact_key": "ledger_semantic_fact_v2_004105c01c03972dfda213fd",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2022.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2022.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1244,7 +1252,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2022",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2022",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -1254,18 +1262,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 84050000
+      "value": 84000000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed9e7267018bb5a387096192",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f6313e2ec024e378cecbab1b",
       "semantic_fact_key": "ledger_semantic_fact_v2_0b82ad49977865a9d68cedaf",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2023.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2023.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1289,7 +1297,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2023",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2023",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -1299,18 +1307,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 44750000
+      "value": 44800000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_06baa4ed924a82c970f1ed7a",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c46c1d19308a98a90429725f",
       "semantic_fact_key": "ledger_semantic_fact_v2_d254e18a60aef00de53da7ae",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2023.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2023.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1334,7 +1342,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2023",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2023",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -1344,18 +1352,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 91070000
+      "value": 91100000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_96f72989614e0c5faaeeabbb",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8fb0c5a6c744af3b29df0c9c",
       "semantic_fact_key": "ledger_semantic_fact_v2_2dcd707e91470eac8849cccf",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2024.metro_glider.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2024.metro_glider.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1379,7 +1387,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2024",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2024",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "metro_glider",
         "table_record_kind": "detail"
@@ -1389,18 +1397,18 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 49584434.27999999
+      "value": 49600000
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_76d5876229830fe042daad65",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_97bcc10797d8b59641eec4b3",
       "semantic_fact_key": "ledger_semantic_fact_v2_39a5350bd20674db3de1598b",
-      "source_record_id": "dfi_ni.public_transport.figure_4.fy2024.ulsterbus.passenger_receipts",
+      "source_record_id": "dfi_ni.public_transport_2025_26.figure_5.fy2024.ulsterbus.passenger_receipts",
       "concept": "dfi_ni.translink_bus.passenger_receipts",
       "measure_id": "passenger_receipts",
       "unit": "gbp",
@@ -1424,7 +1432,7 @@
         "basis": "fiscal"
       },
       "layout": {
-        "record_set_id": "dfi_ni.public_transport.figure_4.fy2024",
+        "record_set_id": "dfi_ni.public_transport_2025_26.figure_5.fy2024",
         "groupby_dimension": "dfi_ni.bus_service",
         "groupby_value_id": "ulsterbus",
         "table_record_kind": "detail"
@@ -1434,13 +1442,13 @@
       },
       "source": {
         "source_name": "dfi_ni",
-        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
-        "source_file": "public-transport-statistics-2024-25.xlsx",
-        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
-        "vintage": "2024_25",
-        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+        "source_table": "Public Transport Statistics Northern Ireland 2025-26, Figures 3 and 5 journeys and receipts",
+        "source_file": "public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx",
+        "source_sha256": "680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb",
+        "vintage": "2025_26_2026_09_16",
+        "raw_r2_key": "raw/dfi_ni/dfi_ni-public-transport-statistics-2025-26/2026/680f303c3b9d92908e8b3555d9284aff2463c14306799018e290caae1a7a15eb/public_transport_statistics_northern_ireland_2025-26_tables_and_figures_2.xlsx"
       },
-      "value": 100498383.20999996
+      "value": 100500000
     },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_8f511857d67a2334480d3243",

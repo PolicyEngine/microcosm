@@ -381,7 +381,14 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
             }
         ),
         benunit=pd.DataFrame({"benunit_id": [1, 2]}),
-        household=pd.DataFrame({"household_id": [1, 2], "region": ["LONDON"] * 2}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON"] * 2,
+                "main_residence_value": [300_000.0, 0.0],
+                "property_wealth": [350_000.0, 0.0],
+            }
+        ),
         time_period="2024",
         household_weights=np.asarray([1.0, 2.0]),
     )
@@ -389,22 +396,27 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         "person.age",
         "person.incapacity_benefit_reported",
         "household.region",
+        "household.main_residence_value",
+        "household.property_wealth",
         "household.household_weight",
     }
     exported = uk_release_export_frame(frame)
+    # microcosm#1106: the WAS total leaves; its engine components stay.
     assert uk_export_candidate_columns(exported) == {
         "person.age",
         "household.region",
+        "household.main_residence_value",
         "household.household_weight",
     }
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
-    # disability carriers and the salary-sacrifice pre-conversion pay
-    # carrier, and nothing else.
+    # disability carriers, the salary-sacrifice pre-conversion pay carrier
+    # and the landlord carrier, and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
+    from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -418,6 +430,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         set(UK_REVIEWED_EXPORT_EXCLUSIONS)
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
+        | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
@@ -550,17 +563,11 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # regional cells slice on the engine's total_income, which leaves out the
     # other investment income that income tax charges, and on policyengine-uk
     # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
-    # upstream in policyengine-uk's total_income (pe-uk#2174).
-    assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    }
-    deferral = register[
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    ]
-    assert deferral.approved_on == "2026-10-06"
-    assert deferral.expires_on == "2026-11-03"
-    assert "microcosm#1095" in deferral.adjudication
-    assert "pe-uk#2174" in deferral.reason
+    # upstream in policyengine-uk's total_income (pe-uk#2174). It is retired
+    # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
+    # to +23.4 % across the C3 and final arms, inside the bound, and the gate
+    # fails the deferral as stale.
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with

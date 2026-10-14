@@ -121,6 +121,7 @@ from microcosm.graph.canonical import canonical_json
 
 from . import artifact_types, binding_identity, graph_inputs, target_kernels
 from .artifact_types import (
+    CELL_DIAGNOSTICS_TYPE,
     COMPARISON_TYPE,
     DIAGNOSTICS_TYPE,
     EXPORT_DESCRIPTOR_TYPE,
@@ -140,6 +141,7 @@ from .graph_inputs import (
     sha256_text,
     string_param,
 )
+from .takeup_kernels import decode_cell_diagnostics
 from .target_kernels import decode_target_surface
 
 __all__ = [
@@ -603,6 +605,7 @@ EVIDENCE_DECODERS: Mapping[ArtifactType, Callable[[bytes], object]] = MappingPro
         TARGET_SURFACE_TYPE: decode_target_surface,
         COMPARISON_TYPE: _json_artifact,
         DIAGNOSTICS_TYPE: _json_artifact,
+        CELL_DIAGNOSTICS_TYPE: decode_cell_diagnostics,
         GATE_REPORT_TYPE: decode_gate_report,
         EXPORT_DESCRIPTOR_TYPE: _json_artifact,
         EXPORT_READBACK_TYPE: _json_artifact,

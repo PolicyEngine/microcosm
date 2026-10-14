@@ -88,6 +88,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "hmrc_property_rental_income_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_itl_taxpayer_counts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -233,17 +238,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "ledger_compile_parity_production_2023_signed_differences.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "national_staging_build_record.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "parity_fixture_production_2023.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -423,6 +418,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "desnz_road_fuel_by_vehicle.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dft_bus_journeys.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -434,6 +434,31 @@
     },
     {
       "path": "nts_car_availability.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "cross_grain_declarations.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uprating_holds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ons_spree_tenure_dwellings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_small_cell_rule.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_spi_table_3_11_uk_rows.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

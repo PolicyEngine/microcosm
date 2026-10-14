@@ -131,7 +131,7 @@ def _document(context: KernelContext, ref: str, name: str):
 
 
 def _rule(context: KernelContext, ref: str) -> BenefitUnitRule:
-    return BenefitUnitRule.from_dict(_document(context, ref, "unit_rule"))
+    return BenefitUnitRule.from_spec(_document(context, ref, "unit_rule"))
 
 
 def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:

@@ -91,12 +91,17 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
+    "uk_stage_property_components",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
     "uk_stage_lcfs_consumption_energy_rake",
     "uk_stage_lcfs_consumption_bus_pricing",
+    "uk_stage_lcfs_consumption_road_fuel_incidence",
+    "uk_stage_lcfs_consumption_road_fuel_level",
+    "uk_stage_lcfs_consumption_recomposed_totals",
+    "uk_stage_lcfs_consumption_basis",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",
@@ -132,10 +137,9 @@ UK_SPINE_GATE_SCOPE = (
 UK_NATIONAL_GATE_SCOPE = (
     "uk_release_input_coverage_manifest_current",
     "uk_release_family_build_stages",
-    "uk_ledger_compile_parity_production_2023",
     "uk_ledger_compile_parity_incumbent_2025",
     # The local-surface compile gates live with the same owner as the national
-    # parity pair: the release-cut certification producer
+    # parity gate: the release-cut certification producer
     # (tools/certify_uk_release_cut.py) compiles and supplies both registry
     # artifacts — never the seam.
     "uk_ledger_compile_parity_local_incumbent_2025",

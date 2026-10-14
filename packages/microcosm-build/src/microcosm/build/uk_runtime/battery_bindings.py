@@ -81,6 +81,7 @@ from microcosm.build.uk_runtime.local_targets import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -229,7 +230,11 @@ def _evaluate_release_input_coverage(
         )
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
-    # where they live; the coverage halves read the release frame.
+    # where they live; the coverage halves read the frame the release writes.
+    # On the full build the terminal gates hold the raw calibrated frame, so
+    # the export drops leave first: a column the release drops (the
+    # formula-owned property_wealth, microcosm#1106) is a reviewed exclusion,
+    # and the raw frame would otherwise report it as a stale exclusion.
     # The spine frame itself (the certifier's ``--spine-h5``), or the spine
     # checkpoint's published build state (weight kind, period, mass log: all
     # the build-state half reads) when a graph build hands it over.
@@ -251,7 +256,7 @@ def _evaluate_release_input_coverage(
     else:
         build_state = spine_frame
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame),
+        _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
         manifest=manifest,
         build_state_frame=build_state,
@@ -475,64 +480,96 @@ def _evaluate_column_implication(
     capital_column = str(parameters["capital_column"])
     carrier_column = str(parameters["carrier_column"])
     sentinel = float(parameters.get("sentinel", -1.0))
-    missing_capital = sorted({capital_column, carrier_column} - set(target.columns))
+    property_shares = _declared_property_shares(parameters)
+    capital_columns = tuple(dict.fromkeys((capital_column, *property_shares)))
+    missing_capital = sorted({*capital_columns, carrier_column} - set(target.columns))
     if missing_capital:
         raise ValueError(
             f"column_implication {target_entity} capital evidence is missing "
             f"columns {missing_capital}."
         )
-    capital = pd.to_numeric(target[capital_column], errors="coerce").to_numpy(
-        dtype=float
-    )
     carrier = pd.to_numeric(target[carrier_column], errors="coerce").to_numpy(
         dtype=float
     )
-    nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
-    # The -1 contract reserves exactly one negative: a value is either the
-    # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
-    # open interval between them — the one region the contract does not
-    # define (adversarial-review verification residual 1). Sentinel equality
-    # is exact (#833): every producer writes the -1.0 literal or a
-    # nonnegative amount, and a tolerance band would silently reclassify a
-    # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
+    shares = _capital_property_shares(frame, target, property_shares)
+    # A declared tolerance admits GBP sum_tolerance plus one float32 step of
+    # the expected value, so the carrier-plus-share sum survives a float32
+    # round-trip of the export; without one the capital must equal it exactly.
+    sum_tolerance = parameters.get("sum_tolerance")
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )
-    sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
-    same_source_mismatch = (
-        np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
-    )
 
     failures = list(result.failures)
-    if nonfinite.any():
-        failures.append(
-            f"{target_entity}.{capital_column}/{carrier_column}: "
-            f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
-        )
-    if out_of_domain.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: {int(out_of_domain.sum())} "
-            f"value(s) outside the declared domain (exactly the {sentinel:g} "
-            "sentinel or >= 0)."
-        )
     if carrier_out_of_domain.any():
         failures.append(
             f"{target_entity}.{carrier_column}: "
             f"{int(carrier_out_of_domain.sum())} value(s) outside the declared "
             f"domain (exactly the {sentinel:g} sentinel or >= 0)."
         )
-    if sentinel_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column}: sentinel {sentinel:g} is allowed "
-            f"only where {carrier_column} has the same sentinel; "
-            f"{int(sentinel_mismatch.sum())} mismatch(es)."
+    counts: dict[str, dict[str, int]] = {}
+    for column in capital_columns:
+        capital = pd.to_numeric(target[column], errors="coerce").to_numpy(dtype=float)
+        expected = np.where(carrier >= 0.0, carrier + shares.get(column, 0.0), carrier)
+        if sum_tolerance is None:
+            tolerance = np.zeros_like(expected)
+        else:
+            tolerance = float(sum_tolerance) + np.spacing(
+                np.abs(np.nan_to_num(expected)).astype(np.float32)
+            ).astype(float)
+        nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
+        # The -1 contract reserves exactly one negative: a value is either the
+        # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
+        # open interval between them — the one region the contract does not
+        # define (adversarial-review verification residual 1). Sentinel
+        # equality is exact (#833): every producer writes the -1.0 literal or
+        # a nonnegative amount, and a tolerance band would silently reclassify
+        # a corrupted near-sentinel value as a declared absence.
+        out_of_domain = np.isfinite(capital) & ~(
+            (capital == sentinel) | (capital >= 0.0)
         )
-    if same_source_mismatch.any():
-        failures.append(
-            f"{target_entity}.{capital_column} must equal {carrier_column}; "
-            f"{int(same_source_mismatch.sum())} mismatch(es)."
+        sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
+        # Where the carrier is available, the capital is it plus the unit's
+        # declared property share (microcosm#1095).
+        sum_mismatch = (
+            np.isfinite(capital)
+            & np.isfinite(carrier)
+            & (carrier >= 0.0)
+            & ~(np.abs(capital - expected) <= tolerance)
         )
+        if nonfinite.any():
+            failures.append(
+                f"{target_entity}.{column}/{carrier_column}: "
+                f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
+            )
+        if out_of_domain.any():
+            failures.append(
+                f"{target_entity}.{column}: {int(out_of_domain.sum())} "
+                f"value(s) outside the declared domain (exactly the {sentinel:g} "
+                "sentinel or >= 0)."
+            )
+        if sentinel_mismatch.any():
+            failures.append(
+                f"{target_entity}.{column}: sentinel {sentinel:g} is allowed "
+                f"only where {carrier_column} has the same sentinel; "
+                f"{int(sentinel_mismatch.sum())} mismatch(es)."
+            )
+        if sum_mismatch.any():
+            share_text = (
+                " plus the unit's declared property share"
+                if column in property_shares
+                else ""
+            )
+            failures.append(
+                f"{target_entity}.{column} must equal {carrier_column}{share_text} "
+                f"where {carrier_column} >= 0; {int(sum_mismatch.sum())} mismatch(es)."
+            )
+        counts[column] = {
+            "capital_domain_violation_count": int(out_of_domain.sum()),
+            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
+            "same_source_mismatch_count": int(sum_mismatch.sum()),
+            "nonfinite_capital_count": int(nonfinite.sum()),
+        }
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -543,13 +580,88 @@ def _evaluate_column_implication(
             "capital_column": f"{target_entity}.{capital_column}",
             "carrier_column": f"{target_entity}.{carrier_column}",
             "sentinel": sentinel,
-            "capital_domain_violation_count": int(out_of_domain.sum()),
+            **counts[capital_column],
             "carrier_domain_violation_count": int(carrier_out_of_domain.sum()),
-            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
-            "same_source_mismatch_count": int(same_source_mismatch.sum()),
-            "nonfinite_capital_count": int(nonfinite.sum()),
+            "sum_tolerance": sum_tolerance,
+            "property_shares": {
+                column: dict(rule) for column, rule in property_shares.items()
+            },
+            "capital_columns": {
+                f"{target_entity}.{column}": counts[column]
+                for column in capital_columns
+            },
         },
     )
+
+
+def _declared_property_shares(
+    parameters: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """The declared property-share rules, refused unless they are the code's."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_VALUATION,
+        UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        UC_PROPERTY_CAPITAL_SOURCES,
+    )
+
+    rules = {
+        "uc_reported_capital": {
+            "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+            # A unit that reports Universal Credit keeps its receipt.
+            "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
+        },
+        "pension_credit_reported_capital": {
+            "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+            "owners": PROPERTY_CAPITAL_OWNERS,
+            "valuation": PROPERTY_CAPITAL_VALUATION,
+        },
+    }
+    declared = {
+        str(column): {**dict(rule), "sources": list(rule.get("sources") or ())}
+        for column, rule in dict(parameters.get("property_shares") or {}).items()
+    }
+    drifted = sorted(
+        column for column, rule in declared.items() if rules.get(column) != rule
+    )
+    if drifted:
+        raise ValueError(
+            f"column_implication property shares for {drifted} are not the "
+            f"recorded-capital rules uc_capital_coherence applies: {rules}."
+        )
+    return declared
+
+
+def _capital_property_shares(
+    frame: Frame,
+    target: pd.DataFrame,
+    property_shares: Mapping[str, Mapping[str, Any]],
+) -> dict[str, np.ndarray]:
+    """Each declared capital column's property share, in target row order."""
+
+    from microcosm.build.uk_runtime.uc_capital_coherence import (
+        pension_credit_property_capital_share,
+        uc_recorded_property_share,
+    )
+
+    shares: dict[str, np.ndarray] = {}
+    if not property_shares:
+        return shares
+    person = frame.table("person")
+    household = frame.table("household")
+    if "uc_reported_capital" in property_shares:
+        shares["uc_reported_capital"] = uc_recorded_property_share(
+            person, target, household
+        )
+    if "pension_credit_reported_capital" in property_shares:
+        shares["pension_credit_reported_capital"] = (
+            pension_credit_property_capital_share(person, target, household)
+        )
+    return shares
 
 
 def _evaluate_take_up_signal(
@@ -1472,8 +1584,14 @@ def _evaluate_input_mass_parity(
         minimum_reference_total=minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
+    # The reference is compared against the surface the release ships: the
+    # export frame, with the reviewed export exclusions dropped. The release
+    # cut already loads that frame; at the national seam the raw frame still
+    # carries the spine's WAS property_wealth, which the reference also
+    # stores, so comparing it there would call the signed exclusion stale
+    # (microcosm#1106).
     return uk_input_mass_parity_gate(
-        uk_input_mass_totals(context.frame),
+        uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
@@ -1561,14 +1679,21 @@ def _evaluate_ledger_compile_parity(
             files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
     return ledger_compile_parity_gate(
         _ledger_compile_parity_registry(
             context,
             target_period,
-            registry_artifact=_ledger_compile_parity_registry_artifact(parameters),
+            registry_artifact=registry_artifact,
         ),
         fixture,
         signed_differences=signed_differences,
+        # The compile's own report of the references that did not resolve at
+        # this period: the signed resource classifies their fixture rows as
+        # ledger_absent, and the gate can only reproduce that kind with it.
+        unsupported=_ledger_compile_parity_unsupported(
+            context, target_period, registry_artifact=registry_artifact
+        ),
     )
 
 
@@ -1604,6 +1729,16 @@ def _ledger_compile_parity_evidence(
         "target_period": target_period,
         "signed_differences": parameters.get("signed_differences", ()),
         "signed_differences_resource": parameters.get("signed_differences_resource"),
+        # The report decides the verdict (a fixture row is ledger_absent only
+        # where the compile reported its reference), so it is attested with
+        # the registry: the same registry with and without the report must not
+        # share one evidence digest.
+        "unsupported_references": sorted(
+            str(row["name"])
+            for row in _ledger_compile_parity_unsupported(
+                context, target_period, registry_artifact=registry_artifact
+            )
+        ),
     }
 
 
@@ -1634,6 +1769,16 @@ _LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS = frozenset(
         "uk_ledger_compiled_local_registries",
     }
 )
+#: Beside each compiled-registries artifact, the compile's unsupported
+#: references by target period: one entry for every compiled period, empty
+#: where every reference resolved. A producer that leaves it out gives the
+#: parity gates no evidence, and a release candidate blocks on that.
+_LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS: Mapping[str, str] = MappingProxyType(
+    {
+        "uk_ledger_compiled_registries": "uk_ledger_compile_unsupported",
+        "uk_ledger_compiled_local_registries": "uk_ledger_compile_local_unsupported",
+    }
+)
 
 
 def _ledger_compile_parity_registry_artifact(
@@ -1649,10 +1794,51 @@ def _ledger_compile_parity_registry_artifact(
     return artifact
 
 
+def _ledger_compile_parity_unsupported(
+    context: EvidenceContext,
+    target_period: object,
+    *,
+    registry_artifact: str,
+) -> tuple[Mapping[str, object], ...]:
+    """The compile's unsupported references at ``target_period``.
+
+    The producer writes an entry for every period it compiled, so a period
+    with no entry is a producer that dropped the report, not a clean compile.
+    """
+
+    artifact = _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact]
+    by_period = context.artifacts[artifact]
+    if not isinstance(by_period, Mapping):
+        raise TypeError(
+            f"{artifact} must map target periods to the compile's unsupported "
+            "references."
+        )
+    for key in (target_period, str(target_period)):
+        if key in by_period:
+            rows = tuple(by_period[key])
+            if not all(isinstance(row, Mapping) and "name" in row for row in rows):
+                raise TypeError(
+                    f"{artifact} rows for target period {target_period!r} must be "
+                    "mappings that name their reference."
+                )
+            return rows
+    raise KeyError(
+        f"UK Ledger compile parity artifact {artifact!r} has no entry for target "
+        f"period {target_period!r}; available periods: "
+        f"{sorted(map(str, by_period))}."
+    )
+
+
 def _ledger_compile_parity_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
-    return frozenset({_ledger_compile_parity_registry_artifact(parameters)})
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    return frozenset(
+        {
+            registry_artifact,
+            _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1787,6 +1973,22 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1063 wealth_coherence check: the reviewed excess of owner
                 # households without a main-residence value over the donor's.
                 "maximum_owner_share_without_main_residence_excess",
+                # #1113 road_fuel_level check: the ceiling on the LCFS donor
+                # share of other personal-transport fuels netted off 07.2.2.
+                "maximum_other_fuels_share",
+                # #1113 road_fuel_incidence check: the ceiling on the chain's
+                # zero share among flagged fuel-car households.
+                "maximum_flagged_zero_share",
+                # #1113 consumption_basis check: the one base year of every
+                # LCFS spend column.
+                "period_type",
+                "period_value",
+                # #1106 property_components check: no receipts below profit,
+                # no landlord banded below their profit, the walk's rounding
+                # within its recorded boundary allowance.
+                "maximum_rows_receipts_below_profit",
+                "maximum_rows_with_profit_above_band",
+                "maximum_band_error_in_boundary_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -1813,6 +2015,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "capital_column",
                 "carrier_column",
                 "sentinel",
+                # The recorded capitals' property shares (microcosm#1095).
+                "property_shares",
+                "sum_tolerance",
             }
         ),
     ),

@@ -248,8 +248,18 @@ def find_period_contract_violations(
             continue
         if metadata.get("period_contract_waiver"):
             continue
+        # The period the value is AT: a rebased row's value sits at its
+        # control's period (``uprating_to_period``), the period _age_spec ages
+        # it from. A state AGI band rebased onto an older state total
+        # (microcosm#940) is a row whose two periods differ.
+        uprated_to = (
+            metadata.get("uprating_to_period")
+            if "uprating_factor" in metadata
+            else None
+        )
         fact_period = (
-            metadata.get("source_period")
+            uprated_to
+            or metadata.get("source_period")
             or metadata.get("ledger_fact_period")
             or str(spec.period)
         )
