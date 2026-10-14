@@ -362,8 +362,8 @@ EXPECTED_HASHES = {
     # #1178: puf_support's source bytes attest CPS Social Security preservation.
     # RNG rules and the ordered QRF targets are unchanged. microcosm#104 moves
     # both again: the protocol attests microcosm.calibrate.solve.
-    "seed_map": "95860f87d317a009fccce5896adfb70daa1a7628192fb22ee9a013c8ec7f5788",
-    "seed_protocol": "fd81be70173c44206409c0998b633cd749ca618d03c1e61ec1797ad1f1eb2aa9",
+    "seed_map": "d40998028411ad20a5ddedd2cb6eaa060f6a3496acee825478bdd3ad9dbdbc90",
+    "seed_protocol": "a136d972c6f84d6788dabeb030e3ba4255b97b186e4bb06f371acb2feab8efb6",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
