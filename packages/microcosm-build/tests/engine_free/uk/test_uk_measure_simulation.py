@@ -620,8 +620,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # structural bias: the v20 measurement (-2.8 % unbound, at weights that
     # never solved toward the row) reproduces the 2.79 % other/unknown-tenure
     # gap the entry records, so it is a diagnostic, not a fit target
-    # (docs/evidence/uk-a16-v20/).
-    "dwp.uc.households_": 1,
+    # (docs/evidence/uk-a16-v20/). microcosm#1095 (2026-10-14): the five-or-more
+    # children row joins it, held out on María's ruling of microcosm#1271.
+    "dwp.uc.households_": 2,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
     # bound are measured on every evaluation but held out of the objective;
@@ -663,7 +664,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 65
+    assert len(names) == len(set(names)) == 66
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -791,6 +792,30 @@ def test_packaged_exclusions_load():
         "ons.household_electricity_expenditure": "microcosm#1207",
         "ons.household_gas_expenditure": "microcosm#1207",
     }
+    # microcosm#1095 (2026-10-14): once dependants in approved training qualify
+    # as young people, fewer than 10 source households separate DWP's count of
+    # UC households with five or more children from its two-child-limit
+    # counts, so the row is held out with the sparse-band expiry and the
+    # two-child-limit rows stay bound (María's ruling on microcosm#1271).
+    # Two rulings share that date (the housing-element renewal below), so the
+    # tranche is told apart by its tracking issue.
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
+    ) == (sorted([*_UC_ELEMENT_REGISTER_ROWS, "dwp.uc.households_children_5_or_more"]))
+    large_families = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-14" and e["tracking"] == "microcosm#1095"
+    ]
+    assert [e["name"] for e in large_families] == [
+        "dwp.uc.households_children_5_or_more"
+    ]
+    (large_family,) = large_families
+    assert large_family["tracking"] == "microcosm#1095"
+    assert large_family["expires_on"] == "2026-11-26"
+    assert "microcosm#1271" in large_family["adjudication"]
+    assert "6168355102" in large_family["adjudication"]
+    assert "fewer than 10 frs source households" in large_family["reason"].lower()
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
@@ -848,7 +873,11 @@ def test_packaged_exclusions_load():
     # and renewed one month on 2026-10-14 (microcosm#1124 local release), so
     # nothing remains on the 2026-09-15 clock.
     assert [e for e in exclusions if e["approved_on"] == "2026-09-15"] == []
-    elements = [e for e in exclusions if e["approved_on"] == "2026-10-14"]
+    elements = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-14" and e["tracking"] == "microcosm#882"
+    ]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
         assert entry["expires_on"] == "2026-11-14", entry["name"]
