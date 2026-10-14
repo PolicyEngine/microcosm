@@ -1,0 +1,1 @@
+Add a pure ACS SPM regrouping helper with explicit childcare conservation and unresolved-amount ledgers, inherited housing-imputation provenance, authenticated legacy defaults, supplied component identities, and a separate rent-free tenure sensitivity. Invented controls cover preservation and allocation; native release qualification remains separate.
