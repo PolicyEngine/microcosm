@@ -420,9 +420,9 @@
       "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline; v20 -2.8 percent unbound, the structural gap itself, docs/evidence/uk-a16-v20/).",
       "tracking": "microcosm#882",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
-      "approved_on": "2026-09-15",
-      "expires_on": "2026-10-15"
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window); renewed one month on 2026-10-14 by juaristi22 in session (microcosm#1124 local release): the model still has no other/unknown tenure, so the any-tenure count stays structurally above the bound tenure rows",
+      "approved_on": "2026-10-14",
+      "expires_on": "2026-11-14"
     },
     {
       "name": "dwp.hb.households",

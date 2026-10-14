@@ -38,7 +38,16 @@ from microcosm.build.logbook_adoption import (
     record_terminal_attempt,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.dataset_size import UKSizeL2, uk_size_l2
 from microcosm.build.uk_runtime.ledger_targets import _spec_geography
+from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_SIZE_BASELINE_PI_FLOOR,
+    UK_LOCAL_SIZE_REFIT_L2_ANCHOR,
+    UK_LOCAL_SIZE_REFIT_L2_BASIS,
+    UK_LOCAL_SIZE_REFIT_L2_LAMBDA,
+    UK_LOCAL_SIZE_SELECTION_PI_HI,
+    uk_local_size_doctrine,
+)
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
@@ -89,6 +98,7 @@ __all__ = [
     "refuse_national_role_arguments",
     "release_verdict",
     "resolve_role_arguments",
+    "size_doctrine_drift",
     "rowwise_parameters",
     "validate_cli_args",
 ]
@@ -213,6 +223,35 @@ def doctrine_bounds(posture: UKRowwisePosture) -> dict[str, Any]:
 _doctrine_bounds = doctrine_bounds
 
 
+def _size_l2_flags(args: argparse.Namespace, stage: str) -> dict[str, object]:
+    return {
+        field: getattr(args, f"{stage}_l2_{field}", None)
+        for field in ("lambda", "anchor", "basis")
+    }
+
+
+def cli_size_l2(args: argparse.Namespace, stage: str) -> UKSizeL2 | None:
+    """One size stage's L2 penalty from the CLI flags (``None``: off)."""
+
+    flags = _size_l2_flags(args, stage)
+    return uk_size_l2(
+        stage,
+        l2_lambda=0.0 if flags["lambda"] is None else flags["lambda"],
+        anchor=flags["anchor"],
+        basis=flags["basis"],
+    )
+
+
+def _size_l2_parameters(args: argparse.Namespace) -> dict[str, Any]:
+    # microcosm#1124: recorded only when a penalty is on, so a default run's
+    # parameters and identity digest are unchanged.
+    return {
+        f"{stage}_l2": l2.as_dict()
+        for stage in ("selection", "refit")
+        if (l2 := cli_size_l2(args, stage)) is not None
+    }
+
+
 def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
     """The run parameters a rowwise manifest, plan and identity digest record."""
 
@@ -265,6 +304,13 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
             "l0_lambda": L0_LAMBDA,
             "budget_iters": BUDGET_ITERS,
         },
+        **_size_l2_parameters(args),
+        # Recorded only when on, so a default run's parameters are unchanged.
+        **(
+            {"inspection_export": True}
+            if getattr(args, "inspection_export", False)
+            else {}
+        ),
     }
 
 
@@ -429,11 +475,71 @@ def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
         args.target_weight_rule = posture.target_weight_rule
     if args.expected_constituency_vintage is None:
         args.expected_constituency_vintage = posture.expected_constituency_vintage
+    _resolve_size_defaults(args, posture)
     args._posture = posture
     return posture
 
 
+def _resolve_size_defaults(args: argparse.Namespace, posture: UKRowwisePosture) -> None:
+    """Fill a sized dense build's unset size-stage settings from the doctrine.
+
+    A dense build with ``--dataset-households`` takes the doctrine's draw
+    ceiling, refit floor and refit L2 penalty where the request leaves them
+    unset (microcosm#1124); explicit values, including ``--refit-l2-lambda 0``
+    to turn the penalty off, are kept. Every other build keeps the untrimmed,
+    unpenalized defaults.
+    """
+
+    if not hasattr(args, "selection_pi_hi"):
+        return
+    sized = posture.role == "dense" and args.dataset_households is not None
+    if args.selection_pi_hi is None:
+        args.selection_pi_hi = UK_LOCAL_SIZE_SELECTION_PI_HI if sized else 1.0
+    if args.baseline_pi_floor is None:
+        args.baseline_pi_floor = UK_LOCAL_SIZE_BASELINE_PI_FLOOR if sized else 0.0
+    if sized and all(
+        getattr(args, f"refit_l2_{field}", None) is None
+        for field in ("lambda", "anchor", "basis")
+    ):
+        args.refit_l2_lambda = UK_LOCAL_SIZE_REFIT_L2_LAMBDA
+        args.refit_l2_anchor = UK_LOCAL_SIZE_REFIT_L2_ANCHOR
+        args.refit_l2_basis = UK_LOCAL_SIZE_REFIT_L2_BASIS
+
+
 _resolve_role_arguments = resolve_role_arguments
+
+
+def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
+    """How a sized build's settings depart from the local size doctrine.
+
+    Empty when the build requests :data:`UK_LOCAL_DATASET_HOUSEHOLDS` with
+    the doctrine's draw ceiling, refit floor and refit L2 penalty, no
+    selection L2 penalty, draws with the solve seed and selects afresh rather
+    than resuming a size checkpoint (microcosm#1124, ruling of 2026-10-13).
+    Only such a sized build can be a release candidate, or be releasable.
+    """
+
+    if args.dataset_households is None:
+        return []
+    doctrine = uk_local_size_doctrine()
+    drift = [
+        f"{name} {getattr(args, name, None)!r} != doctrine {value!r}"
+        for name, value in doctrine.items()
+        if name != "selection_l2" and getattr(args, name, None) != value
+    ]
+    selection_l2 = _size_l2_flags(args, "selection")
+    if selection_l2["lambda"] not in (None, 0, 0.0) or any(
+        selection_l2[field] is not None for field in ("anchor", "basis")
+    ):
+        drift.append(f"selection L2 penalty {selection_l2!r} != doctrine off")
+    selection_seed = getattr(args, "selection_seed", None)
+    if selection_seed is not None and selection_seed != args.seed:
+        drift.append(f"selection_seed {selection_seed!r} != the solve seed")
+    if getattr(args, "resume_size_checkpoint", None) is not None:
+        drift.append(
+            "resume_size_checkpoint is set: the release draws its own selection"
+        )
+    return drift
 
 
 def validate_cli_args(args: argparse.Namespace) -> None:
@@ -456,6 +562,15 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--baseline-pi-floor requires --dataset-households.")
     if args.no_size_checkpoint and args.dataset_households is None:
         raise ValueError("--no-size-checkpoint requires --dataset-households.")
+    for stage in ("selection", "refit"):
+        given = [
+            f"--{stage}-l2-{field}"
+            for field, value in _size_l2_flags(args, stage).items()
+            if value is not None
+        ]
+        if given and args.dataset_households is None:
+            raise ValueError(f"{', '.join(given)} requires --dataset-households.")
+        cli_size_l2(args, stage)
     if args.resume_size_checkpoint is not None:
         if args.dataset_households is None:
             raise ValueError("--resume-size-checkpoint requires --dataset-households.")
@@ -464,12 +579,19 @@ def validate_cli_args(args: argparse.Namespace) -> None:
                 "--resume-size-checkpoint already implies no new checkpoint; "
                 "drop --no-size-checkpoint."
             )
+    if getattr(args, "inspection_export", False) and args.release_candidate:
+        raise ValueError(
+            "--inspection-export is candidate-only: a release candidate never "
+            "exports past a blocking gate."
+        )
     if args.dataset_households is not None:
         if args.dataset_households <= 0:
             raise ValueError("--dataset-households must be positive.")
-        if args.release_candidate:
+        drift = size_doctrine_drift(args)
+        if args.release_candidate and drift:
             raise ValueError(
-                "--dataset-households is candidate-only: size-specific matched comparison and promotion scorecard are required before release."
+                "A sized --release-candidate must carry the local size "
+                "doctrine (microcosm#1124): " + "; ".join(drift) + "."
             )
     # Size-selection arguments are validated first so their refusals name
     # the size flag at fault; the pinned Ledger inputs are then mandatory.
@@ -682,10 +804,18 @@ def refuse_dense_role_arguments(
         refused.append("--no-size-checkpoint")
     if args.resume_size_checkpoint is not None:
         refused.append("--resume-size-checkpoint")
+    for stage in ("selection", "refit"):
+        refused.extend(
+            f"--{stage}-l2-{field}"
+            for field, value in _size_l2_flags(args, stage).items()
+            if value is not None
+        )
     if args.sample_fraction != 1.0:
         refused.append("--sample-fraction")
     if "sample_seed" in explicit:
         refused.append("--sample-seed")
+    if getattr(args, "inspection_export", False):
+        refused.append("--inspection-export")
     if "seed" in explicit and args.seed != posture.seed:
         # The seam doctrine's seed is a reviewed constant, not a knob.
         refused.append(f"--seed != doctrine {posture.seed}")

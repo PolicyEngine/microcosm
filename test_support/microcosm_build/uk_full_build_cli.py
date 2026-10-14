@@ -34,7 +34,10 @@ from microcosm.build.uk_runtime.full_gates import (
     uk_full_gate_manifest,
 )
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, UKFullGraph
-from microcosm.build.uk_runtime.graph_calibration import UKCalibrationNodes
+from microcosm.build.uk_runtime.graph_calibration import (
+    SIZE_RECEIPT_TYPE,
+    UKCalibrationNodes,
+)
 from microcosm.build.uk_runtime.graph_population import (
     GEOGRAPHY_GATE_TYPE,
     POPULATION_RECEIPT_TYPE,
@@ -589,6 +592,28 @@ class Holdout(Evidence):
         )
 
 
+class SizeReceipt(Evidence):
+    """A sized build's refit receipt: requested and realized household counts."""
+
+    ref = "uk.test.cli-size@1"
+
+    def run(self, context):
+        receipt = size_receipt(int(context.params["households"]))
+        return KernelResult(artifacts={"size": canonical_json(receipt)})
+
+
+def size_receipt(households: int) -> dict:
+    """The stand-in size receipt of a build that realized its request."""
+
+    return {
+        "method": "exact_k_informed_l0",
+        "requested_households": households,
+        "realized_households": households,
+        "selection_pi_hi": 0.5,
+        "baseline_pi_floor": 0.5,
+    }
+
+
 class Targets(Evidence):
     """The compiled surface and the ordered problem the projection reads."""
 
@@ -695,8 +720,18 @@ def run_dense_main(
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
     patch_certification(monkeypatch)
     args = arguments(tmp_path, *extra, staging=staging)
+    households = (
+        int(extra[extra.index("--dataset-households") + 1])
+        if "--dataset-households" in extra
+        else None
+    )
     build = (
-        prepared(tmp_path, failed, release_candidate="--release-candidate" in extra)
+        prepared(
+            tmp_path,
+            failed,
+            release_candidate="--release-candidate" in extra,
+            size_households=households,
+        )
         if build is None
         else build
     )
@@ -723,9 +758,10 @@ def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") ->
     return out
 
 
-def prepared(tmp_path, failed=None, *, release_candidate=False):
+def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=None):
     """The synthetic prepared build; its gate nodes evaluate in the request's
-    posture (``release_candidate``), as the real gate nodes do."""
+    posture (``release_candidate``), as the real gate nodes do. A sized
+    request (``size_households``) adds a stand-in size refit receipt."""
     # Only a release-candidate request adds the parameter, so every other
     # synthetic build keeps its node keys.
     posture = {"release_candidate": True} if release_candidate else {}
@@ -836,6 +872,16 @@ def prepared(tmp_path, failed=None, *, release_candidate=False):
             ),
         ),
     ]
+    if size_households is not None:
+        nodes.append(
+            Node(
+                "uk.full.size_refit",
+                SizeReceipt.ref,
+                population=root.id,
+                params={"households": int(size_households)},
+                artifact_outputs=(ArtifactOutput("size", SIZE_RECEIPT_TYPE),),
+            )
+        )
     nodes = [
         replace(
             node,
@@ -902,6 +948,7 @@ def prepared(tmp_path, failed=None, *, release_candidate=False):
         Holdout(),
         Targets(),
         Population(),
+        SizeReceipt(),
         Certification(),
     ):
         kernels.register(kernel)

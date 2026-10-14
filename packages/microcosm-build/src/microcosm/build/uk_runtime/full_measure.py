@@ -282,6 +282,19 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
             and inputs_match
         ),
         "blocks": blocks,
+        # What ``exact`` certifies, and what it does not: on a slice of the
+        # K=25 pool, per-clone and single-block resolution matched on every
+        # household column and constituency metric but differed on a small
+        # share of person records (state pension type, pension credit, SLC
+        # repayment), so engine draws that depend on a record's position in
+        # the simulation are outside it (microcosm#1124). The released file is
+        # re-measured on one engine by the incumbent-surface evaluation.
+        "exact_scope": (
+            "weight-share formulas see the pool's denominator in every block: "
+            "identical clone copies, pool-scaled block weights and equal "
+            "allocation-key sums; engine draws that depend on a record's "
+            "position in the simulation are not covered"
+        ),
         "factor_by_block": factors,
         "checks": {
             "identity_key": identity_key,

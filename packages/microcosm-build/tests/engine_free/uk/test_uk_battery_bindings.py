@@ -65,7 +65,8 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 # Midlands target-fit deferral is retired with microcosm#1106), and the
 # microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
 # expiry is 2026-10-15.
-CLOCK = date(2026, 10, 11)
+# On or after the newest committed receipt's approval (2026-10-14).
+CLOCK = date(2026, 10, 14)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1202,6 +1203,65 @@ class TestExclusionDiscipline:
         )
         assert resupplied == committed
         assert resupplied["exclusions_policy"] == "committed"
+
+    @pytest.mark.parametrize(
+        ("line", "stands_aside"),
+        # Where no line is declared a scoped entry stands aside (fails closed).
+        [("local", True), ("national", False), (None, True)],
+    )
+    def test_a_line_scoped_entry_stands_aside_off_its_line(
+        self, line, stands_aside
+    ) -> None:
+        # employment_income carries signal in the fixture, so an exclusion for
+        # it is stale wherever it applies.
+        scoped = {
+            "person.employment_income": {
+                "reason": "injected: earned on the national line's evidence only",
+                "approved_by": "juaristi22",
+                "adjudication": "microcosm#1124",
+                "approved_on": "2026-08-26",
+                "expires_on": "2027-02-26",
+                "release_lines": ["national"],
+            }
+        }
+        extra = {"reviewed_degenerate_exclusions": scoped}
+        if line is not None:
+            extra["release_line"] = line
+        battery = _run_battery(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts=extra,
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}[
+            "uk_degenerate_release_surface"
+        ]
+        details = outcome.result.details
+        stale = "person.employment_income" in details["stale_exclusions"]
+        assert stale is not stands_aside
+        if stands_aside:
+            assert details["release_line"] == line
+            assert details["out_of_line_exclusions"] == ["person.employment_income"]
+            assert outcome.status is GateStatus.PASSED
+        else:
+            assert "out_of_line_exclusions" not in details
+            assert outcome.status is GateStatus.FAILED
+
+    def test_an_unknown_release_line_is_refused(self) -> None:
+        binding = UK_GATE_REGISTRY["tail_concentration"]
+        context = EvidenceContext(
+            artifacts={"exclusions_evaluated_on": CLOCK, "release_line": "regional"}
+        )
+        with pytest.raises(ValueError, match="release_line must be one of"):
+            binding.evaluate(
+                context,
+                {
+                    "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
+                    "top_k": 1,
+                    "max_top_share": 0.5,
+                    "min_nonzero_records": 2,
+                },
+            )
 
     def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
         person, benunit, household = _tables()

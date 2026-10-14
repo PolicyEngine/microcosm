@@ -66,7 +66,9 @@ class LocalTelemetryEmitter(EmitterTelemetryClient):
         run_kind: str = "build",
         development_collector_url: str | None = None,
         heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
-        startup_timeout_seconds: float = 3.0,
+        # The service took about four seconds to become ready on an M1 Max,
+        # past the provider's three-second default; this is only a ceiling.
+        startup_timeout_seconds: float = 15.0,
         spool_path: Path | str | None = None,
         close_service_on_finish: bool = True,
     ) -> LocalTelemetryEmitter:
