@@ -578,6 +578,8 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         # Signed cells that are off the surface and still count in their leg:
         # deferred with a value, or implied from the target's other tier.
         "off_surface_cells": cross.get("off_surface_cells"),
+        # The small-cell rule's deferrals: in the frame, never in the solve.
+        "small_cell_deferrals": cross.get("small_cell_deferrals"),
         "subset_relations": cross.get("subset_relations"),
         "partitions": cross.get("partitions"),
         "coverage": cross.get("coverage"),

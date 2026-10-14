@@ -150,12 +150,15 @@ def test_deferred_cells_keep_their_values_for_reconciliation():
             deferred_value=3.0,
         )
     )
+    # The membership binds the authority's census households, so a whole run
+    # carries it: a run whose ladder lacks it is a narrowed one.
     assert uk_small_cell_deferred_cells(membership) == (
         {
             "target_id": "welshgov.council_tax_stock.by_area.band_h",
             "geography_level": "local_authority",
             "geography_id": "W06000019",
             "value": 3.0,
+            "area_has_bound_cells": True,
         },
     )
 

@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.local_targets import (
     metric_names,
 )
 from microcosm.build.uk_runtime.off_surface_cells import (
+    uk_membership_bound_areas,
     uk_off_surface_frame_rows,
     uk_signed_cells_off_the_surface,
 )
@@ -934,9 +935,12 @@ def uk_small_cell_deferred_cells(
     The joint surface adds them to the reconciliation frame only: they take
     their share of their leg's control and never reach the solve, so deferring
     a cell does not inflate its neighbours (microcosm#1123 item 7).
+    ``area_has_bound_cells`` says whether the membership binds any cell for
+    the area at that level (``uk_membership_bound_areas``).
     """
 
     rule_ids = {str(rule["rule_id"]) for rule in _uk_small_cell_rules()}
+    bound_areas = uk_membership_bound_areas(membership)
     cells = []
     for target_id, target in sorted(membership.get("targets", {}).items()):
         for level, payload in sorted(target["geography_levels"].items()):
@@ -952,6 +956,11 @@ def uk_small_cell_deferred_cells(
                             "geography_level": level,
                             "geography_id": str(candidate["geography_id"]),
                             "value": float(candidate["deferred_value"]),
+                            "area_has_bound_cells": (
+                                str(level),
+                                str(candidate["geography_id"]),
+                            )
+                            in bound_areas,
                         }
                     )
     return tuple(cells)
@@ -2271,10 +2280,15 @@ def uk_local_target_surface(
     ``fanout_sum_controls`` is the national reconciliation's receipt of each
     declared fan-out's total over the full register (#1123): a surface that
     binds a fan-out sum bridge's area cells must carry it.
-    ``off_surface_cells`` are the membership's signed cells that are not
-    bound (``uk_off_surface_cells``): where a control moves their leg they
-    join the reconciliation frame, so the leg's bound cells do not take
-    their share (``uk_runtime.off_surface_cells``).
+    ``deferred_cells`` are the small-cell rule's deferrals
+    (``uk_small_cell_deferred_cells``): they always join the reconciliation
+    frame. ``off_surface_cells`` are the membership's other signed cells
+    that are not bound (``uk_off_surface_cells``): where a control moves
+    their leg they join the frame, so the leg's bound cells do not take
+    their share (``uk_runtime.off_surface_cells``). Under a run's own ladder
+    (``area_region_codes``), a cell of either kind whose English area the
+    ladder cannot place is left out and named in the receipt when the
+    membership binds some cell for the area; otherwise it refuses.
     """
 
     if census_household_uprating is None:
@@ -2538,7 +2552,27 @@ def uk_local_target_surface(
     )
     reconciliation_rows.extend(fanout_rows)
     # Small-cell deferrals (#1123 item 7) take their share of their leg's
-    # control in the reconciliation and are dropped from the output.
+    # control in the reconciliation and are dropped from the output. Under a
+    # run's own ladder a deferral is placed as an off-surface cell is below
+    # (microcosm#1278): an area the ladder lacks but the membership binds
+    # cells for marks a narrowed run, so the deferral is left out and named.
+    run_leg_of_area = (
+        None
+        if area_region_codes is None
+        else uk_cross_grain_leg_of_area(area_region_codes)
+    )
+    placed_deferrals = []
+    deferrals_outside_the_ladder: set[str] = set()
+    for cell in deferred_cells:
+        if run_leg_of_area is not None:
+            try:
+                run_leg_of_area(str(cell["geography_id"]))
+            except ValueError:
+                if not cell.get("area_has_bound_cells"):
+                    raise
+                deferrals_outside_the_ladder.add(str(cell["geography_id"]))
+                continue
+        placed_deferrals.append(cell)
     reconciliation_rows.extend(
         {
             "grain": "la"
@@ -2549,7 +2583,7 @@ def uk_local_target_surface(
             "value": float(cell["value"]),
             "_output_position": None,
         }
-        for cell in deferred_cells
+        for cell in placed_deferrals
     )
     bound_control_ids = (
         *bound_control_ids,
@@ -2661,6 +2695,10 @@ def uk_local_target_surface(
     receipt["off_surface_cells"] = {
         **off_surface_receipt,
         "areas_outside_the_ladder": sorted(areas_outside_the_ladder),
+    }
+    receipt["small_cell_deferrals"] = {
+        "rows_added": len(placed_deferrals),
+        "areas_outside_the_ladder": sorted(deferrals_outside_the_ladder),
     }
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
         local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
