@@ -303,9 +303,7 @@ def test_geography_and_migrated_national_gates_keep_artifact_enforcement(gate_id
 
 @pytest.mark.parametrize("fraction", [0.1, 1.0])
 @pytest.mark.parametrize("release_candidate", [False, True])
-def test_local_brma_missing_domain_evidence_stops_export(
-    fraction, release_candidate
-):
+def test_local_brma_missing_domain_evidence_stops_export(fraction, release_candidate):
     result = runtime.classify_full_gate_outcomes(
         _phase_failure("uk_local_brma_enum_domain", absent=True),
         sample_fraction=fraction,

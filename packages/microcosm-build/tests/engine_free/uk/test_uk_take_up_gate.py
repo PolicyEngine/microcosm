@@ -151,9 +151,7 @@ def test_local_phase_rechecks_brma_after_a_passing_assembled_check() -> None:
         frame=frame,
         artifacts={"brma_enum_domain": ("LONDON_A", "LONDON_B")},
     )
-    assembled = evaluate_phase(
-        gates, "assembled", context, registry=UK_GATE_REGISTRY
-    )
+    assembled = evaluate_phase(gates, "assembled", context, registry=UK_GATE_REGISTRY)
     assert len(assembled.outcomes) == 1
     assert assembled.outcomes[0].entry.id == "uk_brma_enum_domain"
     assert assembled.outcomes[0].status is GateStatus.PASSED

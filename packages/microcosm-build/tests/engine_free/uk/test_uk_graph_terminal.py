@@ -280,7 +280,10 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
-    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from microcosm.build.uk_runtime.graph_terminal import (
+        add_uk_export_preparation,
+        append_uk_full_gate_nodes,
+    )
     from microcosm.graph import compile_graph
     from test_support.microcosm_build.uk_atomic_support_fixtures import (
         toy_support_payloads,
@@ -305,7 +308,48 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
         engine_identity="fixture-engine",
         review_date="2026-09-10",
     )
+    graph = add_uk_export_preparation(
+        graph, population=full.calibration.population, bindings={}
+    )
     compiled = compile_graph(graph)
+    assert compiled.order.index("uk.full.expand") < compiled.order.index("uk.full.brma")
+
+    def reads_local_population(node):
+        population = node.population or node.base
+        while population is not None:
+            if population == "uk.full.expand":
+                return True
+            population = graph.node(population).base
+        return False
+
+    def ancestors(node_id):
+        pending = list(compiled.predecessors[node_id])
+        found = set()
+        while pending:
+            predecessor = pending.pop()
+            if predecessor not in found:
+                found.add(predecessor)
+                pending.extend(compiled.predecessors[predecessor])
+        return found
+
+    # Scan the current graph so new scoring, selection or export consumers
+    # cannot accidentally read the spine BRMA before the local rewrite.
+    brma_consumers = {
+        node.id
+        for node in graph.nodes
+        if reads_local_population(node)
+        and any(
+            item.entity == "household" and "brma" in item.columns
+            for item in node.inputs
+        )
+    }
+    assert {
+        "uk.full.measures",
+        "uk.full.gates.calibrated",
+        "uk.full.export.prepare",
+    } <= (brma_consumers)
+    for consumer in brma_consumers:
+        assert "uk.full.brma" in ancestors(consumer), consumer
     assert (
         "uk.full.gates.preflight"
         in compiled.predecessors[full.calibration.dense_producer]
@@ -321,6 +365,34 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     assert inputs["problem"].producer == full.calibration.problem_producer
     assert inputs["solution"].artifact == (
         "solution" if households is None else "refit_solution"
+    )
+
+
+@pytest.mark.parametrize("candidate_valid", [False, True])
+def test_local_brma_terminal_gate_reads_candidate_instead_of_spine(candidate_valid):
+    from dataclasses import replace
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.gate_battery import EvidenceContext, GateStatus, evaluate_phase
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    candidate, spine = _frame(), _frame()
+    valid, invalid = "CENTRAL_LONDON", "INVALID_BRMA"
+    candidate.table("household")["brma"] = valid if candidate_valid else invalid
+    spine.table("household")["brma"] = invalid if candidate_valid else valid
+    manifest = load_country_spec("uk").gates
+    entry = next(g for g in manifest.gates if g.id == "uk_local_brma_enum_domain")
+    report = evaluate_phase(
+        replace(manifest, gates=(entry,)),
+        "terminal",
+        EvidenceContext(
+            frame=candidate,
+            artifacts={"brma_enum_domain": [valid], "spine_frame": spine},
+        ),
+        registry=UK_GATE_REGISTRY,
+    )
+    assert report.outcomes[0].status is (
+        GateStatus.PASSED if candidate_valid else GateStatus.FAILED
     )
 
 

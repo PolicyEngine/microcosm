@@ -141,6 +141,8 @@ def pregeographic_key(row, *, vintage=SOURCE_VINTAGE):
         path.append(("cgt_support_split", int(row.cgt_support_copy_index)))
     if row.household_is_capital_gains_clone:
         path.append(("cgt_incidence_clone", 1))
+    if row.cgt_residential_clone_index:
+        path.append(("cgt_residential_split", int(row.cgt_residential_clone_index)))
     return household_draw_key(
         source="frs",
         source_vintage=vintage,

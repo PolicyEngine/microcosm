@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "main_commit": "a91c7536f7e318bdfdd8ee6214a7411257f0033a",
+  "main_kernel_source_sha256": "24668350de487949bbdc8df93ec4bfca460a4f69afe18da3d0811366fcb49c0a",
+  "main_fixture_source_sha256": "827430a03f011418222519dfbdcdb557e8d974c41f8f148e428ff1d5f168ac17",
+  "source": "frs",
+  "source_vintage": "toy_2023_24",
+  "cases": {
+    "lineage": {
+      "1": {
+        "household_ids": [
+          1,
+          2,
+          11,
+          21,
+          101,
+          111,
+          1001
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"]]]"
+        ]
+      },
+      "2": {
+        "household_ids": [
+          1,
+          2,
+          11,
+          21,
+          101,
+          111,
+          1001,
+          1000001,
+          1000002,
+          1000011,
+          1000021,
+          1000101,
+          1000111,
+          1001001
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"geographic_support\",\"1\"]]]"
+        ]
+      }
+    },
+    "residential_arms": {
+      "1": {
+        "household_ids": [
+          1,
+          2,
+          11,
+          21,
+          101,
+          111,
+          201,
+          211,
+          1001,
+          1101,
+          1201
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]"
+        ]
+      },
+      "2": {
+        "household_ids": [
+          1,
+          2,
+          11,
+          21,
+          101,
+          111,
+          201,
+          211,
+          1001,
+          1101,
+          1201,
+          1000001,
+          1000002,
+          1000011,
+          1000021,
+          1000101,
+          1000111,
+          1000201,
+          1000211,
+          1001001,
+          1001101,
+          1001201
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"spi_support_channel\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"2\",[[\"cgt_support_split\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"cgt_residential_split\",\"1\"],[\"geographic_support\",\"1\"]]]"
+        ]
+      }
+    },
+    "combinations": {
+      "1": {
+        "household_ids": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"]]]"
+        ]
+      },
+      "2": {
+        "household_ids": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          100100,
+          100101,
+          100102,
+          100103,
+          100104,
+          100105,
+          100106,
+          100107
+        ],
+        "keys": [
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]",
+          "uk-household-v1:[\"frs\",\"toy_2023_24\",\"1\",[[\"spi_support_channel\",\"1\"],[\"cgt_support_split\",\"2\"],[\"cgt_incidence_clone\",\"1\"],[\"geographic_support\",\"1\"]]]"
+        ]
+      }
+    }
+  }
+}
