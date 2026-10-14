@@ -1031,6 +1031,7 @@
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
           "person.person_is_spi_income_band_carrier",
+          "person.person_is_spi_income_recipient",
           "benunit.benunit_source_id",
           "benunit.benunit_support_channel",
           "benunit.benunit_support_clone_index",

@@ -1091,6 +1091,11 @@ class TestE3ManifestLockstep:
         # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
         # by the stage even though the QRF output surface excludes it.
         written.add("employment_income")
+        # The rows stage 1 drew, flagged for the stages that tell tape-concept
+        # rows from FRS-concept ones (microcosm#840).
+        from microcosm.build.uk_runtime.spi_income import SPI_INCOME_RECIPIENT_COLUMN
+
+        written.add(SPI_INCOME_RECIPIENT_COLUMN)
         unbacked = [name for name in stage2.outputs if name not in written]
         assert unbacked == [], (
             "Declared outputs with no named runtime written-column constant "
