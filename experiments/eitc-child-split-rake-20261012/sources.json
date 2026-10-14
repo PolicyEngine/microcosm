@@ -1,0 +1,125 @@
+{
+ "retrieved": "2026-10-12",
+ "sources": [
+  {
+   "file": "13in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/13in25ic.xls",
+   "sha256": "d62abe284d21b03f84fbbbfdc5886ee19fc2b2ea6b5d4c0c32049d16f121e870",
+   "bytes": 67584
+  },
+  {
+   "file": "14in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/14in25ic.xls",
+   "sha256": "a1d0f2c4804fdd78960f9a91d38c216dd39b09b1f32903506a369bae9d3fa3a6",
+   "bytes": 68096
+  },
+  {
+   "file": "15in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/15in25ic.xls",
+   "sha256": "3e1aee1fc14834d3d4c75088c5d30f4724a8ee8e75e69044343389514226ff54",
+   "bytes": 66048
+  },
+  {
+   "file": "16in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/16in25ic.xls",
+   "sha256": "00279c9874a42d05c4a7a4e3f04c9069f303d20a89c43de995a0fa1540671dc4",
+   "bytes": 66048
+  },
+  {
+   "file": "17in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/17in25ic.xls",
+   "sha256": "5c49372cba9a57e5f99df12be9e5abf4e971e3d2ce69d08bc3d7b5659f520fe5",
+   "bytes": 65536
+  },
+  {
+   "file": "18in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/18in25ic.xls",
+   "sha256": "0efd69f187e24d420cb124871ac52cf29a9c2c387963d581c3b8f12bec857db4",
+   "bytes": 65536
+  },
+  {
+   "file": "18inweek47expanded.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/18inweek47expanded.xls",
+   "sha256": "e9dc47a00bb5630ebef56e06844da107261058b4e7dfbfa11a4154cbe3a8bb17",
+   "bytes": 69120
+  },
+  {
+   "file": "19in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/19in25ic.xls",
+   "sha256": "db075bbd2aefcd827820c6ef6914f667be84085d0022c38fbe5ca8e237b0239e",
+   "bytes": 56320
+  },
+  {
+   "file": "19inweek47expanded.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/19inweek47expanded.xls",
+   "sha256": "ebb6e7864517732a92ca70649f015a11773f4d4c54541bb16a203efe6b5d9b54",
+   "bytes": 65536
+  },
+  {
+   "file": "20in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/20in25ic.xls",
+   "sha256": "28f8823857b345b59575038736011dfb750ba362df38ddb0b4b9b591a1cc7135",
+   "bytes": 61440
+  },
+  {
+   "file": "20inweek53.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/20inweek53.xls",
+   "sha256": "e72f56fe41bc8f94bb2ebb875bbc851c03a78aa684a0c4971d955998f0bff4ff",
+   "bytes": 60928
+  },
+  {
+   "file": "21in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/21in25ic.xls",
+   "sha256": "d4429c04a101b70cf23c6412f3246a3bc6a7244bad99f3561e54c302007f3285",
+   "bytes": 54784
+  },
+  {
+   "file": "22in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/22in25ic.xls",
+   "sha256": "bd890a09ef3a35c577dcc9d94272a7ee40d836453c686d70599372b48b863884",
+   "bytes": 55296
+  },
+  {
+   "file": "22inweek47.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/22inweek47.xls",
+   "sha256": "8fd545ce400de7c5d269b49e049fc29dc52b562f3e8d4bf653e03610b0f10548",
+   "bytes": 77824
+  },
+  {
+   "file": "23in25ic.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/23in25ic.xls",
+   "sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+   "bytes": 55296
+  },
+  {
+   "file": "23inweek47.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/23inweek47.xls",
+   "sha256": "c206226379285d86a9b5b5b275feb494aa7730340a98dc922115409876ea1ab2",
+   "bytes": 79872
+  },
+  {
+   "file": "24inweek47.xls",
+   "url": "https://www.irs.gov/pub/irs-soi/24inweek47.xls",
+   "sha256": "ae5ba048953051a4d290950567b050e52dcddf5c058e3b5cda96afedc371a40c",
+   "bytes": 66048
+  },
+  {
+   "file": "25inweek47.xlsx",
+   "url": "https://www.irs.gov/pub/irs-soi/25inweek47.xlsx",
+   "sha256": "5b8f05734ec3f4ad68c51ee8add91510ce209492c301786f17f50b22cc00adb3",
+   "bytes": 45164
+  },
+  {
+   "file": "22in55cmcsv.csv",
+   "url": "https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv",
+   "sha256": "f72f83339c36af889cf0ba98acdfab8e3d18051f88cb181f46db2ddc4ae498bb",
+   "bytes": 749827
+  },
+  {
+   "file": "23in55cmcsv.csv",
+   "url": "https://www.irs.gov/pub/irs-soi/23in55cmcsv.csv",
+   "sha256": "d1f7c8901fcefb2c46f5dd14f22715b7c8513794ce7b9ea6a6a947f1c548668f",
+   "bytes": 757078
+  }
+ ]
+}
