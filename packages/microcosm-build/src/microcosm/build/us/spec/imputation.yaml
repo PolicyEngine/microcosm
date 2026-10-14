@@ -4397,7 +4397,7 @@ producer_graph:
       resolution: static_exact
       binding:
         resource_kind: primary_puf_execution_config
-        schema_version: 5
+        schema_version: 6
         qrf:
           invocation_mode:
             predictors: canonical_default
@@ -4405,6 +4405,18 @@ producer_graph:
             tax_unit_outputs: canonical_default
           tail_bound_quantiles:
             non_sch_d_capital_gains: 0.999
+          recipient_share_bound:
+            rule: recipient_share_slice_mass
+            schema_version: 1
+            scope: every_amount_output_of_the_invocation
+            excluded_output_classes:
+            - boolean_person_outputs
+            - discrete_tax_unit_outputs
+            recipient_share: household_design_weight_over_puf_recipient_total
+            cap: top_slice_positive_mass_per_slice_weight
+            floor: bottom_slice_negative_mass_per_slice_weight
+            snapped_outputs: bounded_on_snap_grid_values_cap_lowered_onto_positive_grid
+            seam: raw_tax_unit_draws_after_tail_bound_quantiles
           worker_execution:
             surface: execution_profile
             resolve_as: worker_execution

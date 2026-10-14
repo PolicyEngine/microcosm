@@ -328,7 +328,9 @@ def test_primary_qrf_legacy_object_bank_loads_without_rewrite_or_identity_failur
     assert live.table("tax_unit")[support_channel].dtype == CANONICAL_STRING_DTYPE
     for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
         run_primary_puf_qrf_target(checkpoint_dir, target_index)
-    _finalized, weight_kind = finalize_primary_puf_qrf_chain(live, checkpoint_dir)
+    _finalized, weight_kind = finalize_primary_puf_qrf_chain(
+        live, checkpoint_dir, tail_bound_diagnostics=[]
+    )
 
     assert weight_kind == "design"
     assert {
@@ -476,8 +478,11 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
         monolith_raw.copy(),
         person_outputs=_PERSON_OUTPUTS,
         tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        tail_bound_diagnostics=[],
     )
-    actual, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+    actual, weight_kind = finalize_primary_puf_qrf_chain(
+        frame, checkpoint_dir, tail_bound_diagnostics=[]
+    )
     assert weight_kind == "design"
     _assert_frames_bit_exact(actual, expected)
 
@@ -487,7 +492,7 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     original_source_id = tax_unit.loc[first_puf_row, "tax_unit_source_id"]
     tax_unit.loc[first_puf_row, "tax_unit_source_id"] = original_source_id + 1
     with pytest.raises(ValueError, match="changed PUF recipient identity"):
-        finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+        finalize_primary_puf_qrf_chain(frame, checkpoint_dir, tail_bound_diagnostics=[])
     tax_unit.loc[first_puf_row, "tax_unit_source_id"] = original_source_id
 
     # Finalization must not rewrite raw target checkpoints. A second supervisor
@@ -554,7 +559,9 @@ def test_resumed_earnings_chain_keeps_children_out_of_allocation(
     run_primary_puf_qrf_chain(checkpoint_dir)
     assert completed_target.read_bytes() == completed_bytes
     assert pending_target.is_file()
-    resumed, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+    resumed, weight_kind = finalize_primary_puf_qrf_chain(
+        frame, checkpoint_dir, tail_bound_diagnostics=[]
+    )
 
     assert weight_kind == "design"
     resumed_person = resumed.table("person")
@@ -656,7 +663,9 @@ def test_primary_qrf_chain_stacked_finalization_preserves_unowned_nulls(
     for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
         run_primary_puf_qrf_target(checkpoint_dir, target_index)
 
-    finalized, weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+    finalized, weight_kind = finalize_primary_puf_qrf_chain(
+        frame, checkpoint_dir, tail_bound_diagnostics=[]
+    )
 
     assert weight_kind == "design"
     person = finalized.table("person")
@@ -703,7 +712,9 @@ def test_primary_qrf_chain_legacy_doctrine_defaults_remain_loadable(
     for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
         run_primary_puf_qrf_target(checkpoint_dir, target_index)
 
-    finalized, _weight_kind = finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+    finalized, _weight_kind = finalize_primary_puf_qrf_chain(
+        frame, checkpoint_dir, tail_bound_diagnostics=[]
+    )
 
     person = finalized.table("person")
     native = person["person_support_clone_index"].eq(0)
@@ -768,7 +779,7 @@ def test_primary_qrf_finalization_rejects_changed_recipient_features(
         ValueError,
         match="changed the PUF recipient predictor source universe or feature values",
     ):
-        finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
+        finalize_primary_puf_qrf_chain(frame, checkpoint_dir, tail_bound_diagnostics=[])
 
 
 @pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))

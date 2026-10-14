@@ -423,6 +423,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
 
@@ -439,6 +440,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
         round_tripped = json.loads(json.dumps({"weights_audit": weights_audit}))
@@ -455,6 +457,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
         record = {
             "output": "non_sch_d_capital_gains",
+            "rule": "weighted_positive_donor_quantile",
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,

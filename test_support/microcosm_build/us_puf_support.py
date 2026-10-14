@@ -276,6 +276,7 @@ class TestPufSupportWeightsAuditWiring:
             n_estimators=4,
             seed=0,
             fit_records=fit_records,
+            tail_bound_diagnostics=[],
         )
 
     def test_production_fit_records_design_weight_kind(self) -> None:
@@ -326,6 +327,7 @@ class TestPufSupportWeightsAuditWiring:
             tax_unit_outputs=(),
             n_estimators=4,
             seed=0,
+            tail_bound_diagnostics=[],
         )
         assert imputed.table("person") is not None
 
@@ -367,6 +369,7 @@ class TestPufSupportWeightsAuditWiring:
             n_estimators=4,
             seed=0,
             fit_records=fit_records,
+            tail_bound_diagnostics=[],
         )
 
         assert fit_records == [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "design")]

@@ -3274,6 +3274,53 @@
                   "non_sch_d_capital_gains"
                  ]
                 },
+                "recipient_share_bound": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "rule": {
+                   "type": "string"
+                  },
+                  "schema_version": {
+                   "type": "integer"
+                  },
+                  "scope": {
+                   "type": "string"
+                  },
+                  "excluded_output_classes": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  },
+                  "recipient_share": {
+                   "type": "string"
+                  },
+                  "cap": {
+                   "type": "string"
+                  },
+                  "floor": {
+                   "type": "string"
+                  },
+                  "snapped_outputs": {
+                   "type": "string"
+                  },
+                  "seam": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "rule",
+                  "schema_version",
+                  "scope",
+                  "excluded_output_classes",
+                  "recipient_share",
+                  "cap",
+                  "floor",
+                  "snapped_outputs",
+                  "seam"
+                 ]
+                },
                 "worker_execution": {
                  "x-spec-surface": "execution_profile",
                  "type": "object",
@@ -3347,6 +3394,7 @@
                "required": [
                 "invocation_mode",
                 "tail_bound_quantiles",
+                "recipient_share_bound",
                 "worker_execution"
                ]
               },
