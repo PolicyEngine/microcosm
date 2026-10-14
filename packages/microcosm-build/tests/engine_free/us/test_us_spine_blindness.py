@@ -338,6 +338,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
         "ssi_social_security_holdout.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
+        # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
+        # never transforms a population.
+        "support_mix.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
