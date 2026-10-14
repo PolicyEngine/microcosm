@@ -165,7 +165,7 @@
         "policyengine_uk_data.targets.sources.voa_council_tax"
       ],
       "evidence": "mhclg.council_tax_stock.band_* references mhclg.council_tax_stock.band_*@E12000001..E12000009, each composed from its authorities' MHCLG taxbase rows (microcosm#929); UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
-      "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
+      "reason": "The English council-tax taxbase rows (MHCLG CTB, microcosm#929) fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > nation > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's composed control rather than to a single England row (microcosm#905).",
       "status": "ported_national"
     },
     {
@@ -174,7 +174,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.local_la_extras"
       ],
-      "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs.",
+      "evidence": "Pinned feed has PIPR's 18 Scottish statistical_scope BRMA rows for every month of 2025 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs (microcosm#1090).",
       "fence": {
         "origin": "PIPR publishes Scottish rent levels at BRMA grain.",
         "purpose": "Preserve source geography without allocating BRMA averages over local authorities.",
@@ -375,72 +375,80 @@
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_a",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_b",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_c",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_d",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_e",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_f",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_g",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.mhclg.council_tax_stock.by_area.band_h",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target mhclg.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
@@ -671,153 +679,170 @@
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_a",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_b",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_c",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_d",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_e",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_f",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_g",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.scotgov.council_tax_stock.by_area.band_h",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target scotgov.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_a",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_b",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_c",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_d",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_e",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_f",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_g",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_h",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
       "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.welshgov.council_tax_stock.by_area.band_i",
       "covers": [
-        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_i; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target welshgov.council_tax_stock.by_area.band_i; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
       "status": "ported_local_declared"
     },
     {
@@ -898,7 +923,7 @@
         "policyengine_uk_data.targets.sources.local_la_extras",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
       ],
-      "evidence": "Microcosm ons.rent.private_rent is declared, but the pinned feed has only 2026-06 PIPR facts: 314 crosswalk E&W rows are after the 2025 target period, four English LAs are absent, 32 Scottish LAs have BRMA-only facts, and 11 NI LAs are absent.",
+      "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (the PIPR September 2026 edition in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts (microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
       "status": "ported_local_declared"
     },
     {
