@@ -64,6 +64,31 @@ def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_pat
     assert "geography_household_key" in stored and "data_zone_code" not in stored
 
 
+def test_local_export_drops_the_national_boundarys_reviewed_columns():
+    """The local file leaves out what the national release boundary drops.
+
+    microcosm#1278 (from #796): the K=25 build's degenerate-surface gate failed
+    on ``incapacity_benefit_reported``, which the national boundary dropped and
+    the local export did not. Both exports now apply the same reviewed list.
+    """
+    from microcosm.build.uk_runtime.graph_terminal import _tables
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    )
+
+    assert "incapacity_benefit_reported" in UK_RELEASE_EXPORT_DROPPED_COLUMNS["person"]
+    frame = _frame()
+    for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
+        table = frame.table(entity)
+        for column in columns:
+            table[column] = 0.0
+    exported = _tables(frame)
+    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
+        assert not set(columns) & set(exported[entity].columns)
+        assert not set(columns) & set(descriptor["tables"][entity]["columns"])
+
+
 def test_export_writes_area_codes_under_consumer_names_and_refuses_ladder_names(
     tmp_path,
 ):
