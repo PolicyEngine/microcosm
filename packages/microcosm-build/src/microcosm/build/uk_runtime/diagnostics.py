@@ -650,8 +650,13 @@ def uk_consumption_drift(
     Report only (microcosm#1113): the stage sets the energy and road-fuel
     levels, the gas connection and the fuel incidence, so calibration should
     barely move them. Returns None for a frame without the consumption columns.
+    Where the frame carries the ETB VAT stage's full-rate expenditure rate,
+    the totals also hold the full-rate VAT base, consumption times that rate
+    (microcosm#1207: no bound row holds the VAT base, so this is where its
+    drift shows).
     """
 
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_OUTPUT_COLUMNS
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_COICOP_DIVISION_COLUMNS,
     )
@@ -677,6 +682,10 @@ def uk_consumption_drift(
     }
     consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
     totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
+    (vat_rate_column,) = UK_ETB_VAT_OUTPUT_COLUMNS
+    if vat_rate_column in household.columns:
+        vat_base = consumption * column(vat_rate_column)
+        totals["full_rate_vat_base"] = _drift_value(design @ vat_base, final @ vat_base)
     road_fuel = column("petrol_spending") + column("diesel_spending")
     flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
 

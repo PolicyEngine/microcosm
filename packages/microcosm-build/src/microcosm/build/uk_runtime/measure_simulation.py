@@ -513,6 +513,33 @@ def _engine_scratch_frame(
     return engine_frame, dropped
 
 
+def engine_bus_pricing_parameters(
+    tax_benefit_system: Any, year: int
+) -> dict[str, dict[str, float]]:
+    """policyengine-uk's bus boardings per trip and yield per boarding by area.
+
+    Read at 1 January of ``year`` for every area the stage prices
+    (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
+    engine carries no such parameters.
+    """
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+    )
+
+    parameters = getattr(tax_benefit_system, "parameters", None)
+    if parameters is None:
+        raise AttributeError("the engine exposes no parameters")
+    bus = parameters(f"{int(year)}-01-01").gov.dft.bus
+    return {
+        name: {
+            area: float(getattr(getattr(bus, name), area))
+            for area in UK_ENGINE_BUS_AREA_BY_STAGE_AREA.values()
+        }
+        for name in ("boardings_per_trip", "yield_per_boarding")
+    }
+
+
 class UKMeasureResolver:
     """B2 measure provider backed by a policyengine-uk Microsimulation."""
 
@@ -936,8 +963,54 @@ class UKMeasureResolver:
         self._counterfactuals[key] = simulation
         return simulation
 
+    def _bus_engine_parity(self) -> dict[str, Any]:
+        """The engine's bus pricing against the lcfs stage's, computed once.
+
+        Report only (microcosm#1207): the engine prices bus fares from the
+        trips the dataset carries at its own boardings per trip and yield per
+        boarding, so the receipt records how far those stand from the ones the
+        stage priced at. An engine without them records why it has none.
+        """
+
+        cached = getattr(self, "_bus_parity", None)
+        if cached is not None:
+            return cached
+        from microcosm.build.country_spec import load_country_spec
+        from microcosm.build.uk_runtime.bus_fare_pricing import (
+            bus_engine_parity,
+            bus_fare_prices,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_VENDORED_RESOURCES,
+            bus_pricing_operation,
+        )
+
+        declared = bus_pricing_operation(
+            load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+        )
+        try:
+            if declared is None:
+                raise AttributeError("the lcfs stage declares no bus pricing")
+            engine = engine_bus_pricing_parameters(
+                getattr(self.simulation, "tax_benefit_system", None), self.year
+            )
+        except AttributeError as error:
+            parity: dict[str, Any] = {
+                "report_only": True,
+                "available": False,
+                "reason": str(error),
+            }
+        else:
+            parity = bus_engine_parity(
+                bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES),
+                engine,
+            )
+        self._bus_parity = parity
+        return parity
+
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        receipt["bus_engine_parity"] = self._bus_engine_parity()
         if getattr(self, "_engine_weight_scale", None) is not None:
             receipt["engine_weight_scale"] = float(self._engine_weight_scale)
         if getattr(self, "_engine_scratch_dropped_columns", ()):

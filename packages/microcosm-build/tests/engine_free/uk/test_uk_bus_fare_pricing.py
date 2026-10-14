@@ -404,3 +404,37 @@ def test_household_fares_sum_non_eligible_persons_and_keep_wales_raw() -> None:
             household_weights=weights,
             raw_household_fares=raw,
         )
+
+
+def test_bus_engine_parity_marks_each_area_against_the_engine() -> None:
+    """The engine's k and y against the stage's, report only (#1207)."""
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+        bus_engine_parity,
+    )
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    areas = {
+        prices.london.label: prices.london,
+        **{area.label: area for area in prices.other_by_region.values()},
+    }
+    engine = {
+        "boardings_per_trip": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.boardings_per_trip
+            for label, area in areas.items()
+        },
+        "yield_per_boarding": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.yield_per_fare_paying_boarding
+            for label, area in areas.items()
+        },
+    }
+    parity = bus_engine_parity(prices, engine)
+    assert parity["report_only"] is True and parity["within_tolerance"] is True
+    assert set(parity["areas"]) == set(UK_ENGINE_BUS_AREA_BY_STAGE_AREA)
+
+    engine["yield_per_boarding"]["NORTHERN_IRELAND"] *= 1.01
+    drifted = bus_engine_parity(prices, engine)
+    ni = drifted["areas"]["northern_ireland"]["yield_per_boarding"]
+    assert ni["relative_gap"] == pytest.approx(1 / 1.01 - 1)
+    assert ni["within_tolerance"] is False and drifted["within_tolerance"] is False

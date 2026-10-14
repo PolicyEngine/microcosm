@@ -965,6 +965,8 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
 
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
+    # An engine without bus pricing parameters records why it has no parity.
+    assert direct.receipt()["bus_engine_parity"]["available"] is False
     assert scratch.receipt()["mode"] == "scratch_frame_export"
     # A frame carrying no export-dropped column, already on the release's
     # identifiers, is written as it is.

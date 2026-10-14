@@ -57,6 +57,18 @@ PRICE_BUS_JOURNEYS_KIND = "price_bus_journeys"
 #: ``price_index.basis`` of an area re-priced from its own published yields
 #: rather than a fares index (microcosm#1207).
 OWN_FISCAL_YIELDS_BASIS = "own_fiscal_yields"
+#: policyengine-uk's bus pricing area (``gov.dft.bus.*`` keys) for each of the
+#: stage's priced areas (microcosm#1207).
+UK_ENGINE_BUS_AREA_BY_STAGE_AREA: Mapping[str, str] = {
+    "london": "LONDON",
+    "england_outside_london": "ENGLAND_OUTSIDE_LONDON",
+    "scotland": "SCOTLAND",
+    "northern_ireland": "NORTHERN_IRELAND",
+}
+#: Relative gap above which the engine's bus pricing has drifted from the
+#: stage's: both derive k and y from the same published facts (microcosm#954),
+#: so a gap is a re-pin or a publisher restatement the engine has not taken.
+UK_BUS_ENGINE_PARITY_TOLERANCE = 0.001
 UK_DFT_BUS_JOURNEYS_RESOURCE = "dft_bus_journeys.json"
 BUS_IN_LONDON = "bus_in_london"
 OTHER_LOCAL_BUS = "other_local_bus"
@@ -347,6 +359,60 @@ def own_fiscal_yield_price_factor(
         "calendar_value": calendar_value,
         "fiscal_value": fiscal_value,
         "factor": factor,
+    }
+
+
+def bus_engine_parity(
+    prices: BusFarePrices,
+    engine: Mapping[str, Mapping[str, float]],
+    *,
+    tolerance: float = UK_BUS_ENGINE_PARITY_TOLERANCE,
+) -> dict[str, Any]:
+    """The engine's bus pricing parameters against the stage's, area by area.
+
+    policyengine-uk prices bus fares itself from the trips a dataset carries
+    (``person_bus_fare_spending``) at its own ``gov.dft.bus.boardings_per_trip``
+    and ``yield_per_boarding``, while the national fare rows calibrate the
+    stage's priced column; this is the check microcosm#1207 asks for. Both
+    sides are fiscal-year values, before the stage's calendar re-pricing.
+    ``engine`` maps each parameter name to its value by engine area. Report
+    only: a gap beyond ``tolerance`` marks the area, it refuses nothing.
+    """
+
+    stage_areas = {
+        prices.london.label: prices.london,
+        **{area.label: area for area in prices.other_by_region.values()},
+    }
+    areas: dict[str, Any] = {}
+    for label, area in sorted(stage_areas.items()):
+        engine_area = UK_ENGINE_BUS_AREA_BY_STAGE_AREA.get(label)
+        if engine_area is None:
+            areas[label] = {"engine_area": None}
+            continue
+        entry: dict[str, Any] = {"engine_area": engine_area}
+        for name, stage_value in (
+            ("boardings_per_trip", area.boardings_per_trip),
+            ("yield_per_boarding", area.yield_per_fare_paying_boarding),
+        ):
+            engine_value = float(engine[name][engine_area])
+            relative = stage_value / engine_value - 1.0 if engine_value else None
+            entry[name] = {
+                "stage": float(stage_value),
+                "engine": engine_value,
+                "relative_gap": relative,
+                "within_tolerance": relative is not None and abs(relative) <= tolerance,
+            }
+        areas[label] = entry
+    priced = [entry for entry in areas.values() if entry["engine_area"] is not None]
+    return {
+        "report_only": True,
+        "tolerance": float(tolerance),
+        "areas": areas,
+        "within_tolerance": all(
+            entry[name]["within_tolerance"]
+            for entry in priced
+            for name in ("boardings_per_trip", "yield_per_boarding")
+        ),
     }
 
 

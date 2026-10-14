@@ -644,6 +644,24 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     )
     with pytest.raises(ValueError, match="align"):
         uk_consumption_drift(household, design[:3], final)
+    assert "full_rate_vat_base" not in drift["totals"]
+
+
+def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
+    """Consumption times the ETB VAT stage's full-rate share (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["full_rate_vat_expenditure_rate"] = [0.5, 0.5, 0.25, 0.0]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    base = drift["totals"]["full_rate_vat_base"]
+    assert base["design"] == pytest.approx(120.0 * (0.5 + 0.5 + 0.25))
+    assert base["final"] == pytest.approx(120.0 * (2 * 0.5 + 0.25))
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
