@@ -4,8 +4,8 @@ The comparison runs at the sampler's native margin — (region, LHA category)
 cells — because that is where the assignment is defined: within a cell the
 built benunit-level BRMA shares are multinomial around the count table's
 conditional distribution. A region-level margin would mix our benunit
-category composition with the rents table's lettings-weighted composition
-and mislead.
+category composition with the census table's private-rented-household
+composition and mislead.
 """
 
 from __future__ import annotations

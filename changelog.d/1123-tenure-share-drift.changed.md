@@ -1,0 +1,1 @@
+England's census tenure shares drift by ONS SPREE's change in each category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares (microcosm#1123).

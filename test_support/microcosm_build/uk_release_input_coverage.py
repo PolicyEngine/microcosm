@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime import (
     UKReleaseInputCoverageManifest,
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
     load_uk_release_input_coverage_manifest,
@@ -156,7 +157,7 @@ def _hmrc_family_coverage() -> dict[str, dict[str, object]]:
     return {
         "hmrc_spi_income": {
             "status": "required_at_build",
-            "stage": "hmrc_spi_income",
+            "stage": "hmrc_spi_income_spine",
             "effective_mass_requirements": {
                 "gift_aid": {
                     "status": "distributional_required",

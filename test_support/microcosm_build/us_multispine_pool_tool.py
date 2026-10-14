@@ -1022,7 +1022,7 @@ def _stacked_main_argv(
             "--congressional-district-vintage-crosswalk",
             str(tmp_path / "congressional-district-vintage-crosswalk"),
             "--congressional-district-vintage-crosswalk-sha256",
-            "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec",
+            "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
         ]
     )
     arguments.extend(
@@ -2114,9 +2114,9 @@ def _receipt_file_from_reference(reference: str) -> Path:
     """Map one exported ``local://`` receipt reference back to a real file.
 
     Rows never embed host-absolute paths, so tests reconstruct the file
-    location from the reference's anchor: ``~/`` means home, and the
-    stripped-absolute fallback (the only form pytest tmp paths produce)
-    re-roots at ``/``.
+    location from the reference's anchor: ``~/`` means home, checkout-relative
+    receipts resolve against the owning repository, and the stripped-absolute
+    fallback for temporary paths outside those anchors re-roots at ``/``.
     """
 
     location = reference.split("#", maxsplit=1)[0]
@@ -2125,6 +2125,9 @@ def _receipt_file_from_reference(reference: str) -> Path:
     assert not tail.startswith("/")
     if tail.startswith("~/"):
         return Path.home() / tail[2:]
+    checkout_path = _TEST_PATHS.repository / tail
+    if checkout_path.is_file():
+        return checkout_path
     return Path("/") / tail
 
 

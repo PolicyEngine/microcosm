@@ -10,7 +10,15 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build.uk_runtime import country_adapter
+from test_support.microcosm_build.uk_full_build_cli import (
+    patch_support_register,
+    synthetic_geography_binding,
+)
 from test_support.paths import paths_for
+
+#: The committed register reader, kept before the autouse fixture replaces it.
+_REAL_REGISTER = country_adapter.uk_atomic_support_register
 
 _TEST_PATHS = paths_for("microcosm-build")
 
@@ -41,13 +49,13 @@ def _good_candidate(tmp_path: Path) -> Path:
         "release_role": "dense",
         "parameters": {
             "release_candidate": True,
-            "epochs": 1500,
+            "epochs": 2000,
             "n_clones": 15,
             "skip_holdout": False,
             "doctrine": {
                 "max_weight_ratio": 10.0,
-                "target_weight_rule": "grain_equal",
-                "solve_epochs": 1500,
+                "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+                "solve_epochs": 2000,
                 "clone_count": 15,
             },
         },
@@ -118,6 +126,7 @@ def _good_candidate(tmp_path: Path) -> Path:
             }
         },
         "identity": {"spine": {"pin_verified": True}, "ladder": {"pin_verified": True}},
+        "geography": {"assignment": synthetic_geography_binding()},
         "outputs": {
             "dataset": {"path": str(h5), "sha256": hashlib.sha256(b"h5").hexdigest()}
         },
@@ -135,6 +144,12 @@ KEY = base64.b64encode(b"\x06" * 32).decode()
 @pytest.fixture(autouse=True)
 def _trusted_key(monkeypatch) -> None:
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+
+
+@pytest.fixture(autouse=True)
+def _registered_supports(monkeypatch) -> None:
+    """The synthetic candidates bind synthetic support pins; register them."""
+    patch_support_register(monkeypatch)
 
 
 def _signed_report() -> dict:
@@ -250,6 +265,12 @@ def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> Non
         ),
         (lambda m, r: m["parameters"].__setitem__("skip_holdout", True), "holdout"),
         (
+            lambda m, r: m["parameters"].__setitem__(
+                "refit_l2", {"lambda": 0.03, "anchor": "initial", "basis": "chi_square"}
+            ),
+            "refit L2 penalty",
+        ),
+        (
             lambda m, r: m["census_household_uprating"]["tenure_cells"].__setitem__(
                 "applied", False
             ),
@@ -287,6 +308,179 @@ def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None
     )
     failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
     assert any(needle in failure for failure in failures), failures
+
+
+def _per_clone(exact: bool = True, blocks: int = 15) -> dict:
+    return {
+        "blocks": blocks,
+        "engine_population_representation": {
+            "mode": "block_weights_scaled_to_pool",
+            "blocks": blocks,
+            "exact": exact,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("resolution", "passes"),
+    [
+        (_per_clone(), True),
+        (_per_clone(exact=False), False),
+        # One block per clone, so the count must be the run's K.
+        (_per_clone(blocks=5), False),
+        ({"blocks": 15}, False),
+    ],
+)
+def test_one_engine_block_per_clone_passes_only_when_recorded_exact(
+    tmp_path: Path, resolution: dict, passes: bool
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["solve"]["measure_resolution"] = resolution
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert (failures == []) is passes, failures
+    if not passes:
+        assert any("without an exact pool representation" in f for f in failures)
+
+
+def _sized(manifest: dict) -> None:
+    """Make the fixture a sized run at the size doctrine."""
+
+    manifest["parameters"].update(
+        {
+            "dataset_households": 100_000,
+            "selection_pi_hi": 0.5,
+            "baseline_pi_floor": 0.5,
+            "refit_l2": {
+                "lambda": 0.0215748772773509,
+                "anchor": "uniform",
+                "basis": "chi_square",
+            },
+        }
+    )
+    manifest["solve"]["dataset_size"] = {
+        "requested_households": 100_000,
+        "realized_households": 100_000,
+    }
+    manifest.setdefault("release_posture", {})["size_doctrine"] = True
+
+
+@pytest.mark.parametrize(
+    ("mutate", "needle"),
+    [
+        (lambda m: None, None),
+        (
+            lambda m: m["parameters"].__setitem__("dataset_households", 60_000),
+            "parameters.dataset_households",
+        ),
+        (
+            lambda m: m["parameters"].__setitem__("selection_pi_hi", 0.95),
+            "parameters.selection_pi_hi",
+        ),
+        (lambda m: m["parameters"].__setitem__("refit_l2", None), "refit_l2"),
+        (
+            lambda m: m["solve"]["dataset_size"].__setitem__(
+                "realized_households", 99_998
+            ),
+            "realized",
+        ),
+        (
+            lambda m: m["release_posture"].__setitem__("size_doctrine", False),
+            "size_doctrine",
+        ),
+        (lambda m: m["solve"].pop("dataset_size"), "dataset_size is missing"),
+        (
+            lambda m: m["parameters"].__setitem__("resume_size_checkpoint", "ck"),
+            "resumed from a size checkpoint",
+        ),
+        (
+            lambda m: m["parameters"].__setitem__("selection_l2", {"lambda": 0.5}),
+            "selection L2 penalty",
+        ),
+    ],
+)
+def test_a_sized_run_passes_only_at_the_size_doctrine(
+    tmp_path: Path, mutate, needle
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    _sized(manifest)
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    if needle is None:
+        assert failures == []
+    else:
+        assert any(needle in failure for failure in failures), failures
+
+
+def test_an_unsized_run_carries_no_refit_penalty(tmp_path: Path) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["parameters"]["refit_l2"] = {"lambda": 0.01}
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any("without a size request" in failure for failure in failures)
+
+
+@pytest.mark.parametrize(
+    "mutate, needle",
+    [
+        (
+            lambda m: m["geography"]["assignment"].__setitem__("assignment", "legacy"),
+            "geography.assignment.assignment is 'legacy', not 'atomic'",
+        ),
+        (
+            lambda m: m["geography"]["assignment"]["support_pins"][
+                "uk_ni_data_zone_2021"
+            ].__setitem__("sha256", "9" * 64),
+            "support_pins.uk_ni_data_zone_2021 is not the registered support",
+        ),
+        (
+            lambda m: m["geography"]["assignment"]["support_pins"][
+                "uk_ew_output_area_2021"
+            ].__setitem__("size_bytes", 1),
+            "support_pins.uk_ew_output_area_2021 is not the registered support",
+        ),
+        (lambda m: m.pop("geography"), "geography.assignment.assignment is None"),
+    ],
+)
+def test_preflight_requires_the_registered_atomic_assignment(
+    tmp_path: Path, mutate, needle: str
+) -> None:
+    """A release candidate is the identity-keyed assignment on the registered
+    supports (microcosm#932 round 1): the pre-flight refuses the legacy law, a
+    pre-#932 manifest with no binding, and a pin that is not the register's."""
+    candidate = _good_candidate(tmp_path)
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    mutate(manifest)
+    path.write_text(json.dumps(manifest))
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any(needle in line for line in failures), failures
+
+
+def test_preflight_reads_the_committed_support_register(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Against sources.yaml itself the synthetic pins are not the register's."""
+    monkeypatch.setattr(country_adapter, "uk_atomic_support_register", _REAL_REGISTER)
+    candidate = _good_candidate(tmp_path)
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
+    refused = [line for line in failures if "support_pins" in line]
+    assert len(refused) == 3, failures
+    register = _REAL_REGISTER()
+    assert set(register) == set(synthetic_geography_binding()["support_pins"])
+    assert all(
+        len(row["sha256"]) == 64 and row["size_bytes"] > 0 for row in register.values()
+    )
 
 
 def test_env_check_names_the_missing_key_and_pins(tmp_path: Path) -> None:
@@ -358,3 +552,37 @@ def test_preflight_does_not_infer_tenure_success_from_ladder_uprating(tmp_path):
         "A17" in failure and "skipped attempted" in failure for failure in failures
     )
     assert not any("A15" in failure for failure in failures)
+
+
+def test_graph_built_manifest_passes_the_candidate_preflight(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The graph driver's projected manifest is the schema the pre-flight reads.
+
+    The build signs its own local battery report under the posture's
+    ``*.local_gates.json`` name, bound to its Logbook attempt; nothing is
+    signed by hand.
+    """
+
+    pytest.importorskip("tables")
+    from microcosm.build.logbook import load_spool_rows
+    from test_support.microcosm_build.uk_full_build_cli import (
+        STEM,
+        graph_dense_bundle,
+    )
+
+    out = graph_dense_bundle(tmp_path, monkeypatch, "--release-candidate")
+    module = _load()
+    build_id = load_spool_rows(out / "logbook-spool")[0].build_id
+    report = json.loads((out / f"{STEM}.local_gates.json").read_text())
+    assert report["release_id"] == build_id and report["shippable"] is True
+    manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
+    assert manifest["release_role"] == "dense"
+    assert manifest["parameters"]["release_candidate"] is True
+    assert module.check_candidate_dir(out, today=date(2026, 9, 4)) == []
+    # The same projection is refused for what the pre-flight refuses: a size
+    # run, or a run whose manifest lost its uprating receipt.
+    manifest["census_household_uprating"]["applied"] = False
+    (out / "rowwise_candidate_manifest.json").write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(out, today=date(2026, 9, 4))
+    assert any("A15" in line for line in failures)

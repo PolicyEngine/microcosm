@@ -20,7 +20,10 @@ generate-big-then-prune path); ``l1_lambda`` with ``method="prox"`` as a
 proximal selection penalty; and experimental ``l2_lambda`` as a soft
 concentration penalty. Under L0 gates, ``l2_lambda`` penalizes latent pre-gate
 weights so a nearly closed gate cannot hide an exploding underlying weight.
-``l0_lambda`` alone prunes at a fixed penalty.
+``l2_basis`` selects that penalty's form: the historical record-weighted
+``mean(r ** 2)`` (default) or GREG's design-weighted chi-square distance, which
+pulls toward the design weights themselves. ``l0_lambda`` alone prunes at a
+fixed penalty.
 
 Importing this shard asserts compatibility with the installed
 :mod:`microcosm.frame` kernel — the constellation mechanism from DESIGN.md: a
@@ -129,11 +132,18 @@ from microcosm.calibrate.score import (  # noqa: E402 - after the compat gate
 from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     CONSERVE_MASS,
     FREE_MASS,
+    L2_BASES,
+    L2_BASIS_CHI_SQUARE,
+    L2_BASIS_RECORD,
+    MASS_PARAMETRIZATION_PROJECTION,
+    MASS_PARAMETRIZATION_SOFTMAX,
+    MASS_PARAMETRIZATIONS,
     CalibrationResult,
     L0RefitResult,
     TargetDiagnostic,
     calibrate,
     calibrate_l0_refit,
+    chi_square_distance,
     default_target_loss_scales,
     effective_sample_size,
     rebuild_calibration_result,
@@ -183,6 +193,12 @@ __all__ = [
     "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",
     "CONSERVE_MASS",
     "FREE_MASS",
+    "L2_BASES",
+    "L2_BASIS_CHI_SQUARE",
+    "L2_BASIS_RECORD",
+    "MASS_PARAMETRIZATION_PROJECTION",
+    "MASS_PARAMETRIZATION_SOFTMAX",
+    "MASS_PARAMETRIZATIONS",
     "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_REL_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
@@ -212,6 +228,7 @@ __all__ = [
     "calibration_variable_label",
     "assert_exact_k_support",
     "exact_k_design_feasibility",
+    "chi_square_distance",
     "default_target_loss_scales",
     "effective_sample_size",
     "rebuild_calibration_result",

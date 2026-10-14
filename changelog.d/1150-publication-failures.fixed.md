@@ -1,0 +1,1 @@
+Keep a failed UK build's graph evidence out of the output directory so an earlier successful bundle stays intact, and keep graph delivery running when a preserved directory is removed or the local queue reports an error.

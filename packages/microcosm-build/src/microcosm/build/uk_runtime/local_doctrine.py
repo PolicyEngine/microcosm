@@ -33,13 +33,22 @@ import numpy as np
 
 __all__ = [
     "UK_LOCAL_CLONE_COUNT",
+    "UK_LOCAL_DATASET_HOUSEHOLDS",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
+    "UK_LOCAL_ROW_METADATA_RULES",
+    "UK_LOCAL_SIZE_BASELINE_PI_FLOOR",
+    "UK_LOCAL_SIZE_REFIT_L2_ANCHOR",
+    "UK_LOCAL_SIZE_REFIT_L2_BASIS",
+    "UK_LOCAL_SIZE_REFIT_L2_LAMBDA",
+    "UK_LOCAL_SIZE_SELECTION_PI_HI",
     "UK_LOCAL_SOLVE_DOCTRINE",
     "UK_LOCAL_SOLVE_EPOCHS",
     "UK_LOCAL_TARGET_LOSS_CAP",
     "UK_LOCAL_TARGET_WEIGHT_RULE",
+    "UK_LOCAL_TARGET_WEIGHT_RULES",
     "UKLocalSolveDoctrine",
     "uk_local_doctrine_with_overrides",
+    "uk_local_size_doctrine",
     "uk_local_target_loss_weights",
 ]
 
@@ -71,7 +80,19 @@ UK_LOCAL_MAX_WEIGHT_RATIO = 10.0
 #: row matrix and are effectively ignored (78 % within 10 %; OBR aggregates
 #: 43 %); ``grain_equal`` holds them at 92–93 % for about two points of
 #: census-household and tenure fit. ``uniform`` stays a receipted override.
-UK_LOCAL_TARGET_WEIGHT_RULE = "grain_equal"
+#:
+#: microcosm#1124 (PR #1163 experiments on the K=25 pool, and the K=25 /
+#: 100,000-household build of 2026-10-11): ``nation_grain_family_equal_sqrt_count``
+#: — each grain's loss share is split equally across its target families
+#: (national rows by nation as a fourth grain), and count rows within a
+#: family by the square root of their count. Under ``grain_equal`` the 662
+#: HMRC rows took 18.9 % of the loss and the size selection kept a lone-person
+#: share of 23 % against the dense solve's 28.6 %; under this rule the selection
+#: keeps the composition (28.8 %) and the Northern Ireland share (2.73 %). It
+#: dilutes the HMRC top-income bands, which is where the national misses
+#: remain (microcosm#1123). ``grain_equal`` and ``uniform`` stay receipted
+#: overrides; the other row-metadata rules too.
+UK_LOCAL_TARGET_WEIGHT_RULE = "nation_grain_family_equal_sqrt_count"
 
 #: Declared solve length for the UK local solve (Adam epochs).
 #:
@@ -79,21 +100,90 @@ UK_LOCAL_TARGET_WEIGHT_RULE = "grain_equal"
 #: ruling, matching the national certified-cut posture. The solver has no
 #: stopping criterion; at 512 the loss was still falling 2–6 % per 128
 #: epochs, at 1500 it is 0.4 % (``uniform``) / 2.8 % (``grain_equal``).
-UK_LOCAL_SOLVE_EPOCHS = 1500
+#:
+#: microcosm#1124: 2000, the length every #1124 measurement ran at (the
+#: 2026-10-06 and 2026-10-11 builds and the #1163 experiments). On the
+#: 2026-10-11 build's stored trajectories the dense solve's best loss by
+#: epoch 1500 is 3.5 % above its best by 2000, and the size search is still
+#: falling at 2000 (7.5 % above at 1500); the refit is within 0.2 % of its
+#: best by epoch 500. The K=15 rebuild re-measures it per stage.
+UK_LOCAL_SOLVE_EPOCHS = 2000
 
 #: Declared clone count K for the UK local candidate (rows per spine
 #: household through the OA ladder).
 #:
-#: microcosm#762 adjudication (2026-09-03, receipt R9): 15. The plan's
-#: K=4 default refused 172 UC child-band cells with zero support; K=10
-#: refused 86 local-authority cells (84 band-H plus the two micro-authorities;
-#: A14) and, under ``grain_equal`` at bound 10, left five constituencies
-#: 0.3–7.7 ESS under the floor; K=15 clears the
-#: floor (min constituency ESS 54.1) at unchanged fit and flat memory.
+#: microcosm#762 adjudication (2026-09-03, receipt R9): 15. Smaller K left
+#: target cells without supporting households and constituencies under the
+#: ESS floor; K=15 cleared the floor at unchanged fit and flat memory
+#: (receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md).
+#:
+#: microcosm#1124 (ruling of 2026-10-13): stays 15. Across the dense pools of
+#: the uk-dataset-evaluation reports (``55k-candidates`` and ``55k-rebuild`` at
+#: K=15, ``55k-k20`` at K=20, ``k25-60k`` and ``k25-100k`` at K=25), more clones
+#: did not lift the weakest seat's support, and the 100,000-household draw's
+#: support gain on the K=25 pool came from the size settings below, not from
+#: K. A K=15 / 100,000-household build re-measures it.
 UK_LOCAL_CLONE_COUNT = 15
 
+#: Target-weighting rules that read more row metadata than the grain
+#: (microcosm#1124): the row's target family, its geography and its value
+#: basis. They are computed in :mod:`microcosm.build.uk_runtime.target_weights`
+#: from one row-aligned carrier, and each is a declared function of that
+#: metadata, never a per-target vector. ``nation_grain_family_equal_sqrt_count``
+#: is the doctrine's rule; the others are receipted overrides, which a release
+#: candidate refuses like any rule but the default.
+UK_LOCAL_ROW_METADATA_RULES = (
+    "grain_family_equal",
+    "grain_family_equal_sqrt_count",
+    "nation_grain_family_equal",
+    "nation_grain_family_equal_sqrt_count",
+)
+#: The closed target-weighting vocabulary of the UK local solve.
+UK_LOCAL_TARGET_WEIGHT_RULES = ("uniform", "grain_equal", *UK_LOCAL_ROW_METADATA_RULES)
+
+#: Declared defaults of a sized (``--dataset-households``) local build, applied
+#: when the request leaves them unset (microcosm#1124; PR #1163's
+#: ``SAN_f0.5_u0.022`` and the 2026-10-11 K=25 / 100,000-household build):
+#: the exact-k draw's inclusion-probability ceiling, the refit's
+#: Horvitz–Thompson baseline floor, and a chi-square L2 penalty on the refit's
+#: weights toward their uniform mean. The penalty is a Kish-ESS control (with
+#: a uniform anchor it equals n / ESS − 1, so its λ means the same at any
+#: size); λ is 10⁻² times the doctrine rule's loss ratio to ``grain_equal``
+#: (2.1575). A sized release candidate must use exactly these settings at
+#: :data:`UK_LOCAL_DATASET_HOUSEHOLDS`.
+UK_LOCAL_SIZE_SELECTION_PI_HI = 0.5
+UK_LOCAL_SIZE_BASELINE_PI_FLOOR = 0.5
+UK_LOCAL_SIZE_REFIT_L2_LAMBDA = 0.0215748772773509
+UK_LOCAL_SIZE_REFIT_L2_ANCHOR = "uniform"
+UK_LOCAL_SIZE_REFIT_L2_BASIS = "chi_square"
+
+#: The household count a sized local release ships (microcosm#1124, ruling
+#: of 2026-10-13): the local release is the exact-k selection from the
+#: K-clone pool at this size, under the dense line's publication
+#: requirements (rotated holdout, signed gates, incumbent-surface evaluation
+#: on one engine). The pool itself is too large for one engine and for the
+#: consumers who load the file. A release candidate may also be unsized
+#: (the whole pool); any other size stays candidate-only.
+UK_LOCAL_DATASET_HOUSEHOLDS = 100_000
+
+
+def uk_local_size_doctrine() -> dict[str, object]:
+    """The settings a sized local release candidate must carry, by name."""
+
+    return {
+        "dataset_households": UK_LOCAL_DATASET_HOUSEHOLDS,
+        "selection_pi_hi": UK_LOCAL_SIZE_SELECTION_PI_HI,
+        "baseline_pi_floor": UK_LOCAL_SIZE_BASELINE_PI_FLOOR,
+        "refit_l2_lambda": UK_LOCAL_SIZE_REFIT_L2_LAMBDA,
+        "refit_l2_anchor": UK_LOCAL_SIZE_REFIT_L2_ANCHOR,
+        "refit_l2_basis": UK_LOCAL_SIZE_REFIT_L2_BASIS,
+        # The selection (search) stage carries no L2 penalty.
+        "selection_l2": None,
+    }
+
+
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
-_ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "grain_equal")
+_ALLOWED_TARGET_WEIGHT_RULES = UK_LOCAL_TARGET_WEIGHT_RULES
 _OVERRIDABLE_FIELDS = frozenset({"target_weight_rule"})
 
 
@@ -103,9 +193,12 @@ class UKLocalSolveDoctrine:
 
     ``scale_rule`` and ``target_weight_rule`` are closed vocabularies: the
     only admissible scale rule is the canonical target-defined default, and
-    the admissible target weightings are ``grain_equal`` (the reviewed
-    default) and ``uniform`` (a receipted override). Any other weighting
-    would be a new reviewed rule name here — never a per-target vector.
+    the admissible target weightings are ``uniform``, ``grain_equal`` and the
+    row-metadata rules of :data:`UK_LOCAL_ROW_METADATA_RULES`, of which
+    ``nation_grain_family_equal_sqrt_count`` is the reviewed default and the
+    rest are receipted overrides. Any other
+    weighting would be a new reviewed rule name here — never a per-target
+    vector.
     """
 
     target_loss_cap: float = UK_LOCAL_TARGET_LOSS_CAP
@@ -156,12 +249,24 @@ def uk_local_target_loss_weights(
     *,
     rule: str,
 ) -> np.ndarray | None:
-    """Derive doctrine weights from row-grain labels, never target knobs."""
+    """Derive doctrine weights from row-grain labels, never target knobs.
+
+    Only the grain rules (``uniform``, ``grain_equal``) are computable from
+    grain labels alone; a row-metadata rule refuses here and is computed by
+    :func:`microcosm.build.uk_runtime.target_weights.uk_target_loss_weights_for_rows`.
+    """
 
     if rule not in _ALLOWED_TARGET_WEIGHT_RULES:
         raise ValueError(
             f"target_weight_rule must be one of {_ALLOWED_TARGET_WEIGHT_RULES}, "
             f"got {rule!r}."
+        )
+    if rule in UK_LOCAL_ROW_METADATA_RULES:
+        raise ValueError(
+            f"target_weight_rule {rule!r} derives from row metadata (grain, "
+            "family, geography and value basis), not grain labels alone; compute "
+            "it with microcosm.build.uk_runtime.target_weights."
+            "uk_target_loss_weights_for_rows."
         )
     if rule == "uniform":
         return None

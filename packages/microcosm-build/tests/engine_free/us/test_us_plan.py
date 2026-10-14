@@ -986,7 +986,6 @@ class TestUsSources:
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
             "packages/microcosm-build/src/microcosm/build/uk/frs_release.json",
-            "packages/microcosm-build/src/microcosm/build/uk/hmrc_income_source_stages.json",
             # The UK population contract's registry-parity accounting names the
             # retired data package by necessity: 651 rows at pinned ref ebf733c
             # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
@@ -1041,6 +1040,15 @@ class TestUsSources:
             "docs/evidence/uk-poverty-968/scripts/measure_968_basis_swap.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_poverty_audit.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_tail_profile.py",
+            # The microcosm#1191 wage-concept evidence runs the archived
+            # generator's utils/uprating.py unchanged, so it stubs that file's
+            # own package import name in sys.modules with a temp
+            # STORAGE_FOLDER. Nothing is installed, imported or fetched from
+            # the retired package.
+            (
+                "docs/evidence/us-puf-wage-concept-1191/scripts/"
+                "run_archived_uprating_loop.py"
+            ),
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []

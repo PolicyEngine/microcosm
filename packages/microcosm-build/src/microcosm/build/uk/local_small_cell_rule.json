@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "description": "Published local cells too small to bind (microcosm#1123 item 7, in the pattern of the #762 A14 band-H deferral). The local generator defers, by rule rather than by area name, every active cell of a matching target whose published value is below the rule's absolute floor; reconciliation still counts a deferred cell's value in its leg's control, so deferring it does not inflate its neighbours. The runtime refuses a deferral past its expiry. A rule defers cells only once it carries approved_by and approved_on and its status is approved: until María signs the floor the cells stay bound, and the runtime refuses a membership that defers under a rule that is unsigned or no longer in this register.",
+  "rules": [
+    {
+      "rule_id": "council_tax_band_household_floor",
+      "target_id_prefixes": [
+        "mhclg.council_tax_stock.by_area.band_",
+        "welshgov.council_tax_stock.by_area.band_",
+        "scotgov.council_tax_stock.by_area.band_"
+      ],
+      "absolute_floor": 50,
+      "reason": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "rule_id": "hmrc_rounded_thousand_floor",
+      "target_id_prefixes": [
+        "hmrc.higher_rate_taxpayers.count"
+      ],
+      "absolute_floor": 5500,
+      "reason": "HMRC publishes the SPI area cells rounded to the thousand, so a published cell can be up to 500 from its true count: up to 10% of a cell of 5,000, and up to 25% of the smallest cell, 2,000. The floor defers the cells where the rounding can reach 10%. 192 of the 919 cells sit there (155 constituencies, 37 local authorities). The deferred cell's taxpayers still count in its region's or nation's control through reconciliation.",
+      "tracking": "microcosm#1198 review (should-fix 7)",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    }
+  ]
+}
