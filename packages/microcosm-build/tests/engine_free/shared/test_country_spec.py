@@ -961,7 +961,6 @@ class TestUKCountryPackage:
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "national_staging_build_record.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -1092,7 +1091,6 @@ class TestExistingPackagesGeneralize:
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "national_staging_build_record.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -1457,7 +1455,6 @@ class TestUKGatesManifest:
             "uk_target_fit",
             "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
             "uk_local_area_support",
             "uk_local_target_fit",
@@ -1557,9 +1554,8 @@ class TestUKGatesManifest:
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:
         by_id = {gate.id: gate.gate for gate in manifest.gates}
-        # The two legacy names the bindings re-mint to the shared vocabulary.
+        # The legacy name the bindings re-mint to the shared vocabulary.
         assert by_id["uk_release_input_coverage"] == "release_input_coverage"
-        assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
         assert not any(name.startswith("uk_") for name in by_id.values())
 
     def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
@@ -1571,11 +1567,6 @@ class TestUKGatesManifest:
         )
         assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
-        assert params["uk_qrf_tail_concentration"]["top_k"] == 100
-        assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9994670564654868
-        )
-        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 104
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
@@ -1650,11 +1641,6 @@ class TestUKGatesManifest:
         assert (
             input_mass["reviewed_exclusions_resource"]
             == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
-        )
-        qrf = params["uk_qrf_tail_concentration"]
-        assert (
-            qrf["reviewed_exclusions_resource"]
-            == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
         )
         degenerate = params["uk_degenerate_release_surface"]
         assert (

@@ -156,7 +156,6 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_student_loan_plan_enum_domain",
     "uk_target_surface",
     "uk_input_mass_parity",
-    "uk_qrf_tail_concentration",
     "uk_weights_audit",
 )
 

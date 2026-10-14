@@ -36,7 +36,6 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _expired_exclusion_failure,
     _premature_exclusion_failure,
@@ -44,7 +43,6 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
-    uk_qrf_tail_concentration_gate,
 )
 
 __all__ = [
@@ -57,7 +55,6 @@ __all__ = [
     "UK_REVIEWED_EXPORT_EXCLUSIONS",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
-    "UKQRFTailConcentrationPolicy",
     "UKZeroWeightStratumDeclaration",
     "uk_default_degenerate_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
@@ -65,7 +62,6 @@ __all__ = [
     "uk_export_candidate_columns",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
-    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_weight_ess_gate",

@@ -246,7 +246,6 @@ _UK_TERMINAL_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
-    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 _UK_TERMINAL_EVIDENCE_STAGES = frozenset(
     {"release_dataset", *_UK_TERMINAL_EVIDENCE_GATE_NAMES}
@@ -266,17 +265,14 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Spec-armed weighted-integrity thresholds (uk/gates.json parameters;
-# input-mass pair from microcosm#630, QRF tail pair re-armed from the #686
-# L3 baselines by microcosm#757 B4): passing reports must carry exactly the
-# committed values,
-# so a re-signed report cannot loosen a fence the spec armed. Held in
-# lockstep with the committed spec by the build-shard sync tests.
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters; the
+# input-mass pair from microcosm#630): passing reports must carry exactly the
+# committed values, so a re-signed report cannot loosen a fence the spec
+# armed. Held in lockstep with the committed spec by the build-shard sync
+# tests. The QRF tail-concentration gate and its pins were removed in
+# microcosm#1276.
 _UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
-_UK_QRF_TAIL_TOP_K = 100
-_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9994670564654868
-_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 104
 # Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
 # uk/gates.json reference_registry["efrs-post-calibration"].identity.
@@ -399,24 +395,6 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reference_identity",
         }
     ),
-    "qrf_tail_concentration": frozenset(
-        {
-            "columns_checked",
-            "top_k",
-            "max_top_share",
-            "min_nonzero_records",
-            "top_share",
-            "carrier_counts",
-            "thin_columns",
-            "reviewed_exclusions",
-            "stale_exclusions",
-            "dormant_exclusions",
-            "expired_exclusions",
-            "premature_exclusions",
-            "exclusions_evaluated_on",
-            "surface",
-        }
-    ),
     "support": frozenset({"columns_checked"}),
 }
 
@@ -442,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "382d3d5e16bda29b5cc3d6fa1109aa2ebf210513046723e4ff7eed38b4037fec"
+    "2064661571e9fbb14a9c52b4528f7c2499b96ab22891b595e6175c3c93ea4156"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "59a94f17b2cd725ec76ab511bb433435a6ce5d7a22801f72f28a7085162bd8b7"
+    "9c4c0cd3fbe6cdd96c2de5d060e159a76e774df73e68f37e28a40d3c717577db"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7fc56fcdea81b8ddf08e18c4a3d483a76ff1533139d4f5fd1256f5e9c7fbcb13"
+    "c380aeb908c1aeead6f0324626833f8b2ce3129cc8d1a00d5a4cf92aebe4693d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -474,7 +452,6 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
-    "uk_qrf_tail_concentration": "qrf_tail_concentration",
 }
 #: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
 #: relabel an entry's identity.
@@ -573,7 +550,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "terminal",
     ),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
-    "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
     "uk_local_geography_ladder_post_calibration": (
         "spine_agreement",
         "terminal",
@@ -871,7 +847,6 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_nonnegative_columns",
             "uk_uc_capital_coherence",
             "uk_uc_deduction_combination_enum_domain",
-            "uk_qrf_tail_concentration",
             "uk_release_family_build_stages",
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
@@ -902,10 +877,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "d6adeb2e203e3abd41a8037ea42c3cda14a1a2dd97d9aa973cbd23cb72b40990"
+            "f52c34bdd959952c749f27a78e82c90e54960ce4df2bd95e2ef03a7e839bf13e"
         ),
         "policy_sha256": (
-            "af0beb1143b1e6a4d778472d5c1f568a840536bb72ff57570b73eea443df208e"
+            "55fc5ddc00073e2e55c944a2948a8105b58f4981a03b1e92c9e2c61c8d9353fa"
         ),
     },
 }
@@ -2083,7 +2058,6 @@ def _check_uk_terminal_gate_observables(
         for name in (
             "degenerate_release_surface",
             "input_mass_parity",
-            "qrf_tail_concentration",
         )
         if (details := _uk_terminal_gate_details(gates, name)) is not None
         and "exclusions_evaluated_on" in details
@@ -2248,229 +2222,6 @@ def _check_uk_terminal_gate_observables(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.premature_exclusions to be an empty list."
-            )
-
-    qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
-    if qrf_tail is not None:
-        columns_checked = qrf_tail.get("columns_checked")
-        if (
-            isinstance(columns_checked, bool)
-            or not isinstance(columns_checked, int)
-            or columns_checked <= 0
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.columns_checked to be positive."
-            )
-        top_k = qrf_tail.get("top_k")
-        valid_top_k = (
-            not isinstance(top_k, bool) and isinstance(top_k, int) and top_k >= 1
-        )
-        if not valid_top_k:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.top_k to be a positive non-boolean integer."
-            )
-        elif top_k != _UK_QRF_TAIL_TOP_K:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.top_k to equal the committed spec value "
-                f"{_UK_QRF_TAIL_TOP_K}."
-            )
-        max_top_share = qrf_tail.get("max_top_share")
-        valid_max_top_share = (
-            not isinstance(max_top_share, bool)
-            and isinstance(max_top_share, int | float)
-            and 0.0 < max_top_share < 1.0
-            and math.isfinite(max_top_share)
-        )
-        if not valid_max_top_share:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.max_top_share to be a finite non-boolean "
-                "number in (0, 1)."
-            )
-        elif not _uk_terminal_observable_matches(
-            max_top_share, _UK_QRF_TAIL_MAX_TOP_SHARE
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.max_top_share to equal the committed spec "
-                f"value {_UK_QRF_TAIL_MAX_TOP_SHARE}."
-            )
-        min_nonzero_records = qrf_tail.get("min_nonzero_records")
-        valid_min_nonzero_records_type = not isinstance(
-            min_nonzero_records, bool
-        ) and isinstance(min_nonzero_records, int)
-        valid_min_nonzero_records = (
-            valid_min_nonzero_records_type
-            and valid_top_k
-            and min_nonzero_records > top_k
-        )
-        if not valid_min_nonzero_records:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.min_nonzero_records to be a non-boolean integer "
-                "greater than details.top_k."
-            )
-        elif min_nonzero_records != _UK_QRF_TAIL_MIN_NONZERO_RECORDS:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                f"requires details.min_nonzero_records to equal the committed "
-                f"spec value {_UK_QRF_TAIL_MIN_NONZERO_RECORDS}."
-            )
-        top_share = qrf_tail.get("top_share")
-        carrier_counts = qrf_tail.get("carrier_counts")
-        thin_columns = qrf_tail.get("thin_columns")
-        if (
-            not isinstance(top_share, Mapping)
-            or not isinstance(carrier_counts, Mapping)
-            or set(top_share) != set(carrier_counts)
-            or len(top_share) != columns_checked
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "must reconcile details.columns_checked, top_share, and "
-                "carrier_counts."
-            )
-        valid_top_shares = isinstance(top_share, Mapping) and all(
-            not isinstance(share, bool)
-            and isinstance(share, int | float)
-            and 0.0 <= share <= 1.0
-            and math.isfinite(share)
-            for share in top_share.values()
-        )
-        if not valid_top_shares:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.top_share values to be finite non-boolean "
-                "numbers in [0, 1]."
-            )
-        valid_carrier_counts = isinstance(carrier_counts, Mapping) and all(
-            not isinstance(count, bool)
-            and isinstance(count, int)
-            and (not valid_min_nonzero_records_type or count >= min_nonzero_records)
-            for count in carrier_counts.values()
-        )
-        if not valid_carrier_counts:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.carrier_counts values to be non-boolean integers "
-                "at least details.min_nonzero_records."
-            )
-        valid_thin_counts = isinstance(thin_columns, Mapping) and all(
-            not isinstance(count, bool)
-            and isinstance(count, int)
-            and count >= 0
-            and (not valid_min_nonzero_records_type or count < min_nonzero_records)
-            for count in thin_columns.values()
-        )
-        if not valid_thin_counts:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.thin_columns values to be non-boolean integers "
-                "in [0, details.min_nonzero_records)."
-            )
-        reviewed_exclusions = qrf_tail.get("reviewed_exclusions")
-        valid_reviewed_exclusions = isinstance(reviewed_exclusions, Mapping) and all(
-            isinstance(name, str)
-            and bool(name.strip())
-            and isinstance(reason, str)
-            and bool(reason.strip())
-            for name, reason in reviewed_exclusions.items()
-        )
-        if not valid_reviewed_exclusions:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.reviewed_exclusions to map non-empty column "
-                "names to non-empty string reasons."
-            )
-        elif valid_top_shares and valid_max_top_share:
-            high_share_columns = {
-                name for name, share in top_share.items() if share > max_top_share
-            }
-            if high_share_columns != set(reviewed_exclusions):
-                failures.append(
-                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                    "requires columns above details.max_top_share to match "
-                    "details.reviewed_exclusions exactly."
-                )
-        if qrf_tail.get("expired_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.expired_exclusions to be an empty list."
-            )
-        if qrf_tail.get("premature_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.premature_exclusions to be an empty list."
-            )
-        surface = qrf_tail.get("surface")
-        if not isinstance(surface, Mapping):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.surface to be an object."
-            )
-        else:
-            for field in ("absent_columns", "non_numeric_columns"):
-                if surface.get(field) != []:
-                    failures.append(
-                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                        f"concentration requires details.surface.{field} to "
-                        "be empty."
-                    )
-            declared_count = surface.get("declared_qrf_outputs")
-            classified = {
-                field: surface.get(field)
-                for field in (
-                    "checked_columns",
-                    "absent_columns",
-                    "non_numeric_columns",
-                )
-            }
-            if (
-                isinstance(declared_count, bool)
-                or not isinstance(declared_count, int)
-                or declared_count <= 0
-                or not isinstance(thin_columns, Mapping)
-                or any(
-                    not isinstance(names, list)
-                    or any(not isinstance(name, str) or not name for name in names)
-                    for names in classified.values()
-                )
-            ):
-                failures.append(
-                    f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                    "concentration must carry a positive declared output "
-                    "count, thin-columns object, and three column-name lists."
-                )
-            elif isinstance(top_share, Mapping):
-                checked = set(classified["checked_columns"])
-                absent = set(classified["absent_columns"])
-                non_numeric = set(classified["non_numeric_columns"])
-                all_lists = [
-                    *classified["checked_columns"],
-                    *classified["absent_columns"],
-                    *classified["non_numeric_columns"],
-                ]
-                accounted = checked | absent | non_numeric
-                gate_accounted = set(top_share) | set(thin_columns)
-                if (
-                    len(all_lists) != len(accounted)
-                    or declared_count != len(accounted)
-                    or set(top_share) & set(thin_columns)
-                    or accounted != gate_accounted
-                    or checked != gate_accounted - absent - non_numeric
-                ):
-                    failures.append(
-                        f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail "
-                        "concentration must reconcile declared, checked, "
-                        "absent, nonnumeric, checked-tail, and thin outputs."
-                    )
-        if qrf_tail.get("stale_exclusions") != []:
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
-                "requires details.stale_exclusions to be an empty list."
             )
 
     export = _uk_terminal_gate_details(gates, "export_surface")

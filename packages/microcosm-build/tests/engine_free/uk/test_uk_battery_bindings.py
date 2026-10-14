@@ -60,7 +60,7 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: 2026-10-21, the same entries) so the suite never drifts across an approval
 #: or expiry boundary. Move it forward when a register gains a later approval.
 # The committed registers are evaluated as of this date; the microcosm#1063
-# c9 input-mass and QRF-tail entries take force on 2026-10-02, the
+# c9 input-mass entries take force on 2026-10-02, the
 # microcosm#1095 UC payment-band measure exclusions on 2026-10-07 (its West
 # Midlands target-fit deferral is retired with microcosm#1106), and the
 # microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
@@ -976,9 +976,6 @@ class TestBatteryRegressions:
         # path over distinct sub-exempt gains that never cross the exempt
         # amount.
         assert len(passed) == 20
-        qrf = by_id["uk_qrf_tail_concentration"]
-        assert qrf.status is GateStatus.FAILED
-        assert "declared QRF output is absent" in qrf.result.failures[0]
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -1074,7 +1071,6 @@ class TestUnevidencedArms:
         }
         assert default_blocked == {
             "uk_local_geography_ladder_post_calibration",
-            "uk_qrf_tail_concentration",
             "uk_weights_audit",
             # The #970 projection fence cannot be skipped in any posture.
             "uk_cgt_projection_entrants",
@@ -1085,7 +1081,6 @@ class TestUnevidencedArms:
         assert blocked == {
             *set(absent),
             "uk_local_geography_ladder_post_calibration",
-            "uk_qrf_tail_concentration",
         }
 
     def test_absent_fit_evidence_is_named(self) -> None:
@@ -1110,7 +1105,6 @@ class TestExclusionDiscipline:
     EXCLUSION_GATES = (
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
-        "uk_qrf_tail_concentration",
     )
 
     def test_every_exclusion_gate_shares_the_injected_clock(self) -> None:
@@ -1153,7 +1147,6 @@ class TestExclusionDiscipline:
         assert {
             "uk_degenerate_release_surface",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
         } <= failed
 
     def test_review_override_is_loud_in_the_evidence_payload(self) -> None:
@@ -1248,19 +1241,14 @@ class TestExclusionDiscipline:
             assert outcome.status is GateStatus.FAILED
 
     def test_an_unknown_release_line_is_refused(self) -> None:
-        binding = UK_GATE_REGISTRY["tail_concentration"]
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
         context = EvidenceContext(
             artifacts={"exclusions_evaluated_on": CLOCK, "release_line": "regional"}
         )
         with pytest.raises(ValueError, match="release_line must be one of"):
             binding.evaluate(
                 context,
-                {
-                    "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
-                    "top_k": 1,
-                    "max_top_share": 0.5,
-                    "min_nonzero_records": 2,
-                },
+                {"reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"},
             )
 
     def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
@@ -1836,24 +1824,24 @@ class TestParameterVocabulary:
 class TestBindingUnits:
     def test_only_the_declared_legacy_name_is_reminted(self) -> None:
         binding = UKGateBinding(
-            name="tail_concentration",
+            name="release_input_coverage",
             evaluator=lambda context, parameters: GateResult(
-                name="qrf_tail_concentration", passed=True, details={}
+                name="uk_release_input_coverage", passed=True, details={}
             ),
-            legacy_name="qrf_tail_concentration",
+            legacy_name="uk_release_input_coverage",
         )
         result = binding.evaluate(EvidenceContext(), {})
-        assert result.name == "tail_concentration"
+        assert result.name == "release_input_coverage"
 
         impostor = UKGateBinding(
-            name="tail_concentration",
+            name="release_input_coverage",
             evaluator=lambda context, parameters: GateResult(
                 name="weight_ess", passed=True, details={}
             ),
-            legacy_name="qrf_tail_concentration",
+            legacy_name="uk_release_input_coverage",
         )
         checked = _evaluate_gate(
-            "tail_concentration",
+            "release_input_coverage",
             lambda: impostor.evaluate(EvidenceContext(), {}),
         )
         assert checked.passed is False
