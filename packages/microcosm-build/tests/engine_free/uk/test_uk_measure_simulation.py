@@ -38,6 +38,24 @@ class FrameStub:
         return self._tables[entity]
 
 
+class ReleaseIdentifierFrameStub(FrameStub):
+    """The stub on the identifiers a release carries: one plus the rank per
+    entity (microcosm#1194), which a scratch engine file leaves as they are."""
+
+    def __init__(self):
+        self._tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_benunit_id": [1, 1, 2],
+                    "person_household_id": [1, 1, 2],
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": [1, 2]}),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+        }
+
+
 def _stub_value_type(values):
     """The policyengine ``value_type`` a real variable definition would carry."""
 
@@ -902,7 +920,7 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
         lambda frame, path: writes.append((frame, path)) or path,
     )
 
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     direct = UKMeasureResolver(
         simulation_source=tmp_path / "input.h5",
         scratch_dir=tmp_path,
@@ -919,7 +937,8 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
     assert scratch.receipt()["mode"] == "scratch_frame_export"
-    # A frame carrying no export-dropped column is written as it is.
+    # A frame carrying no export-dropped column, already on the release's
+    # identifiers, is written as it is.
     assert "engine_scratch_dropped_columns" not in scratch.receipt()
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [
@@ -1300,7 +1319,9 @@ def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
     assert not set(aliases) & set(written.columns)
     assert not written.isna().any().any()
     assert written["oa_code"].tolist() == ["E00000001", "S00090001", "N00000101"]
-    assert written["household_id"].tolist() == [100, 200, 300]
+    # The engine file carries the release's identifiers (microcosm#1194); the
+    # resolver's own frame keeps the build's.
+    assert written["household_id"].tolist() == [1, 2, 3]
     # The resolver's own frame is untouched; only the engine's copy changed.
     pd.testing.assert_frame_equal(frame.table("household"), before)
     assert resolver.frame is frame
@@ -1329,7 +1350,7 @@ def test_scratch_engine_input_without_aliases_is_the_frame_itself(
         "write_uk_national_frame",
         lambda frame, path: writes.append(frame) or path,
     )
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     resolver = UKMeasureResolver(
         simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
     )
@@ -1380,6 +1401,92 @@ def _tiny_national_frame(weights):
     )
 
 
+def _tiny_release_identifier_frame(weights):
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+
+    released = uk_release_export_frame(_tiny_national_frame(weights))
+    # The engine file carries no build-identifier column: a frame whose own
+    # identifiers are already the release's.
+    tables = {
+        entity: released.table(entity).drop(columns=[f"{entity}_build_id"])
+        for entity in ("person", "benunit", "household")
+    }
+    return uk_national_frame(
+        **tables,
+        time_period="2024",
+        weight_kind=released.weights_for("household").kind,
+        household_weights=released.weights_for("household").values,
+        mass_log=released.mass_log,
+    )
+
+
+def test_engine_scratch_frame_carries_the_release_identifiers():
+    """microcosm#1194: policyengine-uk keys a person's birth month on
+    ``person_id``, so the solve's engine file carries the identifiers the
+    release will: one plus the rank of the build identifier."""
+    frame = _tiny_national_frame([250.0, 125.0])
+
+    engine_frame, dropped = measure_simulation._engine_scratch_frame(frame)
+
+    assert dropped == ()
+    assert engine_frame.table("person")["person_id"].tolist() == [1, 2, 3, 4]
+    assert engine_frame.table("person")["person_benunit_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("person")["person_household_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("benunit")["benunit_id"].tolist() == [1, 2]
+    assert engine_frame.table("household")["household_id"].tolist() == [1, 2]
+    # No build-identifier column goes to the engine, and nothing else moves.
+    for entity in ("person", "benunit", "household"):
+        assert f"{entity}_build_id" not in engine_frame.table(entity).columns
+        assert list(engine_frame.table(entity).columns) == list(
+            frame.table(entity).columns
+        )
+    assert engine_frame.table("person")["age"].tolist() == [35, 8, 40, 38]
+    np.testing.assert_array_equal(
+        engine_frame.weights_for("household").values,
+        frame.weights_for("household").values,
+    )
+    assert engine_frame.mass_log == frame.mass_log
+    # The resolver's own frame keeps the build identifiers.
+    assert frame.table("household")["household_id"].tolist() == [100, 200]
+
+
+def test_engine_scratch_block_takes_its_identifiers_from_the_whole_frame():
+    """A per-clone block's rows carry the identifiers they have in the release,
+    which numbers the whole frame, not the block."""
+    whole = _tiny_national_frame([250.0, 125.0])
+    block = whole.select(whole.table("person")["person_household_id"].eq(200))
+
+    alone, _ = measure_simulation._engine_scratch_frame(block)
+    in_whole, _ = measure_simulation._engine_scratch_frame(
+        block, identifier_universe=whole
+    )
+
+    assert alone.table("person")["person_id"].tolist() == [1, 2]
+    assert in_whole.table("person")["person_id"].tolist() == [3, 4]
+    assert in_whole.table("person")["person_household_id"].tolist() == [2, 2]
+    assert in_whole.table("benunit")["benunit_id"].tolist() == [2]
+    assert in_whole.table("household")["household_id"].tolist() == [2]
+
+
+def test_an_identifier_universe_needs_scratch_mode(tmp_path, monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="identifier universe needs scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=FrameStub(),
+            engine_identifier_universe=FrameStub(),
+        )
+
+
 def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     frame = _tiny_national_frame([250.0, 125.0])
     before = frame.weights_for("household").values.copy()
@@ -1404,11 +1511,13 @@ def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     assert record.reason == measure_simulation.ENGINE_WEIGHT_SCALE_REASON
     # the resolver's own frame keeps the block's true mass
     np.testing.assert_array_equal(frame.weights_for("household").values, before)
-    # no scale (or a unit scale) on an alias-free frame: the frame itself
-    assert measure_simulation._engine_scratch_frame(frame)[0] is frame
+    # no scale (or a unit scale) on an alias-free frame already on the
+    # release's identifiers: the frame itself
+    released = _tiny_release_identifier_frame([250.0, 125.0])
+    assert measure_simulation._engine_scratch_frame(released)[0] is released
     assert (
-        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=1.0)[0]
-        is frame
+        measure_simulation._engine_scratch_frame(released, engine_weight_scale=1.0)[0]
+        is released
     )
     with pytest.raises(ValueError, match="positive finite"):
         measure_simulation._engine_scratch_frame(frame, engine_weight_scale=0.0)

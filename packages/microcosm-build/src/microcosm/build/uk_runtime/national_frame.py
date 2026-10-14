@@ -568,6 +568,8 @@ def _uk_mapped_identifiers(
 
 def uk_release_identifier_tables(
     tables: Mapping[str, pd.DataFrame],
+    *,
+    universe: Mapping[str, pd.DataFrame] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """The three tables with identifiers inside the engine's range (microcosm#1194).
 
@@ -577,38 +579,51 @@ def uk_release_identifier_tables(
     table's two memberships map through the same arrays. The build identifier
     stays beside each release identifier (``UK_BUILD_IDENTIFIER_COLUMNS``).
 
+    ``universe`` is the tables the release holds when ``tables`` are a subset
+    of their rows (a per-clone engine block): the rank is then taken in the
+    universe, so each row gets the identifier it has in the release.
+
     Idempotent: tables that already carry the build identifiers are returned
     as they are.
     """
 
     if _uk_build_identifier_state(tables):
         return dict(tables)
+    whole = tables if universe is None else universe
     result: dict[str, pd.DataFrame] = {}
-    build: dict[str, np.ndarray] = {}
-    release: dict[str, np.ndarray] = {}
+    whole_build: dict[str, np.ndarray] = {}
+    whole_release: dict[str, np.ndarray] = {}
     for entity, column in _UK_ENTITY_IDENTIFIER_COLUMNS.items():
-        table = tables[entity]
-        build[entity] = table[column].to_numpy(dtype=np.int64)
-        order = np.argsort(build[entity], kind="stable")
-        ordered = build[entity][order]
+        whole_build[entity] = whole[entity][column].to_numpy(dtype=np.int64)
+        order = np.argsort(whole_build[entity], kind="stable")
+        ordered = whole_build[entity][order]
         if len(ordered) > 1 and (ordered[1:] == ordered[:-1]).any():
             raise ValueError(f"UK {entity} identifiers are not unique.")
-        release[entity] = np.empty(len(order), dtype=np.int64)
-        release[entity][order] = np.arange(1, len(order) + 1, dtype=np.int64)
+        whole_release[entity] = np.empty(len(order), dtype=np.int64)
+        whole_release[entity][order] = np.arange(1, len(order) + 1, dtype=np.int64)
+        table = tables[entity]
+        build = table[column].to_numpy(dtype=np.int64)
+        release = (
+            whole_release[entity]
+            if universe is None
+            else _uk_mapped_identifiers(
+                build, whole_build[entity], whole_release[entity], label=entity
+            )
+        )
         renumbered = table.copy()
-        renumbered[column] = release[entity].astype(table[column].dtype)
+        renumbered[column] = release.astype(table[column].dtype)
         renumbered.insert(
             renumbered.columns.get_loc(column) + 1,
             UK_BUILD_IDENTIFIER_COLUMNS[entity],
-            build[entity],
+            build,
         )
         result[entity] = renumbered
     person = result["person"]
     for entity, column in _UK_PERSON_MEMBERSHIP_COLUMNS.items():
         person[column] = _uk_mapped_identifiers(
             person[column].to_numpy(dtype=np.int64),
-            build[entity],
-            release[entity],
+            whole_build[entity],
+            whole_release[entity],
             label=entity,
         ).astype(tables["person"][column].dtype)
     return result

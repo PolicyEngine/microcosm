@@ -27,8 +27,10 @@ from microcosm.build.uk_runtime.income_tax_rate_classes import (
     relief_by_rate_class,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    UK_BUILD_IDENTIFIER_COLUMNS,
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     load_uk_national_frame,
+    uk_release_identifier_tables,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
@@ -364,8 +366,41 @@ ENGINE_WEIGHT_SCALE_REASON = (
 )
 
 
+def _release_identifier_tables(
+    tables: Mapping[str, pd.DataFrame], universe: Any | None
+) -> dict[str, pd.DataFrame] | None:
+    """The engine tables on the release's identifiers, or None if they already are.
+
+    The build identifiers the release keeps beside them are not engine inputs
+    and do not go to the scratch file.
+    """
+
+    whole = (
+        None
+        if universe is None
+        else {entity: universe.table(entity) for entity in UK_BUILD_IDENTIFIER_COLUMNS}
+    )
+    released = uk_release_identifier_tables(
+        {entity: tables[entity] for entity in UK_BUILD_IDENTIFIER_COLUMNS},
+        universe=whole,
+    )
+    result = {}
+    changed = False
+    for entity, carrier in UK_BUILD_IDENTIFIER_COLUMNS.items():
+        if carrier in tables[entity].columns:
+            # Already on release identifiers (a loaded release): leave it.
+            return None
+        table = released[entity].drop(columns=[carrier])
+        changed = changed or not table.equals(tables[entity])
+        result[entity] = table
+    return result if changed else None
+
+
 def _engine_scratch_frame(
-    frame: Any, *, engine_weight_scale: float | None = None
+    frame: Any,
+    *,
+    engine_weight_scale: float | None = None,
+    identifier_universe: Any | None = None,
 ) -> tuple[Any, tuple[str, ...]]:
     """The frame a scratch-mode engine loads, and the columns it leaves behind.
 
@@ -391,7 +426,16 @@ def _engine_scratch_frame(
     the pool's and the formula is exact for identical clone copies. The
     scaling is declared on the engine frame's mass log.
 
-    A frame carrying none of those columns and no scale is returned as is.
+    The identifiers leave as the release's too (microcosm#1194,
+    ``national_frame.uk_release_identifier_tables``): policyengine-uk stores
+    them as 32-bit integers and keys a person's birth month on ``person_id``,
+    so a solve measured on other identifiers fits a deal of birth dates the
+    released file does not have. ``identifier_universe`` is the whole frame
+    when this one is a per-clone block of it, so a block's rows take the
+    identifiers they have in the release. The resolver's own frame keeps the
+    build identifiers.
+
+    A frame that needs none of this is returned as is.
     """
 
     trimmed: dict[str, pd.DataFrame] = {}
@@ -405,7 +449,22 @@ def _engine_scratch_frame(
     scale = None if engine_weight_scale is None else float(engine_weight_scale)
     if scale is not None and not (np.isfinite(scale) and scale > 0.0):
         raise ValueError("engine weight scale must be a positive finite factor.")
-    if not trimmed and kept is household and (scale is None or scale == 1.0):
+    renumbered = _release_identifier_tables(
+        {
+            **{
+                entity: trimmed.get(entity, frame.table(entity))
+                for entity in UK_BUILD_IDENTIFIER_COLUMNS
+            },
+            "household": kept,
+        },
+        identifier_universe,
+    )
+    if (
+        not trimmed
+        and kept is household
+        and renumbered is None
+        and (scale is None or scale == 1.0)
+    ):
         return frame, ()
     dropped = tuple(
         column
@@ -416,6 +475,8 @@ def _engine_scratch_frame(
     tables = {name: frame.table(name) for name in frame.entities}
     tables.update(trimmed)
     tables["household"] = kept
+    if renumbered is not None:
+        tables.update(renumbered)
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
     mass_log = frame.mass_log
     if scale is not None and scale != 1.0:
@@ -460,6 +521,7 @@ class UKMeasureResolver:
         frame: Any,
         microsimulation_factory: Any | None = None,
         engine_weight_scale: float | None = None,
+        engine_identifier_universe: Any | None = None,
     ):
         self.year = int(year)
         self._engine_weight_scale = (
@@ -477,7 +539,9 @@ class UKMeasureResolver:
             scratch_dir.mkdir(parents=True, exist_ok=True)
             source_path = scratch_dir / "simulation-input.h5"
             engine_frame, dropped = _engine_scratch_frame(
-                frame, engine_weight_scale=self._engine_weight_scale
+                frame,
+                engine_weight_scale=self._engine_weight_scale,
+                identifier_universe=engine_identifier_universe,
             )
             write_uk_national_frame(engine_frame, source_path)
             mode = "scratch_frame_export"
@@ -486,6 +550,11 @@ class UKMeasureResolver:
                 raise ValueError(
                     "engine weight scaling needs scratch-mode resolution; a direct "
                     "H5 source carries its own weights."
+                )
+            if engine_identifier_universe is not None:
+                raise ValueError(
+                    "an identifier universe needs scratch-mode resolution; a direct "
+                    "H5 source carries its own identifiers."
                 )
             dropped = ()
             source_path = Path(simulation_source)
