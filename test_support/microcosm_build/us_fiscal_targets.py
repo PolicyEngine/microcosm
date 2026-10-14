@@ -548,7 +548,7 @@ def _soi_eitc_filing_season_agi_fact(
     measure_id: str,
     value: float,
     income_range: str,
-    lower: float,
+    lower: float | None,
     upper: float | None,
     geography_level: str = "country",
     geography_id: str = "0100000US",
@@ -557,13 +557,15 @@ def _soi_eitc_filing_season_agi_fact(
         f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{income_range}.{measure_id}"
     )
     suffix = "count" if measure_id.endswith("_returns") else "amount"
-    constraints: list[dict[str, object]] = [
-        {
-            "variable": "adjusted_gross_income",
-            "operator": ">=",
-            "value": lower,
-        }
-    ]
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
     if upper is not None:
         constraints.append(
             {
@@ -640,16 +642,18 @@ def _soi_eitc_child_fact(
     value: float,
     income_range: str = "25k_to_30k",
     child_group: str = "one_qualifying_child",
-    lower: float = 25_000,
+    lower: float | None = 25_000,
     upper: float | None = 30_000,
 ) -> dict[str, object]:
-    constraints: list[dict[str, object]] = [
-        {
-            "variable": "adjusted_gross_income",
-            "operator": ">=",
-            "value": lower,
-        }
-    ]
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
     if upper is not None:
         constraints.append(
             {
