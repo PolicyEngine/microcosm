@@ -1933,7 +1933,9 @@ def finalize_us_puf_tax_detail_predictions(
     rewrites are scoped to the PUF clone arm so no boundary converts absence
     into an observed zero.  The donor-rate sparsification is scoped to the
     PUF clone arm under both policies, so it never rewrites a source-observed
-    cell on another arm.
+    cell on another arm.  Bases built before that scoping (for example
+    ``5d8a3162…``, behind the 2024 releases) pruned the ASEC arm's reported
+    taxable interest too, so the legacy policy no longer reproduces them.
     """
 
     if absent_cells not in _PUF_ABSENT_CELLS_POLICIES:
@@ -3972,6 +3974,13 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         (tax_unit_clone_index is None) == (tax_unit_channel is None)
     ):
         raise ValueError("Provide exactly one person and tax-unit support role column.")
+    if (person_clone_index is None) != (tax_unit_clone_index is None):
+        # One PUF role value selects both entities' rows; mixed role kinds
+        # would match no person row and silently write nothing.
+        raise ValueError(
+            "Person and tax-unit support roles must both be clone indices or "
+            "both be channels."
+        )
     person_role_column = (
         person_clone_index if person_clone_index is not None else person_channel
     )
