@@ -366,6 +366,14 @@ seed_site_bindings:
   owners:
   - kind: pipeline_operation
     id: prepare_stacked_tail_derivation
+- site: retirement_contributions_cps_joint_draw
+  owners:
+  - kind: source_stage
+    id: retirement_contributions
+- site: retirement_contributions_puf_joint_draw
+  owners:
+  - kind: source_stage
+    id: retirement_contributions
 - site: torch_calibration_reseed
   owners:
   - kind: pipeline_operation
@@ -382,14 +390,6 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: childcare_inputs
-- site: retirement_contributions_cps_joint_draw
-  owners:
-  - kind: source_stage
-    id: retirement_contributions
-- site: retirement_contributions_puf_joint_draw
-  owners:
-  - kind: source_stage
-    id: retirement_contributions
 - site: disability_benefits_training_cap
   owners:
   - kind: source_stage
