@@ -62,6 +62,7 @@ from microcosm.build.gates import (
     nonconstant_columns_gate,
     observed_value_counts,
     parity_gate,
+    single_record_concentration,
     tail_concentration_gate,
     target_fit_gate,
     target_profile_coverage_gate,
@@ -7956,6 +7957,15 @@ def _qrf_tail_concentration_gate(
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
     the release artifact and the ``--dry-run-gates-report`` certainty model.
+
+    The surface also measures every numeric output, dense and thin ones
+    included, with :func:`microcosm.build.gates.single_record_concentration`:
+    the largest single record's share of the column's weighted absolute mass
+    and that record's weight, next to the top-k share. It is reported only and
+    never changes the gate's verdict. A dense output whose entity's weights do
+    not resolve is listed under ``unmeasured`` with the reason; the gate never
+    resolves weights for dense outputs, so the measurement cannot raise where
+    the gate would not.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -7965,7 +7975,10 @@ def _qrf_tail_concentration_gate(
     non_numeric: list[str] = []
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
+    single_record: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
     entity_weights: dict[str, np.ndarray] = {}
+    weight_errors: dict[str, str] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -7983,6 +7996,22 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
+            if entity not in entity_weights and entity not in weight_errors:
+                try:
+                    entity_weights[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                except ValueError as error:
+                    weight_errors[entity] = f"{type(error).__name__}: {error}"
+            if entity in weight_errors:
+                unmeasured[column] = weight_errors[entity]
+            else:
+                single_record[column] = single_record_concentration(
+                    array,
+                    entity_weights[entity],
+                    top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+                )
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -7990,6 +8019,11 @@ def _qrf_tail_concentration_gate(
             )
         values[column] = array
         weights[column] = entity_weights[entity]
+        single_record[column] = single_record_concentration(
+            array,
+            entity_weights[entity],
+            top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+        )
     gate = tail_concentration_gate(
         values,
         weights,
@@ -8007,6 +8041,11 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
         "nonzero_shares": nonzero_shares,
         "nonzero_records": nonzero_records,
+        "single_record_concentration": {
+            "top_k": US_QRF_TAIL_CONCENTRATION_TOP_K,
+            "columns": single_record,
+            "unmeasured": unmeasured,
+        },
     }
     return gate, surface
 
@@ -8108,9 +8147,9 @@ def _record_qrf_tail_concentration_gate(
     flag says) to ``terminal_gate_failures``, so the batched pre-export raise
     refuses the run with the #568 weight sidecar on disk. Whenever the gate
     evaluated, ``qrf_tail_concentration.json`` is written with the per-column
-    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
-    escapes: it propagates on an otherwise-clean run and becomes one unowned
-    failure line under earlier failures.
+    shares, carrier counts, single-record shares, and the mismatch. Only a
+    genuine evaluation crash escapes: it propagates on an otherwise-clean run
+    and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.

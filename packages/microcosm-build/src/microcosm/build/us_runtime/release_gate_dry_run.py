@@ -94,7 +94,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal, get_args
 
 from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
@@ -485,6 +485,9 @@ class TailColumnDryRun:
     top_share: float | None = None
     nonzero_share: float | None = None
     carriers: int | None = None
+    # Reported only: no class or verdict reads the largest record's share.
+    top_1_share: float | None = None
+    top_1_weight: float | None = None
 
     @property
     def status(self) -> PreflightStatus:
@@ -514,6 +517,8 @@ class TailColumnDryRun:
             "top_share_at_base_weights": self.top_share,
             "nonzero_share": self.nonzero_share,
             "carriers_at_base_weights": self.carriers,
+            "top_1_share_at_base_weights": self.top_1_share,
+            "top_1_weight_at_base_weights": self.top_1_weight,
         }
 
 
@@ -749,7 +754,10 @@ def qrf_tail_register_check(
         qrf_outputs: ``_qrf_imputed_source_outputs()``.
         register: The loaded per-run register (column -> reason).
         surface: The surface dict from ``_qrf_tail_concentration_gate``, which
-            must carry ``nonzero_shares`` and ``nonzero_records``.
+            must carry ``nonzero_shares`` and ``nonzero_records``. Its
+            ``single_record_concentration`` block, when present, gives each
+            row the largest single record's share and weight at base weights.
+            They are reported only; no class or verdict reads them.
         gate_details: That call's gate details.
         release_lines_at_base_weights: The lines the release would append at
             these weights.
@@ -787,6 +795,9 @@ def qrf_tail_register_check(
         str(k): int(v) for k, v in dict(gate_details["thin_columns"]).items()
     }
     top_share = {str(k): float(v) for k, v in gate_details["top_share"].items()}
+    single_record = dict(
+        dict(surface.get("single_record_concentration", {})).get("columns", {})
+    )
 
     rows: list[TailColumnDryRun] = []
     owners: dict[str, str] = {}
@@ -797,21 +808,26 @@ def qrf_tail_register_check(
         owner = evidence_owner(column) if evidence_owner is not None else None
         if owner is not None:
             owners[column] = owner
+        measured = dict(single_record.get(column, {}))
         rows.append(
-            classify_tail_column(
-                column,
-                base_class=base_class,
-                in_register=column in register,
-                allow_concentration=allow_concentration,
-                top_share=top_share.get(column),
-                nonzero_share=nonzero_shares.get(column),
-                carriers=carriers,
-                support_fixed=support_fixed,
-                margins=margins,
-                max_top_share=float(gate["max_top_share"]),
-                sparse_nonzero_share_max=float(gate["sparse_nonzero_share_max"]),
-                min_nonzero_records=int(gate["min_nonzero_records"]),
-                evidence_owned=owner is not None,
+            replace(
+                classify_tail_column(
+                    column,
+                    base_class=base_class,
+                    in_register=column in register,
+                    allow_concentration=allow_concentration,
+                    top_share=top_share.get(column),
+                    nonzero_share=nonzero_shares.get(column),
+                    carriers=carriers,
+                    support_fixed=support_fixed,
+                    margins=margins,
+                    max_top_share=float(gate["max_top_share"]),
+                    sparse_nonzero_share_max=float(gate["sparse_nonzero_share_max"]),
+                    min_nonzero_records=int(gate["min_nonzero_records"]),
+                    evidence_owned=owner is not None,
+                ),
+                top_1_share=measured.get("top_1_share"),
+                top_1_weight=measured.get("top_1_weight"),
             )
         )
 
