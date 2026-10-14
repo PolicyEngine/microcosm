@@ -1666,20 +1666,17 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        # microcosm#1240 adds 2,679 high-value homes cells (575 constituencies
-        # and 318 authorities in England and Wales, three thresholds), six of
-        # them deferred by the two micro-authorities' support floor.
-        assert result.details["candidate_targets"] == 24_477
-        assert result.details["reference_targets"] == 26_065
-        # Only the 1,582 signed area deferrals and absences remain (2,100
+        assert result.details["candidate_targets"] == 21_596
+        assert result.details["reference_targets"] == 23_386
+        # Only the 1,790 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
-        # adds the three higher rate taxpayer gaps); the 1,011 household rows
-        # are ordinary Chronicle-compiled references. The small-cell rules
-        # are unsigned, so they defer nothing yet: signing them moves these
-        # counts with the regenerated references.
+        # adds the three higher rate taxpayer gaps; microcosm#1278 signs the
+        # two small-cell rules, which defer 16 council-tax band cells and 192
+        # higher-rate cells); the 1,011 household rows are ordinary
+        # Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_588
+        assert len(exclusions) == 1_790
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

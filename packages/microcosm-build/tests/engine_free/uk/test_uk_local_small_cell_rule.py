@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import date
 from importlib import resources as importlib_resources
 
@@ -13,6 +14,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     uk_small_cell_deferred_cells,
     uk_small_cell_rule_is_signed,
 )
+from microcosm.build.uk_runtime.uprating_holds import UK_HOLD_EXPIRY_NOTICE_DAYS
 from tools.generate_uk_local_target_references import _small_cell_deferrals
 
 
@@ -185,3 +187,61 @@ def test_an_expired_deferral_is_refused_at_its_review_date():
     assert_uk_local_deferrals_in_force(membership, date(2027, 4, 1), rules=rules)
     with pytest.raises(ValueError, match="expired"):
         assert_uk_local_deferrals_in_force(membership, date(2027, 4, 2), rules=rules)
+
+
+def _committed(resource: str):
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(resource)
+        .read_text(encoding="utf-8")
+    )
+
+
+def test_every_committed_rule_is_signed():
+    # An unsigned rule defers nothing, so a proposed rule left in the register
+    # would leave the cells it names bound without a word. Both rules were
+    # signed on 2026-10-14 (microcosm#1278).
+    rules = _committed("local_small_cell_rule.json")["rules"]
+    assert [
+        rule["rule_id"] for rule in rules if not uk_small_cell_rule_is_signed(rule)
+    ] == []
+
+
+def test_no_committed_rule_is_about_to_lapse():
+    # A clock on purpose, as for the uprating holds: every UK build refuses a
+    # deferral after its rule's expiry, and feed-backed compiles are skipped in
+    # CI, so this fails UK_HOLD_EXPIRY_NOTICE_DAYS days before the earliest
+    # expiry, while the builds still pass. Clear it by a new review and
+    # signature in uk/local_small_cell_rule.json.
+    earliest = min(
+        date.fromisoformat(rule["expires_on"])
+        for rule in _committed("local_small_cell_rule.json")["rules"]
+    )
+    days_left = (earliest - date.today()).days
+    assert days_left > UK_HOLD_EXPIRY_NOTICE_DAYS, (
+        f"A UK small-cell rule expires on {earliest.isoformat()}, in {days_left} "
+        "day(s); every UK build refuses its deferrals from the next day."
+    )
+
+
+def test_the_committed_membership_defers_each_rules_cells():
+    # The regenerated references carry the signed rules' deferrals: the
+    # council-tax band cells under 50 dwellings (band G 3, band H 7, band I 6)
+    # and the higher rate taxpayer cells HMRC publishes at 5,000 or fewer.
+    cells: dict[str, Counter] = {}
+    for deferral in _committed("local_target_reference_membership.json")[
+        "signed_deferrals"
+    ]:
+        if deferral["reason_id"] in {
+            "council_tax_band_household_floor",
+            "hmrc_rounded_thousand_floor",
+        }:
+            cells.setdefault(deferral["reason_id"], Counter())[
+                deferral["geography_level"]
+            ] += len(deferral["area_ids"])
+    assert cells == {
+        "council_tax_band_household_floor": Counter({"local_authority": 16}),
+        "hmrc_rounded_thousand_floor": Counter(
+            {"constituency": 155, "local_authority": 37}
+        ),
+    }
