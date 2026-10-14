@@ -2067,6 +2067,31 @@ class TestEnumDomainResolution:
             )
 
 
+def test_the_area_support_flag_reads_the_declared_floors() -> None:
+    from microcosm.build.uk_runtime.battery_bindings import (
+        uk_area_support_below_floor,
+        uk_area_support_floors,
+    )
+
+    entry = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = uk_area_support_floors()
+    assert floors == {key: entry.parameters[key] for key in floors}
+    support = pd.DataFrame(
+        {
+            "geography_level": ["local_authority", "local_authority"],
+            "area_code": ["A", "B"],
+            "nonzero_households": [floors["minimum_rows"], floors["minimum_rows"] - 1],
+            "effective_sample_size": [floors["minimum_effective_sample_size"]] * 2,
+            "nonzero_source_households": [floors["minimum_distinct_sources"]] * 2,
+        }
+    )
+    assert uk_area_support_below_floor(support).tolist() == [False, True]
+
+
 class TestCouncilTaxBandDomain:
     """Each household's band must be one its nation uses (microcosm#1278)."""
 

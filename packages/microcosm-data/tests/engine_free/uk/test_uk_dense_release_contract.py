@@ -708,3 +708,31 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
     failures = _failures(release_dir)
     assert "original candidate approvals" in failures
     assert "expired 2026-10-03" in failures
+
+
+def test_the_area_support_block_names_only_excused_areas() -> None:
+    excused = [{"id": "area_support_exclusion:local_authority/E06000053"}]
+    failures: list[str] = []
+    dc._check_area_support_block(
+        {
+            "gate": "uk_local_area_support",
+            "floors": {"minimum_rows": 50},
+            "below_floor": {"local_authority": ["E06000053"]},
+        },
+        excused,
+        failures,
+    )
+    assert failures == []
+
+    failures = []
+    dc._check_area_support_block(
+        {"below_floor": {"local_authority": ["E09000001"]}, "rows": {"E09000001": 3}},
+        excused,
+        failures,
+    )
+    assert any("holds area codes and the floors only" in f for f in failures)
+    assert any("without a reviewed area_support_exclusion" in f for f in failures)
+
+    failures = []
+    dc._check_area_support_block({"below_floor": ["E06000053"]}, excused, failures)
+    assert any("must map each geography level" in f for f in failures)

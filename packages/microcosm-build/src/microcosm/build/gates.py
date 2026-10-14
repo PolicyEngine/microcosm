@@ -2529,6 +2529,65 @@ def support_gate(
     )
 
 
+def area_support_shortfalls(
+    rows: float,
+    effective_sample_size: float,
+    sources: float,
+    *,
+    minimum_rows: int,
+    minimum_effective_sample_size: float,
+    minimum_distinct_sources: int,
+) -> list[str]:
+    """The support floors one area misses, worded as :func:`area_support_gate` reports them."""
+
+    shortfalls = []
+    if rows < minimum_rows:
+        shortfalls.append(f"rows {int(rows)} < {minimum_rows}")
+    if effective_sample_size < minimum_effective_sample_size:
+        shortfalls.append(
+            "ESS "
+            f"{float(effective_sample_size):.6g} < "
+            f"{float(minimum_effective_sample_size):.6g}"
+        )
+    if sources < minimum_distinct_sources:
+        shortfalls.append(
+            f"distinct sources {int(sources)} < {minimum_distinct_sources}"
+        )
+    return shortfalls
+
+
+def area_support_below_floor(
+    area_support: pd.DataFrame,
+    *,
+    minimum_rows: int,
+    minimum_effective_sample_size: float,
+    minimum_distinct_sources: int,
+) -> pd.Series:
+    """Whether each area of a support table misses any floor, by the gate's rule.
+
+    A reviewed exclusion does not lift the flag: an excluded area is still
+    below the floor, which is what a consumer of the area's estimates needs.
+    """
+
+    return pd.Series(
+        [
+            bool(
+                area_support_shortfalls(
+                    row.nonzero_households,
+                    row.effective_sample_size,
+                    row.nonzero_source_households,
+                    minimum_rows=minimum_rows,
+                    minimum_effective_sample_size=minimum_effective_sample_size,
+                    minimum_distinct_sources=minimum_distinct_sources,
+                )
+            )
+            for row in area_support.itertuples(index=False)
+        ],
+        index=area_support.index,
+        dtype=bool,
+    )
+
+
 def area_support_gate(
     area_support: pd.DataFrame,
     *,
@@ -2638,21 +2697,14 @@ def area_support_gate(
         index=False
     ):
         key = f"{row.geography_level}/{row.area_code}"
-        shortfalls = []
-        if row.nonzero_households < minimum_rows:
-            shortfalls.append(f"rows {int(row.nonzero_households)} < {minimum_rows}")
-        if row.effective_sample_size < minimum_effective_sample_size:
-            shortfalls.append(
-                "ESS "
-                f"{float(row.effective_sample_size):.6g} < "
-                f"{float(minimum_effective_sample_size):.6g}"
-            )
-        if row.nonzero_source_households < minimum_distinct_sources:
-            shortfalls.append(
-                "distinct sources "
-                f"{int(row.nonzero_source_households)} < "
-                f"{minimum_distinct_sources}"
-            )
+        shortfalls = area_support_shortfalls(
+            row.nonzero_households,
+            row.effective_sample_size,
+            row.nonzero_source_households,
+            minimum_rows=minimum_rows,
+            minimum_effective_sample_size=minimum_effective_sample_size,
+            minimum_distinct_sources=minimum_distinct_sources,
+        )
         record = exclusions.get(key)
         if record is not None and shortfalls:
             used_exclusions[key] = {

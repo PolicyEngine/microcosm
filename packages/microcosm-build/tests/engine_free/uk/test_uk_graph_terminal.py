@@ -858,10 +858,12 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert document["uk_diagnostics"]["rotated_holdout"]["method"] == "rotated_folds"
     assert document["uk_diagnostics"]["rotated_holdout"]["worst_holdout_loss"] == 0.15
     assert len(document["targets"]) == 2
-    assert (
-        len(pd.read_csv(__import__("io").BytesIO(stored.artifacts["area_support_csv"])))
-        == 4
+    support_csv = pd.read_csv(
+        __import__("io").BytesIO(stored.artifacts["area_support_csv"])
     )
+    assert len(support_csv) == 4
+    # Consumers read which areas sit below the floor (microcosm#1278).
+    assert support_csv["support_below_floor"].dtype == bool
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):

@@ -489,6 +489,14 @@ def test_assembler_stages_a_contract_valid_dense_release(
         item["id"].startswith("measure_exclusion:obr.housing_benefit")
         for item in manifest["reviewed_limitations"]
     )
+    from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
+
+    # Codes only: the stood-on support exclusion, no counts (microcosm#1278).
+    assert manifest["area_support"] == {
+        "gate": "uk_local_area_support",
+        "floors": uk_area_support_floors(),
+        "below_floor": {"local_authority": ["E06000053"]},
+    }
     diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
     assert diagnostics["households"] == 30 and diagnostics["n_targets"] == 2
     gate_summary = json.loads((release_dir / "gate_summary.json").read_text())

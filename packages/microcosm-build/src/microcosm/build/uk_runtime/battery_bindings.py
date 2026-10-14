@@ -47,6 +47,7 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_below_floor,
     area_support_gate,
     column_implication_gate,
     enum_domain_gate,
@@ -1330,6 +1331,34 @@ def _evaluate_area_support(
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+
+
+def uk_area_support_floors() -> dict[str, float | int]:
+    """The local support floors the ``uk_local_area_support`` gate declares."""
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = (
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = entry.parameters
+    return {
+        "minimum_rows": int(floors["minimum_rows"]),
+        "minimum_effective_sample_size": float(floors["minimum_effective_sample_size"]),
+        "minimum_distinct_sources": int(floors["minimum_distinct_sources"]),
+    }
+
+
+def uk_area_support_below_floor(area_support: pd.DataFrame) -> pd.Series:
+    """``support_below_floor`` for each area, under the declared local floors.
+
+    The flag a consumer reads and the gate that blocks a release apply one rule
+    (microcosm#1278). A reviewed exclusion does not clear the flag.
+    """
+
+    return area_support_below_floor(area_support, **uk_area_support_floors())
 
 
 def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:

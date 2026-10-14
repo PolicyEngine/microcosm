@@ -103,6 +103,52 @@ def test_area_support_stale_and_unknown_exclusions_fail() -> None:
     assert unknown.details["unknown_exclusions"] == ["constituency/X"]
 
 
+def test_area_support_below_floor_follows_the_gate_rule() -> None:
+    from microcosm.build.gates import area_support_below_floor
+
+    support = pd.concat(
+        [
+            _area_support(rows=50, ess=50.0, sources=50),
+            _area_support(rows=49, ess=60.0, sources=60).assign(area_code="C2"),
+            _area_support(rows=60, ess=49.9, sources=60).assign(area_code="C3"),
+            _area_support(rows=60, ess=60.0, sources=49).assign(area_code="C4"),
+        ],
+        ignore_index=True,
+    )
+    floors = {
+        "minimum_rows": 50,
+        "minimum_effective_sample_size": 50.0,
+        "minimum_distinct_sources": 50,
+    }
+    flags = area_support_below_floor(support, **floors)
+    assert flags.tolist() == [False, True, True, True]
+    gate = area_support_gate(
+        support,
+        area_roster={"constituency": ["C1", "C2", "C3", "C4"]},
+        geography_levels=["constituency"],
+        **floors,
+    )
+    failed = {failure.split(":")[0] for failure in gate.failures}
+    assert failed == {
+        f"constituency/{code}"
+        for code, flag in zip(support["area_code"], flags, strict=True)
+        if flag
+    }
+    # A reviewed exclusion passes the gate but leaves the area flagged.
+    excused = area_support_gate(
+        support,
+        area_roster={"constituency": ["C1", "C2", "C3", "C4"]},
+        geography_levels=["constituency"],
+        reviewed_exclusions={
+            f"constituency/{code}": {"reason": "reviewed"}
+            for code in ("C2", "C3", "C4")
+        },
+        **floors,
+    )
+    assert excused.passed
+    assert area_support_below_floor(support, **floors).tolist() == flags.tolist()
+
+
 class TestGateResultInvariants:
     def test_pass_with_failures_is_refused(self) -> None:
         with pytest.raises(ValueError, match="cannot pass with failures"):

@@ -751,7 +751,7 @@ class UKFullGateKernel(KernelBase):
             gate_phase_report_payload,
         )
         from ..stage_evidence import encode_stage_evidence
-        from .battery_bindings import UK_GATE_REGISTRY
+        from .battery_bindings import UK_GATE_REGISTRY, uk_area_support_below_floor
         from .full_gates import (
             build_full_gate_context,
             uk_full_gate_manifest,
@@ -856,6 +856,11 @@ class UKFullGateKernel(KernelBase):
                     summaries["la"].assign(geography_level="local_authority"),
                 ),
                 ignore_index=True,
+            )
+            # Consumers of the local file see which areas sit below the
+            # support floor, under the gate's own floors (microcosm#1278).
+            support_frame["support_below_floor"] = uk_area_support_below_floor(
+                support_frame
             )
             supporting["uk_area_support_summary"] = support_frame
             # microcosm#1240 fix 8: the high-value homes evidence, once, on the

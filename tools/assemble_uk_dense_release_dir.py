@@ -229,6 +229,33 @@ def _reviewed_limitations(
     return limitations
 
 
+def _area_support_block(solve: Mapping[str, object]) -> dict[str, object]:
+    """The areas below the local support floor, as codes only (microcosm#1278).
+
+    The support gate blocks release, so an area of a released file sits below
+    a floor only under a reviewed exclusion the gate stood on, and those
+    entries name the areas. The counts stay in the signed gate report.
+    """
+    from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
+
+    exclusions = _mapping(
+        solve.get("area_support_exclusions"), "area_support_exclusions"
+    )
+    below: dict[str, list[str]] = {}
+    for key in exclusions.get("entries_stood_on") or []:
+        level, separator, code = str(key).partition("/")
+        if not separator or not level or not code:
+            raise SystemExit(
+                f"error: area support exclusion {key!r} is not '<level>/<code>'"
+            )
+        below.setdefault(level, []).append(code)
+    return {
+        "gate": "uk_local_area_support",
+        "floors": uk_area_support_floors(),
+        "below_floor": {level: sorted(codes) for level, codes in sorted(below.items())},
+    }
+
+
 def _assemble(args: argparse.Namespace) -> dict[str, object]:
     candidate_dir: Path = args.candidate_dir
     manifest = _load_json(
@@ -737,6 +764,7 @@ def _stage_and_finalize(
             },
         },
         "reviewed_limitations": gate_summary["reviewed_limitations"],
+        "area_support": _area_support_block(solve),
         "description": f"UK dense joint national + local line assembled from attempt {attempt_id} at immutable cut {cut_tag}; inspect lane, never the default slot.",
         "publisher_labels": {
             "obr": "Office for Budget Responsibility",

@@ -4819,6 +4819,56 @@ def _check_local_area_checksum_ledger(
             )
 
 
+_AREA_SUPPORT_BLOCK_KEYS = frozenset({"gate", "floors", "below_floor"})
+
+
+def _check_area_support_block(
+    block: object, limitations: object, failures: list[str]
+) -> None:
+    """The areas below a local release's support floor: codes only (microcosm#1278).
+
+    Each listed area must carry its reviewed ``area_support_exclusion``
+    limitation, because the support gate blocks release otherwise.
+    """
+    if not isinstance(block, Mapping):
+        failures.append("release_manifest.json 'area_support' must be an object.")
+        return
+    extra = sorted(set(block) - _AREA_SUPPORT_BLOCK_KEYS)
+    if extra:
+        failures.append(
+            "release_manifest.json 'area_support' holds area codes and the floors "
+            f"only; it carries {extra}."
+        )
+    below = block.get("below_floor")
+    if not isinstance(below, Mapping) or not all(
+        isinstance(level, str)
+        and isinstance(codes, list)
+        and all(isinstance(code, str) and code for code in codes)
+        for level, codes in below.items()
+    ):
+        failures.append(
+            "release_manifest.json 'area_support.below_floor' must map each "
+            "geography level to a list of area codes."
+        )
+        return
+    excused = {
+        str(item.get("id"))
+        for item in (limitations if isinstance(limitations, list) else [])
+        if isinstance(item, Mapping)
+    }
+    unexcused = sorted(
+        f"{level}/{code}"
+        for level, codes in below.items()
+        for code in codes
+        if f"area_support_exclusion:{level}/{code}" not in excused
+    )
+    if unexcused:
+        failures.append(
+            "release_manifest.json lists areas below the support floor without "
+            f"a reviewed area_support_exclusion limitation: {unexcused}."
+        )
+
+
 def _check_local_area_release_manifest(
     manifest: Mapping,
     release_id: str,
@@ -4873,6 +4923,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must carry a 'reviewed_limitations' list "
             "(explicitly empty if none) for a non-default local-area release."
         )
+    if manifest.get("area_support") is not None:
+        _check_area_support_block(manifest["area_support"], limitations, failures)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, Mapping) or not artifacts:
         failures.append(
