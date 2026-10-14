@@ -24,7 +24,7 @@ dependencies = [
     "pyyaml>=6",
     "jsonschema>=4.23,<5",
     "referencing>=0.35,<1",
-    "microcosm-emitter==0.1.0",
+    "microcosm-emitter==0.2.1",
 ]
 
 [project.optional-dependencies]
@@ -81,5 +81,3 @@ microcosm-fit = { workspace = true }
 microcosm-calibrate = { workspace = true }
 microcosm-diagnostics = { workspace = true }
 microcosm-data = { workspace = true }
-# Draft-only root source pin. Replace with a published distribution before merge.
-microcosm-emitter = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "12624a118db255405a0ce7397d53b3181deaf49a" }
