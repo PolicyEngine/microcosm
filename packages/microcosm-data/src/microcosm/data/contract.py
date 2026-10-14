@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "240b3dd2824f689fba108513bd95e493d5f7a579a1d1c3b1516df0150df750ad"
+    "214b09ea87bc37ac832c73e59fc04ff507b1f45db132906aeb75210480f4b598"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "30473a8cfab032d25d59e621a8e42e27644edd9e1a71b53378e9241a98108295"
+    "9b597286621f1c0e4eb4e4f0c197bb4c38afa663ae456205483a082a6aac73fa"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "ff1addad053e3485b15ea0f90d3335dcdc88a9d0e692f6b22303244a1b2716fd"
+    "91d8d1a660a3823a95d2d13935f1af9a6927d8d647c9a24dc8c0511c104fcd3d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -870,10 +870,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "5bdabd730cf1073624b109f2a51caa340129d647520a6a7e7461e44f99a0cd28"
+            "075efba197b35648b64dae294d41ced01d49c4853f7ef7756ee335247ddce479"
         ),
         "policy_sha256": (
-            "4890cb7d519165f0e4d32905b75a498d28ed10d2442cf00d36ec89ee762dcb7b"
+            "65113710ee51bdc832b5de3d58b3f20b62cccfc7bbe51948368a9137aba452dc"
         ),
     },
     "calibration_seam": {
@@ -886,10 +886,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c5144655556355db8192730ab4238d4580f4a6ad6107a43609e969b57c9e9fcf"
+            "d8e43e2da482d28f8ed8e25115de6767390453f4d7a5f534c321dd236554acaa"
         ),
         "policy_sha256": (
-            "18e5ff379bfd9aa306864da0ab341aaaca203dd7855c6d878fb720fcf1aa8d45"
+            "9780a4a64e7a68dbe58e9b882c83be137c06cfde0ca6df13d527d2f6b8be8250"
         ),
     },
 }
