@@ -253,6 +253,77 @@ def test_the_review_cases_follow_the_generational_rule(tmp_path) -> None:
     assert gate.passed, gate.failures
 
 
+def _proxy_case(tmp_path, *, partner_age: int, other_age: int, other_wages: int):
+    """One household: a high-income reference person, an unmarried partner
+    and a person coded 36. Returns the split frame, its receipt and the
+    pooled gate."""
+
+    households = [_household("K", 3, WGTP=10)]
+    persons = [
+        _person("K", 1, 20, WAGP=250_000),
+        _person("K", 2, 22, AGEP=partner_age, WAGP=0),
+        _person("K", 3, 36, AGEP=other_age, WAGP=other_wages),
+    ]
+    loader, _ = build_acs_pums_unit_frame(_source(tmp_path, households, persons))
+    frame, receipt = split_acs_adult_nonrelative_spm_units(loader)
+    gate = acs_local_spm_unit_signal_gate(_pooled(frame), receipt=receipt)
+    return frame, receipt, gate
+
+
+def test_known_limitation_a_partners_child_close_in_age_is_wrongly_split(
+    tmp_path,
+) -> None:
+    """KNOWN LIMITATION, pinned, not a desired outcome (microcosm#1061 review,
+    round 4, counterexample a). A 31-year-old unmarried partner's 17-year-old
+    child is coded 36 (ACS relates everyone to Person 1 only). The age gap,
+    14, is under 15, so the proxy gives the child a unit of their own; the
+    Census SPM unit keeps them with the couple. The gate applies the same
+    rule, so it passes: the proxy cannot see this case. Benefit sensitivity
+    is measured in the first real build (microcosm#1093)."""
+
+    frame, receipt, gate = _proxy_case(
+        tmp_path, partner_age=31, other_age=17, other_wages=0
+    )
+    assert _members(frame, "spm_unit") == [
+        [(1, 1), (1, 2)],  # reference person and partner
+        [(1, 3)],  # the partner's 17-year-old: wrongly split
+    ]
+    other = receipt["other_nonrelatives"]
+    assert other["split_despite_partner"] == 1
+    assert other["kept_as_partner_child_or_parent"] == 0
+    assert "31-year-old unmarried partner's 17-year-old child" in other["proxy"]
+    assert "wrongly split" in other["proxy"]
+    assert gate.passed, gate.failures
+
+
+def test_known_limitation_an_unrelated_lodger_a_generation_apart_is_wrongly_kept(
+    tmp_path,
+) -> None:
+    """KNOWN LIMITATION, pinned, not a desired outcome (microcosm#1061 review,
+    round 4, counterexample b). A low-income 50-year-old unrelated lodger,
+    coded 36, lives with a high-income reference person and a 25-year-old
+    unmarried partner. The age gap, 25, is at least 15, so the proxy keeps
+    the lodger in the couple's unit; the Census SPM unit gives them their
+    own. Code 36 cannot separate a partner's kin from an unrelated adult, and
+    no fixed threshold can. Benefit sensitivity is measured in the first
+    real build (microcosm#1093)."""
+
+    frame, receipt, gate = _proxy_case(
+        tmp_path, partner_age=25, other_age=50, other_wages=0
+    )
+    assert _members(frame, "spm_unit") == [
+        [(1, 1), (1, 2), (1, 3)],  # the unrelated lodger: wrongly kept
+    ]
+    other = receipt["other_nonrelatives"]
+    assert other["kept_as_partner_child_or_parent"] == 1
+    assert other["split_despite_partner"] == 0
+    assert "50-year-old unrelated lodger" in other["proxy"]
+    assert "wrongly kept" in other["proxy"]
+    assert "no fixed age threshold can" in other["proxy"]
+    assert "microcosm#1093" in other["proxy"]
+    assert gate.passed, gate.failures
+
+
 def test_mover_mask_applies_the_generational_partner_rule() -> None:
     person = pd.DataFrame(
         {

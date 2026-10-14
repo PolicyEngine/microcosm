@@ -36,11 +36,25 @@ The rule
   the partner's child or parent, so they stay. A 36 close to the partner's
   age, such as an independent 30-year-old beside a 32-year-old partner, gets
   their own unit (microcosm#1061 review, C2).
-- **The generational rule is a proxy.** Age cannot tell kin from non-kin: a
-  partner's sibling or cousin near the partner's age is split, and an
-  unrelated adult a generation apart is kept. The receipt counts the 36s on
-  each side of the threshold, and the sensitivity block reports the unit
-  sizes under the alternatives.
+- **The generational rule is a documented proxy, not an exact SPM
+  partition.** The ACS codes ``RELSHIPP`` relative to Person 1 (the
+  reference person) only, so code 36 cannot separate an unmarried partner's
+  kin from an unrelated adult, and no fixed age threshold can. Known
+  misclassifications (microcosm#1061 review, round 4):
+
+  (a) *Wrongly split*: a 31-year-old unmarried partner's 17-year-old child,
+      coded 36, is 14 years from the partner, under the threshold, so the
+      child gets a unit of their own. The Census SPM unit keeps them with
+      the couple.
+  (b) *Wrongly kept*: a 50-year-old unrelated lodger coded 36, living with a
+      25-year-old partner, is 25 years from the partner, so the lodger stays
+      in the couple's unit. The Census SPM unit gives them their own.
+
+  More generally, a partner's sibling or cousin near the partner's age is
+  split, and an unrelated adult a generation apart is kept.
+  The receipt counts the 36s on each side of the threshold, and the
+  sensitivity block reports the unit sizes under the alternatives. Benefit
+  sensitivity is measured in the first real build (microcosm#1093).
 - **Kept with the reference person.** Every relative (``RELSHIPP`` 21, 23,
   25-33), unmarried partners (22, 24; cohabitors are in the Census unit),
   foster children (35; cared for by the family), nonrelatives under 15, and
@@ -125,7 +139,9 @@ ACS_UNMARRIED_PARTNER_RELATIONSHIPS: tuple[int, ...] = (22, 24)
 #: A 36 aged 15+ in a partner's household stays with the reference person only
 #: when their age differs from the closest-aged partner's by at least this
 #: many years: a generation apart, so plausibly the partner's child or parent
-#: (microcosm#1061 review, C2). A proxy: age cannot tell kin from non-kin.
+#: (microcosm#1061 review, C2). A documented proxy: age cannot tell kin from
+#: non-kin, so it misclassifies some households either way (see the module
+#: docstring and :data:`_GENERATIONAL_PROXY`).
 _GENERATION_GAP_YEARS = 15
 #: The Census SPM unit keeps co-resident unrelated children, and the ACS asks
 #: its adult items from 15; below it a nonrelative stays with the family.
@@ -152,12 +168,22 @@ _MOVED = (
     f"unmarried partner's (22, 24) by at least {_GENERATION_GAP_YEARS} years"
 )
 _GENERATIONAL_PROXY = (
-    "RELSHIPP relates each person to the reference person only, so a 36 is "
-    "kept with an unmarried partner only when a generation's age gap "
+    "A documented proxy, not an exact Census SPM partition. RELSHIPP relates "
+    "each person to the reference person (Person 1) only, so code 36 cannot "
+    "separate an unmarried partner's kin from an unrelated adult, and no "
+    "fixed age threshold can. A 36 is kept with an unmarried partner only "
+    "when a generation's age gap "
     f"({_GENERATION_GAP_YEARS}+ years from the closest-aged partner) makes them "
-    "plausibly the partner's child or parent. A partner's sibling or cousin "
-    "near the partner's age is split, and an unrelated adult a generation "
-    "apart is kept."
+    "plausibly the partner's child or parent. Known misclassifications: (a) "
+    "wrongly split, a 31-year-old unmarried partner's 17-year-old child coded "
+    f"36 (a gap under {_GENERATION_GAP_YEARS}), whom the Census unit keeps with "
+    "the couple; (b) wrongly kept, a 50-year-old unrelated lodger coded 36 "
+    "living with a 25-year-old partner (a gap of "
+    f"{_GENERATION_GAP_YEARS} or more), whom the Census unit gives a unit of "
+    "their own. More generally, a partner's sibling or cousin near the "
+    "partner's age is split, and an unrelated adult a generation apart is "
+    "kept. Benefit sensitivity is measured in the first real build "
+    "(microcosm#1093)."
 )
 _AMBIGUITY = (
     "A 36 moved from a household that also holds a roommate (34) may be the "
