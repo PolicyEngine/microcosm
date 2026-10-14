@@ -1111,6 +1111,11 @@ def _spi_donor() -> pd.DataFrame:
         )
         row["TII"] = row["OTHERINV"] + row["DIVIDENDS"] + row["INCPROP"] + row["INCBBS"]
         row["TI"] = row["TEI"] + row["TII"]
+        # Annex A bridge codes consistent with the leaves (microcosm#840): the
+        # main source is the largest leaf, the trade pages follow PROFITS and
+        # State Pension age follows the State Pension leaf, as the age draw
+        # places every recipient at or over it.
+        row.update(_bridge_codes(row))
         rows.append(row)
         # The reserved income bands (spi_income_band_donors) need a pool in every
     # band from GBP 200,000 for every region, sex and age cell the synthetic
@@ -1140,6 +1145,7 @@ def _spi_donor() -> pd.DataFrame:
                     row["TEI"] = row["PAY"]
                     row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
                     row["TI"] = row["TEI"] + row["TII"]
+                    row.update(_bridge_codes(row))
                     rows.append(row)
     for offset in range(6):
         row = {column: 0.0 for column in SPI_DONOR_REQUIRED_COLUMNS}
@@ -1157,8 +1163,32 @@ def _spi_donor() -> pd.DataFrame:
         row["TEI"] = row["PAY"]
         row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
         row["TI"] = row["TEI"] + row["TII"]
+        # Composite records carry no bridge codes, as the published tape.
+        row.update({"MAINSRCE": -1.0, "SEINC_NUM": -1.0, "SPA": -1.0})
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def _bridge_codes(row: dict[str, float]) -> dict[str, float]:
+    """The published bridge codes implied by a synthetic record's leaves."""
+
+    employment_income = row["PAY"] + row["EPB"] + row["TAXTERM"]
+    pension = row["PENSION"] + row["SRP"]
+    trade = max(row["PROFITS"] - row["CAPALL"] - row["LOSSBF"], 0.0)
+    largest = max(employment_income, pension, trade)
+    if largest <= 0.0:
+        main_source = 5.0
+    elif largest == employment_income:
+        main_source = 1.0
+    elif largest == pension:
+        main_source = 2.0
+    else:
+        main_source = 3.0
+    return {
+        "MAINSRCE": main_source,
+        "SEINC_NUM": 1.0 if row["PROFITS"] > 0.0 else 0.0,
+        "SPA": 1.0 if row["SRP"] > 0.0 else 0.0,
+    }
 
 
 def _hmrc_income_targets(path: Path) -> HMRCIncomeTargetSet:
@@ -1553,11 +1583,22 @@ def _fixture_stages(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "hmrc_spi_income_spine":
+            stage1 = next(
+                operation
+                for operation in stage.operations
+                if operation.kind == "fit_weighted_qrf_stage1"
+            )
             stage = _replace_operation(
                 stage,
                 "fit_weighted_qrf_stage1",
                 sample_size=_SPI_DONOR_SAMPLE_SIZE,
                 n_estimators=_QRF_ESTIMATORS,
+                # The FRS reference forest (microcosm#840) grows the fixture's
+                # estimator count too.
+                reference_model={
+                    **stage1.parameters["reference_model"],
+                    "n_estimators": _QRF_ESTIMATORS,
+                },
             )
             stage = _replace_operation(
                 stage,

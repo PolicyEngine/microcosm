@@ -302,6 +302,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
     "person.person_is_spi_income_band_carrier",
+    "person.person_is_spi_income_recipient",
     # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
     # enhanced-FRS incumbent never carried is allow-listed rather than
     # dropped, so the release candidate ships the spine's own surface. The

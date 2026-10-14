@@ -61,10 +61,14 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_INCOME_YEAR,
     SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
     SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+    SPI_INCOME_RECIPIENT_COLUMN,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
     SPI_RECIPIENT_ROLE_COLUMN,
+    SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP,
     SPI_SOURCE_TI_FORMULA,
+    SPI_STAGE1_CATEGORICAL_PREDICTORS,
+    SPI_STAGE1_PREDICTOR_COLUMNS,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
     UKSPIStatePensionAgeGuard,
@@ -72,6 +76,14 @@ from microcosm.build.uk_runtime.spi_income import (
     impute_uk_spi_income_support,
     load_spi_donor_age_model,
     verify_spi_donor_identity,
+)
+from microcosm.build.uk_runtime.spi_rank_transport import (
+    SPI_STAGE1_ANALOGUE_COLUMNS,
+    SPI_TRANSPORT_DRAW,
+    SPI_TRANSPORT_FOLDS,
+    SPI_TRANSPORT_KEY_COLUMN,
+    SPI_TRANSPORT_SALT,
+    SPI_TRANSPORT_SEED_OFFSET,
 )
 from microcosm.build.uk_runtime.spi_support import (
     DEFAULT_SPI_PRIOR_MASS_SHARE,
@@ -183,11 +195,18 @@ UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
     SPI_HMRC_OTHER_INCOME_COLUMN,
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     *SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
+    # The rows stage 1 drew, for the later stages that tell tape-concept rows
+    # from FRS-concept ones (microcosm#840).
+    SPI_INCOME_RECIPIENT_COLUMN,
 )
 UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
     column
     for column in UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS
-    if column != SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
+    if column
+    not in (
+        SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+        SPI_INCOME_RECIPIENT_COLUMN,
+    )
 )
 UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "employment_income",
@@ -237,7 +256,18 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # applies to every declared parameter: it needs (1) a drift assert and (2) an
 # executed-effect receipt, or an explicit absence statement. Seeded draws use
 # twin-build determinism as their executed-effect receipt.
-SPI_SPINE_STAGE1_PREDICTORS = ("age", "gender", "region")
+#: Age, gender and region, then the four bridge predictors the tape and the
+#: twin derive from their own leaves (microcosm#840).
+SPI_SPINE_STAGE1_PREDICTORS = SPI_STAGE1_PREDICTOR_COLUMNS
+SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS = SPI_STAGE1_CATEGORICAL_PREDICTORS
+#: The stage-1 draw: each drawn recipient's twin is located on the FRS
+#: reference forest and the tape forest draws at those uniforms.
+SPI_SPINE_STAGE1_DRAW = SPI_TRANSPORT_DRAW
+SPI_SPINE_REFERENCE_POPULATION = (
+    "uk_frs_raw_spine_base_support_channel claimants and partners "
+    "(is_uc_claimant) aged 16 and over with taxable income under "
+    "recipient_income_rule"
+)
 SPI_SPINE_STAGE2_PREDICTORS = (
     "age",
     "gender",
@@ -326,12 +356,19 @@ class UKSPIIncomeSpineResult:
             "recipient_minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
             "recipient_role_column": SPI_RECIPIENT_ROLE_COLUMN,
             "recipient_domain": self.imputation.recipient_domain,
+            "state_pension_age": self.imputation.state_pension_age,
+            "bridge_validation": self.imputation.bridge_validation,
+            "stage1_transport": self.imputation.stage1_transport,
+            "reference_training_rows": self.imputation.reference_training_rows,
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
             "donor_age_draw": self.imputation.donor_age_draw,
             "donor_property_finance_costs": (
                 self.imputation.donor_property_finance_costs
+            ),
+            "gainful_self_employment_refresh": (
+                self.imputation.gainful_self_employment_refresh
             ),
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
@@ -718,6 +755,9 @@ class UKSPIIncomeSpineStageTransform:
             seed=self.seed,
             n_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
+            # A sampled rung or a synthetic fixture may hold too few predictor
+            # cells to cross-fit the reference; a full build never does.
+            allow_in_sample_reference=self.sampled_rung,
             build_period=uk_time_period(frame),
             verified_donor=donor_identity,
             donor_table=self.donor_table,
@@ -736,6 +776,9 @@ class UKSPIIncomeSpineStageTransform:
             band_donor_resample=band_donor_resample,
             donor_age_model=donor_age_model if age_op is not None else None,
             state_pension_age_guard=state_pension_age_guard,
+            state_pension_age=(
+                None if donor_age_model is None else donor_age_model.state_pension_age
+            ),
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -962,8 +1005,14 @@ def _build_spine_replay_report(
             for record in imputation.fit_weight_records
         },
         "donor_rows": imputation.donor_rows,
+        "reference_training_rows": imputation.reference_training_rows,
         "stage2_training_rows": imputation.stage2_training_rows,
         "spi_prediction_rows": imputation.spi_prediction_rows,
+        "stage1_draw": SPI_SPINE_STAGE1_DRAW,
+        "stage1_transport": imputation.stage1_transport,
+        "bridge_validation": imputation.bridge_validation,
+        "recipient_domain": imputation.recipient_domain,
+        "gainful_self_employment_refresh": imputation.gainful_self_employment_refresh,
         "post_draw_identity": {
             "formula": SPI_SOURCE_TI_FORMULA,
             "rows_checked": identity_rows,
@@ -1111,6 +1160,59 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income donor bootstrap must refit at uniform weight.")
     if tuple(stage1.parameters.get("predictors", ())) != SPI_SPINE_STAGE1_PREDICTORS:
         raise ValueError("SPI income stage-1 predictors drifted.")
+    if (
+        tuple(stage1.parameters.get("categorical_predictors", ()))
+        != SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS
+    ):
+        raise ValueError("SPI income stage-1 categorical predictors drifted.")
+    bridge = stage1.parameters.get("bridge_predictors")
+    if not isinstance(bridge, Mapping) or set(bridge) != set(
+        SPI_SPINE_STAGE1_PREDICTORS[3:]
+    ):
+        raise ValueError(
+            "SPI income stage-1 bridge predictors drifted from the reviewed set "
+            "(microcosm#840)."
+        )
+    rule = stage1.parameters.get("recipient_income_rule")
+    if (
+        not isinstance(rule, Mapping)
+        or rule.get("unearned_income_floor_gbp")
+        != SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP
+    ):
+        raise ValueError(
+            "SPI income recipient income rule drifted from the reviewed floor "
+            "(microcosm#840)."
+        )
+    if stage1.parameters.get("draw") != SPI_SPINE_STAGE1_DRAW:
+        raise ValueError("SPI income stage-1 draw drifted from the reviewed method.")
+    reference = stage1.parameters.get("reference_model")
+    if not isinstance(reference, Mapping):
+        raise ValueError("SPI income stage-1 reference model is not declared.")
+    if reference.get("seed") != seed + SPI_TRANSPORT_SEED_OFFSET:
+        raise ValueError(
+            "SPI reference forest seed drifted from the reviewed seed + 3 "
+            "derivation convention."
+        )
+    if reference.get("n_estimators") not in (None, qrf_estimators):
+        raise ValueError("SPI reference forest estimator count drifted.")
+    if reference.get("population") != SPI_SPINE_REFERENCE_POPULATION:
+        raise ValueError("SPI reference forest population drifted.")
+    if reference.get("folds") != SPI_TRANSPORT_FOLDS:
+        raise ValueError(
+            "SPI reference forest fold count drifted from the reviewed cross-fit."
+        )
+    if dict(reference.get("analogue_columns", {})) != dict(SPI_STAGE1_ANALOGUE_COLUMNS):
+        raise ValueError(
+            "SPI reference forest analogue columns drifted from the reviewed map."
+        )
+    identity = stage1.parameters.get("identity_uniforms")
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("key") != SPI_TRANSPORT_KEY_COLUMN
+        or identity.get("seed") != seed
+        or identity.get("salt") != f"{SPI_TRANSPORT_SALT}:<target>:<sign|quantile>"
+    ):
+        raise ValueError("SPI income stage-1 identity uniforms drifted.")
     if stage1.parameters.get("recipient_minimum_age") != SPI_MINIMUM_RECIPIENT_AGE:
         raise ValueError("SPI income recipient age domain drifted.")
     if stage1.parameters.get("recipient_role_column") != SPI_RECIPIENT_ROLE_COLUMN:

@@ -1675,7 +1675,10 @@
       "TAX_CRED",
       "TEI",
       "TII",
-      "TI"
+      "TI",
+      "MAINSRCE",
+      "SEINC_NUM",
+      "SPA"
      ],
      "runtime_sha256_required": true,
      "fail_on_missing_file": true,
@@ -1722,12 +1725,85 @@
      "predictors": [
       "age",
       "gender",
-      "region"
+      "region",
+      "main_source",
+      "has_pay",
+      "has_trade",
+      "at_or_over_spa"
      ],
      "categorical_predictors": [
       "gender",
-      "region"
+      "region",
+      "main_source"
      ],
+     "bridge_predictors": {
+      "main_source": {
+       "tape": "largest of employment_income (PAY + EPB + TAXTERM), private_pension_income + hmrc_spi_state_pension_income (PENSION + SRP) and self_employment_income (max(0, PROFITS - CAPALL - LOSSBF)); other when none is positive",
+       "twin": "largest of employment_income, private_pension_income + state_pension_reported and self_employment_income; other when none is positive",
+       "validation": "weighted agreement with the published MAINSRCE code (1 pay; 2 occupational pension; 3 sole trader and 4 partnership, trade; 5 other and 6 claims case, other) at least 0.95 over the classified records, reported by code; composites (-1) carry no code"
+      },
+      "has_pay": {
+       "tape": "employment_income > 0",
+       "twin": "employment_income > 0",
+       "validation": "PAY > 0 share among MAINSRCE 1"
+      },
+      "has_trade": {
+       "tape": "SEINC_NUM = 1 (self-employment or partnership pages); composites self_employment_income > 0",
+       "twin": "self_employment_income > 0 or a self-employed main job (employment_status FT_SELF_EMPLOYED or PT_SELF_EMPLOYED)",
+       "validation": "SEINC_NUM 1 share among PROFITS > 0"
+      },
+      "at_or_over_spa": {
+       "tape": "SPA = 1; composites SRP > 0",
+       "twin": "age at or over policyengine-uk gov.dwp.state_pension.age at the build instant",
+       "validation": "SRP > 0 share among SPA 1 and SPA 1 share among SRP > 0"
+      }
+     },
+     "recipient_income_rule": {
+      "drawn": "the twin reports pay, a trade (self_employment_income > 0 or a self-employed main job) or a pension (private_pension_income + state_pension_reported > 0), or more than the floor of taxable interest (savings_interest_income less tax_free_savings_income), dividend_income, property_income and miscellaneous_income together; a reserved band carrier is always drawn; a twin whose only record is the State Pension is drawn, against a tape that mostly holds taxpayers, which can lift its pension leaves",
+      "undrawn": "the twin has no tax record for the tape to condition on; the copy keeps the twin's values at stage 1 and stage 2 (a declared modelling boundary like the under-16 one, microcosm#840)",
+      "unearned_income_floor_gbp": 1000
+     },
+     "draw": "twin_conditional_quantiles",
+     "reference_model": {
+      "population": "uk_frs_raw_spine_base_support_channel claimants and partners (is_uc_claimant) aged 16 and over with taxable income under recipient_income_rule",
+      "predictors": "the stage-1 predictors, encoded identically",
+      "targets": "the stage-1 outputs with an FRS analogue, in stage-1 chain order",
+      "analogue_columns": {
+       "self_employment_income": "self_employment_income",
+       "savings_interest_income": "taxable_savings_interest",
+       "dividend_income": "dividend_income",
+       "private_pension_income": "private_pension_income",
+       "property_income": "property_income",
+       "other_investment_income": null,
+       "gift_aid": null,
+       "charitable_investment_gifts": null,
+       "hmrc_spi_pay": "hmrc_spi_pay",
+       "hmrc_spi_employment_benefits": null,
+       "hmrc_spi_employment_expenses": null,
+       "hmrc_spi_incapacity_benefit_income": "hmrc_spi_incapacity_benefit_income",
+       "hmrc_spi_other_social_security_income": "ossben_identifiable_subset",
+       "hmrc_spi_taxable_termination_pay": null,
+       "hmrc_spi_unemployment_benefit_income": "hmrc_spi_unemployment_benefit_income",
+       "hmrc_spi_miscellaneous_employment_income": null,
+       "hmrc_spi_other_income": "miscellaneous_income",
+       "hmrc_spi_state_pension_income": "srp_regular_code5",
+       "property_finance_costs": null
+      },
+      "weight": "household_weight",
+      "weight_mapping": "household_to_person",
+      "fit_weight_kind": "importance",
+      "seed": 45,
+      "n_estimators": 100,
+      "folds": 5,
+      "fold_key": "predictor cell (gender, region, whole-year age, main_source, has_pay, has_trade, at_or_over_spa), the fold being floor(uniform x folds) of the cell's stable_identity_uniforms draw at the stage seed and salt spi_stage1:reference_fold; each fold's recipients are located by a forest fitted on the other folds, so the forest that locates a copy never saw its twin, and every row of a cell is located by one forest",
+      "method": "Rosenblatt transport (microcosm#840): each drawn recipient's twin values are located on the reference forest, the sign uniform in the gate's cumulative class probabilities and the quantile on the sign's magnitude forest, each leaf chained on the twin's observed earlier leaves, and the stage-1 forest draws at those uniforms, so the recipient receives the SPI income of someone in the same position among SPI people like it as the twin holds among FRS people like it. taxable_savings_interest is savings_interest_income less tax_free_savings_income, floored at zero. A leaf without an analogue, or whose analogue is degenerate on the FRS rows, draws at identity-keyed uniforms, as do the placements inside a class or a flat stretch of a conditional; no model random stream is consumed. The reference locates a leaf given the twin's observed earlier analogue leaves, while the stage-1 forest draws it given every earlier output, the identity-uniform leaves included, so the located quantile is read off a conditional the identity draws also shape (microcosm#840 follow-up: the chain order). A full build refuses a reference the predictor cells cannot cross-fit (only a sampled rung or a synthetic fixture may locate in-sample, and its receipt says so), a recipient whose fold differs from its twin's, and a reference whose sign classes differ from the stage-1 forest's on any located target.",
+      "receipt": "per target the analogue, the FRS regime and sign classes, the uniform source and the Kolmogorov-Smirnov distance of the sign uniforms and of the quantiles over positive rows from U[0,1), overall and by main_source over at least 10 rows; a positive-row count under 10 is withheld; the counts in the stage evidence stay with the build and are not published"
+     },
+     "identity_uniforms": {
+      "key": "person_source_id",
+      "salt": "spi_stage1:<target>:<sign|quantile>",
+      "seed": 42
+     },
      "source_sampling_weight": "FACT",
      "sample_size": 100000,
      "sample_with_replacement": true,
@@ -1870,8 +1946,8 @@
      "require_all_predictors": true,
      "require_all_outputs": true,
      "initialize_frs_channel_columns": {
-      "gift_aid": 0.0,
-      "charitable_investment_gifts": 0.0
+      "gift_aid": 0,
+      "charitable_investment_gifts": 0
      },
      "n_estimators": 100,
      "seed": 42
@@ -2273,7 +2349,8 @@
     "hmrc_spi_employed_income",
     "hmrc_spi_total_earned_income",
     "hmrc_spi_total_investment_income",
-    "hmrc_spi_assessable_income"
+    "hmrc_spi_assessable_income",
+    "person_is_spi_income_recipient"
    ],
    "nonnegative_outputs": [
     "other_investment_income",
@@ -2331,7 +2408,7 @@
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income"
    ],
-   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path."
+   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
    "stage": "spi_housing_shell",
