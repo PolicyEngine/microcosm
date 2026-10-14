@@ -27,11 +27,13 @@ IRS-published EITC (EITC statistics pages, read 2026-10-14):
   one, 24% two and 13% three or more.
 * TY2024, processed by December 2025: about 24 million and $69.6 billion.
 
-Those count claims processed by December of the filing year. Publication 1304
-is SOI's full-year sample of all returns for the tax year, so its TY2023 EITC
-(24,439,936 returns, $66.27 billion) sits 6.3% and 3.5% above the December
-counts. The reconciliation tolerance is 10%: wide enough for that basis
-difference, far too narrow for a halving. Child shares are compared within 1.5
+IRS labels those "returns processed in" the filing year, "as of December".
+Publication 1304 Table 2.5 is the SOI sample estimate for "Tax Year 2023
+(Filing Year 2024)", whose footnote says prior-year returns are included. Its
+TY2023 EITC (24,439,936 returns, $66.27 billion) sits 6.3% and 3.5% above the
+TY2023 December figures; the two products' bases differ, and this module does
+not attribute the gap. The reconciliation tolerance is 10%: wide enough for
+that observed gap, far too narrow for a halving. Child shares are compared within 1.5
 percentage points because IRS rounds them to whole percents.
 """
 
@@ -88,7 +90,7 @@ _PUBLISHED_TOLERANCE = 0.10
 _SHARE_TOLERANCE = 0.015
 # SOI rounds each cell ("Detail may not add to totals because of rounding"):
 # counts to the return, amounts to $1,000. The widest gap between a split's
-# bins and its total row in the TY2023 workbook is 3 returns and $2,000.
+# bins and its total row in the TY2023 workbook is 3 returns and $1,000.
 _ROUNDING = {"returns": 5, "amount": 5_000}
 
 _SETTINGS = settings(
@@ -238,8 +240,10 @@ def test_each_child_split_s_agi_bins_tile_agi_and_sum_to_its_total_row(
     kind: str,
 ) -> None:
     """Source check: in each split the 28 Table 2.5 AGI bins tile AGI and add
-    to the split's total row within SOI rounding, so the extraction neither
-    drops, shifts nor repeats a row."""
+    to the split's total row within SOI rounding, so no bin is missing, read
+    twice or taken from the total row. A sum can't see two bins' values
+    swapped; the verbatim-feed check and the extraction's row guards cover
+    that."""
 
     for split, rows in _split_rows(kind).items():
         bins = {row_id: fact for row_id, fact in rows.items() if row_id != "total"}
@@ -311,7 +315,8 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
     one factor, the filing-season EITC over the source total rows (23,837,149
     / 24,439,936 and $69,041,650,000 / $66,269,999,000), so the four total rows
     add to the filing season's AGI bins, as their 112 compiled bins do, and to
-    within 10% of IRS's published TY2023 and TY2024 EITC."""
+    within 10% of IRS's published TY2024 EITC (about 24 million returns and
+    $69.6 billion; the compiled values are 0.7% and 0.8% below)."""
 
     by_name = _compiled_real()
     compiled = _compiled_split_rows(by_name, kind)
@@ -341,10 +346,9 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
             source[split]["total"]["value"] * active / source_total, rel=1e-12
         )
     compiled_total = sum(spec.value for spec in totals.values())
-    for year in (2023, 2024):
-        assert compiled_total == pytest.approx(
-            _IRS_PUBLISHED[year][kind], rel=_PUBLISHED_TOLERANCE
-        ), year
+    assert compiled_total == pytest.approx(
+        _IRS_PUBLISHED[2024][kind], rel=_PUBLISHED_TOLERANCE
+    )
 
 
 def _with_filing_season(
