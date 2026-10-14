@@ -589,7 +589,8 @@ def engine_bus_pricing_parameters(
 ) -> dict[str, dict[str, float]]:
     """policyengine-uk's bus boardings per trip and yield per boarding by area.
 
-    Read at 1 January of ``year`` for every area the stage prices
+    Read at ``year`` in the resolver's own period form (the engine resolves
+    a year to its 1 January instant) for every area the stage prices
     (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
     engine carries no such parameters.
     """
@@ -601,7 +602,7 @@ def engine_bus_pricing_parameters(
     parameters = getattr(tax_benefit_system, "parameters", None)
     if parameters is None:
         raise AttributeError("the engine exposes no parameters")
-    bus = parameters(f"{int(year)}-01-01").gov.dft.bus
+    bus = parameters(str(int(year))).gov.dft.bus
     return {
         name: {
             area: float(getattr(getattr(bus, name), area))
