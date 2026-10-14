@@ -155,6 +155,15 @@
       ],
       "kind": "share_of_parent",
       "reason": "DWP's constituency UC households by number of children divide each constituency's UC caseload; the published unknown-children category is not bound, so the four bands cover part of the parent and move by its reconciliation factor, keeping their published shares. The local metrics count benefit units on UC, as the parent does. Until the area series counts paid claims, the bands carry all-claims shares, which run richer in childless households than the paid caseload does."
+    },
+    {
+      "partition_id": "census_gas_connected_share",
+      "parent_target_id": "ons.census.households",
+      "member_target_ids": [
+        "desnz.subnational.gas_connected_households"
+      ],
+      "kind": "share_of_parent",
+      "reason": "Each authority's gas-connected households are its census households times its DESNZ gas meters over its electricity meters, a share of the parent; they take the census household uprating and then the authority's household reconciliation factor, keeping DESNZ's share. The households off the gas network are not bound (microcosm#1207)."
     }
   ],
   "band_bridges": [
@@ -576,6 +585,14 @@
     "microcosm.high_value_homes.over_2m": {
       "route": "no_higher_control",
       "reason": "No publisher counts owner-occupied homes over £2m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
+    },
+    "desnz.subnational.electricity_kwh": {
+      "route": "no_higher_control",
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."
+    },
+    "desnz.subnational.gas_kwh": {
+      "route": "no_higher_control",
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The gas cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."
     }
   },
   "relations": [

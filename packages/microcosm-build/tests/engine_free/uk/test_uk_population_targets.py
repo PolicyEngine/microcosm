@@ -225,8 +225,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # Government, NI); microcosm#1095 splits the two national 15_19 sex
     # bands into ages 15, 16-17 and 18-19 (uk-data#563), six rows for two;
     # microcosm#1240 adds the three Microcosm-derived high-value homes local
+    # targets; microcosm#1207 adds the three DESNZ local-authority energy
     # targets.
-    assert len(resource["targets"]) == 403
+    assert len(resource["targets"]) == 406
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -241,7 +242,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 348
-    assert len(profile_scope) == 55
+    assert len(profile_scope) == 58
     assert target_ids[:348] == registry_scope
     assert target_ids[348:] == profile_scope
 
@@ -279,9 +280,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 55
+    assert parity["contract_target_count"] == 58
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 30
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 33
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -431,7 +432,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 403
+    assert len(target_ids) == 406
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -704,7 +705,7 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
     assert len(metric_names_from_target_profile(resource, "constituency")) == 22
-    assert len(metric_names_from_target_profile(resource, "la")) == 35
+    assert len(metric_names_from_target_profile(resource, "la")) == 38
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -912,7 +913,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 403
+    assert len(targets) == 406
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

@@ -1236,7 +1236,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 55,
+    "contract_target_count": 58,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1685,7 +1685,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 30,
+    "activation_added_rows": 33,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1806,6 +1806,18 @@
       {
         "target_id": "microcosm.high_value_homes.over_2m",
         "basis": "microcosm#1240; Microcosm-derived owner-occupied homes valued over £2m by constituency and local authority (England and Wales) from HM Land Registry Price Paid Data, the UK HPI and the NSPL, carried in the committed derived-facts resource"
+      },
+      {
+        "target_id": "desnz.subnational.electricity_kwh",
+        "basis": "microcosm#1207; DESNZ sub-national domestic electricity consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+      },
+      {
+        "target_id": "desnz.subnational.gas_kwh",
+        "basis": "microcosm#1207; DESNZ sub-national domestic gas consumption by local authority (Great Britain), levelled onto the lcfs stage's Energy Trends level by one factor per fuel"
+      },
+      {
+        "target_id": "desnz.subnational.gas_connected_households",
+        "basis": "microcosm#1207; DESNZ sub-national domestic gas and electricity meter counts by local authority (Great Britain), whose ratio puts a share of each authority's census households on the gas network"
       }
     ],
     "scope_target_ids": [
@@ -1863,7 +1875,10 @@
       "hmrc.higher_rate_taxpayers.count",
       "microcosm.high_value_homes.over_1m",
       "microcosm.high_value_homes.over_1_5m",
-      "microcosm.high_value_homes.over_2m"
+      "microcosm.high_value_homes.over_2m",
+      "desnz.subnational.electricity_kwh",
+      "desnz.subnational.gas_kwh",
+      "desnz.subnational.gas_connected_households"
     ]
   },
   "targets": [
@@ -31206,6 +31221,137 @@
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £2 million",
       "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+    },
+    {
+      "target_id": "desnz.subnational.electricity_kwh",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.domestic_electricity_consumption.kwh"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/electricity_kwh",
+          "value_variable": "domestic_electricity_kwh"
+        },
+        "axiom": {
+          "metric_name": "energy/electricity_kwh",
+          "status": "pending",
+          "value_rule": "uk.household.domestic_electricity_consumption.kwh"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "desnz",
+        "source_concept": "desnz.subnational.domestic_electricity_consumption"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Domestic electricity consumption (kWh)",
+      "uprating_index": "desnz.energy_trends.gb_domestic_level",
+      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (meters read February 2024 to January 2025, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households until PolicyEngine/chronicle#356 lands. The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+    },
+    {
+      "target_id": "desnz.subnational.gas_kwh",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.domestic_gas_consumption.kwh"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/gas_kwh",
+          "value_variable": "domestic_gas_kwh"
+        },
+        "axiom": {
+          "metric_name": "energy/gas_kwh",
+          "status": "pending",
+          "value_rule": "uk.household.domestic_gas_consumption.kwh"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "desnz",
+        "source_concept": "desnz.subnational.domestic_gas_consumption"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Domestic gas consumption (kWh)",
+      "uprating_index": "desnz.energy_trends.gb_domestic_level",
+      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, calendar 2024 (mid-May 2024 to mid-May 2025, weather-corrected), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households until PolicyEngine/chronicle#356 lands. The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+    },
+    {
+      "target_id": "desnz.subnational.gas_connected_households",
+      "family": "domestic_energy",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.gas_connection",
+            "equals": "connected"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "energy/gas_connected_households",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "gas_consumption",
+              "operator": ">",
+              "value": 0,
+              "input_period": "dataset"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "energy/gas_connected_households",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+      },
+      "area_scope": {
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "S"
+          ]
+        }
+      },
+      "category_id": "desnz.domestic_energy",
+      "label": "Gas-connected households",
+      "uprating_index": "desnz.subnational.gas_meter_share",
+      "selector_note": "Each authority's census households (the ons.census.households cell) times its DESNZ domestic gas meters over its domestic electricity meters, 2024 (desnz.subnational.gas_meter_share), the share the lcfs stage imposes by region, here by authority. A member of the census household partition (census_gas_connected_share): the household controls set its level, the meters its share. Orkney and Shetland have no mains gas and are signed deferrals; a gas-connected household is one whose stored gas_consumption is positive (microcosm#1207)."
     }
   ],
   "diagnostic_references": {
@@ -31591,6 +31737,9 @@
       },
       "microcosm": {
         "label": "Microcosm derived statistics"
+      },
+      "desnz": {
+        "label": "Department for Energy Security and Net Zero"
       }
     },
     "categories": {
@@ -31777,6 +31926,10 @@
       "microcosm.high_value_homes": {
         "provider_id": "microcosm",
         "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
+      },
+      "desnz.domestic_energy": {
+        "provider_id": "desnz",
+        "label": "Domestic energy consumption"
       }
     }
   }

@@ -105,6 +105,10 @@ UK_LOCAL_LOSS_SCALE_FLOORS: Mapping[str, float] = MappingProxyType(
     {"high_value_homes/": 100.0}
 )
 _LOCAL_AMOUNT_METRIC_PREFIXES = ("rent/", "ons/equiv_")
+#: DESNZ kWh by authority (microcosm#1207); the family's gas-connected
+#: households are a count. Exact names, so another ``energy/`` metric fails
+#: closed until its basis is declared.
+_LOCAL_AMOUNT_METRICS = frozenset({"energy/electricity_kwh", "energy/gas_kwh"})
 _LOCAL_COUNT_METRIC_PREFIXES = (
     "age/",
     "council_tax/",
@@ -112,7 +116,7 @@ _LOCAL_COUNT_METRIC_PREFIXES = (
     "tenure/",
     "uc_",
 )
-_LOCAL_COUNT_METRICS = frozenset({"households"})
+_LOCAL_COUNT_METRICS = frozenset({"households", "energy/gas_connected_households"})
 _NATIONAL_COUNT_UNITS = frozenset({"count"})
 _NATIONAL_AMOUNT_UNIT_PREFIX = "gbp"
 
@@ -325,7 +329,9 @@ def _local_basis(metric: str) -> str | None:
         if metric.endswith("/count"):
             return _COUNT
         return None
-    if metric.startswith(_LOCAL_AMOUNT_METRIC_PREFIXES):
+    if metric in _LOCAL_AMOUNT_METRICS or metric.startswith(
+        _LOCAL_AMOUNT_METRIC_PREFIXES
+    ):
         return _AMOUNT
     if metric in _LOCAL_COUNT_METRICS or metric.startswith(
         _LOCAL_COUNT_METRIC_PREFIXES
