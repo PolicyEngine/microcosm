@@ -38,11 +38,20 @@ this order:
    (`uk/ledger_fact_vendor_selections.json` names them; each records the feed
    identity it was taken from);
 6. the signed compile parity receipts with
-   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`.
+   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`;
+7. the release input coverage manifest with
+   `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
+   conditioning resource, whose vendored header records the feed identity.
 
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment.
+
+A re-pin also moves the charter-H2 parity fixture: every stage that declares a
+vendored resource as an artifact binds that resource's digest into its
+`stage_contract_sha256`, and the vendored headers restate the feed identity.
+Regenerate it with `tools/graph_uk_spine_fixture.py` and check that only those
+contract hashes move.
 
 Two-level (country + region) contract targets fan out over the region tier
 (`UK_REGION_TIER` in `microcosm.calibrate.geography_constants`), one reference per area
@@ -52,9 +61,12 @@ refuses. The cross-grain legs of English constituencies and authorities come
 from `region_code_by_area` in `local_area_crosswalk.json`, regenerated from
 the sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
 
-The national calibration runner refuses a feed whose facts or manifest digest
-differs from the committed pin. `--allow-unpinned-feed` is an explicit
-diagnostic override recorded in the run manifest; it is not a re-pin procedure.
+Both release roles of `microcosm-build-uk` refuse a feed whose facts or
+manifest digest differs from the committed pin. On the national role
+`--allow-unpinned-feed` is an explicit diagnostic override recorded in the run
+manifest; it is not a re-pin procedure. The dense role refuses that flag: the
+graph's target compilation checks the supplied hashes and the artifact against
+the committed pin and has no override.
 
 History: the `ec7169b` re-pin (#887/#900) moved census household targets onto
 the same Chronicle compile path as every other bound UK local family; the
@@ -88,3 +100,64 @@ The pin then moved to `5324aa2`, Chronicle main after PR #284 (the validator fix
 needed: `build-consumer-artifact` at `00b4b14` refused every renamed-geography row). The export
 re-run at the fix from the same suite bundle is byte-identical (287,024 rows, the same digests), so
 only the commit and the feed label move: no value, row or receipt changes.
+The `505e0e7` re-pin (microcosm#1014, PolicyEngine/chronicle#287 via #288, on top of `5324aa2`)
+brought HMRC CGT statistics 2026 Table 4 (Business Asset Disposal Relief and Investors' Relief
+claimants, qualifying gains and tax by band of qualifying gain, individuals, trusts and all
+taxpayers, 2021-22 to 2024-25; 287,150 rows). The addition is purely additive: the national and
+local reference files are byte-identical, the vendored resources carry the same rows under the new
+feed identity, and the three compile-parity receipts are unchanged.
+The `825406f` re-pin (microcosm#1069, PolicyEngine/chronicle#302 via #305, on top of `505e0e7`) brought
+the UK pension facts: Stat-Xplore State Pension and Pension Credit caseloads and amounts from
+February 2023 to March 2026 (by type, age, gender, region, partner and amount band), Northern
+Ireland State Pension and Pension Credit (DfC, May 2026), the DWP Spring 2026 State Pension and
+Pension Credit forecast lines, Attendance Allowance, Winter Fuel Payment recipients and statistics
+for winters 2023-24 to 2025-26 and the HMRC charge, the DWP workplace pension savings trends, ONS
+ASHE pension membership and contribution-rate bands, HMRC pension contribution relief (2023-24) and
+salary sacrifice relief (2024-25), and the OBR salary-sacrifice costing (344,402 rows). It also
+carries chronicle #246, #278, #292 and #304. No compiled value moved on either surface: the
+national and local reference files are byte-identical and the vendored resources carry the same
+rows under the new feed identity. The artifact carries every `505e0e7` value but is not a strict
+row superset: #305 rebuilt the DWP Spring 2026 package's record sets, so 44 incapacity-benefit
+forecast rows come back under new keys with the same forecast line and value, and 192 rows change
+only their layout fields; no UK target binds them. The five salary-sacrifice relief targets now
+match two facts each (the new 2023-24 Table 6.2 rows beside the bound 2024-25 ones) and still
+resolve to the 2024-25 fact. For the same reason the 2023 production compile-parity receipt gains
+five ledger-only rows (the relief targets now compile at that comparison period from the 2023-24
+facts); the two 2025 incumbent receipts are unchanged.
+
+The `1ee7dfe` re-pin (microcosm#1113, PolicyEngine/chronicle#322 via #323, on top of `825406f`)
+brought ONS Consumer Trends household final consumption expenditure, annual for 2020 to 2025 and
+quarterly to 2026 Q1: the national and domestic totals, the twelve domestic COICOP divisions and net
+tourism (sheet 0CN), their classes (sheets 01CN to 12CN) and the tourism detail (TOURCN). It also
+brought DESNZ road transport energy consumption by vehicle type and fuel for 2005 to 2024, for the
+UK, Great Britain, the four countries and the English regions (352,549 rows). #323 also restates the
+seven Consumer Trends series already in the feed as domestic household spending: the 217 rows keep
+their concepts and values under new keys, with the territory role and the price-basis,
+seasonal-adjustment, unit, sheet and concept dimensions. Every other `825406f` row is
+byte-identical. The national and local reference files are byte-identical; the electricity, gas and
+road-fuel targets resolve to the same values through the new keys. The vendored resources carry the
+same rows under the new feed identity, the Consumer Trends resource's 42 under their new keys, and
+the re-pin leaves the three compile-parity receipts unchanged.
+
+The `942a1fa` re-pin (microcosm#1123, PolicyEngine/chronicle#313 via #314, on top of `1ee7dfe`)
+brought the publisher inputs for the 2025 calibration: household estimates by nation and region
+(LFS 2025 for England's regions and the GB countries, NRS 2025, Welsh Government mid-2024, LPS
+dwelling stock 2021–2026), mid-2025 population estimates (the UK, country and region workbook,
+every local authority and the devolved council and district tables) with ONS's revision of
+mid-2024, the census residence-type tables (RM120, UV101a, CT0105), monthly Universal Credit by
+area from January 2025, PIPR and Scottish rent statistics, SPREE and the Welsh and Scottish
+dwelling stock by tenure, and newer editions of SLC repayments, ISC, public sector employment,
+land values and the DfI receipts (927,239 rows, 2.6 times the previous feed). Three selectors had to
+move with the data: the ONS mid-2025 workbook lays its rows out by geography, so the population
+selectors pin ages through `dimension_values` and no longer require the age layout; the
+preliminary end-2025 land rows carry `publication_status: preliminary` and are bound explicitly;
+and public sector employment is the mean of its four 2025 quarters. Three vendor selections pin
+the periods their stages were built on (UK and regional population 2023 and 2024, the DfI series
+to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
+population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
+rounding of seventeen earlier values (eleven receipts and six journeys).
+
+The comparison with the 2023 production surface is retired (microcosm#1257, María's ruling of
+2026-10-13). Two compile-parity receipts remain, both at the 2025 calibration period: the national
+one against the frozen incumbent registry, and the local one. Earlier entries above that name three
+receipts describe the state at their time.

@@ -45,6 +45,7 @@ def test_batched_base_simulation_matches_unbatched_target_frame(
         == unbatched_compilation["dropped_target_names"]
     )
 
+
 def test_batched_base_simulation_reproduces_the_hand_computed_columns(
     monkeypatch,
 ) -> None:
@@ -75,6 +76,7 @@ def test_batched_base_simulation_reproduces_the_hand_computed_columns(
     assert household.loc[4, "pop_under_18"] == sum(
         _record_value("age", row[0]) < 18 for row in persons
     )
+
 
 @pytest.mark.parametrize("batch_size", [1, 2, 3])
 def test_batched_base_engines_partition_the_pool_and_are_released(
@@ -139,6 +141,7 @@ def test_batched_base_engines_partition_the_pool_and_are_released(
         "base_household_columns"
     ] == len(base_columns)
 
+
 @pytest.mark.parametrize("batch_size", [None, 0, 5, 50])
 def test_unbatched_base_simulation_runs_once_over_the_whole_frame(
     monkeypatch, batch_size
@@ -156,6 +159,7 @@ def test_unbatched_base_simulation_runs_once_over_the_whole_frame(
     assert receipt["group_nesting_verified"] is False
     assert receipt["population_aggregate_guard_armed"] is False
     assert receipt["population_aggregate_variables_checked"] == []
+
 
 @pytest.mark.parametrize(
     ("person_index", "crossing_person", "crossing_unit"),
@@ -191,6 +195,7 @@ def test_batched_base_simulation_refuses_groups_that_cross_households(
         )
     assert ledger.constructions == []
 
+
 @pytest.mark.parametrize("claiming_tax_unit_id", [20, 50, 999])
 def test_batched_base_simulation_refuses_nonlocal_claiming_tax_units(
     monkeypatch, claiming_tax_unit_id
@@ -214,6 +219,7 @@ def test_batched_base_simulation_refuses_nonlocal_claiming_tax_units(
             frame, _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
         )
     assert ledger.constructions == []
+
 
 @pytest.mark.parametrize("claiming_tax_unit_id", [0, 10, 11])
 def test_batched_base_simulation_allows_household_local_claiming_tax_units(
@@ -243,6 +249,7 @@ def test_batched_base_simulation_allows_household_local_claiming_tax_units(
             builder.US_POPULATION_AGGREGATE_VARIABLES
         ),
     }
+
 
 def test_batched_base_simulation_refuses_each_population_aggregate(
     monkeypatch,
@@ -294,6 +301,7 @@ def test_batched_base_simulation_refuses_each_population_aggregate(
         assert receipt["population_aggregate_guard_armed"] is False
         assert receipt["population_aggregate_variables_checked"] == []
 
+
 def test_batched_base_simulation_refuses_an_aggregate_first_reached_in_last_batch(
     monkeypatch,
 ) -> None:
@@ -315,6 +323,7 @@ def test_batched_base_simulation_refuses_an_aggregate_first_reached_in_last_batc
     assert len(ledger.constructions) == 3
     assert all(simulation.dataset is None for simulation in ledger.simulations)
 
+
 @pytest.mark.parametrize("branch_depth", [1, 2])
 @pytest.mark.parametrize("clone_branches", [False, True])
 def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
@@ -333,6 +342,7 @@ def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
         builder._materialize_target_frame(
             _nested_frame(), _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
         )
+
 
 @pytest.mark.parametrize("clone_branches", [False, True])
 def test_batched_base_simulation_reads_aggregates_held_by_deleted_branches(
@@ -355,6 +365,7 @@ def test_batched_base_simulation_reads_aggregates_held_by_deleted_branches(
     assert ledger.simulations[0].branches == {}
     assert ledger.simulations[0].dataset is None
 
+
 def test_batched_base_simulation_refuses_a_stored_aggregate_input(
     monkeypatch,
 ) -> None:
@@ -373,6 +384,7 @@ def test_batched_base_simulation_refuses_a_stored_aggregate_input(
         )
     assert len(ledger.constructions) == 1
     assert all(simulation.dataset is None for simulation in ledger.simulations)
+
 
 @pytest.mark.parametrize("aggregate_in_baseline", [False, True])
 def test_batched_reform_simulation_refuses_population_aggregates(
@@ -397,6 +409,7 @@ def test_batched_reform_simulation_refuses_population_aggregates(
     assert sum(entry["reform"] is None for entry in ledger.constructions) == 3
     assert sum(entry["reform"] is not None for entry in ledger.constructions) == 1
     assert all(simulation.dataset is None for simulation in ledger.simulations)
+
 
 @pytest.mark.parametrize(
     ("target", "wrap", "message"),
@@ -433,6 +446,7 @@ def test_batched_base_simulation_refuses_batches_it_cannot_place(
         builder._materialize_target_frame(
             _nested_frame(), _TARGETS, maximum_microsim_batch_size=2
         )
+
 
 def test_checkpoint_round_trip_keeps_the_batching_receipt(
     monkeypatch, tmp_path
@@ -486,6 +500,7 @@ def test_checkpoint_round_trip_keeps_the_batching_receipt(
         target_frame.table("household"),
         check_dtype=False,
     )
+
 
 def test_population_aggregate_scan_follows_helpers_and_cross_record_markers(
     tmp_path,
@@ -546,6 +561,7 @@ def test_population_aggregate_scan_follows_helpers_and_cross_record_markers(
     assert set(found) == {"direct_share", "helper_share", "tools_rank", *markers}
     assert found["helper_share"] == ["_state_total()"]
     assert found["tools_rank"] == ["_rank()"]
+
 
 def test_refusal_reads_a_value_held_only_on_baseline() -> None:
     """Target materialization and post-export scoring share one walker. It

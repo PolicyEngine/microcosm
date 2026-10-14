@@ -11,6 +11,7 @@ import pytest
 from microcosm.build.us_runtime.spm_role_source import (
     _SOURCE_COLUMNS,
     ASEC_SPM_ROLE_SOURCES,
+    BUILDP_SPM_ROLE_INCOME_YEARS,
     EVIDENCE_SPM_ROLE,
     AsecSpmRoleSource,
     derive_spm_role_source,
@@ -27,12 +28,19 @@ def test_release_contract_pins_match_actual_source_acquisition():
     )
     from microcosm.data.source_enrichment import CENSUS_ARCHIVE_PINS, CENSUS_PERSON_PINS
 
-    assert (
-        set(CENSUS_ARCHIVE_PINS)
-        == set(CENSUS_PERSON_PINS)
-        == {pin.survey_year for pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.values()}
-    )
-    for income_year, pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items():
+    # The release contract is bound to its Build P parent, which pooled income
+    # years 2022-2024 (survey 2023-2025); the registry also pins later years
+    # for new builds. Every year the contract names must carry the registry's
+    # exact pins, and every registered year has a role pin.
+    assert set(CENSUS_ARCHIVE_PINS) == set(CENSUS_PERSON_PINS) == {2023, 2024, 2025}
+    registered = {
+        pin.survey_year: (income_year, pin)
+        for income_year, pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items()
+    }
+    assert set(CENSUS_PERSON_PINS) <= set(registered)
+    assert set(ASEC_SPM_ROLE_SOURCES) == set(ASEC_EDUCATION_ASSISTANCE_ARCHIVES)
+    for survey_year in CENSUS_PERSON_PINS:
+        income_year, pin = registered[survey_year]
         assert CENSUS_PERSON_PINS[pin.survey_year] == pin.member_sha256
         assert CENSUS_ARCHIVE_PINS[pin.survey_year] == {
             "income_year": income_year,
@@ -40,6 +48,11 @@ def test_release_contract_pins_match_actual_source_acquisition():
             "archive_sha256": pin.zip_sha256,
             "member": pin.member,
         }
+    # derive_spm_role_source's default pins are that parent's years.
+    assert set(BUILDP_SPM_ROLE_INCOME_YEARS) == {
+        pin["income_year"] for pin in CENSUS_ARCHIVE_PINS.values()
+    }
+    for income_year, pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items():
         role = ASEC_SPM_ROLE_SOURCES[income_year]
         assert role.survey_year == pin.survey_year
         assert role.csv_sha256 == pin.member_sha256

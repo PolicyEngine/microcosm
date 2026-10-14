@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "country": "nz",
+  "method_card_row": "MC7",
+  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. An adult for unit construction is any person excluded from the declared dependent-child rule, including a financially independent young person or an independent teen parent. The unit id family.family_id and membership person.person_family_id are structural graph columns (microcosm.graph.executor._structural_columns, executor.py:638-645); a non-structural node cannot own either (executor.py:1549-1554). family.family_household_id is the ordinary family column linking each unit to its household. The shared transport CREATE kernel (G4/G5a; transport/population_kernels.py:208-232) builds units from donor concept pointers under this spec. Family weights are inherited from the household through the Frame.",
+  "status": "settled by the NZ hub on 2026-10-12 under G8 method addendum B8 (MC7)",
+  "entity": "family",
+  "engine_entity": "Family",
+  "parent_entity": "household",
+  "membership_columns": {
+    "family_id": "family.family_id",
+    "family_household_id": "family.family_household_id",
+    "person_family_id": "person.person_family_id"
+  },
+  "pointer_concepts": {
+    "partner": "partner_person_id",
+    "parents": [
+      "parent_1_person_id",
+      "parent_2_person_id"
+    ],
+    "household_reference_person": "reference_person_id",
+    "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py:889-928"
+  },
+  "source_household_lineage": {
+    "concept": "fact:household.source_household_id",
+    "unit_column": "family.family_source_household_id",
+    "rule": "Each unit inherits its household's exact original-source key. The donor reader scopes raw source_household_id by source_year, merging support clones across channels; no row-order or support-row-id fallback is permitted."
+  },
+  "composition": [
+    {
+      "member": "adult",
+      "rule": "each person who is not a dependent child anchors exactly one unit unless they join a partner's unit"
+    },
+    {
+      "member": "partner",
+      "rule": "a co-resident partner (partner_person_id, a symmetric pointer) joins the adult's unit; partners always share a unit"
+    },
+    {
+      "member": "dependent_child",
+      "rule": "A dependent child joins the unit of its co-resident parent parent_1_person_id; if that parent is itself dependent, follow the parent chain to that parent's unit. A lone co-resident parent is always parent 1 (concepts.py:900-907), so parent_2_person_id never chooses the unit."
+    },
+    {
+      "member": "other_adult",
+      "rule": "every other adult in the household, including boarders and flatmates, forms their own unit"
+    }
+  ],
+  "dependent_child": {
+    "age_limit_years": 18,
+    "age_limit_inclusive": false,
+    "partnered_person_is_dependent_child": false,
+    "basis": "Social Security Act 2018, Schedule 2, as at 1 April 2026: child (LMS6902), dependent child (LMS7234), single (DLM6784713), and in a relationship (DLM6784537). The statutory definition requires a single person below the age limit and excludes financially independent persons in the declared young-person age range.",
+    "financial_independence": {
+      "min_age": 16,
+      "min_usual_weekly_hours": 30,
+      "hours_concept": "fact:person.usual_weekly_hours",
+      "donor_variable": "weekly_hours_worked_before_lsr",
+      "basis": "Social Security Act 2018, Schedule 2, financially independent (DLM6784504, limb a) and full employment (DLM6784514, limbs a and b), as at 1 April 2026; G8 method addendum B8. The test applies only while below age_limit_years.",
+      "concept_evidence": "concepts.py:1069-1083 declares usual weekly hours across all jobs and self-employment in worked weeks in the donor reference year, with transport CARRY. adapters/policyengine_us_concepts.py:352-362 maps weekly_hours_worked_before_lsr through Identity to this concept; transport.py:843-849 decodes the donor through that mapping. docs/concept-coverage/policyengine-us.md:31 records the same binding.",
+      "approximation": "The donor usual rate in worked weeks is used for the statutory average weekly employment test; employment contracts and the averaging interval are not observed."
+    },
+    "parent_independence_min_age": 16,
+    "rulespec_encoding": "The executable thresholds and placement decisions are declared in this country spec and read by the shared CREATE kernel. A future RuleSpec encoding of the Schedule 2 definitions can replace this block after its equivalence is reviewed."
+  },
+  "child_without_coresident_parent": {
+    "central": "household_reference_person_unit",
+    "refuse_dependent_reference_person": true,
+    "status": "settled by the NZ hub on 2026-10-12, G8 method addendum B8",
+    "rule": "A dependent child with no co-resident parent joins the household reference person's unit. Refuse if the reference person is themselves a dependent child."
+  },
+  "refusals": [
+    "a unit whose members span two households",
+    "a parent or partner pointer to a person outside the household",
+    "an asymmetric partner pointer",
+    "a dependent child in a household with no adult",
+    "placement of a child without a co-resident parent with a reference person who is themselves a dependent child"
+  ],
+  "open_cases": [],
+  "invariants": [
+    "every person is in exactly one unit",
+    "every unit has at least one adult",
+    "partners share a unit",
+    "every dependent child shares a unit with a parent or the reference person",
+    "units nest in households",
+    "sum of family weights equals the sum over households of household weight times units in the household"
+  ],
+  "unit_attributes": {
+    "note": "Unit attributes the planned unit-attributes node (transport.unit_attributes@1, package G5a) is to emit on the family entity, for the reg 17/18 bridge and the group encode to read. The bridge's adults_in_couple multiplier (as_rate_bridge.json) is not declared here yet; the bridge kernels (package G7) are to settle it.",
+    "columns": {
+      "family.family_type": "category of the MC7 unit: single, couple, sole parent, couple with children",
+      "family.n_dependent_children": "count of dependent children in the unit",
+      "family.is_sole_parent": "single adult with at least one dependent child",
+      "family.is_partnered": "the unit contains a partnered couple",
+      "family.is_single": "the unit has one adult (not family.is_partnered)",
+      "family.youngest_dependent_child_age": "age of the youngest dependent child; 0 when there is none"
+    }
+  },
+  "settled_date": "2026-10-12",
+  "settlement_basis": "docs/nz-benefit-unit-rule.md (the NZ hub's G8 method note B8, settled 2026-10-12)",
+  "statutory_source": {
+    "title": "Social Security Act 2018",
+    "schedule": 2,
+    "as_at": "2026-04-01",
+    "read_date": "2026-10-12",
+    "pco_xml": {
+      "corpus_repo": "TheAxiomFoundation/axiom-corpus",
+      "corpus_release": "nz-rulespec-2026-07-25",
+      "corpus_release_content_sha256": "fec362b985739f27910f0e950fc03e298528a42cdff6f694b19c9ed0850c8405",
+      "path": "data/corpus/sources/nz/statute/2026-06-16-rulespec-nz-pco/act/public/2018/0032/wholeof.xml",
+      "sha256": "ce02ac722a75a0cee6a8f55a29a80aed46b122e106b162e0940110480d4b16c0"
+    },
+    "definitions": {
+      "child": "LMS6902",
+      "dependent_child": "LMS7234",
+      "single": "DLM6784713",
+      "in_a_relationship": "DLM6784537",
+      "financially_independent": "DLM6784504",
+      "full_employment": "DLM6784514"
+    }
+  },
+  "teen_parent": {
+    "at_or_above_parent_independence_min_age": "A person below age_limit_years with a co-resident child of their own forms their own unit with that child once at or above parent_independence_min_age.",
+    "below_parent_independence_min_age": "A younger parent remains dependent under the other declared tests in their own parent's unit; their child joins that same unit. If the younger parent has no co-resident parent, the declared reference-person placement applies.",
+    "basis": "Settled by the NZ hub on 2026-10-12, G8 method addendum B8. Young Parent Payment is a main benefit; Schedule 2 financially independent (DLM6784504, limb d) excludes its recipient from child. Unit construction infers the older teen-parent exclusion from the co-resident parent pointer before the receipt layer runs; receipt is not observed or assigned by this rule.",
+    "placement_of_the_child": "These branches decide whether the teen parent is a dependent child. When the child's two co-resident parents end up in separate units, the child follows the declared parent-1 placement (split_parents)."
+  },
+  "split_parents": "first_parent_unit",
+  "non_partnered_coparents": {
+    "rule": "The dependent child joins parent 1's unit when its two co-resident parents are not partners.",
+    "basis": "Settled by the NZ hub on 2026-10-12, G8 method addendum B8; preserves the declared first-parent placement."
+  },
+  "unobserved_statutory_limbs": [
+    {
+      "definition": "financially independent (DLM6784504, limb b)",
+      "omission": "Student-allowance basic grants and independent-circumstances grants are not observable in the transported donor; this exclusion is not applied."
+    },
+    {
+      "definition": "financially independent (DLM6784504, limb c)",
+      "omission": "Payments from analogous Government-assisted schemes are not observable in the transported donor; this exclusion is not applied."
+    },
+    {
+      "definition": "financially independent (DLM6784504, limb d)",
+      "omission": "Main-benefit receipt is assigned after unit construction and does not otherwise exclude a young person. The declared teen-parent branch is the disclosed exception, inferred from co-resident child pointers before receipt assignment."
+    },
+    {
+      "definition": "full employment (DLM6784514, limb c)",
+      "omission": "An award, agreement, or contract deeming employment full time at fewer hours is not observable; this exclusion is not applied."
+    },
+    {
+      "definition": "dependent child (LMS7234, limb a(iv))",
+      "omission": "Orphan's benefit and unsupported child's benefit receipt are not identifiable in the donor. These children remain dependent in the unit they join; the statutory exclusion is not applied."
+    },
+    {
+      "definition": "dependent child (LMS7234, limbs a(i), a(ii), and a(iii))",
+      "omission": "Primary responsibility, maintenance and financial dependency are represented by household and parent placement rather than observed care or support. Oranga Tamariki payments and placements, and a young parent payment to a caregiver who is not the child's parent or step-parent, are not identifiable; their statutory distinctions are not applied."
+    },
+    {
+      "definition": "single (DLM6784713) and in a relationship (DLM6784537), as used in child (LMS6902); section 8 (DLM6783126)",
+      "omission": "Statutory single status is approximated by the co-resident partner pointer (partner_person_id). A married, civil-union or de facto young person whose spouse or partner does not live in the household is treated as single and can be placed as a dependent child. Legal marital status is not recovered by the donor decoder, and MSD determinations under section 8 that a person is or is not single are not observable; neither is applied."
+    }
+  ],
+  "unit_construction_diagnostics": {
+    "hours_independent_children": "Count of otherwise dependent candidates at or above financial_independence.min_age and below age_limit_years excluded by min_usual_weekly_hours.",
+    "independent_teen_parents": "Count of persons below age_limit_years with a co-resident child, at or above parent_independence_min_age, excluded from dependency by the parent rule.",
+    "dependent_teen_parents": "Count of persons with a co-resident child below parent_independence_min_age who remain dependent under the declared rules.",
+    "non_partnered_coparent_households": "Count of distinct households containing a dependent child with two co-resident parents who are not partners; count a household once even when several children qualify.",
+    "children_with_reference_person": "Count of dependent children with no co-resident parent placed in the household reference person's unit."
+  }
+}

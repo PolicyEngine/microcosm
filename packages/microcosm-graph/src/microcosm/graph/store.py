@@ -687,7 +687,9 @@ def _serialized_series_hash(root: Path, spec: Mapping[str, object]) -> str:
 class ContentStore:
     """A filesystem content store rooted at ``root``."""
 
-    def __init__(self, root: Path, *, codecs: object | None = None) -> None:
+    def __init__(
+        self, root: Path, *, codecs: object | None = None, create: bool = True
+    ) -> None:
         self.root = Path(root)
         self.objects = self.root / "objects"
         self.tmp = self.root / "tmp"
@@ -697,8 +699,9 @@ class ContentStore:
             raise TypeError("codecs must be a mapping, codec registry, or None.")
         self.codecs = codecs
         self._write_ledgers: list[set[str]] = []
-        self.objects.mkdir(parents=True, exist_ok=True)
-        self.tmp.mkdir(parents=True, exist_ok=True)
+        if create:
+            self.objects.mkdir(parents=True, exist_ok=True)
+            self.tmp.mkdir(parents=True, exist_ok=True)
 
     def object_path(self, key: str) -> Path:
         """Return the canonical directory for ``key`` without reading it."""

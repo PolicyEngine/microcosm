@@ -30,8 +30,15 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PROPERTY_CAPITAL_OWNER_COLUMN,
+    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
+    UC_PROPERTY_CAPITAL_SHARE,
+    UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    UC_PROPERTY_CAPITAL_SOURCES,
     _boolean_values,
     _household_to_benunit_weights,
+    recorded_capital_with_property,
+    uc_property_capital_share,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     UC_COUPLE_DEFINITION,
@@ -69,9 +76,20 @@ UC_REPORTER_NUMERIC_PREDICTORS = tuple(
     predictor for predictor in UC_REPORTER_PREDICTORS if predictor != "region"
 )
 UC_REPORTER_TARGET = "universal_credit_reported_amount"
+UC_REPORTER_SCREEN_CAPITAL_DEFINITION = (
+    f"{UC_CAPITAL_WITH_PROPERTY_DEFINITION}; a base FRS-channel unit with "
+    f"{UC_REPORTER_TARGET} > 0 takes frs_benunit_capital alone"
+)
 UC_REPORTER_TEMPORARY_DERIVED = {
     "is_uc_couple": UC_COUPLE_DEFINITION,
-    "uc_reported_capital": "frs_benunit_capital",
+    # The screen reads the capital uc_capital_coherence records. An FRS unit
+    # that reports Universal Credit is screened on its carrier alone, so the
+    # training set keeps the reporters whose imputed property would take them
+    # over the capital limit. Every other unit is screened on the carrier plus
+    # its property share, so a drawn SPI reporter does not land on a unit its
+    # property takes over the limit (microcosm#1095).
+    UC_PROPERTY_CAPITAL_SHARE: UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    "uc_reported_capital": UC_REPORTER_SCREEN_CAPITAL_DEFINITION,
     "positive_pre_takeup_uc_award": (
         "max(0, uc_maximum_amount - uc_income_reduction) > 0"
     ),
@@ -184,6 +202,7 @@ def redraw_spi_reported_uc(
             "is_benunit_head",
             "is_parent",
             "age",
+            PROPERTY_CAPITAL_OWNER_COLUMN,
             UC_REPORTER_REDRAW_OUTPUT,
             *_PERSON_INCOME_COLUMNS,
         ),
@@ -202,7 +221,7 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region"),
+        ("household_id", "region", *UC_PROPERTY_CAPITAL_SOURCES),
         label="household",
     )
 
@@ -364,9 +383,21 @@ def _materialize_screen_inputs(
     household: pd.DataFrame,
 ) -> Mapping[str, np.ndarray]:
     temporary_benunit = benunit.copy()
-    temporary_benunit["uc_reported_capital"] = pd.to_numeric(
-        temporary_benunit["frs_benunit_capital"], errors="coerce"
-    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    frs_reporter = temporary_benunit[support_channel_column("benunit")].astype(str).eq(
+        BASE_FRS_SUPPORT_CHANNEL
+    ).to_numpy(dtype=bool) & (
+        _benefit_unit_reporter_amounts(person, temporary_benunit) > 0.0
+    )
+    temporary_benunit["uc_reported_capital"] = recorded_capital_with_property(
+        pd.to_numeric(
+            temporary_benunit["frs_benunit_capital"], errors="coerce"
+        ).to_numpy(dtype=np.float64, na_value=np.nan),
+        np.where(
+            frs_reporter,
+            0.0,
+            uc_property_capital_share(person, temporary_benunit, household),
+        ),
+    )
     temporary = uk_national_frame(
         person=person,
         benunit=temporary_benunit,
