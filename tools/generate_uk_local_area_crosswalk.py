@@ -50,12 +50,17 @@ LOCAL_AUTHORITY_CODE_ALIASES: dict[str, dict[str, Any]] = {
     },
 }
 
+#: DESNZ's subnational energy statistics stamp every Great Britain authority
+#: with the NSPL their publication was built on (``publication_2025_nspl``):
+#: the April 2025 LAD frame in England and Wales, the 2019 council areas in
+#: Scotland. Those are the roster's boundaries except for the two recoded
+#: authorities, which the aliases above carry (microcosm#1207).
 EXPECTED_FACT_VINTAGE = {
     "constituency": ["pcon_2024"],
     "local_authority": {
-        "E": ["lad_2023"],
-        "W": ["lad_2023"],
-        "S": ["ca_2019", "lad_2023"],
+        "E": ["lad_2023", "publication_2025_nspl"],
+        "W": ["lad_2023", "publication_2025_nspl"],
+        "S": ["ca_2019", "lad_2023", "publication_2025_nspl"],
         "N": ["lgd_2014", "lad_2023"],
     },
 }
