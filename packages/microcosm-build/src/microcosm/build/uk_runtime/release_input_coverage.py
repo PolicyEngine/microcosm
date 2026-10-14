@@ -30,6 +30,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult, input_column_coverage_gate
 from microcosm.build.uk_runtime.parity_reference import (
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
 )
@@ -41,6 +42,7 @@ from microcosm.build.uk_runtime.release_identity import (
 __all__ = [
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKEffectiveMassCoveragePolicy",
+    "UK_FAMILY_MASS_CHANGE_SEMANTICS",
     "UK_LOADER_INPUT_ALIASES",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
     "PolicyEngineUKCoverageEngine",
@@ -70,6 +72,9 @@ _VALID_FAMILY_STATUSES = frozenset(
     {_REQUIRED_AT_BUILD_STATUS, _DEFERRED_UNTIL_RESTORED_STATUS}
 )
 _DISTRIBUTIONAL_REQUIRED_STATUS = "distributional_required"
+#: The one mass-change semantics a stage family may declare: its household
+#: mass record conserves the total and declares factor one.
+UK_FAMILY_MASS_CHANGE_SEMANTICS = "mass_conserving"
 _UK_PACKAGE = "microcosm.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
 
@@ -185,28 +190,26 @@ class UKReleaseInputCoverageManifest:
 
     @property
     def required_build_stages(self) -> frozenset[str]:
-        """National stages that the checked-in family contract makes mandatory."""
+        """Canonical producers and predecessors required by the family contract."""
 
         return frozenset(
-            str(family["stage"])
-            for family in self.family_coverage.values()
-            if family.get("status") == _REQUIRED_AT_BUILD_STATUS
+            stage
+            for stages in self.required_build_stage_options.values()
+            for stage in stages
         )
 
     @property
     def required_build_stage_options(self) -> Mapping[str, tuple[str, ...]]:
-        """Per-family executable stage alternatives declared by the manifest."""
+        """All mandatory stages per family; alternative producers are unsupported."""
 
-        options: dict[str, tuple[str, ...]] = {}
-        for name, family in self.family_coverage.items():
-            if family.get("status") != _REQUIRED_AT_BUILD_STATUS:
-                continue
-            stages = [str(family["stage"])]
-            superseded_by = family.get("superseded_by")
-            if isinstance(superseded_by, Mapping):
-                stages.append(str(superseded_by["stage"]))
-            options[str(name)] = tuple(dict.fromkeys(stages))
-        return options
+        return {
+            str(name): (
+                *tuple(family.get("required_predecessor_stages", ())),
+                str(family["stage"]),
+            )
+            for name, family in self.family_coverage.items()
+            if family.get("status") == _REQUIRED_AT_BUILD_STATUS
+        }
 
 
 def _resource_text(resource: str) -> str:
@@ -304,46 +307,24 @@ def _parse_family_coverage(
                 f"{resource}: family {name!r} needs a lowercase SHA-256 "
                 "for source_manifest_sha256."
             )
-        superseded_by = raw_family.get("superseded_by")
-        parsed_superseded_by: dict[str, Any] | None = None
-        if superseded_by is not None:
-            if not isinstance(superseded_by, Mapping):
-                raise ValueError(
-                    f"{resource}: family {name!r} superseded_by must be an object."
-                )
-            superseding_stage = str(superseded_by.get("stage", "")).strip()
-            superseding_manifest = str(superseded_by.get("source_manifest", "")).strip()
-            superseding_sha = str(
-                superseded_by.get("source_manifest_sha256", "")
-            ).strip()
-            supersession_reason = str(superseded_by.get("reason", "")).strip()
-            if not superseding_stage:
-                raise ValueError(
-                    f"{resource}: family {name!r} superseded_by needs a stage."
-                )
-            if not superseding_manifest:
-                raise ValueError(
-                    f"{resource}: family {name!r} superseded_by needs a "
-                    "source_manifest."
-                )
-            if len(superseding_sha) != 64 or any(
-                character not in "0123456789abcdef" for character in superseding_sha
-            ):
-                raise ValueError(
-                    f"{resource}: family {name!r} superseded_by needs a "
-                    "lowercase SHA-256 for source_manifest_sha256."
-                )
-            if not supersession_reason:
-                raise ValueError(
-                    f"{resource}: family {name!r} superseded_by needs a reason."
-                )
-            parsed_superseded_by = {
-                **dict(superseded_by),
-                "stage": superseding_stage,
-                "source_manifest": superseding_manifest,
-                "source_manifest_sha256": superseding_sha,
-                "reason": supersession_reason,
-            }
+        if "superseded_by" in raw_family:
+            raise ValueError(
+                f"{resource}: family {name!r} must name its canonical producer; "
+                "superseded_by alternatives are no longer supported."
+            )
+        predecessors = raw_family.get("required_predecessor_stages", [])
+        if (
+            not isinstance(predecessors, list)
+            or any(
+                not isinstance(value, str) or not value.strip()
+                for value in predecessors
+            )
+            or len(set(predecessors)) != len(predecessors)
+            or stage in predecessors
+        ):
+            raise ValueError(
+                f"{resource}: family {name!r} has invalid required_predecessor_stages."
+            )
         try:
             base_candidate_tier = validate_uk_release_tier(
                 raw_family.get("base_candidate_tier")
@@ -366,15 +347,17 @@ def _parse_family_coverage(
                 "required_mass_change_reason."
             )
         mass_change_semantics = str(
-            raw_family.get("mass_change_semantics", "mass_conserving")
+            raw_family.get("mass_change_semantics", UK_FAMILY_MASS_CHANGE_SEMANTICS)
         ).strip()
-        if mass_change_semantics not in {
-            "mass_conserving",
-            "mass_increasing_support",
-        }:
+        # Every spine stage conserves household mass: the last stage that
+        # added support mass (the SPI income band donors) became a funded
+        # channel in microcosm#1063, and ``mass_increasing_support`` retired
+        # with it.
+        if mass_change_semantics != UK_FAMILY_MASS_CHANGE_SEMANTICS:
             raise ValueError(
                 f"{resource}: family {name!r} has invalid "
-                f"mass_change_semantics {mass_change_semantics!r}."
+                f"mass_change_semantics {mass_change_semantics!r}; the only "
+                f"semantics is {UK_FAMILY_MASS_CHANGE_SEMANTICS!r}."
             )
 
         raw_requirements = raw_family.get("effective_mass_requirements", {})
@@ -436,11 +419,6 @@ def _parse_family_coverage(
             "stage": stage,
             "source_manifest": source_manifest,
             "source_manifest_sha256": source_manifest_sha256,
-            **(
-                {"superseded_by": parsed_superseded_by}
-                if parsed_superseded_by is not None
-                else {}
-            ),
             "base_candidate_tier": base_candidate_tier,
             "output_weight_kind": output_weight_kind,
             "required_mass_change_reason": required_mass_change_reason,
@@ -1022,18 +1000,16 @@ def _family_build_state_diagnostics(
 
         required_reason = str(family.get("required_mass_change_reason", "")).strip()
         if required_reason:
-            semantics = str(family.get("mass_change_semantics", "mass_conserving"))
+            semantics = str(
+                family.get("mass_change_semantics", UK_FAMILY_MASS_CHANGE_SEMANTICS)
+            )
             records = tuple(getattr(frame, "mass_log", ()))
             matches = [
                 record
                 for record in records
                 if _mass_record_field(record, "reason") == required_reason
             ]
-            valid_matches = [
-                record
-                for record in matches
-                if _valid_mass_record(record, semantics=semantics)
-            ]
+            valid_matches = [record for record in matches if _valid_mass_record(record)]
             details["required_mass_change_reason"] = required_reason
             details["mass_change_semantics"] = semantics
             details["matching_mass_change_records"] = len(matches)
@@ -1056,7 +1032,9 @@ def _mass_record_field(record: object, name: str) -> object:
     return getattr(record, name, None)
 
 
-def _valid_mass_record(record: object, *, semantics: str) -> bool:
+def _valid_mass_record(record: object) -> bool:
+    """A household record that conserves mass and declares factor one."""
+
     old_total = _mass_record_field(record, "old_total")
     new_total = _mass_record_field(record, "new_total")
     declared_factor = _mass_record_field(record, "declared_factor")
@@ -1073,8 +1051,6 @@ def _valid_mass_record(record: object, *, semantics: str) -> bool:
     )
     if not common:
         return False
-    if semantics == "mass_increasing_support":
-        return bool(new > old and declared_factor is None)
     try:
         factor = float(declared_factor)
     except (TypeError, ValueError):
@@ -1371,6 +1347,19 @@ def assert_uk_release_input_coverage_manifest_current(
                 )
 
     known_gaps = {gap.variable: gap for gap in load_efrs_parity_known_gaps()}
+    # Engine-derived exclusions (microcosm#1106) are a separate section of the
+    # same ledger: reference inputs the engine computes from persisted inputs,
+    # which the release must therefore not persist. They are never parity debt.
+    engine_derived = {
+        gap.variable: gap for gap in load_efrs_engine_derived_exclusions()
+    }
+    both = sorted(set(known_gaps) & set(engine_derived))
+    if both:
+        failures.append(
+            "efrs_parity_known_gaps.json names column(s) both as a parity known "
+            f"gap and as an engine-derived exclusion: {both}."
+        )
+    known_gaps = {**known_gaps, **engine_derived}
     gaps_outside_surface = sorted(set(known_gaps) - surface)
     if gaps_outside_surface:
         failures.append(
@@ -1466,7 +1455,7 @@ def assert_uk_release_input_coverage_build_stages(
     missing = sorted(
         family
         for family, options in manifest.required_build_stage_options.items()
-        if actual.isdisjoint(options)
+        if not set(options).issubset(actual)
     )
     if missing:
         raise ValueError(

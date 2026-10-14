@@ -54,6 +54,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "person_benunit_id": np.arange(201, 201 + n),
             "person_household_id": household_ids,
             "age": [30, 40] * 5,
+            "is_uc_claimant": [True] * n,
         }
     )
     benunit = pd.DataFrame(
@@ -89,7 +90,11 @@ def test_take_up_gate_seeded_fixture_passes() -> None:
     )
 
     assert result.passed is True
-    assert "benunit.would_claim_child_benefit" in result.details
+    assert "benunit.would_claim_uc" in result.details
+    # The Child Benefit flags are measured by their own stage gate
+    # (microcosm#1063), like would_claim_pc (microcosm#1069).
+    assert "benunit.would_claim_child_benefit" not in result.details
+    assert "benunit.child_benefit_opts_out" not in result.details
 
 
 def test_take_up_gate_constant_column_fails() -> None:

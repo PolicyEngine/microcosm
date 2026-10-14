@@ -97,7 +97,7 @@ class TestManifestAndPlan:
             resolve_asec_spm_role_source_paths({1999: explicit}, income_years=(1999,))
         with pytest.raises(ValueError, match="have no pinned ASEC SPM role source"):
             resolve_asec_spm_role_source_paths(None, income_years=(1999,))
-        assert set(ASEC_SPM_ROLE_SOURCES) == {2022, 2023, 2024}
+        assert set(ASEC_SPM_ROLE_SOURCES) == {2022, 2023, 2024, 2025}
 
 
 class TestDerivation:

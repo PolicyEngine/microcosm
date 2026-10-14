@@ -1,4 +1,4 @@
-"""Build the 117th->119th congressional-district vintage crosswalk from Census.
+"""Build the 117th->119th congressional-district vintage crosswalk.
 
 Microcosm calibrates congressional-district (CD) fiscal targets from the IRS SOI
 CD table, whose district geography is the **117th Congress** (the pre-2020-
@@ -6,22 +6,25 @@ apportionment plan, drawn on 2010 geography). The current Microcosm CD surface
 that ``policyengine.py`` consumes is the **119th Congress** (the post-2020-
 apportionment plan). ``congressional_district_vintage`` translates SOI CD facts
 from the old vintage onto the current one through a proportional crosswalk; this
-module *builds that crosswalk* from primary Census sources, so the weights are
-reproducible and cited rather than an opaque artifact.
+module *builds that crosswalk* from the block -> congressional-district plan
+registry (``cd_plan_registry``), so the weights are reproducible and cited
+rather than an opaque artifact.
 
-Method — a single-vintage block overlay, so no 2010<->2020 block bridge is
-needed:
+Method — a block overlay of two plans on the same 2020 blocks:
 
-- **Old (117th) district of each 2020 block**: the 2020 Block Assignment File
-  ``CD`` layer (``BlockAssign_ST{fips}_{usps}_CD.txt``, ``BLOCKID|DISTRICT``).
-  The 2020 BAFs were published with the 2020 P.L. 94-171 release and carry the
-  116th-Congress plan (identical district geography to the 117th) expressed on
-  **2020** tabulation blocks.
-- **Current (119th) district of each 2020 block**: the 119th Congressional
-  District Block Equivalency File (``NationalCD119.txt``, ``GEOID,CDFP``) — the
-  same source ``build_us_block_ladder_artifact`` already uses for the current
-  CD surface.
-- **Weight**: 2020 P.L. 94-171 ``POP100`` per block (the block ladder's
+- **Old (117th) district of each 2020 block**: the registry's
+  ``117th_congress`` plan. That is the 2020 Block Assignment File ``CD`` layer,
+  which carries the 116th-Congress plans on 2020 blocks, except North
+  Carolina: Census reports it as the only state whose districts changed
+  between the 116th and 117th Congress, and the registry carries its 2019
+  remedial plan onto 2020 blocks (``US_CD_PLAN_REGISTRY.md``). The parsers
+  below read the BAF and BEF layouts directly and remain for callers that
+  need them.
+- **Current (119th) district of each 2020 block**: the registry's
+  ``119th_congress`` plan, the 119th Congressional District Block Equivalency
+  File (``NationalCD119.txt``), which agrees exactly with the block ladder.
+- **Weight**: 2020 P.L. 94-171 ``POP100`` per block, as recorded in the
+  registry (the block ladder's
   :func:`~microcosm.build.us_runtime.block_ladder_sources.parse_pl_geo_blocks`
   convention), because congressional apportionment and equal-population
   redistricting are population operations. Population is the correct default
@@ -39,7 +42,7 @@ four characters are ``state_fips + district`` (``SSDD``); at-large states and th
 DC non-voting delegate normalize to district ``00`` (the repo-wide convention;
 see ``block_ladder_sources``).
 
-This module is pure and unit-testable. Download orchestration lives in
+This module is pure and unit-testable. The build lives in
 ``tools/build_us_congressional_district_vintage_crosswalk.py``; the derived
 crosswalk is a regenerable build artifact, not a Ledger fact (the fact-vs-
 computed boundary of PolicyEngine/ledger#71).

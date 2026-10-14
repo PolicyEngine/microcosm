@@ -12,7 +12,6 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
     UK_SPINE_STRUCTURAL_STAGES,
     uk_registry,
     uk_spine_graph,

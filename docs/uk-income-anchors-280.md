@@ -35,6 +35,16 @@ opening in Y. That is the `calendar_year_window` value operation
 with either year absent, and writes each member's year, weight, value and
 assertion on the spec.
 
+Some publishers give each year its own measure: DWP's benefit expenditure and
+caseload tables carry `expenditure_2024` and `expenditure_2025`, which the
+series identity reads as two series of one year each. A window over such a
+table declares `source_measure_id_by_opening_year` in its selector, mapping each
+of the two years to its measure. A fact matches only the measure its own year
+declares, and the two declared measures form the window's one series. The map
+names exactly the two years of the window, and a selector that declares it
+cannot also declare `source_measure_id` (microcosm#1095: the Great Britain
+pension-age Housing Benefit spending row).
+
 Facts already at a calendar-year period (the DWP monthly cubes) keep their
 calendar-2025 windows; the ESA rows join them below.
 
@@ -45,16 +55,22 @@ Every `hmrc_spi` reference declares an `uprating_index`; the appliers live in
 the generator and the runtime apply the same factor and the committed
 membership carries the uprated value with its receipt.
 
-- Amount rows: `policyengine_uk_parameter:<path>`, the ratio of the pinned
+- Amount rows: employment, self-employment, private pension and property
+  income follow `hmrc.itl_2026.total_income_growth_by_total_income_band`,
+  HMRC's projected total income in the band, the index their count rows'
+  growth belongs with (microcosm#1063; property since microcosm#1106). The
+  others take `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
-  uses. Employment income follows `obr.average_earnings`, self-employment
-  `obr.per_capita.mixed_income`, dividends and property `obr.per_capita.gdp`,
-  private pensions `obr.private_pension_index`, savings interest
-  `ons.household_interest_income`; the state pension follows
+  uses: dividends `obr.per_capita.gdp`. Savings interest takes two legs
+  (microcosm#1095): `ons.household_interest_income`, the index of its
+  history, to the dataset's year, then `obr.per_capita.gdp`, the index the
+  engine's dataset projection applies, to the calibration year (1.1420 x
+  1.0438 = 1.1920 on the pinned engine values). The state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
   (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the
-  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and 1.1819. The compile
+  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and, for household
+  interest alone, 1.1819. The compile
   reads the values from the vendored `hmrc_uprating_engine_pins.json` (the six
   parameters at every 1 January 2019 to 2026, written from the installed engine
   by `tools/pin_uk_uprating_engine_values.py`, whose `--check` refuses drift), so
@@ -185,8 +201,9 @@ before this stage the spine, like the enhanced FRS, carried no record above
 
 Two uprating conventions sit side by side by design. The national SPI amount
 rows move by the engine's own component indices (earnings, mixed income, GDP
-per head, the private-pension index, household interest, the new State
-Pension rate), because each row is one income component and the engine uprates
+per head, the private-pension index, the new State Pension rate, and for
+savings interest household interest to the dataset's year and GDP per head
+after it), because each row is one income component and the engine uprates
 that component by that index: the target and the model then agree on what
 "2025 employment income" means. The regional Table 3.11 rows are totals and
 tax by band with no component split, so no engine index applies; they move by
@@ -232,6 +249,14 @@ microcosm#1006, comments 5812328880 and 5814299594):
   a certified cut until the fence is settled on the #970/#979 side (bind the
   count, spread the band-donor mass over lighter rows, or cap their weight
   ratio).
+  **2026-09-29 (microcosm#1045):** settled by retiring the band-donor stage.
+  The Table 3 redraw owns every gain amount and places rows by wealth rank,
+  so the demoted donors were an artefact of drawing support by income and
+  placing it by wealth; #1045 replaces the stack with `cgt_support_split`, a
+  deterministic mass-conserving split of the wealthiest households of each
+  Table 3 income column into light copies before the incidence clone, and
+  the sub-exempt population becomes the anchor-trimmed Advani–Summers clone
+  composition (its 2030 crossing is 6,000 to 7,500 on the existing arms).
 
 ## SPI rows before the donor imputations
 
@@ -247,8 +272,9 @@ FRS parent's income, while its adults' incomes were replaced by SPI draws. A
 was copied from.
 
 With the SPI block first, every row, the FRS base rows included, is imputed
-from its final incomes. On the base rows this includes the SPI stage-1
-dividend redraw.
+from its final incomes. The base rows' incomes are their own reports: the SPI
+stage-1 forest no longer redraws their dividends (uk-data#498,
+microcosm#1095).
 
 Three details follow from the order:
 
@@ -341,8 +367,19 @@ after the reorder were still falling 0.11 to 0.75 points).
 
 ## Not done here
 
-- The property-income amount rows stay signed out: the spine's
-  `property_income` is the FRS rent received (sub-lets, lodgers, royalties)
-  while the SPI concept is landlords' net income after expenses.
+- The property-income amount rows are bound since microcosm#1106: the 13 SPI
+  Table 3.7 net amounts bind unscaled on `property_income`, landlords' profit
+  after allowable expenses and before residential finance costs, uprated by
+  the band index the count rows' growth belongs with
+  (`hmrc.itl_2026.total_income_growth_by_total_income_band`, ruled
+  2026-10-11), and the
+  incumbent's x1.9 scaling is retired (María's ruling of 2026-10-05). On the
+  FRS side the `property_components` stage draws each FRS landlord's
+  restricted finance costs from the SPI tape and adds them back to the rent
+  from other property they report (ROYYR1, after the expenses on show card
+  K6, which include mortgage payments and loan interest), so the FRS concept
+  reaches the SPI's; the ruling with Max on that add-back is pending. The
+  mortgage capital the card also nets stays netted, and sub-letting rent
+  stays as reported, which SUBALLOW records as before or after expenses.
 - The ESA rows' migration residual and the SPI support channel's benefit fill
   (microcosm#840, #867, #869) are spine items.

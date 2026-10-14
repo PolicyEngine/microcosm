@@ -54,6 +54,7 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
 from tools.generate_uk_local_target_references import _support_floor_register_scope
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
+    TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
     _geography_pins,
@@ -64,9 +65,8 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1124
+ACTIVE_REFERENCE_COUNT = 1279
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
-UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
 def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
@@ -229,7 +229,9 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_window",
         "linear_combination",
         "monthly_window_average",
+        "monthly_window_count_x_mean",
         "monthly_window_sum_average",
+        "rolled_forward_by_ratio",
         "scaled_by_ratio",
     ]
     assert len(names) == len(set(names))
@@ -238,7 +240,15 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         contract_target_id = reference["metadata"]["contract_target_id"]
         target = targets_by_id[contract_target_id]
         binding = target["bindings"]["policyengine"]
-        fanout_cell = reference["metadata"].get("geography_id")
+        # A country row may compose its base from a lower grain (the NI
+        # census households, microcosm#1123): it carries its geography but is
+        # no fan-out cell.
+        country_composed = list(target.get("geography_levels") or ()) == [
+            "country"
+        ] and bool(reference["metadata"].get("composed_from_level"))
+        fanout_cell = (
+            None if country_composed else reference["metadata"].get("geography_id")
+        )
 
         for key, value in target["ledger_selector"].items():
             if key == "dimension_values":
@@ -334,6 +344,14 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
                         separators=(",", ":"),
                     ),
                     "cross_grain_grain": "region",
+                }
+            )
+        if country_composed:
+            expected_metadata.update(
+                {
+                    "composed_from_level": "local_authority",
+                    "geography_level": "country",
+                    "geography_id": reference["ledger_selector"]["geography_id"],
                 }
             )
         assert reference["metadata"] == expected_metadata
@@ -512,15 +530,49 @@ def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
         )
 
 
-def test_uk_target_references_do_not_bind_known_mismatched_property_amounts() -> None:
-    resource = _load_uk_resource("target_references.json")
+def test_uk_target_references_bind_the_spi_net_property_amounts_unscaled() -> None:
+    """The 13 SPI Table 3.7 net property-income amounts bind as published.
 
-    assert not [
-        reference["name"]
+    microcosm#1106 retired the incumbent's x1.9 scaling: SPI net income from
+    property is landlords' profit after allowable expenses and before
+    residential finance costs, the concept ``property_income`` holds, so no
+    value operation scales it. The only move is the declared uprating to the
+    2025 calibration year.
+    """
+
+    target_id = "hmrc.spi.property_income.amount_by_total_income_band"
+    contract = _load_uk_resource("uk_population_targets.json")
+    resource = _load_uk_resource("target_references.json")
+    references = [
+        reference
         for reference in resource["target_references"]
-        if reference["metadata"]["contract_target_id"]
-        == "hmrc.spi.property_income.amount_by_total_income_band"
+        if reference["metadata"]["contract_target_id"] == target_id
     ]
+
+    assert len(references) == 13
+    assert all(
+        reference["name"].startswith("hmrc/property_income_income_band_")
+        for reference in references
+    )
+    assert {
+        (
+            reference["uprating_index"],
+            reference["uprating_from_period"],
+            reference["uprating_to_period"],
+        )
+        for reference in references
+    } == {
+        (
+            # The band index the count rows' growth belongs with (microcosm#1145
+            # review, María's ruling of 2026-10-11); dividends keep the flat index.
+            "hmrc.itl_2026.total_income_growth_by_total_income_band",
+            "2023",
+            2025,
+        )
+    }
+    assert target_id not in _value_operation_by_target_id(contract)
+    membership = _load_uk_resource("target_reference_membership.json")
+    assert membership["targets"][target_id]["status"] == "active"
 
 
 def test_uk_target_references_do_not_emit_nan_uc_payment_bands() -> None:
@@ -572,11 +624,14 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
     targets = {target["target_id"]: target for target in contract["targets"]}
     sum_target_ids = _sum_target_ids(contract)
     operations = _value_operation_by_target_id(contract)
+    # National rows only: the area rows' calendar-2025 windows (#1123) are
+    # authored by the local generator.
     composition = {
         target_id: target
         for target_id, target in targets.items()
         if target["family"] == "dwp_universal_credit"
         and "dimension_values" in target["ledger_selector"]
+        and set(target["geography_levels"]) <= {"country", "region"}
     }
     assert composition
     for target_id, target in composition.items():
@@ -647,9 +702,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total and the dwp.pip claimant counts keep the GB
-    pin and stay held: activating them needs contract redesign (per-nation
-    repayment rows; an England-and-Wales PIP binding), not a pin change.
+    slc.repayments.devolved_total keeps the GB pin and stays held: activating
+    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    claimant counts are no targets now: they are England-and-Wales diagnostics
+    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -688,12 +744,7 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "E92000001"
     }
     assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
-    assert (
-        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K03000001"
-    )
-    assert (
-        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K03000001"
-    )
+    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -705,12 +756,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
             )
         )
 
+    # An exact-id pin overrides the substring rule: OBR's council tax row
+    # sums England, Scotland and Wales and carries Chronicle's UK stamp
+    # (microcosm#1095).
     substring_scotland = {
         str(target["target_id"])
         for target in contract["targets"]
         if "scotland" in haystack(target)
         and "northern" not in haystack(target)
         and "domestic_rates" not in haystack(target)
+        and str(target["target_id"]) not in TARGET_ID_GEOGRAPHY_PINS
     }
     # The by_area council-tax cells carry the same prefix pin, but they sit on
     # the local surface, where the roster (not the pin) fixes the geography.
@@ -733,14 +788,15 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
-    for target_id in (
-        "slc.repayments.devolved_total",
-        "dwp.pip.daily_living_standard_claimants",
-        "dwp.pip.daily_living_enhanced_claimants",
-    ):
-        assert (
-            membership["targets"][target_id]["status"] == "no_fact_at_or_before_period"
-        )
+    assert (
+        membership["targets"]["slc.repayments.devolved_total"]["status"]
+        == "no_fact_at_or_before_period"
+    )
+    assert not [
+        target_id
+        for target_id in membership["targets"]
+        if target_id.startswith("dwp.pip.")
+    ]
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -749,33 +805,38 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1124,
-        "no_fact_at_or_before_period": 7,
-        "signed_excluded": 13,
+        "active": 1279,
+        "no_fact_at_or_before_period": 5,
+        "signed_excluded": 15,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
     outcomes = membership["fanout_family_outcomes"]
     (cgt_outcome,) = [entry for entry in outcomes if entry["family"] == "hmrc_cgt"]
-    # 24 age-band rows, 24 region-tier cells and 24 size-of-gain rows
-    # (microcosm#725, #467).
+    # 24 age-band rows, 24 region-tier cells, 24 size-of-gain rows
+    # (microcosm#725, #467), 16 Table 4.1 BADR/IR band rows and 12 Table 3
+    # taxable-income margin rows (microcosm#1014).
     assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
-    assert cgt_outcome["active_reference_count"] == 74
+    assert cgt_outcome["active_reference_count"] == 102
     assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
             "family": "hmrc_spi",
-            "status": "active_with_signed_property_amount_exclusion",
-            "active_reference_count": 169,
+            "status": "active_strict_band_pins",
+            "active_reference_count": 182,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins, except the HMRC property-income amount "
-                "surface. Those 13 rows are signed out because Ledger carries "
-                "the official SPI Table 3.7 net property-income amounts, "
-                "while the incumbent target applies the populace-side x1.9 "
-                "property-income undercount adjustment traced to "
-                f"{UK_DATA_REPO} PR #311 / issue #230 and HMRC Property Rental "
-                "Income Statistics."
+                "dimension pins. The 13 property-income amount rows bind the "
+                "SPI Table 3.7 net concept unscaled: landlords' profit after "
+                "allowable expenses and before residential finance costs, "
+                "which is what policyengine-uk's property_income means. The "
+                "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
+                "Property Rental Income Statistics' receipts before expenses "
+                "against this net amount, so it is retired; the receipts are "
+                "constructed on property_rental_income by the "
+                "property_components stage and PRIS stays a diagnostic "
+                "(microcosm#1106, María's rulings of 2026-10-05 and "
+                "2026-10-08)."
             ),
         },
         {
@@ -792,6 +853,20 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_itl_marginal_rate",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": 24,
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "higher and additional rate Income Tax payers (Table 2.2, July "
+                "2026) fan out over the twelve-area region tier (microcosm#905) "
+                "and bind at the calendar-2025 window of HMRC's 2024-25 and "
+                "2025-26 projections, measured on the engine's tax_band. Each "
+                "region or nation row controls its higher rate area cells "
+                "(microcosm#1123)."
             ),
         },
         {
@@ -816,14 +891,14 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": 100,
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": 8,
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {
@@ -858,10 +933,33 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "the same publication."
             ),
         },
+        {
+            "family": "dwp_state_pension",
+            "status": "active_english_region_and_amount_band_fanout",
+            # 18 English-region cells and 19 weekly amount bands: the empty new
+            # State Pension £40-£60 band is signed out (microcosm#1069).
+            "active_reference_count": 37,
+            "signed_rationale": (
+                "The State Pension recipients by type fan out over the nine "
+                "English regions (Scotland and Wales are their own rows, since "
+                "DWP publishes no Northern Ireland cell for a twelve-area tier) "
+                "and over DWP's weekly amount bands, whose 'all' margin is a "
+                "total row the detail measure pin leaves out; the empty new "
+                "State Pension £40-£60 band is signed out (microcosm#1069)."
+            ),
+        },
     ]
     rationales = membership["signed_exclusion_rationales"]
     cgt_rows = [entry for entry in rationales if entry["family"] == "hmrc_cgt"]
     assert [(entry["target_id"], entry["row"]) for entry in cgt_rows] == [
+        (
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band.individuals_total",
+        ),
+        (
+            "hmrc.cgt.badr_ir_taxpayers_by_band",
+            "hmrc.cgt.badr_ir_taxpayers_by_band.individuals_total",
+        ),
         ("hmrc.cgt.gains_by_age_band", "hmrc.cgt.gains_by_age_band.age_0_to_15"),
         ("hmrc.cgt.gains_by_gain_band", "hmrc/capital_gains_band_0"),
         ("hmrc.cgt.tax_by_age_band", "hmrc.cgt.tax_by_age_band.age_0_to_15"),
@@ -872,26 +970,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         ("hmrc.cgt.taxpayers_by_gain_band", "hmrc/cgt_taxpayers_band_0"),
     ]
     assert all(entry["status"] == "signed_excluded" for entry in cgt_rows)
-    assert [entry for entry in rationales if entry["family"] != "hmrc_cgt"] == [
-        {
-            "family": "hmrc_spi",
-            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-            "status": "signed_excluded",
-            "signed_rationale": (
-                "Signed out pending a first-class value-scaling operation or "
-                "a Chronicle package for HMRC Property Rental Income "
-                "Statistics with declared reconciliation: the Ledger facts "
-                "are official HMRC SPI Table 3.7 net property-income amounts, "
-                "while the incumbent calibration target applies the "
-                "populace-side x1.9 property-income undercount adjustment. "
-                "The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI "
-                "covers only taxpayers with liability, "
-                "and HMRC Property Rental Income Statistics show GBP 46.68bn "
-                "versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI "
-                "facts would knowingly calibrate to 10/19 of the incumbent "
-                "surface."
-            ),
-        },
+    pension_rows = [
+        entry for entry in rationales if entry["family"] == "dwp_state_pension"
+    ]
+    assert [(entry["target_id"], entry["row"]) for entry in pension_rows] == [
+        (
+            "dwp.state_pension.recipients_new_by_weekly_amount",
+            "dwp.state_pension.recipients_new_by_weekly_amount."
+            "40_00_to_under_60_00__new_state_pension",
+        )
+    ]
+    assert "no record on the frame" in pension_rows[0]["signed_rationale"]
+    assert [
+        entry
+        for entry in rationales
+        if entry["family"] not in {"hmrc_cgt", "dwp_state_pension"}
+    ] == [
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
@@ -930,6 +1024,16 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         "historical forecast/uprated" in differences["hmrc.cgt.gains_total"]["reason"]
     )
     assert differences["obr.capital_gains_tax"]["fixture_value"] == 21_801_546_197.09165
+    council_tax = differences["obr.council_tax"]
+    assert council_tax["kind"] == "calibration_drift"
+    assert "row 15" in council_tax["reason"] and "row 19" in council_tax["reason"]
+    national_insurance = differences["obr.ni"]
+    assert national_insurance["kind"] == "fixture_only"
+    assert "diagnostic provenance on obr.ni_employee" in national_insurance["reason"]
+    for rate in ("standard", "enhanced"):
+        caseload = differences[f"dwp.pip.daily_living_{rate}_claimants"]
+        assert caseload["kind"] == "fixture_only"
+        assert "diagnostic provenance on obr.pip" in caseload["reason"]
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (
@@ -976,10 +1080,12 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert tcl_households.value == 469_780
     assert tcl_households.metadata["ledger_fact_period"] == "2025-04"
 
+    # The staged rows predate mid-2025; the committed reference carries no
+    # hold stamp since the pinned feed resolves it at 2025 (microcosm#1123).
     population = targets["ons.population.uk_total"]
     assert population.value == 69_281_437
     assert population.metadata["ledger_value_operation"] == "sum"
-    assert population.metadata["uprating_from_period"] == "2024"
+    assert "uprating_from_period" not in population.metadata
 
     spi_band = targets["hmrc/employment_income_income_band_12_570_to_15_000"]
     assert spi_band.value == 16_900_000_000
@@ -1025,9 +1131,10 @@ def test_paid_child_count_windows_remove_only_their_uprating_holds() -> None:
         assert candidates[0]["status"] == "active"
         assert candidates[0]["matched_fact_count_in_source_window"] == 12
     # A genuinely older stock observation retains its independent hold.
+    # (The ISC census of 16 January 2025, an in-year snapshot since #1123.)
     assert holds["isc.private_school_students"] == {
         "name": "isc.private_school_students",
-        "from": "2024-01",
+        "from": "2025-01",
         "to": "2025",
     }
 
@@ -1061,6 +1168,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         target["target_id"]
         for target in contract["targets"]
         if target["family"] == "dwp_universal_credit"
+        and set(target["geography_levels"]) <= {"country", "region"}
     }
     assert monthly_sum_ids < uc_target_ids
     assert {
@@ -1400,29 +1508,14 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
         _add_signed_rationale_notes(report, fixture_resource=spec.fixture_resource)
         expected = _load_uk_resource(spec.output_resource)
         assert report == expected
-        if spec.target_period == 2023:
-            inherited_uc = [
-                r
-                for r in report["differences"]
-                if r["name"]
-                in {
-                    "dwp.uc.households",
-                    "dwp.uc.households_couple_no_children",
-                    "dwp.uc.households_couple_with_children",
-                    "dwp.uc.households_single_no_children",
-                    "dwp.uc.households_single_with_children",
-                }
-            ]
-            assert len(inherited_uc) == 5
-            assert all(
-                "frozen 2023 production" in r["reason"]
-                and "2025 source windows" in r["reason"]
-                for r in inherited_uc
-            )
         gate = ledger_compile_parity_gate(
             compilation.registry,
             _load_ledger_compile_parity_fixture(spec.fixture_resource),
             signed_differences=expected["differences"],
+            # As the release-cut producer calls it: a reference the feed no
+            # longer resolves is signed as ledger_absent, and the gate tells
+            # it from a fixture-only row by the compile's own report.
+            unsupported=compilation.unsupported,
         )
         assert gate.passed, gate.failures
 
@@ -1480,7 +1573,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 50
+    # microcosm#1123 adds the LFS household estimates for England's regions
+    # and ITL Table 2.2's higher and additional rate taxpayers.
+    assert len(two_level) == 55
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1489,8 +1584,12 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     spi_region = [
         target_id for target_id in two_level if target_id.startswith("hmrc.spi_region.")
     ]
-    assert len(ons) == 9 and len(mhclg) == 9 and len(hmrc) == 2
+    assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
+    itl_rate = [
+        target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
+    ]
+    assert len(itl_rate) == 2
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1503,11 +1602,15 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         cells = [row["metadata"]["geography_id"] for row in rows]
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
-        assert cells == (
-            tier_codes
-            if target_id in ons or target_id in hmrc or target_id in spi_region
-            else english
-        ), target_id
+        # LFS household estimates cover England's regions only: their binding
+        # pins the country, like the MHCLG dwelling stock.
+        uk_wide = (
+            target_id in ons
+            or target_id in hmrc
+            or target_id in spi_region
+            or target_id in itl_rate
+        ) and target_id != "ons.households.english_regions"
+        assert cells == (tier_codes if uk_wide else english), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
         for row in rows:
@@ -1557,13 +1660,16 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows.
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 573
-    # The twelve ONS cells of a band sum to the retired UK row of the same
-    # publication (the 0-9 band: 7,553,013 at mid-2024).
+    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
+    # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
+    # English-region household cells and 24 ITL Table 2.2 marginal-rate
+    # cells (microcosm#1123).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 624
+    # The twelve ONS cells of a band sum to the UK row of the same
+    # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
     assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
-        7_553_013.0
+        7_364_365.0
     )
 
 
@@ -1623,6 +1729,36 @@ def test_cgt_band_fanout_row_without_incumbent_name_takes_the_declared_form() ->
     assert _fanout_name(declared, fact, {}) == "hmrc/capital_gains_band_3000"
 
 
+def test_dimension_value_fanout_naming_names_rows_by_their_sole_dimension() -> None:
+    # HMRC CGT Table 3's all-gains margin: every row sits at layout value
+    # all_gains and differs only in its taxable-income band (microcosm#1014).
+    target = {
+        "target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "fanout_row_naming": "dimension_value",
+        "bindings": {
+            "policyengine": {"metric_name": "hmrc/cgt_taxpayers_by_taxable_income_band"}
+        },
+    }
+
+    def fact(dimensions):
+        return {"dimensions": dimensions, "layout": {"groupby_value_id": "all_gains"}}
+
+    assert _fanout_name(
+        target, fact({"cgt_taxable_income_band": "income_125140_to_199999"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.income_125140_to_199999")
+    # Without the rule every margin row would take the shared layout value.
+    undeclared = {k: v for k, v in target.items() if k != "fanout_row_naming"}
+    assert _fanout_name(
+        undeclared, fact({"cgt_taxable_income_band": "income_0_to_37699"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.all_gains")
+    for dimensions in (
+        {},
+        {"cgt_taxable_income_band": "income_0_to_37699", "taxpayer_type": "all"},
+    ):
+        with pytest.raises(ValueError, match="by their dimension value"):
+            _fanout_name(target, fact(dimensions), {})
+
+
 def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:
     declared = {**_CGT_BAND_TARGET, "fanout_row_naming": "metric_name_band_lower"}
     with pytest.raises(ValueError, match="Unrecognised HMRC CGT gain band value"):
@@ -1639,3 +1775,41 @@ def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:
             {"dimensions": {"age_band": "age_16_to_24"}, "layout": {}},
             _CGT_BAND_INVERSE,
         )
+
+
+def test_every_reference_and_hold_names_its_contract_targets_uprating_index() -> None:
+    """The contract is the regeneration source, so a reference may not carry an
+    index its contract target does not declare: before microcosm#1123 the SPI
+    employment, self-employment and private-pension amounts named the OBR
+    indices in the contract and ITL band growth in the committed references
+    (#1063), so a regeneration would have silently reverted #1063."""
+
+    contract = {
+        target["target_id"]: target
+        for target in _load_uk_resource("uk_population_targets.json")["targets"]
+    }
+    references = _load_uk_resource("target_references.json")["target_references"]
+    drift = sorted(
+        (reference["name"], contract_index, reference.get("uprating_index"))
+        for reference in references
+        if (
+            contract_index := contract[reference["metadata"]["contract_target_id"]].get(
+                "uprating_index"
+            )
+        )
+        != reference.get("uprating_index")
+    )
+    assert drift == []
+    names_to_target = {
+        reference["name"]: reference["metadata"]["contract_target_id"]
+        for reference in references
+    }
+    membership = _load_uk_resource("target_reference_membership.json")
+    held_drift = sorted(
+        (hold["name"], hold.get("index"))
+        for hold in membership["uprating_holds"]
+        if hold.get("index") is not None
+        and hold["index"]
+        != contract[names_to_target[hold["name"]]].get("uprating_index")
+    )
+    assert held_drift == []

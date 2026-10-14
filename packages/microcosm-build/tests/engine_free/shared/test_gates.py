@@ -248,6 +248,65 @@ class TestLedgerCompileParityGate:
             == (list_result.details["signed_differences"])
         )
 
+    _UNRESOLVED = (
+        {"name": "hmrc.tax", "period": 2025, "reason": "no_fact_at_or_before_period"},
+    )
+    _SIGNED_ABSENT = (
+        {
+            "fixture_value": 10.0,
+            "kind": "ledger_absent",
+            "name": "hmrc.tax",
+            "period": 2025,
+            "reason": "reviewed: the pinned feed no longer carries this fact",
+        },
+    )
+
+    def test_signed_ledger_absent_row_passes_with_the_compiles_report(self) -> None:
+        # The signed resource classifies a fixture row whose reference did not
+        # resolve as ledger_absent. The gate reproduces that kind only from the
+        # compile's own report of unsupported references.
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=self._SIGNED_ABSENT,
+            unsupported=self._UNRESOLVED,
+        )
+
+        assert result.passed, result.failures
+        assert result.details["unsupported_reference_count"] == 1
+        assert result.details["signed_differences"][0]["live_kind"] == "ledger_absent"
+
+    def test_signed_ledger_absent_row_fails_without_the_compiles_report(self) -> None:
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=self._SIGNED_ABSENT,
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed kind: "
+            "signed='ledger_absent', live='fixture_only'.",
+        )
+
+    def test_signed_fixture_only_row_fails_once_its_reference_stops_resolving(
+        self,
+    ) -> None:
+        # The other direction: a row signed as a plain fixture-only gap whose
+        # reference the compile now reports as unresolved has changed kind.
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=({**self._SIGNED_ABSENT[0], "kind": "fixture_only"},),
+            unsupported=iter(self._UNRESOLVED),
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed kind: "
+            "signed='fixture_only', live='ledger_absent'.",
+        )
+
     def test_signed_difference_new_value_at_signed_key_fails(self) -> None:
         result = ledger_compile_parity_gate(
             self._registry(99.0),
