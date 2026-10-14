@@ -1,0 +1,438 @@
+{
+  "issue": "PolicyEngine/microcosm#1090",
+  "question": "What would a council target built as the household-weighted mean of BRMA rents get wrong?",
+  "evidence": {
+    "filename": "scot_foi_brma_2016_2021.xlsx",
+    "sha256": "dba86fa1cce920c8f646460bb13e1d99e16927d57fdf290e874f9631e804ed06",
+    "landing_page": "https://www.gov.scot/publications/foi-202200303624/",
+    "sheet": "2021"
+  },
+  "pipr": {
+    "filename": "pipr_monthly_price_statistics_july2026_edition.xlsx",
+    "sha256": "d429e553ade454903b731f6c257609f14d0c2171822791e09c21a9d53d5e24a9",
+    "landing_page": "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics",
+    "sheet": "Table 1"
+  },
+  "overlap_resource": "packages/microcosm-build/src/microcosm/build/uk/scotland_brma_la_overlap.json",
+  "records": 31833,
+  "records_placed_by_district_only": 32,
+  "min_records_per_council": 30,
+  "brma_means": {
+    "ABERDEEN_AND_SHIRE": {
+      "records_mean_monthly": 638.84,
+      "records": 3841,
+      "pipr_2025_calendar_mean_monthly": 847.75
+    },
+    "ARGYLL_AND_BUTE": {
+      "records_mean_monthly": 561.1,
+      "records": 431,
+      "pipr_2025_calendar_mean_monthly": 832.42
+    },
+    "AYRSHIRES": {
+      "records_mean_monthly": 508.31,
+      "records": 1897,
+      "pipr_2025_calendar_mean_monthly": 627.92
+    },
+    "DUMFRIES_AND_GALLOWAY": {
+      "records_mean_monthly": 475.96,
+      "records": 810,
+      "pipr_2025_calendar_mean_monthly": 526.58
+    },
+    "DUNDEE_AND_ANGUS": {
+      "records_mean_monthly": 585.37,
+      "records": 1985,
+      "pipr_2025_calendar_mean_monthly": 828.92
+    },
+    "EAST_DUNBARTONSHIRE": {
+      "records_mean_monthly": 776.72,
+      "records": 303,
+      "pipr_2025_calendar_mean_monthly": 1110.5
+    },
+    "FIFE": {
+      "records_mean_monthly": 650.77,
+      "records": 1770,
+      "pipr_2025_calendar_mean_monthly": 812.42
+    },
+    "FORTH_VALLEY": {
+      "records_mean_monthly": 669.08,
+      "records": 1239,
+      "pipr_2025_calendar_mean_monthly": 879.25
+    },
+    "GREATER_GLASGOW": {
+      "records_mean_monthly": 785.37,
+      "records": 5668,
+      "pipr_2025_calendar_mean_monthly": 1237.75
+    },
+    "HIGHLAND_AND_ISLANDS": {
+      "records_mean_monthly": 599.88,
+      "records": 1712,
+      "pipr_2025_calendar_mean_monthly": 704.83
+    },
+    "LOTHIAN": {
+      "records_mean_monthly": 994.03,
+      "records": 5881,
+      "pipr_2025_calendar_mean_monthly": 1408.58
+    },
+    "NORTH_LANARKSHIRE": {
+      "records_mean_monthly": 526.48,
+      "records": 1056,
+      "pipr_2025_calendar_mean_monthly": 818.92
+    },
+    "PERTH_AND_KINROSS": {
+      "records_mean_monthly": 594.25,
+      "records": 884,
+      "pipr_2025_calendar_mean_monthly": 746.58
+    },
+    "RENFREWSHIRE_AND_INVERCLYDE": {
+      "records_mean_monthly": 507.65,
+      "records": 1538,
+      "pipr_2025_calendar_mean_monthly": 811.83
+    },
+    "SCOTTISH_BORDERS": {
+      "records_mean_monthly": 533.04,
+      "records": 660,
+      "pipr_2025_calendar_mean_monthly": 704.58
+    },
+    "SOUTH_LANARKSHIRE": {
+      "records_mean_monthly": 586.21,
+      "records": 1129,
+      "pipr_2025_calendar_mean_monthly": 872.08
+    },
+    "WEST_DUNBARTONSHIRE": {
+      "records_mean_monthly": 521.2,
+      "records": 361,
+      "pipr_2025_calendar_mean_monthly": 904.17
+    },
+    "WEST_LOTHIAN": {
+      "records_mean_monthly": 666.44,
+      "records": 668,
+      "pipr_2025_calendar_mean_monthly": 838.92
+    }
+  },
+  "summary": {
+    "councils_compared": 31,
+    "median_abs_gap_pct": 3.3,
+    "max_abs_gap_pct": 30.9,
+    "councils_over_5_pct": 12,
+    "councils_over_10_pct": 9
+  },
+  "councils": [
+    {
+      "local_authority": "S12000005",
+      "main_brma": "FORTH_VALLEY",
+      "share_of_council_in_main_brma": 0.9982,
+      "placed_records": 166.7,
+      "rule_value_pipr_2025_monthly": 879.02,
+      "records_mean_monthly": 527.69,
+      "rule_value_records_monthly": 668.94,
+      "rule_over_records_mean_pct": 26.8
+    },
+    {
+      "local_authority": "S12000006",
+      "main_brma": "DUMFRIES_AND_GALLOWAY",
+      "share_of_council_in_main_brma": 0.9989,
+      "placed_records": 810.8,
+      "rule_value_pipr_2025_monthly": 526.97,
+      "records_mean_monthly": 476.12,
+      "rule_value_records_monthly": 476.08,
+      "rule_over_records_mean_pct": -0.0
+    },
+    {
+      "local_authority": "S12000008",
+      "main_brma": "AYRSHIRES",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 685.1,
+      "rule_value_pipr_2025_monthly": 627.92,
+      "records_mean_monthly": 486.6,
+      "rule_value_records_monthly": 508.31,
+      "rule_over_records_mean_pct": 4.5
+    },
+    {
+      "local_authority": "S12000010",
+      "main_brma": "LOTHIAN",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 409.8,
+      "rule_value_pipr_2025_monthly": 1408.58,
+      "records_mean_monthly": 807.53,
+      "rule_value_records_monthly": 994.03,
+      "rule_over_records_mean_pct": 23.1
+    },
+    {
+      "local_authority": "S12000011",
+      "main_brma": "GREATER_GLASGOW",
+      "share_of_council_in_main_brma": 0.6791,
+      "placed_records": 224.2,
+      "rule_value_pipr_2025_monthly": 1101.07,
+      "records_mean_monthly": 795.98,
+      "rule_value_records_monthly": 696.24,
+      "rule_over_records_mean_pct": -12.5
+    },
+    {
+      "local_authority": "S12000013",
+      "main_brma": "HIGHLAND_AND_ISLANDS",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 45.0,
+      "rule_value_pipr_2025_monthly": 704.83,
+      "records_mean_monthly": 529.33,
+      "rule_value_records_monthly": 599.88,
+      "rule_over_records_mean_pct": 13.3
+    },
+    {
+      "local_authority": "S12000014",
+      "main_brma": "FORTH_VALLEY",
+      "share_of_council_in_main_brma": 0.9938,
+      "placed_records": 460.8,
+      "rule_value_pipr_2025_monthly": 879.0,
+      "records_mean_monthly": 555.32,
+      "rule_value_records_monthly": 669.06,
+      "rule_over_records_mean_pct": 20.5
+    },
+    {
+      "local_authority": "S12000017",
+      "main_brma": "HIGHLAND_AND_ISLANDS",
+      "share_of_council_in_main_brma": 0.999,
+      "placed_records": 1104.7,
+      "rule_value_pipr_2025_monthly": 704.97,
+      "records_mean_monthly": 626.13,
+      "rule_value_records_monthly": 599.84,
+      "rule_over_records_mean_pct": -4.2
+    },
+    {
+      "local_authority": "S12000018",
+      "main_brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 397.8,
+      "rule_value_pipr_2025_monthly": 811.83,
+      "records_mean_monthly": 478.81,
+      "rule_value_records_monthly": 507.65,
+      "rule_over_records_mean_pct": 6.0
+    },
+    {
+      "local_authority": "S12000019",
+      "main_brma": "LOTHIAN",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 337.0,
+      "rule_value_pipr_2025_monthly": 1408.58,
+      "records_mean_monthly": 759.57,
+      "rule_value_records_monthly": 994.03,
+      "rule_over_records_mean_pct": 30.9
+    },
+    {
+      "local_authority": "S12000020",
+      "main_brma": "HIGHLAND_AND_ISLANDS",
+      "share_of_council_in_main_brma": 0.9957,
+      "placed_records": 497.6,
+      "rule_value_pipr_2025_monthly": 705.45,
+      "records_mean_monthly": 550.63,
+      "rule_value_records_monthly": 600.05,
+      "rule_over_records_mean_pct": 9.0
+    },
+    {
+      "local_authority": "S12000021",
+      "main_brma": "AYRSHIRES",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 544.3,
+      "rule_value_pipr_2025_monthly": 627.92,
+      "records_mean_monthly": 492.25,
+      "rule_value_records_monthly": 508.31,
+      "rule_over_records_mean_pct": 3.3
+    },
+    {
+      "local_authority": "S12000023",
+      "main_brma": "HIGHLAND_AND_ISLANDS",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 47.0,
+      "rule_value_pipr_2025_monthly": 704.83,
+      "records_mean_monthly": 527.91,
+      "rule_value_records_monthly": 599.88,
+      "rule_over_records_mean_pct": 13.6
+    },
+    {
+      "local_authority": "S12000026",
+      "main_brma": "SCOTTISH_BORDERS",
+      "share_of_council_in_main_brma": 0.99,
+      "placed_records": 664.7,
+      "rule_value_pipr_2025_monthly": 706.89,
+      "records_mean_monthly": 533.59,
+      "rule_value_records_monthly": 534.05,
+      "rule_over_records_mean_pct": 0.1
+    },
+    {
+      "local_authority": "S12000027",
+      "main_brma": "HIGHLAND_AND_ISLANDS",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 19.0,
+      "rule_value_pipr_2025_monthly": 704.83
+    },
+    {
+      "local_authority": "S12000028",
+      "main_brma": "AYRSHIRES",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 667.6,
+      "rule_value_pipr_2025_monthly": 627.92,
+      "records_mean_monthly": 543.69,
+      "rule_value_records_monthly": 508.31,
+      "rule_over_records_mean_pct": -6.5
+    },
+    {
+      "local_authority": "S12000029",
+      "main_brma": "SOUTH_LANARKSHIRE",
+      "share_of_council_in_main_brma": 0.9977,
+      "placed_records": 1082.7,
+      "rule_value_pipr_2025_monthly": 872.5,
+      "records_mean_monthly": 579.95,
+      "rule_value_records_monthly": 586.46,
+      "rule_over_records_mean_pct": 1.1
+    },
+    {
+      "local_authority": "S12000030",
+      "main_brma": "FORTH_VALLEY",
+      "share_of_council_in_main_brma": 0.9987,
+      "placed_records": 628.0,
+      "rule_value_pipr_2025_monthly": 879.56,
+      "records_mean_monthly": 789.04,
+      "rule_value_records_monthly": 669.22,
+      "rule_over_records_mean_pct": -15.2
+    },
+    {
+      "local_authority": "S12000033",
+      "main_brma": "ABERDEEN_AND_SHIRE",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 3142.6,
+      "rule_value_pipr_2025_monthly": 847.75,
+      "records_mean_monthly": 633.06,
+      "rule_value_records_monthly": 638.84,
+      "rule_over_records_mean_pct": 0.9
+    },
+    {
+      "local_authority": "S12000034",
+      "main_brma": "ABERDEEN_AND_SHIRE",
+      "share_of_council_in_main_brma": 0.9741,
+      "placed_records": 724.2,
+      "rule_value_pipr_2025_monthly": 847.2,
+      "records_mean_monthly": 655.97,
+      "rule_value_records_monthly": 637.47,
+      "rule_over_records_mean_pct": -2.8
+    },
+    {
+      "local_authority": "S12000035",
+      "main_brma": "ARGYLL_AND_BUTE",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 421.2,
+      "rule_value_pipr_2025_monthly": 832.42,
+      "records_mean_monthly": 557.1,
+      "rule_value_records_monthly": 561.1,
+      "rule_over_records_mean_pct": 0.7
+    },
+    {
+      "local_authority": "S12000036",
+      "main_brma": "LOTHIAN",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 5133.5,
+      "rule_value_pipr_2025_monthly": 1408.58,
+      "records_mean_monthly": 1024.34,
+      "rule_value_records_monthly": 994.03,
+      "rule_over_records_mean_pct": -3.0
+    },
+    {
+      "local_authority": "S12000038",
+      "main_brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "share_of_council_in_main_brma": 0.9991,
+      "placed_records": 1113.2,
+      "rule_value_pipr_2025_monthly": 812.21,
+      "records_mean_monthly": 516.97,
+      "rule_value_records_monthly": 507.9,
+      "rule_over_records_mean_pct": -1.8
+    },
+    {
+      "local_authority": "S12000039",
+      "main_brma": "WEST_DUNBARTONSHIRE",
+      "share_of_council_in_main_brma": 0.9574,
+      "placed_records": 371.6,
+      "rule_value_pipr_2025_monthly": 901.38,
+      "records_mean_monthly": 527.04,
+      "rule_value_records_monthly": 523.05,
+      "rule_over_records_mean_pct": -0.8
+    },
+    {
+      "local_authority": "S12000040",
+      "main_brma": "WEST_LOTHIAN",
+      "share_of_council_in_main_brma": 0.9955,
+      "placed_records": 651.2,
+      "rule_value_pipr_2025_monthly": 838.85,
+      "records_mean_monthly": 666.36,
+      "rule_value_records_monthly": 665.87,
+      "rule_over_records_mean_pct": -0.1
+    },
+    {
+      "local_authority": "S12000041",
+      "main_brma": "DUNDEE_AND_ANGUS",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 564.3,
+      "rule_value_pipr_2025_monthly": 828.92,
+      "records_mean_monthly": 526.74,
+      "rule_value_records_monthly": 585.37,
+      "rule_over_records_mean_pct": 11.1
+    },
+    {
+      "local_authority": "S12000042",
+      "main_brma": "DUNDEE_AND_ANGUS",
+      "share_of_council_in_main_brma": 1.0,
+      "placed_records": 1350.4,
+      "rule_value_pipr_2025_monthly": 828.92,
+      "records_mean_monthly": 612.87,
+      "rule_value_records_monthly": 585.37,
+      "rule_over_records_mean_pct": -4.5
+    },
+    {
+      "local_authority": "S12000045",
+      "main_brma": "EAST_DUNBARTONSHIRE",
+      "share_of_council_in_main_brma": 0.9843,
+      "placed_records": 303.5,
+      "rule_value_pipr_2025_monthly": 1105.93,
+      "records_mean_monthly": 771.54,
+      "rule_value_records_monthly": 772.8,
+      "rule_over_records_mean_pct": 0.2
+    },
+    {
+      "local_authority": "S12000047",
+      "main_brma": "FIFE",
+      "share_of_council_in_main_brma": 0.9998,
+      "placed_records": 1766.8,
+      "rule_value_pipr_2025_monthly": 812.43,
+      "records_mean_monthly": 650.76,
+      "rule_value_records_monthly": 650.77,
+      "rule_over_records_mean_pct": 0.0
+    },
+    {
+      "local_authority": "S12000048",
+      "main_brma": "PERTH_AND_KINROSS",
+      "share_of_council_in_main_brma": 0.9093,
+      "placed_records": 932.9,
+      "rule_value_pipr_2025_monthly": 754.48,
+      "records_mean_monthly": 595.05,
+      "rule_value_records_monthly": 594.42,
+      "rule_over_records_mean_pct": -0.1
+    },
+    {
+      "local_authority": "S12000049",
+      "main_brma": "GREATER_GLASGOW",
+      "share_of_council_in_main_brma": 0.9982,
+      "placed_records": 5458.3,
+      "rule_value_pipr_2025_monthly": 1237.23,
+      "records_mean_monthly": 784.2,
+      "rule_value_records_monthly": 785.11,
+      "rule_over_records_mean_pct": 0.1
+    },
+    {
+      "local_authority": "S12000050",
+      "main_brma": "NORTH_LANARKSHIRE",
+      "share_of_council_in_main_brma": 0.9494,
+      "placed_records": 1106.5,
+      "rule_value_pipr_2025_monthly": 828.07,
+      "records_mean_monthly": 536.88,
+      "rule_value_records_monthly": 533.14,
+      "rule_over_records_mean_pct": -0.7
+    }
+  ]
+}
