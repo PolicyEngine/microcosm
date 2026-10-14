@@ -12,6 +12,10 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.trace import sha256_file
+from microcosm.build.uk_runtime.birth_month import (
+    UK_BIRTH_MONTH_COLUMN,
+    uk_months_since_last_birthday,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
@@ -188,6 +192,7 @@ OUTPUT_COLUMNS = (
     "person_household_id",
     "age",
     "gender",
+    UK_BIRTH_MONTH_COLUMN,
     "marital_status",
     "hours_worked",
     "care_hours",
@@ -501,6 +506,19 @@ def _assemble_frame(
         raise ValueError("FRS age80/age columns must be integral to build person.age.")
     pe_person["age"] = age.astype("int64")
     pe_person["gender"] = np.where(_number(person, "sex") == 1, "MALE", "FEMALE")
+    # The months since each person's last birthday, stored once here so the
+    # engine reads the same date of birth at every later stage, in the solve
+    # and in the release: left unset, it spreads them by the weights and the
+    # identifiers each file carries (uk_runtime.birth_month, microcosm#1095).
+    pe_person[UK_BIRTH_MONTH_COLUMN] = uk_months_since_last_birthday(
+        age=pe_person["age"].to_numpy(),
+        is_male=pe_person["gender"].to_numpy() == "MALE",
+        person_ids=pe_person["person_id"].to_numpy(),
+        weights=person["household_id"]
+        .map(_raw_number(household, "gross4"))
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64),
+    )
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)

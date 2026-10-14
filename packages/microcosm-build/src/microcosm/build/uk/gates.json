@@ -1076,6 +1076,7 @@
           "benunit.benunit_build_id",
           "household.household_build_id",
           "person.person_build_id",
+          "person.months_since_last_birthday",
           "household.itl1_code",
           "household.itl2_code",
           "household.itl3_code",

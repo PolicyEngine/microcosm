@@ -363,6 +363,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.benunit_build_id",
     "household.household_build_id",
     "person.person_build_id",
+    # The months since each person's last birthday, stored by the root stage
+    # so the engine reads one date of birth everywhere (microcosm#1095).
+    "person.months_since_last_birthday",
     "household.itl1_code",
     "household.itl2_code",
     "household.itl3_code",
