@@ -67,6 +67,7 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
 )
 from microcosm.build.us_runtime.puf_support import (
+    PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,

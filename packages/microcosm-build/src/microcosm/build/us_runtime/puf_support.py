@@ -124,12 +124,13 @@ _SUPPORTED_PUF_CLONE_ATTACHMENT_MANIFEST_VERSIONS = {
 
 #: Finalization policies for cells the PUF pass does not own (microcosm#578
 #: revision, audit item 1).  The legacy policy reproduces the historical
-#: two-arm behavior byte for byte: every requested output column is coerced
+#: two-arm zero fill byte for byte: every requested output column is coerced
 #: with a global ``fillna(0.0)``, so cells that were never imputed read as
 #: observed zeros.  The preserve-nulls policy is the stacked-spine doctrine:
 #: absence stays null until an authorized stage fills it — finalization only
 #: writes the PUF clone arm's cells, creates missing columns as null, and
-#: never converts absence into an observed ``0.0``.
+#: never converts absence into an observed ``0.0``.  Under either policy the
+#: donor-rate sparsification prunes only the PUF clone arm.
 PUF_ABSENT_CELLS_LEGACY_ZERO_FILL = "legacy_zero_fill"
 PUF_ABSENT_CELLS_PRESERVE_NULLS = "preserve_nulls"
 _PUF_ABSENT_CELLS_POLICIES = (
@@ -353,6 +354,14 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
     }
 )
 _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
+# Sparse outputs are pruned to the donor's weighted positive rate on the PUF
+# clone arm only, as the ``puf_tax_detail`` stage manifest declares. The other
+# arms carry source observations the donor rate does not describe: ASEC
+# measures interest (``INT_VAL``, carried as ``taxable_interest_income``) and
+# alimony received (``OI_VAL`` code 20) for every respondent, filers and
+# non-filers alike. Pruning them to the PUF filer rate zeroed every ASEC tax
+# unit reporting up to about $444 of interest in the base behind the 2024
+# releases.
 _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset(
     {
         "domestic_production_ald",
@@ -388,12 +397,6 @@ def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
 
     return dict(sorted(_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES.items()))
 
-
-# ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
-# only the cloned PUF half for this leaf; pruning the ASEC half would discard
-# reported source observations. Expense has no ASEC analogue, so its zero ASEC
-# half is unaffected by the ordinary all-channel sparsification loop.
-_PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS = frozenset({"alimony_income"})
 
 # Sparse, sign-mixed, heavy-tailed person outputs whose imputed *signed* mass
 # must be pinned to the donor instrument. The regime-gated QRF imputes such a
@@ -1926,9 +1929,13 @@ def finalize_us_puf_tax_detail_predictions(
     clone arm (microcosm#578 audit item 1).  The legacy default reproduces the
     historical global zero-fill byte for byte.  Under
     :data:`PUF_ABSENT_CELLS_PRESERVE_NULLS` — the stacked-spine doctrine —
-    absence stays null on every row this pass does not own, and the
-    donor-rate sparsification and placement rewrites are scoped to the PUF
-    clone arm so no boundary converts absence into an observed zero.
+    absence stays null on every row this pass does not own, and placement
+    rewrites are scoped to the PUF clone arm so no boundary converts absence
+    into an observed zero.  The donor-rate sparsification is scoped to the
+    PUF clone arm under both policies, so it never rewrites a source-observed
+    cell on another arm.  Bases built before that scoping (for example
+    ``5d8a3162…``, behind the 2024 releases) pruned the ASEC arm's reported
+    taxable interest too, so the legacy policy no longer reproduces them.
     """
 
     if absent_cells not in _PUF_ABSENT_CELLS_POLICIES:
@@ -2083,7 +2090,6 @@ def finalize_us_puf_tax_detail_predictions(
                 ),
                 household_weights=frame.weights_for("household").values,
                 tax_unit_clone_index=tax_unit_clone_index,
-                puf_role_only=preserve_nulls,
             )
 
     person_puf_mask = puf_tax_detail_clone_mask(
@@ -2153,7 +2159,6 @@ def finalize_us_puf_tax_detail_predictions(
                 household_weights=frame.weights_for("household").values,
                 person_clone_index=person_clone_index,
                 tax_unit_clone_index=tax_unit_clone_index,
-                puf_role_only=preserve_nulls,
             )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS:
@@ -3873,13 +3878,12 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     household_weights: np.ndarray,
     tax_unit_clone_index: str | None = None,
     tax_unit_channel: str | None = None,
-    puf_role_only: bool = False,
 ) -> None:
     """Prune a sparse tax-unit amount to the donor's weighted positive rate.
 
-    ``puf_role_only`` scopes the pruning to the PUF clone arm: under the
-    preserve-nulls doctrine other arms' cells are source- or gap-fill-owned
-    (observed values or authorized nulls) and must never be rewritten here.
+    Only the PUF clone arm is pruned. Every other arm's cells are source- or
+    gap-fill-owned (observed values, legacy zero fill or authorized nulls),
+    and the donor's filer positive rate does not describe them.
     """
 
     if (tax_unit_clone_index is None) == (tax_unit_channel is None):
@@ -3913,45 +3917,39 @@ def _sparsify_tax_unit_output_to_donor_positive_rate(
     )
     tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
 
-    role_values = tax_unit[tax_unit_role_column].dropna().unique()
-    if puf_role_only:
-        role_values = np.asarray(
-            [role_value for role_value in role_values if role_value == puf_role]
-        )
-    for clone_index in role_values:
-        clone_mask = tax_unit[tax_unit_role_column] == clone_index
-        channel_rows = tax_unit.loc[clone_mask]
-        amounts = pd.Series(
-            pd.to_numeric(channel_rows[column], errors="coerce")
-            .fillna(0.0)
-            .to_numpy(dtype=np.float64),
-            index=channel_rows["tax_unit_id"].to_numpy(),
-        )
-        weights = tax_unit_weight.reindex(amounts.index).fillna(0.0)
-        positive = amounts > 0.0
-        positive_weight = float(weights[positive].sum())
-        desired_positive_weight = positive_rate * float(weights.sum())
-        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
-            continue
+    clone_mask = tax_unit[tax_unit_role_column] == puf_role
+    channel_rows = tax_unit.loc[clone_mask]
+    amounts = pd.Series(
+        pd.to_numeric(channel_rows[column], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64),
+        index=channel_rows["tax_unit_id"].to_numpy(),
+    )
+    weights = tax_unit_weight.reindex(amounts.index).fillna(0.0)
+    positive = amounts > 0.0
+    positive_weight = float(weights[positive].sum())
+    desired_positive_weight = positive_rate * float(weights.sum())
+    if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+        return
 
-        ranked = (
-            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
-            .sort_values("amount", ascending=False)
-            .copy()
-        )
-        cumulative = ranked["weight"].cumsum()
-        keep = cumulative <= desired_positive_weight
-        if not keep.any() and len(keep) > 0:
-            keep.iloc[0] = True
-        kept_ids = set(ranked.index[keep])
+    ranked = (
+        pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+        .sort_values("amount", ascending=False)
+        .copy()
+    )
+    cumulative = ranked["weight"].cumsum()
+    keep = cumulative <= desired_positive_weight
+    if not keep.any() and len(keep) > 0:
+        keep.iloc[0] = True
+    kept_ids = set(ranked.index[keep])
 
-        sparse_amounts = amounts.copy()
-        sparse_amounts.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
-        original_total = float((amounts * weights).sum())
-        sparse_total = float((sparse_amounts * weights).sum())
-        if original_total != 0.0 and sparse_total != 0.0:
-            sparse_amounts *= original_total / sparse_total
-        tax_unit.loc[clone_mask, column] = sparse_amounts.to_numpy()
+    sparse_amounts = amounts.copy()
+    sparse_amounts.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+    original_total = float((amounts * weights).sum())
+    sparse_total = float((sparse_amounts * weights).sum())
+    if original_total != 0.0 and sparse_total != 0.0:
+        sparse_amounts *= original_total / sparse_total
+    tax_unit.loc[clone_mask, column] = sparse_amounts.to_numpy()
 
 
 def _sparsify_tax_unit_person_output_to_donor_positive_rate(
@@ -3964,12 +3962,25 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
     tax_unit_clone_index: str | None = None,
     person_channel: str | None = None,
     tax_unit_channel: str | None = None,
-    puf_role_only: bool = False,
 ) -> None:
+    """Prune a sparse person amount's tax-unit totals to the donor positive rate.
+
+    Only the PUF clone arm is pruned, as in
+    :func:`_sparsify_tax_unit_output_to_donor_positive_rate`: an ASEC tax unit's
+    reported interest or alimony is a source observation, not a QRF draw.
+    """
+
     if (person_clone_index is None) == (person_channel is None) or (
         (tax_unit_clone_index is None) == (tax_unit_channel is None)
     ):
         raise ValueError("Provide exactly one person and tax-unit support role column.")
+    if (person_clone_index is None) != (tax_unit_clone_index is None):
+        # One PUF role value selects both entities' rows; mixed role kinds
+        # would match no person row and silently write nothing.
+        raise ValueError(
+            "Person and tax-unit support roles must both be clone indices or "
+            "both be channels."
+        )
     person_role_column = (
         person_clone_index if person_clone_index is not None else person_channel
     )
@@ -4009,50 +4020,44 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         .sum()
     )
 
-    clone_indices = tax_unit[tax_unit_role_column].dropna().unique()
-    if puf_role_only or column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
-        clone_indices = np.asarray(
-            [clone_index for clone_index in clone_indices if clone_index == puf_role]
-        )
-    for clone_index in clone_indices:
-        channel_tax_unit_ids = tax_unit.loc[
-            tax_unit[tax_unit_role_column] == clone_index,
-            "tax_unit_id",
-        ]
-        amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
-        weights = tax_unit_weight.reindex(channel_tax_unit_ids).fillna(0.0)
-        positive = amounts > 0.0
-        positive_weight = float(weights[positive].sum())
-        desired_positive_weight = positive_rate * float(weights.sum())
-        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
-            continue
+    channel_tax_unit_ids = tax_unit.loc[
+        tax_unit[tax_unit_role_column] == puf_role,
+        "tax_unit_id",
+    ]
+    amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
+    weights = tax_unit_weight.reindex(channel_tax_unit_ids).fillna(0.0)
+    positive = amounts > 0.0
+    positive_weight = float(weights[positive].sum())
+    desired_positive_weight = positive_rate * float(weights.sum())
+    if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+        return
 
-        ranked = (
-            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
-            .sort_values("amount", ascending=False)
-            .copy()
-        )
-        cumulative = ranked["weight"].cumsum()
-        keep = cumulative <= desired_positive_weight
-        if not keep.any() and len(keep) > 0:
-            keep.iloc[0] = True
-        kept_ids = set(ranked.index[keep])
+    ranked = (
+        pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+        .sort_values("amount", ascending=False)
+        .copy()
+    )
+    cumulative = ranked["weight"].cumsum()
+    keep = cumulative <= desired_positive_weight
+    if not keep.any() and len(keep) > 0:
+        keep.iloc[0] = True
+    kept_ids = set(ranked.index[keep])
 
-        sparse_totals = amounts.copy()
-        sparse_totals.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
-        original_total = float((amounts * weights).sum())
-        sparse_total = float((sparse_totals * weights).sum())
-        if original_total != 0.0 and sparse_total != 0.0:
-            sparse_totals *= original_total / sparse_total
+    sparse_totals = amounts.copy()
+    sparse_totals.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+    original_total = float((amounts * weights).sum())
+    sparse_total = float((sparse_totals * weights).sum())
+    if original_total != 0.0 and sparse_total != 0.0:
+        sparse_totals *= original_total / sparse_total
 
-        mask = person[person_role_column] == clone_index
-        _write_person_tax_unit_totals(
-            person,
-            mask=mask,
-            column=column,
-            totals=sparse_totals,
-            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
-        )
+    mask = person[person_role_column] == puf_role
+    _write_person_tax_unit_totals(
+        person,
+        mask=mask,
+        column=column,
+        totals=sparse_totals,
+        nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+    )
 
 
 def _weighted_signed_leg_masses(

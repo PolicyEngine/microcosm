@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_us_puf_support.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from microcosm.build.us_runtime.cps_carried import TAXABLE_INTEREST_FRACTION
 from test_support.microcosm_build.us_puf_support import *
 
 
@@ -1186,6 +1190,408 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
         qualified_dividends.view(np.uint64),
         expected_qualified_dividends.view(np.uint64),
     )
+
+
+class _HalfPositiveInterestQRF:
+    """Raw draws that the 50% donor rate must prune on the PUF arm."""
+
+    def __init__(self, *, n_estimators: int, seed: int) -> None:
+        pass
+
+    def fit(self, frame, predictors, outputs, *, weights) -> "_HalfPositiveInterestQRF":
+        return self
+
+    def predict(
+        self,
+        features: pd.DataFrame,
+        *,
+        release_models: bool = False,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"taxable_interest_income": [9.6, 9.6]},
+            index=features.index,
+        )
+
+
+def test_puf_tax_detail_sparsification_keeps_reported_asec_interest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The PUF filer rate prunes the PUF arm only (the 2024-release defect).
+
+    Before the fix the legacy finalization also pruned the ASEC arm to the
+    donor rate: unit 20's reported $200 of interest became $0 and unit 10 was
+    rescaled by 1.6 to conserve the arm's weighted total.
+    """
+
+    monkeypatch.setattr(puf_support_module, "QRF", _HalfPositiveInterestQRF)
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 1.0],
+            "taxable_interest_income": [0.0, 10.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=("taxable_interest_income",),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    person = imputed.table("person")
+    channel = person[support_channel_column("person")]
+    asec_interest = person.loc[
+        channel == BASE_ASEC_SUPPORT_CHANNEL, "taxable_interest_income"
+    ].to_numpy(dtype=np.float64)
+    expected_asec = (
+        np.asarray([1_000.0, 0.0, 200.0], dtype=np.float64) * TAXABLE_INTEREST_FRACTION
+    )
+    np.testing.assert_array_equal(
+        asec_interest.view(np.uint64),
+        expected_asec.view(np.uint64),
+    )
+    puf_units = (
+        person.loc[channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL]
+        .groupby("person_tax_unit_id", sort=False)["taxable_interest_income"]
+        .sum()
+    )
+    # Both raw draws snap to the donor's 10.0. Against a 50% donor rate on the
+    # PUF arm's design weights of 50 and 150, exactly one PUF unit stays
+    # positive, so the PUF arm is still pruned.
+    assert int((puf_units > 0.0).sum()) == 1
+
+
+def test_sparse_puf_splice_does_not_prune_reported_asec_taxable_interest() -> None:
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [1, 2, 3, 4],
+            "person_household_id": [1, 2, 3, 4],
+            "person_support_channel": [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ],
+            "taxable_interest_income": [680.0, 1.36, 500.0, 250.0],
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": [1, 2, 3, 4]}),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": [1, 2, 3, 4],
+                "tax_unit_support_channel": [
+                    BASE_ASEC_SUPPORT_CHANNEL,
+                    BASE_ASEC_SUPPORT_CHANNEL,
+                    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                ],
+            }
+        ),
+    }
+
+    puf_support_module._sparsify_tax_unit_person_output_to_donor_positive_rate(
+        tables,
+        column="taxable_interest_income",
+        donor_positive_rate=0.5,
+        household_weights=np.ones(4),
+        person_channel="person_support_channel",
+        tax_unit_channel="tax_unit_support_channel",
+    )
+
+    assert person.loc[:1, "taxable_interest_income"].tolist() == [680.0, 1.36]
+    assert person.loc[2:, "taxable_interest_income"].tolist() == [750.0, 0.0]
+
+
+_SPARSE_ARM_AMOUNTS = st.one_of(
+    st.just(0.0),
+    st.sampled_from([1.0, 5.0, 250.5, 1_000.0]),
+    st.floats(min_value=0.01, max_value=1e7, allow_nan=False, allow_infinity=False),
+)
+_CHANNEL_ROLES = (BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL, "acs")
+# Production finalization keys arms by clone index: 0 holds every native spine
+# (ASEC and ACS together), 1 the PUF detail arm and 2 the capital-gains tail.
+_CLONE_INDEX_ROLES = (0, 1, 2)
+
+
+@st.composite
+def _sparse_support_tables(draw: st.DrawFn) -> tuple[dict[str, pd.DataFrame], dict]:
+    """Multi-arm person and tax-unit tables, one household per tax unit.
+
+    Roles are either support channels or clone indices (integer or float, with
+    unassigned NaN roles allowed). Household weights are strictly positive:
+    with a zero weight the cumulative rule can keep a unit that carries no
+    mass, and if every kept unit weighs zero the rescale is skipped, so the
+    conservation and rate-bound properties hold for positive weights only.
+    """
+
+    unit_count = draw(st.integers(min_value=1, max_value=10))
+    mode = draw(st.sampled_from(["channel", "clone_index"]))
+    if mode == "channel":
+        roles: list[object] = draw(
+            st.lists(
+                st.sampled_from(_CHANNEL_ROLES),
+                min_size=unit_count,
+                max_size=unit_count,
+            )
+        )
+        puf_role: object = PUF_TAX_DETAIL_SUPPORT_CHANNEL
+        role_dtype: object = object
+    else:
+        allow_nan = draw(st.booleans())
+        role_values = (*_CLONE_INDEX_ROLES, np.nan) if allow_nan else _CLONE_INDEX_ROLES
+        roles = draw(
+            st.lists(
+                st.sampled_from(role_values),
+                min_size=unit_count,
+                max_size=unit_count,
+            )
+        )
+        puf_role = 1
+        role_dtype = np.float64 if allow_nan or draw(st.booleans()) else np.int64
+    person_rows: list[dict[str, object]] = []
+    for unit, role in enumerate(roles, start=1):
+        members = draw(st.integers(min_value=1, max_value=3))
+        for _ in range(members):
+            person_rows.append(
+                {
+                    "person_tax_unit_id": unit,
+                    "person_household_id": unit,
+                    "person_role": role,
+                    "taxable_interest_income": draw(_SPARSE_ARM_AMOUNTS),
+                }
+            )
+    person = pd.DataFrame(person_rows)
+    unit_amounts = person.groupby("person_tax_unit_id")["taxable_interest_income"].sum()
+    if mode == "channel":
+        person_column, tax_unit_column = (
+            "person_support_channel",
+            "tax_unit_support_channel",
+        )
+        role_kwargs = {
+            "person_channel": person_column,
+            "tax_unit_channel": tax_unit_column,
+        }
+    else:
+        person_column, tax_unit_column = (
+            "person_support_clone_index",
+            "tax_unit_support_clone_index",
+        )
+        role_kwargs = {
+            "person_clone_index": person_column,
+            "tax_unit_clone_index": tax_unit_column,
+        }
+    person = person.rename(columns={"person_role": person_column})
+    person[person_column] = person[person_column].astype(role_dtype)
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": list(range(1, unit_count + 1))}),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": list(range(1, unit_count + 1)),
+                tax_unit_column: pd.Series(roles).astype(role_dtype),
+                "domestic_production_ald": unit_amounts.to_numpy(dtype=np.float64),
+            }
+        ),
+    }
+    weights = np.asarray(
+        draw(
+            st.lists(
+                st.floats(min_value=0.5, max_value=5_000.0, allow_nan=False),
+                min_size=unit_count,
+                max_size=unit_count,
+            )
+        ),
+        dtype=np.float64,
+    )
+    rate = draw(st.floats(min_value=0.0, max_value=1.0, allow_nan=False))
+    is_puf = np.asarray([role == puf_role for role in roles], dtype=bool)
+    tax_unit_kwargs = {
+        key: value for key, value in role_kwargs.items() if key.startswith("tax_unit")
+    }
+    return tables, {
+        "weights": weights,
+        "rate": rate,
+        "is_puf": is_puf,
+        "person_is_puf": (person[person_column] == puf_role).to_numpy(),
+        "role_kwargs": role_kwargs,
+        "tax_unit_kwargs": tax_unit_kwargs,
+    }
+
+
+def _check_sparsifier_invariants(
+    before: pd.Series,
+    after: pd.Series,
+    *,
+    is_puf: np.ndarray,
+    weights: np.ndarray,
+    rate: float,
+) -> None:
+    """Every property the donor-rate pruning promises, on tax-unit totals."""
+
+    before_values = before.to_numpy(dtype=np.float64)
+    after_values = after.to_numpy(dtype=np.float64)
+    # Arm isolation: no cell outside the PUF arm moves, bit for bit.
+    np.testing.assert_array_equal(
+        after_values[~is_puf].view(np.uint64),
+        before_values[~is_puf].view(np.uint64),
+    )
+    puf_before = before_values[is_puf]
+    puf_after = after_values[is_puf]
+    puf_weights = weights[is_puf]
+    # Zeros stay zero: pruning never creates a positive unit.
+    assert np.all(puf_after[puf_before == 0.0] == 0.0)
+    assert np.all(puf_after >= 0.0)
+    # Weighted mass on the PUF arm is conserved.
+    np.testing.assert_allclose(
+        float((puf_after * puf_weights).sum()),
+        float((puf_before * puf_weights).sum()),
+        rtol=1e-9,
+    )
+    kept = puf_after > 0.0
+    pruned = (puf_before > 0.0) & ~kept
+    # The positive rate falls to the donor's, except that the single
+    # top-ranked unit survives when even it alone would exceed the rate.
+    desired = rate * float(puf_weights.sum())
+    positive_before = float(puf_weights[puf_before > 0.0].sum())
+    if positive_before <= desired:
+        np.testing.assert_array_equal(
+            puf_after.view(np.uint64), puf_before.view(np.uint64)
+        )
+    else:
+        kept_weight = float(puf_weights[kept].sum())
+        assert kept_weight <= desired * (1.0 + 1e-12) or int(kept.sum()) == 1
+    # A threshold rule: every pruned unit ranked at or below every kept unit.
+    if kept.any() and pruned.any():
+        assert puf_before[pruned].max() <= puf_before[kept].min()
+
+
+@settings(max_examples=400, deadline=None)
+@given(_sparse_support_tables())
+def test_person_sparsifier_prunes_only_the_puf_arm_by_threshold(case) -> None:
+    tables, draw_info = case
+    person = tables["person"]
+    units_before = person.groupby("person_tax_unit_id")["taxable_interest_income"].sum()
+    people_before = person["taxable_interest_income"].to_numpy(
+        dtype=np.float64, copy=True
+    )
+
+    def sparsify() -> None:
+        puf_support_module._sparsify_tax_unit_person_output_to_donor_positive_rate(
+            tables,
+            column="taxable_interest_income",
+            donor_positive_rate=draw_info["rate"],
+            household_weights=draw_info["weights"],
+            **draw_info["role_kwargs"],
+        )
+
+    sparsify()
+
+    units_after = person.groupby("person_tax_unit_id")["taxable_interest_income"].sum()
+    other_people = ~draw_info["person_is_puf"]
+    np.testing.assert_array_equal(
+        person["taxable_interest_income"]
+        .to_numpy(dtype=np.float64)[other_people]
+        .view(np.uint64),
+        people_before[other_people].view(np.uint64),
+    )
+    _check_sparsifier_invariants(
+        units_before,
+        units_after,
+        is_puf=draw_info["is_puf"],
+        weights=draw_info["weights"],
+        rate=draw_info["rate"],
+    )
+
+    # Idempotence: a second pass at the same rate changes nothing material.
+    once = person["taxable_interest_income"].to_numpy(dtype=np.float64, copy=True)
+    sparsify()
+    np.testing.assert_allclose(
+        person["taxable_interest_income"].to_numpy(dtype=np.float64),
+        once,
+        rtol=1e-12,
+        atol=0.0,
+    )
+
+
+@settings(max_examples=400, deadline=None)
+@given(_sparse_support_tables())
+def test_tax_unit_sparsifier_prunes_only_the_puf_arm_by_threshold(case) -> None:
+    tables, draw_info = case
+    before = tables["tax_unit"]["domestic_production_ald"].copy()
+
+    def sparsify() -> None:
+        puf_support_module._sparsify_tax_unit_output_to_donor_positive_rate(
+            tables,
+            column="domestic_production_ald",
+            donor_positive_rate=draw_info["rate"],
+            household_weights=draw_info["weights"],
+            **draw_info["tax_unit_kwargs"],
+        )
+
+    sparsify()
+
+    _check_sparsifier_invariants(
+        before,
+        tables["tax_unit"]["domestic_production_ald"],
+        is_puf=draw_info["is_puf"],
+        weights=draw_info["weights"],
+        rate=draw_info["rate"],
+    )
+
+    # Idempotence, as for the person sparsifier.
+    once = tables["tax_unit"]["domestic_production_ald"].to_numpy(
+        dtype=np.float64, copy=True
+    )
+    sparsify()
+    np.testing.assert_allclose(
+        tables["tax_unit"]["domestic_production_ald"].to_numpy(dtype=np.float64),
+        once,
+        rtol=1e-12,
+        atol=0.0,
+    )
+
+
+def test_person_sparsifier_rejects_mixed_support_role_kinds() -> None:
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_tax_unit_id": [1],
+                "person_household_id": [1],
+                "person_support_clone_index": [1],
+                "taxable_interest_income": [10.0],
+            }
+        ),
+        "household": pd.DataFrame({"household_id": [1]}),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": [1],
+                "tax_unit_support_channel": [PUF_TAX_DETAIL_SUPPORT_CHANNEL],
+            }
+        ),
+    }
+
+    with pytest.raises(ValueError, match="both be clone indices or both be channels"):
+        puf_support_module._sparsify_tax_unit_person_output_to_donor_positive_rate(
+            tables,
+            column="taxable_interest_income",
+            donor_positive_rate=0.0,
+            household_weights=np.ones(1),
+            person_clone_index="person_support_clone_index",
+            tax_unit_channel="tax_unit_support_channel",
+        )
 
 
 def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
