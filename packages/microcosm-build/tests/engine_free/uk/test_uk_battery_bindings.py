@@ -974,7 +974,10 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount.
-        assert len(passed) == 20
+        # Plus uk_local_brma_enum_domain, the terminal recheck of the local
+        # clone-spread BRMA rewrite (its enum_domain binding is stubbed here).
+        assert len(passed) == 21
+        assert "uk_local_brma_enum_domain" in passed
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
