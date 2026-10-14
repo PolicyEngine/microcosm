@@ -265,6 +265,12 @@ def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> Non
         ),
         (lambda m, r: m["parameters"].__setitem__("skip_holdout", True), "holdout"),
         (
+            lambda m, r: m["parameters"].__setitem__(
+                "refit_l2", {"lambda": 0.03, "anchor": "initial", "basis": "chi_square"}
+            ),
+            "refit L2 penalty",
+        ),
+        (
             lambda m, r: m["census_household_uprating"]["tenure_cells"].__setitem__(
                 "applied", False
             ),

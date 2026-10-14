@@ -1,0 +1,179 @@
+[
+  {
+    "name": "C1_f0_l2_1e-9",
+    "refit_l2": {
+      "lambda": 1e-09
+    },
+    "notes": "iterate-rule switch only (closing state)"
+  },
+  {
+    "name": "C2_f0.5",
+    "baseline_pi_floor": 0.5,
+    "notes": "floor only"
+  },
+  {
+    "name": "C3_f0.5_l2_1e-9",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 1e-09
+    },
+    "notes": "floor + closing state"
+  },
+  {
+    "name": "C4a_f0.1",
+    "baseline_pi_floor": 0.1,
+    "notes": "floor plateau"
+  },
+  {
+    "name": "C4b_f1.0",
+    "baseline_pi_floor": 1.0,
+    "notes": "floor plateau (threshold-draw equivalent)"
+  },
+  {
+    "name": "C5_lr0.1485",
+    "learning_rate": 0.1485,
+    "notes": "optimiser noise"
+  },
+  {
+    "name": "E_init_f0_1e-3",
+    "refit_l2": {
+      "lambda": 0.001,
+      "anchor": "initial"
+    },
+    "notes": "pre-registered harmful: anchor is the unfloored HT baseline"
+  },
+  {
+    "name": "E_init_f0_1e-2",
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "initial"
+    },
+    "notes": "pre-registered harmful: anchor is the unfloored HT baseline"
+  },
+  {
+    "name": "E_init_f0_1e-1",
+    "refit_l2": {
+      "lambda": 0.1,
+      "anchor": "initial"
+    },
+    "notes": "pre-registered harmful: anchor is the unfloored HT baseline"
+  },
+  {
+    "name": "E_unif_f0_1e-2",
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    },
+    "notes": "uniform anchor against the floor-0 cap"
+  },
+  {
+    "name": "E_init_f0.5_1e-3",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.001,
+      "anchor": "initial"
+    }
+  },
+  {
+    "name": "E_init_f0.5_3e-3",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.003,
+      "anchor": "initial"
+    }
+  },
+  {
+    "name": "E_init_f0.5_1e-2",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "initial"
+    }
+  },
+  {
+    "name": "E_init_f0.5_3e-2",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.03,
+      "anchor": "initial"
+    }
+  },
+  {
+    "name": "E_init_f0.5_1e-1",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.1,
+      "anchor": "initial"
+    }
+  },
+  {
+    "name": "E_unif_f0.5_1e-3",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.001,
+      "anchor": "uniform"
+    }
+  },
+  {
+    "name": "E_unif_f0.5_3e-3",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.003,
+      "anchor": "uniform"
+    }
+  },
+  {
+    "name": "E_unif_f0.5_1e-2",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    }
+  },
+  {
+    "name": "E_unif_f0.5_3e-2",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.03,
+      "anchor": "uniform"
+    }
+  },
+  {
+    "name": "E_unif_f0.5_1e-1",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.1,
+      "anchor": "uniform"
+    }
+  },
+  {
+    "name": "A_gfe_f0.5",
+    "refit_rule": "grain_family_equal",
+    "baseline_pi_floor": 0.5
+  },
+  {
+    "name": "A_gfes_f0.5",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5
+  },
+  {
+    "name": "A_ngfe_f0.5",
+    "refit_rule": "nation_grain_family_equal",
+    "baseline_pi_floor": 0.5
+  },
+  {
+    "name": "A_ngfes_f0.5",
+    "refit_rule": "nation_grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5
+  },
+  {
+    "name": "A_gfe_f0",
+    "refit_rule": "grain_family_equal",
+    "notes": "cap check: refit-only A at floor 0"
+  },
+  {
+    "name": "A_ngfe_f0",
+    "refit_rule": "nation_grain_family_equal",
+    "notes": "cap check: refit-only A at floor 0"
+  }
+]

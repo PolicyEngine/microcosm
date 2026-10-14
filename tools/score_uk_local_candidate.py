@@ -19,7 +19,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
+from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_TARGET_LOSS_CAP,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
+)
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TargetRegistry,
@@ -153,7 +156,7 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
             f"at {float(UK_LOCAL_TARGET_LOSS_CAP)!r}; re-measure the candidate "
             "rather than reporting the two on different scales."
         )
-    if holdout.get("target_weight_rule") not in ("uniform", "grain_equal"):
+    if holdout.get("target_weight_rule") not in UK_LOCAL_TARGET_WEIGHT_RULES:
         raise ValueError("candidate holdout target_weight_rule is missing or invalid.")
     if holdout.get("loss_weight_scale") != "held_local_grains_only":
         raise ValueError(

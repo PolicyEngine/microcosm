@@ -1,0 +1,57 @@
+[
+  {
+    "name": "SAE",
+    "mode": "selection",
+    "selection_rule": "grain_family_equal_sqrt_count",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "selection_l2": {
+      "lambda": 0.002143860725904146,
+      "anchor": "initial"
+    },
+    "notes": "step 2 S-AE: S-A plus selection-stage L2 at the pool-design anchor, 1e-3 x the rule's loss ratio; warm-started as S-A"
+  },
+  {
+    "name": "SAE_ge_f0",
+    "selection_from": "SAE",
+    "notes": "step 2 S-AE: S0's own refit (grain_equal, floor 0) on this selection, so the selection's effect alone"
+  },
+  {
+    "name": "SAE_f0.5",
+    "selection_from": "SAE",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "notes": "step 2 S-AE: the rule at floor 0.5"
+  },
+  {
+    "name": "SAE_f0.5_u0.0064",
+    "selection_from": "SAE",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.006431582177712438,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-AE: the rule at floor 0.5, uniform L2 at 3e-3 x the rule's loss ratio"
+  },
+  {
+    "name": "SAE_f0.5_u0.021",
+    "selection_from": "SAE",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.021438607259041457,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-AE: the rule at floor 0.5, uniform L2 at 1e-2 x the rule's loss ratio"
+  },
+  {
+    "name": "SAE_ge_f0.5_u1e-2",
+    "selection_from": "SAE",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-AE: grain_equal at floor 0.5, uniform L2 at 1e-2, to separate the selection's effect from the refit rule's"
+  }
+]

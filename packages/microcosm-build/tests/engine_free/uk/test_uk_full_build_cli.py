@@ -113,6 +113,84 @@ def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):
     assert needle in str(excinfo.value)
 
 
+def test_dense_role_admits_the_row_metadata_rules_as_candidate_overrides(tmp_path):
+    """microcosm#1124: candidate-only rules; release candidates and the national role refuse them."""
+    for rule in (
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ):
+        args = arguments(tmp_path, "--target-weight-rule", rule)
+        cli.validate_cli_args(args)
+        assert args.target_weight_rule == rule
+    with pytest.raises(ValueError, match="--release-candidate refuses non-release"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--target-weight-rule",
+                "grain_family_equal",
+            )
+        )
+    national = cli.parse_args(
+        _national_argv(tmp_path, "--target-weight-rule", "grain_family_equal")
+    )
+    with pytest.raises(ValueError, match="--target-weight-rule grain_family_equal"):
+        cli.validate_cli_args(national)
+
+
+def test_size_stage_l2_flags_are_validated_and_recorded_only_when_on(tmp_path):
+    """microcosm#1124: candidate-only, size-run-only, refused by the national role."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    plain = arguments(tmp_path, "--dataset-households", "2")
+    cli.validate_cli_args(plain)
+    assert not {"selection_l2", "refit_l2"} & set(
+        rowwise_parameters(plain, source_year=2024)
+    )
+    on = arguments(
+        tmp_path,
+        "--dataset-households",
+        "2",
+        "--refit-l2-lambda",
+        "0.03",
+        "--refit-l2-anchor",
+        "uniform",
+        "--selection-l2-lambda",
+        "1e-3",
+    )
+    cli.validate_cli_args(on)
+    parameters = rowwise_parameters(on, source_year=2024)
+    assert parameters["refit_l2"] == {
+        "lambda": 0.03,
+        "anchor": "uniform",
+        "basis": "chi_square",
+    }
+    assert parameters["selection_l2"]["lambda"] == 1e-3
+    with pytest.raises(
+        ValueError, match="--refit-l2-lambda requires --dataset-households"
+    ):
+        cli.validate_cli_args(arguments(tmp_path, "--refit-l2-lambda", "0.03"))
+    with pytest.raises(ValueError, match="without a positive"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path, "--dataset-households", "2", "--refit-l2-anchor", "uniform"
+            )
+        )
+    with pytest.raises(ValueError, match="finite number"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path, "--dataset-households", "2", "--selection-l2-lambda", "-1"
+            )
+        )
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--refit-l2-basis", "record")
+    national = cli.parse_args(_national_argv(tmp_path, "--refit-l2-lambda", "0.03"))
+    with pytest.raises(ValueError, match="--refit-l2-lambda"):
+        cli.validate_cli_args(national)
+
+
 def test_engine_blocks_must_be_positive_and_equal_the_clone_count(tmp_path):
     """The per-clone engine block count is either one or the clone count."""
     with pytest.raises(ValueError, match="must equal --n-clones"):

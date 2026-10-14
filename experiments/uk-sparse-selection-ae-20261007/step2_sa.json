@@ -1,0 +1,53 @@
+[
+  {
+    "name": "SA",
+    "mode": "selection",
+    "selection_rule": "grain_family_equal_sqrt_count",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "notes": "step 2 S-A: the search under the best step-1 rule, warm-started at the stored penalty x the rule's loss ratio; its own refit under the rule at floor 0"
+  },
+  {
+    "name": "SA_ge_f0",
+    "selection_from": "SA",
+    "notes": "step 2 S-A: S0's own refit (grain_equal, floor 0) on this selection, so the selection's effect alone"
+  },
+  {
+    "name": "SA_f0.5",
+    "selection_from": "SA",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "notes": "step 2 S-A: the rule at floor 0.5"
+  },
+  {
+    "name": "SA_f0.5_u0.0064",
+    "selection_from": "SA",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.006431582177712438,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-A: the rule at floor 0.5, uniform L2 at 3e-3 x the rule's loss ratio"
+  },
+  {
+    "name": "SA_f0.5_u0.021",
+    "selection_from": "SA",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.021438607259041457,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-A: the rule at floor 0.5, uniform L2 at 1e-2 x the rule's loss ratio"
+  },
+  {
+    "name": "SA_ge_f0.5_u1e-2",
+    "selection_from": "SA",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    },
+    "notes": "step 2 S-A: grain_equal at floor 0.5, uniform L2 at 1e-2, to separate the selection's effect from the refit rule's"
+  }
+]
