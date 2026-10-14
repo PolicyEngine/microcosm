@@ -120,6 +120,69 @@ def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
     return np.maximum(0.0, values["net_income"] - allowances)
 
 
+#: DfT BUS01 boardings from the NTS trips the frame carries (microcosm#1207):
+#: each household's trips on the series times the boardings per trip the
+#: lcfs stage priced that series at, by the household's region (Wales is
+#: unpriced and no row binds it). Reserved names: a persisted column of
+#: either would bypass the stage's factor.
+_BUS_BOARDING_MEASURES = {
+    "bus_in_london_boardings": "bus_in_london_trips",
+    "other_local_bus_boardings": "other_local_bus_trips",
+}
+
+
+def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
+    """A household's boardings on one bus series, in the frame's household order."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    trips_column = _BUS_BOARDING_MEASURES[variable]
+    declared = bus_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    if declared is None:
+        raise KeyError("the lcfs stage declares no bus pricing")
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    person = frame.table("person")
+    household = frame.table("household")
+    trips = person[trips_column].to_numpy(dtype=float)
+    if not np.isfinite(trips).all() or (trips < 0).any():
+        raise ValueError(f"{trips_column} must be finite and non-negative.")
+    if variable == "bus_in_london_boardings":
+        # London's buses carry every resident's bus-in-London trips, wherever
+        # they live: the series is priced once, at London's factor.
+        per_trip = np.full(len(person), prices.london.boardings_per_trip)
+    else:
+        region_by_household = pd.Series(
+            household["region"].astype(str).to_numpy(),
+            index=household["household_id"].to_numpy(),
+        )
+        region = region_by_household.loc[
+            person["person_household_id"].to_numpy()
+        ].to_numpy()
+        per_trip = np.asarray(
+            [
+                prices.other_by_region[name].boardings_per_trip
+                if name in prices.other_by_region
+                else 0.0
+                for name in region
+            ]
+        )
+    boardings = (
+        pd.Series(trips * per_trip)
+        .groupby(person["person_household_id"].to_numpy())
+        .sum()
+    )
+    return boardings.reindex(
+        household["household_id"].to_numpy(), fill_value=0.0
+    ).to_numpy(dtype=float)
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -214,6 +277,14 @@ def compute_uk_measure_input(
         return (
             cgt_taxable_income_from_components(parts),
             "engine_components:capital_gains_tax_taxable_income",
+        )
+
+    if variable in _BUS_BOARDING_MEASURES:
+        if entity != "household":
+            raise KeyError(f"bus boardings are household-only: {entity}")
+        return (
+            household_bus_boardings(frame, variable),
+            f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -608,6 +679,14 @@ class UKMeasureResolver:
                 "CGT calibration measures must not be persisted as source inputs: "
                 f"{sorted(reserved)}"
             )
+        persisted_boardings = sorted(
+            set(_BUS_BOARDING_MEASURES) & set(map(str, frame.table("household")))
+        )
+        if persisted_boardings:
+            raise ValueError(
+                "Bus boarding measures must not be persisted as source inputs: "
+                f"{persisted_boardings}"
+            )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
@@ -684,6 +763,8 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
+        if variable in _BUS_BOARDING_MEASURES:
+            return entity == "household"
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
@@ -707,6 +788,8 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
+        if variable in _BUS_BOARDING_MEASURES:
+            return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
         if (

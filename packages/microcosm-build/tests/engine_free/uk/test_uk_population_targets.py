@@ -226,8 +226,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # bands into ages 15, 16-17 and 18-19 (uk-data#563), six rows for two;
     # microcosm#1240 adds the three Microcosm-derived high-value homes local
     # targets; microcosm#1207 adds the three DESNZ local-authority energy
-    # targets.
-    assert len(resource["targets"]) == 406
+    # targets and DfT BUS01a journeys for London and the eight other English
+    # regions.
+    assert len(resource["targets"]) == 415
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -241,10 +242,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 348
+    assert len(registry_scope) == 357
     assert len(profile_scope) == 58
-    assert target_ids[:348] == registry_scope
-    assert target_ids[348:] == profile_scope
+    assert target_ids[:357] == registry_scope
+    assert target_ids[357:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -259,9 +260,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert all(reason for reason in unmapped_declarations.values())
     # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
     # the mapped rows for diagnostics, and the two incumbent 15_19 sex bands
-    # leave them for the six rows that partition them.
+    # leave them for the six rows that partition them; microcosm#1207's nine
+    # BUS01a journey rows have no uk-data metric.
     assert len(mapped_target_ids) == 187
-    assert len(unmapped_declarations) == 161
+    assert len(unmapped_declarations) == 170
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -432,7 +434,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 406
+    assert len(target_ids) == 415
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -913,7 +915,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 406
+    assert len(targets) == 415
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

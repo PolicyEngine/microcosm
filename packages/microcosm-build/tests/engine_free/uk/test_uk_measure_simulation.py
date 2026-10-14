@@ -1607,3 +1607,87 @@ def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
             frame=frame,
             engine_weight_scale=4.0,
         )
+
+
+def _bus_frame() -> FrameStub:
+    """Three households: North East, London and Wales, with NTS trips."""
+
+    frame = FrameStub()
+    frame._tables["person"] = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_benunit_id": [10, 10, 20, 30],
+            "person_household_id": [100, 100, 200, 300],
+            "bus_in_london_trips": [10.0, 0.0, 4.0, 1.0],
+            "other_local_bus_trips": [2.0, 3.0, 6.0, 5.0],
+        }
+    )
+    frame._tables["household"] = pd.DataFrame(
+        {"household_id": [100, 200, 300], "region": ["NORTH_EAST", "LONDON", "WALES"]}
+    )
+    return frame
+
+
+def test_bus_boardings_price_each_series_at_the_stage_s_factor():
+    """Household boardings: NTS trips times the lcfs stage's factor (#1207)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    prices = bus_fare_prices(
+        bus_pricing_operation(
+            load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+        ),
+        allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+    )
+    london_factor = prices.london.boardings_per_trip
+    other_factor = prices.other_by_region["NORTH_EAST"].boardings_per_trip
+    frame = _bus_frame()
+
+    london, route = compute_uk_measure_input(
+        frame, None, "household", "bus_in_london_boardings", 2025
+    )
+    other, _ = compute_uk_measure_input(
+        frame, None, "household", "other_local_bus_boardings", 2025
+    )
+
+    # Every resident's bus-in-London trips, wherever they live.
+    assert london.tolist() == pytest.approx(
+        [10.0 * london_factor, 4.0 * london_factor, 1.0 * london_factor]
+    )
+    assert route == "stage_boardings_per_trip:bus_in_london_trips"
+    # A London resident's other local trips take England-outside-London's
+    # factor; Wales is unpriced and no row binds it.
+    assert prices.other_by_region["LONDON"].boardings_per_trip == other_factor
+    assert other.tolist() == pytest.approx([5.0 * other_factor, 6.0 * other_factor, 0])
+    with pytest.raises(KeyError, match="household-only"):
+        compute_uk_measure_input(frame, None, "person", "bus_in_london_boardings", 2025)
+
+
+def test_a_persisted_bus_boarding_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = _bus_frame()
+    frame._tables["household"]["other_local_bus_boardings"] = [1.0, 2.0, 3.0]
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def test_the_resolver_routes_bus_boardings_to_households(monkeypatch, tmp_path: Path):
+    resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
+    for name in ("bus_in_london_boardings", "other_local_bus_boardings"):
+        assert resolver.entity_for(name) == "household"
+        assert resolver.knows("household", name)
+        assert not resolver.knows("person", name)
