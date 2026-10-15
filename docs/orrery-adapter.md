@@ -297,6 +297,11 @@ that case, pass the attempt's `graph.schema.json` and
 `graph-evidence/execution.evidence.json`, and the same store. The spine sidecar
 identifies its native index under the checkpoint directory; use that directory's
 `graph.schema.json` and `node-graph` store. Orrery JSON and HTML remain opt-in.
+When UK finalize exports `graph.orrery.json` from recorded execution, it also
+writes the overlay it projected as `graph.execution.json` and registers it as a
+build output, so `graph.schema.json` and `graph.execution.json` reproduce the
+export byte for byte without the store. The overlay is not part of the Orrery
+publication set (see [UK graph publication](orrery-publication.md)).
 
 The final national schema, declaration and inventory all include the appended
 `uk.full.national.readback` operation. Earlier endpoint runs remain separate
