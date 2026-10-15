@@ -37,6 +37,28 @@ references with a direct parse, the rules bindings' module digests with the
 committed Axiom input surface, and the export contract's formula-owned list
 with the bound variables, and source citations with the code and JSON nodes
 they identify.
+
+Recognized line citations (for any extension, or known checkout filenames
+such as LICENSE and .gitignore):
+
+- The filename may be plain, backtick-wrapped, single/double/curly-quoted,
+  inline Markdown link text (including backticks), or a reference link.
+- Forward: file:12, file:L12, file：L12 (full-width colon), file#L12,
+  file @ L12, file L12, file, L12, file (L12), file [L12], file line 12,
+  file lines L12-L20, file l.12, file ll.12-20, and file at/on line 12.
+  Locators may themselves be quoted or backtick-wrapped.
+- Reverse: line 12 in file, lines 12-20 of file, ll.12-20 in file,
+  and L12-L20 of/in file. Words ignore case; the L prefix is uppercase.
+- Numbers may form comma lists or ranges with hyphen, en dash, em dash,
+  or "to", with optional spaces and an L on either endpoint.
+
+Bare numbers in prose, unknown extensionless names, spelled-out numbers,
+HTML/entity-encoded markup and arbitrary Markdown rendering are out of scope:
+the guard scans parsed resource strings for explicit file/line locators.
+Lowercase l12 is ambiguous with a Python identifier; use uppercase L12 or an
+explicit line/l./ll. label. Symbols (including backticks), heading anchors,
+JSON Pointers and keyed selectors without a line locator remain valid.
+Versioned symbols such as takeup.assign@1 also remain valid.
 """
 
 from __future__ import annotations
@@ -501,14 +523,34 @@ _SOURCE_FILE = (
     r"(?P<file>[A-Za-z0-9_./-]*[A-Za-z0-9_-]\.[A-Za-z0-9][A-Za-z0-9_-]*)"
     r"(?![A-Za-z0-9_.-])"
 )
+
+
+def _line_citation_patterns(source: str) -> tuple[re.Pattern[str], ...]:
+    """Share the documented locator grammar with extensionless filenames."""
+
+    quotes = r"[`'\"‘’“”]*"
+    # Keep a link's destination attached to its label, so a repeated filename
+    # in [file](file) does not produce a second, possibly different citation.
+    wrapped = (
+        rf"\[?{quotes}{source}{quotes}"
+        r"(?:\](?:\((?:[^()\n]|\([^()\n]*\))*\)|\[[^\]\n]*\])?)?"
+    )
+    number = r"L?\s*\d+(?!\w)"
+    span = rf"{number}(?:\s*(?:[-–—]|(?i:to))\s*{number})?"
+    numbers = rf"{span}(?:\s*,\s*{span})*"
+    label = r"(?i:lines?\b\s+|ll?\.\s*)"
+    forward = (
+        wrapped
+        + rf"(?:\s*[:：]\s*{quotes}(?:{label})?|\s*@\s*{quotes}(?:{label}|(?=L))|"
+        rf"\s*#(?=L)|\s*,?\s*[\[(]?\s*"
+        rf"(?:(?i:at|on)\s+)?{quotes}(?:{label}|(?=L))){quotes}{numbers}"
+    )
+    reverse = rf"\b(?:{label}|(?=L)){quotes}{numbers}{quotes}\s+(?i:of|in)\s+" + wrapped
+    return (re.compile(forward), re.compile(reverse))
+
+
 #: Keep every locator spelling from #1141, now for any file extension.
-_LINE_CITATIONS = (
-    re.compile(_SOURCE_FILE + r"(?:\s*:\s*|#L|\s+L|,?\s*\(?\s*[Ll]ines?\s+)\d"),
-    re.compile(
-        r"\b[Ll]ines?\s+\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+)*\s+(?:of|in)\s+"
-        + _SOURCE_FILE
-    ),
-)
+_LINE_CITATIONS = _line_citation_patterns(_SOURCE_FILE)
 _COMMIT_PIN = re.compile(r"[0-9a-f]{7,40}")
 
 
@@ -547,13 +589,7 @@ def _extensionless_line_patterns() -> tuple[re.Pattern[str], ...]:
     }
     alternatives = "|".join(re.escape(name) for name in sorted(names))
     source = rf"(?P<file>[A-Za-z0-9_./-]*(?:{alternatives}))(?![A-Za-z0-9_.-])"
-    return (
-        re.compile(source + r"(?:\s*:\s*|#L|\s+L|,?\s*\(?\s*[Ll]ines?\s+)\d"),
-        re.compile(
-            r"\b[Ll]ines?\s+\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+)*\s+(?:of|in)\s+"
-            + source
-        ),
-    )
+    return _line_citation_patterns(source)
 
 
 def _repository_source(path: str) -> bool:
@@ -1904,6 +1940,39 @@ _LINE_LOCATORS = (
     "{file} (lines {a}-{b})",
     "Lines {a}-{b} of {file}",
     "line {a} in {file}",
+    "{file}:L{a}",
+    "{file}：L{a}-L{b}",
+    "{file} @ L{a}",
+    "{file}, L{a}-L{b}",
+    "{file} (L{a}-L{b})",
+    "{file} [L{a}-L{b}]",
+    "{file} lines L{a}-L{b}",
+    "{file} ll.{a}-{b}",
+    "{file} at line {a}",
+    "{file} on lines {a}-{b}",
+    "lines L{a}-L{b} of {file}",
+    "L{a}-L{b} in {file}",
+    "ll.{a}-{b} in {file}",
+    "lines {a}, {b} in {file}",
+)
+_FILE_WRAPPERS = (
+    "{file}",
+    "`{file}`",
+    "'{file}'",
+    '"{file}"',
+    "‘{file}’",
+    "“{file}”",
+    "[{file}](source)",
+    "[`{file}`](source)",
+    "[{file}][source]",
+)
+_LINE_LOCATOR_SPELLINGS = st.builds(
+    lambda locator, wrapper, dash: locator.replace("-", dash).replace(
+        "{file}", wrapper
+    ),
+    st.sampled_from(_LINE_LOCATORS),
+    st.sampled_from(_FILE_WRAPPERS),
+    st.sampled_from(("-", "–", "—", " to ")),
 )
 #: Symbol-citation spellings, which carry no line number.
 _SYMBOL_LOCATORS = (
@@ -1954,6 +2023,75 @@ def citation_checkout(tmp_path, monkeypatch):
 
 
 class TestSourceCitations:
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("source", ["concepts.py", "LICENSE"])
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            pytest.param("`{file}` lines 889-928", id="backtick-forward"),
+            pytest.param("lines 889-928 of `{file}`", id="backtick-reverse"),
+            pytest.param("{file}, L889-L928", id="l-comma"),
+            pytest.param("{file} (L889-L928)", id="l-parentheses"),
+            pytest.param("line 12 in `{file}`", id="line-in-backticks"),
+            pytest.param("{file}:L12", id="l-colon"),
+            pytest.param("{file} @ L12", id="l-at"),
+            pytest.param("{file}#L12-L20", id="l-fragment"),
+            pytest.param("{file} lines 12–20", id="en-dash-forward"),
+            pytest.param("{file} ll. 12-20", id="ll-forward"),
+            pytest.param("see {file}, line 12", id="see-comma-line"),
+            pytest.param("{file}：12", id="fullwidth-colon"),
+            pytest.param("{file}：L12–L20", id="fullwidth-l-range"),
+            pytest.param("'{file}' lines 12-20", id="single-quote-forward"),
+            pytest.param("lines 12-20 of '{file}'", id="single-quote-reverse"),
+            pytest.param('"{file}" lines 12-20', id="double-quote-forward"),
+            pytest.param('lines 12-20 of "{file}"', id="double-quote-reverse"),
+            pytest.param("‘{file}’ lines 12-20", id="curly-single-forward"),
+            pytest.param("lines 12-20 of ‘{file}’", id="curly-single-reverse"),
+            pytest.param("“{file}” lines 12-20", id="curly-double-forward"),
+            pytest.param("lines 12-20 of “{file}”", id="curly-double-reverse"),
+            pytest.param("[{file}]({file}) lines 12-20", id="link-forward"),
+            pytest.param("lines 12-20 of [{file}]({file})", id="link-reverse"),
+            pytest.param("[`{file}`]({file}) L12", id="code-link-forward"),
+            pytest.param("L12 in [`{file}`]({file})", id="code-link-reverse"),
+            pytest.param(
+                "[{file}](docs/source(v1)) lines 12-20", id="link-parentheses"
+            ),
+            pytest.param("[{file}][source] lines 12-20", id="reference-link"),
+            pytest.param("{file}, L12", id="l-single"),
+            pytest.param("{file} [L12-L20]", id="l-brackets"),
+            pytest.param("L12-L20 in {file}", id="l-reverse"),
+            pytest.param("lines L12–L20 of `{file}`", id="l-en-dash-reverse"),
+            pytest.param("{file} lines L12-L20", id="l-labelled"),
+            pytest.param("{file} lines 12—20", id="em-dash-forward"),
+            pytest.param("lines 12—20 of {file}", id="em-dash-reverse"),
+            pytest.param("lines 12–20 in {file}", id="en-dash-reverse"),
+            pytest.param("lines 12, 14-20 of {file}", id="reverse-list"),
+            pytest.param("ll.12–20 in {file}", id="ll-reverse"),
+            pytest.param("{file} l.12", id="l-abbreviation"),
+            pytest.param("{file} at line 12", id="at-line"),
+            pytest.param("{file} on lines 12 to 20", id="on-lines-to"),
+            pytest.param("lines 12 to 20 of {file}", id="reverse-to"),
+            pytest.param("{file}, L12–L20", id="l-en-dash-forward"),
+            pytest.param("LINES 12-20 OF `{file}`", id="uppercase-reverse"),
+            pytest.param("`{file}`: `L12`", id="quoted-locator"),
+            pytest.param("{file} `L12`", id="quoted-bare-locator"),
+            pytest.param("{file} `lines 12-20`", id="quoted-labelled-locator"),
+            pytest.param("{file}: lines 12-20", id="colon-labelled"),
+            pytest.param("lines `12–20` in `{file}`", id="quoted-reverse-numbers"),
+        ],
+    )
+    def test_formatted_line_citation_is_refused_at_depth(
+        self, spelling: str, source: str, as_key: bool
+    ) -> None:
+        citation = spelling.format(file=source)
+        # A local file cannot borrow an exemption from a same-document pin.
+        document = {
+            "source": {"path": source, "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert source_line_citations(document) == [(source, citation)]
+        assert unpinned_line_citations(document) == [(source, citation)]
+
     @pytest.mark.parametrize(
         ("pointer", "records", "message"),
         [
@@ -2363,7 +2501,7 @@ class TestSourceCitations:
         stem=_SOURCE_STEM,
         extension=_SOURCE_EXTENSION,
         directory=_SOURCE_DIRECTORY,
-        locator=st.sampled_from(_LINE_LOCATORS),
+        locator=_LINE_LOCATOR_SPELLINGS,
         a=st.integers(1, 99_999),
         b=st.integers(1, 99_999),
         prefix=_PROSE,
@@ -2393,7 +2531,7 @@ class TestSourceCitations:
     @given(
         stem=_SOURCE_STEM,
         extension=_SOURCE_EXTENSION,
-        locator=st.sampled_from(_LINE_LOCATORS),
+        locator=_LINE_LOCATOR_SPELLINGS,
         a=st.integers(1, 99_999),
         b=st.integers(1, 99_999),
         depth=st.integers(0, 3),
@@ -2434,7 +2572,7 @@ class TestSourceCitations:
         stem=_SOURCE_STEM,
         other=_SOURCE_STEM,
         extension=_SOURCE_EXTENSION,
-        locator=st.sampled_from(_LINE_LOCATORS),
+        locator=_LINE_LOCATOR_SPELLINGS,
         a=st.integers(1, 99_999),
         b=st.integers(1, 99_999),
         commit=_HEX40_TEXT,
@@ -2503,6 +2641,7 @@ class TestSourceCitations:
         extension=_SOURCE_EXTENSION,
         directory=_SOURCE_DIRECTORY,
         locator=st.sampled_from(_SYMBOL_LOCATORS),
+        wrapper=st.sampled_from(_FILE_WRAPPERS),
         symbol=_SOURCE_STEM,
         prefix=_PROSE,
         suffix=_PROSE,
@@ -2513,12 +2652,37 @@ class TestSourceCitations:
         extension: str,
         directory: str,
         locator: str,
+        wrapper: str,
         symbol: str,
         prefix: str,
         suffix: str,
     ) -> None:
-        citation = locator.format(file=f"{directory}{stem}.{extension}", symbol=symbol)
+        source = wrapper.format(file=f"{directory}{stem}.{extension}")
+        citation = locator.format(file=source, symbol=symbol)
         assert source_line_citations({"rule": f"{prefix} {citation} {suffix}"}) == []
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "citation",
+        [
+            "`microcosm.graph.executor._structural_columns`",
+            "takeup.assign@1",
+            "`takeup.assign` @ 1",
+            "`concepts.py`: `_pointer`",
+            "concepts.py: L12_symbol",
+            "concepts.py: l12",
+            "concepts.py: line12",
+            "docs/method.md#heading12",
+            "records.json#/entries/12",
+            "records.json#/entries[input=L12,module=nz~1core~0v1]/values/0",
+            "records.json#/entries[input=line12]",
+        ],
+    )
+    def test_symbols_and_stable_records_are_not_line_citations(
+        self, citation: str, as_key: bool
+    ) -> None:
+        assert source_line_citations(_plant(citation, 3, as_key)) == []
+        assert unpinned_line_citations(_plant(citation, 3, as_key)) == []
 
     def test_a_json_pointer_citation_is_not_a_line_citation(
         self, citation_checkout
