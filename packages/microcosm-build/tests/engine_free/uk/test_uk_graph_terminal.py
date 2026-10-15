@@ -21,6 +21,10 @@ from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.microcosm_build.uk_hierarchy_fixtures import (
     uk_fixture_hierarchy,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 
 def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_path):
@@ -594,20 +598,20 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
 
 
-def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
-    monkeypatch,
-):
-    import json
+def _run_uk_full_gate_kernel(monkeypatch):
+    """Run the terminal gate kernel on the two-household fixture.
+
+    Rebuilding the diagnostics is forbidden, so a returned document proves
+    the kernel reused the decoded calibration result.
+    """
+
     from dataclasses import replace
     from types import SimpleNamespace
 
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates, geography_ladder
     from microcosm.build.uk_runtime.graph_targets import registry_payload
-    from microcosm.build.uk_runtime.graph_terminal import (
-        UKFullGateKernel,
-        decode_full_gate_report,
-    )
+    from microcosm.build.uk_runtime.graph_terminal import UKFullGateKernel
     from microcosm.calibrate import (
         TargetRegistry,
         TargetSet,
@@ -851,9 +855,19 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         artifacts=artifacts,
         sources={"uk_ladder": "fixture"},
     )
-    stored = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
+    return UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
         context
     )
+
+
+def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
+    monkeypatch,
+):
+    import json
+
+    from microcosm.build.uk_runtime.graph_terminal import decode_full_gate_report
+
+    stored = _run_uk_full_gate_kernel(monkeypatch)
     phase, _ = decode_full_gate_report(stored.artifacts["gate_report"])
     assert phase.phase == "terminal"
     document = json.loads(stored.artifacts["calibration_diagnostics"])
@@ -866,6 +880,15 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert len(support_csv) == 4
     # Consumers read which areas sit below the floor (microcosm#1278).
     assert support_csv["support_below_floor"].dtype == bool
+
+
+def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
+    monkeypatch,
+):
+    stored = _run_uk_full_gate_kernel(monkeypatch)
+    document = load_strict_json(stored.artifacts["calibration_diagnostics"])
+
+    assert published_json_schema_errors(document) == []
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):
