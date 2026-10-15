@@ -297,6 +297,20 @@ def uk_high_value_home_evidence(
         code: frame_shares.get(code, 0.0) - derived_shares.get(code, 0.0)
         for code in sorted(set(frame_shares) | set(derived_shares))
     }
+    # The gate tests the largest gap over every region, suppressed ones
+    # included, but ships only the largest over the unsuppressed regions: the
+    # derived shares are public, so a suppressed region's gap would give back
+    # its frame share (PR #1270 review round 2, finding 1).
+    shipped_gaps = {
+        code: (None if code in suppressed_regions else gap)
+        for code, gap in share_gaps.items()
+    }
+    largest_gap_evaluated = max(
+        (abs(float(v)) for v in share_gaps.values()), default=0.0
+    )
+    largest_gap_shipped = max(
+        (abs(float(v)) for v in shipped_gaps.values() if v is not None), default=0.0
+    )
 
     # 3. Rank correlations by constituency.
     correlations: dict[str, dict[str, Any]] = {}
@@ -423,13 +437,13 @@ def uk_high_value_home_evidence(
             "frame": shipped_shares,
             "frame_regions_suppressed_small_cells": suppressed_regions,
             "derived_stock": derived_shares,
-            "gap": {
-                code: (gap if shipped_shares.get(code) is not None else None)
-                for code, gap in share_gaps.items()
-            },
-            "largest_gap_evaluated": max(
-                (abs(float(v)) for v in share_gaps.values()), default=0.0
-            ),
+            "gap": shipped_gaps,
+            "largest_gap_evaluated": largest_gap_evaluated,
+            "largest_gap_shipped": largest_gap_shipped,
+            # True when no unsuppressed region attains the evaluated maximum,
+            # so the gate keeps the value out of its details and message.
+            "largest_gap_in_suppressed_region": largest_gap_evaluated
+            > largest_gap_shipped,
             "frame_total": frame_total,
             "derived_total": derived_total,
         },
@@ -552,17 +566,34 @@ def high_value_home_benchmarks_gate(
             )
     regional = summary.get("regional_over_2m_share") or {}
     gaps = regional.get("gap") or {}
-    worst = regional.get("largest_gap_evaluated")
-    if worst is None:
-        worst = max(
+    # ``gap`` carries only the unsuppressed regions, so its maximum is the
+    # shipped figure; the evaluated maximum covers every region and decides
+    # the outcome, but its value is shipped and printed only when an
+    # unsuppressed region attains it.
+    shipped_worst = regional.get("largest_gap_shipped")
+    if shipped_worst is None:
+        shipped_worst = max(
             (abs(float(v)) for v in gaps.values() if v is not None), default=0.0
         )
-    worst = float(worst)
+    shipped_worst = float(shipped_worst)
+    worst = regional.get("largest_gap_evaluated")
+    worst = shipped_worst if worst is None else float(worst)
+    in_suppressed_region = bool(
+        regional.get("largest_gap_in_suppressed_region", worst > shipped_worst)
+    )
     if worst > maximum_regional_share_gap:
-        failures.append(
-            f"regional split of owner-occupied homes over 2m differs from the derived stock "
-            f"by up to {worst:.3f} of England's total, above {maximum_regional_share_gap:.2f}."
-        )
+        if in_suppressed_region:
+            failures.append(
+                "regional split of owner-occupied homes over 2m differs from the derived "
+                f"stock by more than {maximum_regional_share_gap:.2f} of England's total "
+                "in a region whose share is suppressed in the shipped details."
+            )
+        else:
+            failures.append(
+                "regional split of owner-occupied homes over 2m differs from the derived "
+                f"stock by up to {worst:.3f} of England's total, above "
+                f"{maximum_regional_share_gap:.2f}."
+            )
     return GateResult(
         name="high_value_home_benchmarks",
         passed=not failures,
@@ -574,7 +605,7 @@ def high_value_home_benchmarks_gate(
             "regional_over_2m_share": {
                 "frame": regional.get("frame"),
                 "derived_stock": regional.get("derived_stock"),
-                "largest_gap": worst,
+                "largest_gap": shipped_worst,
             },
             "england_owner_occupied_by_band_2026": summary.get(
                 "england_owner_occupied_by_band_2026"

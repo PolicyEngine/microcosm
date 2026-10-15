@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -133,6 +135,11 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     assert "E12000007" in shares["frame_regions_suppressed_small_cells"]
     assert shares["derived_stock"]["E12000007"] == pytest.approx(5 / 7)
     assert shares["largest_gap_evaluated"] == pytest.approx(abs(5 / 6 - 5 / 7))
+    # Both regions are suppressed, so no gap ships and the evaluated maximum
+    # is flagged as resting on a suppressed region (review round 2, finding 1).
+    assert shares["gap"] == {"E12000007": None, "E12000008": None}
+    assert shares["largest_gap_shipped"] == 0.0
+    assert shares["largest_gap_in_suppressed_region"] is True
     rho = summary["seat_rank_correlation"]["over_gbp_2m"]["final"]
     assert rho["spearman_vs_derived_stock"] == pytest.approx(1.0)
     assert rho["spearman_vs_voa_band_h"] == pytest.approx(1.0)
@@ -204,6 +211,53 @@ def test_benchmarks_gate_fails_on_low_correlation_or_regional_gap() -> None:
     assert passed.passed
     assert passed.details["regional_over_2m_share"]["largest_gap"] == pytest.approx(
         0.05
+    )
+
+
+def test_benchmarks_gate_keeps_a_suppressed_regions_gap_out_of_what_it_ships() -> None:
+    # The evaluated maximum rests on a suppressed region (PR #1270 review
+    # round 2, finding 1): the gate still fails on it, but neither the details
+    # nor the message carry the value, which beside the public derived shares
+    # would give back that region's frame share.
+    regional = {
+        "frame": {"E12000007": 0.5, "E12000008": None, "E12000009": None},
+        "frame_regions_suppressed_small_cells": ["E12000008", "E12000009"],
+        "derived_stock": {"E12000007": 0.52, "E12000008": 0.3, "E12000009": 0.18},
+        "gap": {"E12000007": -0.02, "E12000008": None, "E12000009": None},
+        "largest_gap_evaluated": 0.17,
+        "largest_gap_shipped": 0.02,
+        "largest_gap_in_suppressed_region": True,
+    }
+    summary = {
+        "seat_rank_correlation": {
+            "over_gbp_2m": {"final": {"spearman_vs_derived_stock": 0.9}}
+        },
+        "regional_over_2m_share": regional,
+    }
+    failed = high_value_home_benchmarks_gate(summary, maximum_regional_share_gap=0.1)
+    assert not failed.passed and len(failed.failures) == 1
+    assert "suppressed" in failed.failures[0] and "0.17" not in failed.failures[0]
+    assert "0.17" not in json.dumps(failed.details)
+    assert failed.details["regional_over_2m_share"]["largest_gap"] == pytest.approx(
+        0.02
+    )
+    passed = high_value_home_benchmarks_gate(summary, maximum_regional_share_gap=0.2)
+    assert passed.passed
+    assert passed.details["regional_over_2m_share"]["largest_gap"] == pytest.approx(
+        0.02
+    )
+    # When an unsuppressed region attains the maximum, the value is printed.
+    regional.update(
+        {
+            "gap": {"E12000007": -0.17, "E12000008": None, "E12000009": None},
+            "largest_gap_shipped": 0.17,
+            "largest_gap_in_suppressed_region": False,
+        }
+    )
+    printed = high_value_home_benchmarks_gate(summary, maximum_regional_share_gap=0.1)
+    assert not printed.passed and "0.170" in printed.failures[0]
+    assert printed.details["regional_over_2m_share"]["largest_gap"] == pytest.approx(
+        0.17
     )
 
 
