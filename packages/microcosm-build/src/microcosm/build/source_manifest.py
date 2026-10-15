@@ -177,6 +177,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "replace_sentinels",
         "split_component_by_share",
         "split_top_wealth_support_households",
+        "split_top_value_owner_households",
         "split_liable_gainers_by_residential_probability",
         "stack_income_band_donor_households",
         "stack_zero_weight_donors",

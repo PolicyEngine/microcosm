@@ -44,6 +44,7 @@ E5_STAGE_NAMES = [
     # #1003: the Lifetime ISA holdings read the was_wealth household draws.
     "was_lisa",
     "regional_property_uprating",
+    "high_value_home_support",
     # #1106: landlords' receipts and finance costs follow the uprated rental
     # property values their coherence receipt reads.
     "property_components",
@@ -241,6 +242,7 @@ class TestUKSourceStagesManifest:
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
+                    "high_value_home_support": _identity,
                     "property_components": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
@@ -1091,6 +1093,11 @@ class TestE3ManifestLockstep:
         # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
         # by the stage even though the QRF output surface excludes it.
         written.add("employment_income")
+        # The rows stage 1 drew, flagged for the stages that tell tape-concept
+        # rows from FRS-concept ones (microcosm#840).
+        from microcosm.build.uk_runtime.spi_income import SPI_INCOME_RECIPIENT_COLUMN
+
+        written.add(SPI_INCOME_RECIPIENT_COLUMN)
         unbacked = [name for name in stage2.outputs if name not in written]
         assert unbacked == [], (
             "Declared outputs with no named runtime written-column constant "

@@ -26,8 +26,13 @@ from microcosm.build.staging_v2 import (
     validate_staging_delivery,
 )
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
-from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_build_identifiers,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.weight_year import uk_weights_are_at_dataset_year
 from microcosm.data.contract import validate_release_dir
 
 _ATTEMPT_PREFIX = "uk-frs-calibration-attempt-"
@@ -287,8 +292,12 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     # must be identical — same ids, same order — before the pairing is
     # digested and shipped as authoritative. A digest over mis-paired bytes
     # authenticates the bytes, not the pairing.
-    candidate_ids = candidate_frame.table("household")["household_id"].to_numpy()
-    spine_ids = spine_frame.table("household")["household_id"].to_numpy()
+    # A release renumbers its identifiers and keeps the build's beside them
+    # (microcosm#1194); the spine carries the build's own.
+    candidate_ids = uk_build_identifiers(
+        candidate_frame.table("household"), "household"
+    )
+    spine_ids = uk_build_identifiers(spine_frame.table("household"), "household")
     if candidate_ids.shape != spine_ids.shape or not np.array_equal(
         candidate_ids, spine_ids
     ):
@@ -302,9 +311,20 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             f"({detail}); the calibration NPZ would pair weights across "
             "different households"
         )
+    # The NPZ carries the dataset's own household weights, so it pairs with
+    # the H5 row by row. On a release they stand at the dataset's year
+    # (microcosm#796 A19); the build manifest says which.
     household_weight = np.asarray(
         candidate_frame.weights_for("household").values, dtype=np.float64
     )
+    household_weight_year = {
+        "dataset_year": int(uk_time_period(candidate_frame)),
+        "basis": (
+            "dataset_year"
+            if uk_weights_are_at_dataset_year(candidate_frame)
+            else "as_solved"
+        ),
+    }
     initial_household_weight = np.asarray(
         spine_frame.weights_for("household").values, dtype=np.float64
     )
@@ -320,6 +340,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             calibration_filename=calibration_filename,
             household_weight=household_weight,
             initial_household_weight=initial_household_weight,
+            household_weight_year=household_weight_year,
             measured=measured,
             cut_tag=cut_tag,
             attempt_id=attempt_id,
@@ -348,6 +369,7 @@ def _stage_and_finalize(
     calibration_filename: str,
     household_weight: np.ndarray,
     initial_household_weight: np.ndarray,
+    household_weight_year: Mapping[str, object],
     measured: Mapping[str, str],
     cut_tag: str,
     attempt_id: str,
@@ -387,6 +409,10 @@ def _stage_and_finalize(
         "calibration": {
             "filename": calibration_filename,
             "sha256": calibration_sha,
+            # The year ``household_weight`` stands at: the dataset's own on a
+            # release, where policyengine-uk's projection then returns the
+            # solved weights at the calibration year.
+            "household_weight_year": dict(household_weight_year),
             "target_surface": {
                 "sha256": target_surface.get("sha256"),
                 "n_targets": target_surface.get("n_targets"),

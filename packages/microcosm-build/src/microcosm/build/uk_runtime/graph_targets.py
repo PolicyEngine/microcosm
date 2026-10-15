@@ -216,7 +216,7 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets
+        from . import full_targets, high_value_homes
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -225,6 +225,7 @@ class _TargetKernel(KernelBase):
             full_problem,
             full_targets,
             cross_grain,
+            high_value_homes,
             ladder_targets,
             ledger_targets,
             local_doctrine,
@@ -350,6 +351,7 @@ def compile_uk_full_target_surface(
             "local_source_pin": inputs["local_source_pin"],
             "register_completeness": inputs["register_completeness"],
             "ledger_provenance": inputs["ledger_provenance"],
+            "derived_fact_provenance": inputs.get("derived_fact_provenance"),
             "targets": {
                 "chronicle": inputs["ledger_provenance"],
                 "paired_ladder_sha256": ladder_sha256,
@@ -658,6 +660,18 @@ class UKFullProblemKernel(_TargetKernel):
                 "mass_reason": prepared.mass_reason,
                 "target_loss_cap": doctrine.target_loss_cap,
                 "max_weight_ratio": doctrine.max_weight_ratio,
+                # microcosm#1240: the doctrine's scale rule and the row scales
+                # it yields (the default with the family floors), so the dense
+                # node solves under the rule the problem binds.
+                "scale_rule": doctrine.scale_rule,
+                "target_loss_scales": (
+                    None
+                    if prepared.target_loss_scales is None
+                    else np.asarray(
+                        prepared.target_loss_scales, dtype=np.float64
+                    ).tolist()
+                ),
+                "target_loss_scale_receipt": prepared.target_loss_scale_receipt,
                 "binding_adjudications": prepared.binding_adjudications,
                 "rung_surface": rung,
                 "bound_families": list(bound_families),

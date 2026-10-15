@@ -2,7 +2,7 @@
   "version": 1,
   "country": "nz",
   "method_card_row": "MC7",
-  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. An adult for unit construction is any person excluded from the declared dependent-child rule, including a financially independent young person or an independent teen parent. The unit id family.family_id and membership person.person_family_id are structural graph columns (microcosm.graph.executor._structural_columns, executor.py:638-645); a non-structural node cannot own either (executor.py:1549-1554). family.family_household_id is the ordinary family column linking each unit to its household. The shared transport CREATE kernel (G4/G5a; transport/population_kernels.py:208-232) builds units from donor concept pointers under this spec. Family weights are inherited from the household through the Frame.",
+  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. An adult for unit construction is any person excluded from the declared dependent-child rule, including a financially independent young person or an independent teen parent. The unit id family.family_id and membership person.person_family_id are structural graph columns (microcosm.graph.executor._structural_columns); a non-structural node cannot own either (microcosm.graph.executor._validate_population_declaration). family.family_household_id is the ordinary family column linking each unit to its household. The shared transport CREATE kernel (G4/G5a; microcosm.build.transport.population_kernels.TransportCreateKernel) builds units from donor concept pointers under this spec. Family weights are inherited from the household through the Frame.",
   "status": "settled by the NZ hub on 2026-10-12 under G8 method addendum B8 (MC7)",
   "entity": "family",
   "engine_entity": "Family",
@@ -19,7 +19,7 @@
       "parent_2_person_id"
     ],
     "household_reference_person": "reference_person_id",
-    "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py:889-928"
+    "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py, the \"# --- Relationships\" block: _pointer(\"partner_person_id\") through _pointer(\"reference_person_id\")"
   },
   "source_household_lineage": {
     "concept": "fact:household.source_household_id",
@@ -37,7 +37,7 @@
     },
     {
       "member": "dependent_child",
-      "rule": "A dependent child joins the unit of its co-resident parent parent_1_person_id; if that parent is itself dependent, follow the parent chain to that parent's unit. A lone co-resident parent is always parent 1 (concepts.py:900-907), so parent_2_person_id never chooses the unit."
+      "rule": "A dependent child joins the unit of its co-resident parent parent_1_person_id; if that parent is itself dependent, follow the parent chain to that parent's unit. A lone co-resident parent is always parent 1 (concepts.py _pointer(\"parent_1_person_id\")), so parent_2_person_id never chooses the unit."
     },
     {
       "member": "other_adult",
@@ -55,7 +55,7 @@
       "hours_concept": "fact:person.usual_weekly_hours",
       "donor_variable": "weekly_hours_worked_before_lsr",
       "basis": "Social Security Act 2018, Schedule 2, financially independent (DLM6784504, limb a) and full employment (DLM6784514, limbs a and b), as at 1 April 2026; G8 method addendum B8. The test applies only while below age_limit_years.",
-      "concept_evidence": "concepts.py:1069-1083 declares usual weekly hours across all jobs and self-employment in worked weeks in the donor reference year, with transport CARRY. adapters/policyengine_us_concepts.py:352-362 maps weekly_hours_worked_before_lsr through Identity to this concept; transport.py:843-849 decodes the donor through that mapping. docs/concept-coverage/policyengine-us.md:31 records the same binding.",
+      "concept_evidence": "concepts.py concept(\"fact:person.usual_weekly_hours\") declares usual weekly hours across all jobs and self-employment in worked weeks in the donor reference year, with transport CARRY. microcosm.frame.adapters.policyengine_us_concepts.POLICYENGINE_US_CONCEPT_MAPPING maps weekly_hours_worked_before_lsr through Identity to this concept; microcosm.frame.transport.read_populace_us_donor decodes the donor through that mapping. docs/concept-coverage/policyengine-us.md#inputs-each-concept-feeds records the same binding.",
       "approximation": "The donor usual rate in worked weeks is used for the statutory average weekly employment test; employment contracts and the averaging interval are not observed."
     },
     "parent_independence_min_age": 16,
