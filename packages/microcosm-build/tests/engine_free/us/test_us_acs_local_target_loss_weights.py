@@ -238,6 +238,7 @@ def _surface(module):
 def _args(tmp_path, **overrides):
     values = dict(
         checkpoint_dir=tmp_path,
+        staging_summary=tmp_path / "staging.summary.json",
         out_h5=None,
         resume=False,
         epochs=6,

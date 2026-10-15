@@ -34,6 +34,12 @@ from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_transfer_target_families,
     prepare_acs_local_hours_donor,
 )
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_signal_gate,
+    require_acs_local_immigration_donor,
+    with_acs_local_immigration_inputs,
+)
 from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
     build_optional_acs_multispine,
@@ -240,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
+    _require_immigration_donor(base, period=args.period)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
@@ -289,6 +296,14 @@ def main(argv: list[str] | None = None) -> int:
     # writer scratch at once.
     del base
     gc.collect()
+    # microcosm#1020: label the ACS rows' immigration status and fill every
+    # person's years_since_us_entry BEFORE the input-null audit. Left missing,
+    # they enter the reviewed-null register, whose fill is the engine default:
+    # every ACS person a citizen with a valid SSN, every clock 5 years.
+    result, immigration = _with_local_immigration(
+        result, seed=args.seed, period=args.period
+    )
+    gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
     hours_gate = acs_local_hours_signal_gate(
@@ -328,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
         "failures": list(hours_gate.failures),
         "details": dict(hours_gate.details),
     }
+    summary.update(immigration)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -374,6 +390,56 @@ def _require_benefit_participation_inputs(base: Frame) -> None:
             "Dense ASEC-by-PUF donor has no takes_up_* benefit-participation "
             "inputs. This tool must run after the benefit input-family stages."
         )
+
+
+def _require_immigration_donor(base: Frame, *, period: int) -> None:
+    """Refuse, before any fetch or fit, a donor the immigration stage can't use."""
+
+    try:
+        require_acs_local_immigration_donor(base, time_period=period)
+    except ValueError as exc:
+        raise SystemExit(
+            f"Dense ASEC-by-PUF donor cannot seed the ACS local immigration "
+            f"stage ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+
+
+def _with_local_immigration(
+    result: AcsMultispineResult,
+    *,
+    seed: int,
+    period: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local immigration stage; return the summary entries.
+
+    The stage fills only missing ACS-row labels and every missing
+    ``years_since_us_entry``; its gate must pass before the staging H5 is
+    written, and the release tool refuses a staging summary without both
+    entries (``acs_local_immigration`` and ``acs_local_immigration_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_immigration_inputs(
+            result.frame, seed=seed, time_period=period
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            f"ACS local immigration stage failed ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_immigration_signal_gate(frame)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging immigration gate failed: " + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_immigration": receipt,
+        "acs_local_immigration_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
 
 
 def _require_dense_donor_coverage(
