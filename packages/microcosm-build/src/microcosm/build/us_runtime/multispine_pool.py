@@ -3122,6 +3122,11 @@ def seed_multispine_pool_inputs(
             defaulted_rows = 0
             seeded_rows = 0
         else:
+            # TODO(microcosm#1019): takes_up_snap_if_eligible lands here, so
+            # its missing (ACS-row) cells get the engine default, universal
+            # take-up. The legacy local lane seeds them in acs_local_take_up;
+            # this module must stay spine-blind, so the fix here needs a
+            # spine-blind receipt-anchored SNAP seed and a contract change.
             if program.variable not in defaults:
                 raise ValueError(
                     "PolicyEngine exposes no input default for take-up variable "

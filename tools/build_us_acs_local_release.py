@@ -17,7 +17,9 @@ package; each is separately resumable):
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals``, ``full`` and
                 ``state_cd`` (district SOI rows, one vintage per state
-                concept) as explicit opt-ins), run the household-chunked
+                concept) as explicit opt-ins), seed ACS-row SNAP/TANF take-up
+                on the full staging frame (microcosm#1019; the consumer
+                export re-derives the same flags), run the household-chunked
                 engine pass under the nullable-artifact contract (input-schema
                 projection + reviewed-null fill), add PUMA-ladder population
                 marginals (state + congressional district), assign the CD
@@ -40,7 +42,10 @@ package; each is separately resumable):
                 weights onto a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
-                signature, measured rather than assumed).
+                signature, measured rather than assumed) and an
+                informational December-eligible SNAP take-up snapshot
+                (unit- and person-weighted; not the FNS fiscal-year
+                participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
@@ -80,6 +85,12 @@ import pandas as pd
 
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_TAKE_UP_COLUMNS,
+    ACS_LOCAL_TAKE_UP_GATE_NAME,
+    acs_local_take_up_signal_gate,
+    with_acs_local_take_up_inputs,
+)
 from microcosm.data.contract import (
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
     US_STORED_INPUTS_EVIDENCE_KEY,
@@ -433,6 +444,18 @@ class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
 
 
+class DeniedDefaultFillError(ValueError):
+    """NaN in an engine input whose engine default must never be the fill."""
+
+
+#: Runtime-owned take-up draws. Their engine default, ``True``, is universal
+#: take-up, so a missing cell is a build defect even when the staging register
+#: lists the column (microcosm#1019); the ACS take-up stage fills them first.
+NEVER_DEFAULT_FILLED = frozenset(
+    ("spm_unit", column) for column in ACS_LOCAL_TAKE_UP_COLUMNS
+)
+
+
 def project_input_only(base_frame, period: int = PERIOD):
     """Hold back every non-input variable so FED SET == ENGINE INPUT SET.
 
@@ -506,8 +529,21 @@ def fill_reviewed_nulls(
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled.
+    defect, surfaced not filled. NaN in a :data:`NEVER_DEFAULT_FILLED`
+    column is refused before anything is filled, registered or not.
     """
+
+    denied = [
+        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null rows)"
+        for entity, column in sorted(NEVER_DEFAULT_FILLED)
+        if column in frame.table(entity) and frame.table(entity)[column].isna().any()
+    ]
+    if denied:
+        raise DeniedDefaultFillError(
+            "Refusing to default-fill runtime-owned take-up input(s) "
+            f"{'; '.join(denied)}: the engine default is universal take-up "
+            "(microcosm#1019). Run the ACS local take-up stage first."
+        )
 
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -1258,6 +1294,40 @@ def _load_staging_frame(path: Path):
     return _load_base_frame(Path(path))
 
 
+def _with_local_take_up(frame, *, seed: int):
+    """Seed ACS-row SNAP/TANF take-up before any reviewed-null fill (#1019)."""
+
+    frame, receipt = with_acs_local_take_up_inputs(frame, seed=seed)
+    for column, entry in receipt["programs"].items():
+        log(
+            f"ACS take-up {column}: filled {entry['filled_rows']:,} rows, "
+            f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    return frame, receipt
+
+
+def _recorded_take_up(identity: dict) -> dict:
+    """The ACS take-up assignment materialize calibrated against, or refuse.
+
+    The consumer export re-derives the flags with the recorded seed and must
+    reproduce the recorded digest, so both engine passes see the same flags.
+    """
+
+    receipt = identity.get("acs_local_take_up")
+    if (
+        not isinstance(receipt, dict)
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS local take-up assignment "
+            "(microcosm#1019): the checkpoint was materialized with every ACS "
+            "SPM unit default-filled to take up SNAP and TANF. Re-run --stage "
+            "materialize."
+        )
+    return receipt
+
+
 def _cd_holdout_fraction(args) -> float:
     """The CD holdout fraction this run draws (0 when there is no CD surface)."""
 
@@ -1349,6 +1419,10 @@ def do_materialize(args) -> None:
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(summary_path))
+    # microcosm#1019: seed ACS take-up on the full staging frame, before
+    # any development rung is drawn, so a rung keeps the flags the full
+    # build assigns and the export can re-derive them the same way.
+    frame, take_up = _with_local_take_up(frame, seed=args.seed)
     frame, sampling = cd_surface.sample_staging_frame(
         frame, fraction=args.sample_fraction, seed=args.sample_seed
     )
@@ -1467,6 +1541,7 @@ def do_materialize(args) -> None:
                 "soi_mode": args.soi_mode,
                 "cd_holdout": holdout_identity,
                 "sampling": sampling,
+                "acs_local_take_up": take_up,
             },
             indent=2,
         )
@@ -1896,6 +1971,8 @@ def do_calibrate(args) -> None:
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
+    # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
+    _recorded_take_up(identity)
     frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
         args.checkpoint_dir, identity
     )
@@ -2184,8 +2261,16 @@ def _write_calibrated_artifact(
 
     from microcosm.frame import Frame, WeightKind, Weights
 
+    recorded_take_up = _recorded_take_up(identity)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
+    if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
+        raise SystemExit(
+            "The consumer export's ACS take-up assignment differs from the one "
+            "materialize calibrated against (microcosm#1019). Re-run --stage "
+            "materialize against this staging file."
+        )
     frame = _resample_like_materialize(frame, identity)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
@@ -2237,6 +2322,7 @@ def _write_calibrated_artifact(
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "acs_local_take_up": take_up,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -2290,13 +2376,207 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
     return composition
 
 
-def do_qa(args) -> None:
-    """Chunked engine probe: per-spine SSI incidence on the calibrated artifact.
+#: Engine variables the QA probe reads for its December-eligible SNAP take-up
+#: snapshot (microcosm#1051 review). Informational only.
+_QA_SNAP_VARIABLES: tuple[str, ...] = (
+    "is_snap_eligible",
+    "takes_up_snap_if_eligible",
+    "snap",
+    "has_usda_elderly_disabled",
+    "spm_unit_count_children",
+    "snap_earned_income",
+)
+#: Household types of the SNAP snapshot. They overlap (a unit with
+#: children and earnings is in both); ``childless_adults`` units have neither
+#: children nor an elderly or disabled member.
+_QA_SNAP_HOUSEHOLD_TYPES: tuple[str, ...] = (
+    "elderly_or_disabled",
+    "with_children",
+    "childless_adults",
+    "with_earnings",
+)
+_QA_SNAP_UNIT_COLUMNS: tuple[str, ...] = (
+    "spine",
+    "state",
+    "weight",
+    "persons",
+    "takes_up",
+    "receives",
+    *_QA_SNAP_HOUSEHOLD_TYPES,
+)
+#: What the QA's SNAP table is, and what it is not (microcosm#1051 review).
+SNAP_DECEMBER_SNAPSHOT_LABEL = "December-eligible snapshot (unit- and person-weighted)"
+SNAP_DECEMBER_SNAPSHOT_NOT_FNS = (
+    "Not the FNS fiscal-year participation rate. USDA FNS participation "
+    "rates are among eligible people over a federal fiscal year; this "
+    "snapshot counts the SPM units the engine finds SNAP-eligible in "
+    "December of the calendar year, and the people in them, and its "
+    "receiving rates count a positive annual modeled benefit. It is "
+    "informational and never graded."
+)
 
-    Loads the packaged artifact bytes PLAIN — no private projection or fill —
-    so the probe doubles as the proof that ordinary
-    ``USSingleYearDataset``/``Microsimulation`` consumers can load the file
-    (the engine-pass contract was applied at export).
+
+def _qa_snap_eligible_units(
+    sub_frame,
+    values,
+    *,
+    household_weights: np.ndarray,
+    position_by_id: pd.Series,
+) -> pd.DataFrame:
+    """One row per SPM unit of a QA chunk that is SNAP-eligible in December.
+
+    PolicyEngine reads the monthly ``is_snap_eligible`` at a year period as
+    its last month. Each row carries the unit's spine, state, household
+    weight, member count (``persons``; every member carries the household
+    weight, as the frame weights people), stored take-up flag, whether its
+    annual modeled ``snap`` is positive, and the household-type flags of
+    :data:`_QA_SNAP_HOUSEHOLD_TYPES`.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    person = sub_frame.table("person")
+    spm_unit = sub_frame.table("spm_unit")
+    unit_household = (
+        pd.Series(
+            person["person_household_id"].to_numpy(),
+            index=person["person_spm_unit_id"].to_numpy(),
+        )
+        .groupby(level=0)
+        .first()
+        .reindex(spm_unit["spm_unit_id"].to_numpy())
+    )
+    if unit_household.isna().any():
+        raise ValueError("QA: an SPM unit has no member person.")
+    persons = (
+        person["person_spm_unit_id"]
+        .value_counts()
+        .reindex(spm_unit["spm_unit_id"].to_numpy(), fill_value=0)
+        .to_numpy(dtype=np.int64)
+    )
+    household_ids = unit_household.to_numpy()
+    positions = position_by_id.reindex(household_ids).to_numpy()
+    state = (
+        pd.Series(
+            np.asarray(values["state_code_str"]).astype(str),
+            index=sub_frame.table("household")["household_id"].to_numpy(),
+        )
+        .reindex(household_ids)
+        .to_numpy()
+    )
+    tag = spine_column("spm_unit")
+    spine = (
+        spm_unit[tag].astype(str).to_numpy()
+        if tag in spm_unit
+        else np.full(len(spm_unit), "unknown")
+    )
+    children = np.asarray(values["spm_unit_count_children"], dtype=np.float64) > 0
+    elderly_or_disabled = np.asarray(values["has_usda_elderly_disabled"], dtype=bool)
+    units = pd.DataFrame(
+        {
+            "spine": spine,
+            "state": state,
+            "weight": household_weights[positions.astype(np.int64)],
+            "persons": persons,
+            "takes_up": np.asarray(values["takes_up_snap_if_eligible"], dtype=bool),
+            "receives": np.asarray(values["snap"], dtype=np.float64) > 0,
+            "elderly_or_disabled": elderly_or_disabled,
+            "with_children": children,
+            "childless_adults": ~children & ~elderly_or_disabled,
+            "with_earnings": (
+                np.asarray(values["snap_earned_income"], dtype=np.float64) > 0
+            ),
+        },
+        columns=list(_QA_SNAP_UNIT_COLUMNS),
+    )
+    eligible = np.asarray(values["is_snap_eligible"], dtype=np.float64) > 0
+    return units.loc[eligible].reset_index(drop=True)
+
+
+def snap_december_eligible_snapshot(units: pd.DataFrame) -> dict[str, object]:
+    """SNAP take-up in a December-eligible snapshot, unit- and person-weighted.
+
+    ``units`` holds one row per SPM unit that is SNAP-eligible in December
+    (:func:`_qa_snap_eligible_units`). Every cell reports two rates over
+    that population:
+
+    - ``unit_take_up_rate``: the household weight of eligible units whose
+      stored ``takes_up_snap_if_eligible`` is true, over all eligible unit
+      weight;
+    - ``person_take_up_rate``: eligible persons who take up over eligible
+      persons, weighting each unit by its weight times its member count, as
+      the frame weights people.
+
+    The ``*_receiving_rate`` fields count a positive annual modeled ``snap``
+    instead. This is not the FNS participation rate, which is among
+    eligible people over a federal fiscal year
+    (:data:`SNAP_DECEMBER_SNAPSHOT_NOT_FNS`). Reported overall, by household
+    type, by spine (and type) and by state. Never graded (microcosm#1051
+    review).
+    """
+
+    def cell(rows: pd.DataFrame) -> dict[str, object]:
+        unit_weights = rows["weight"].to_numpy(dtype=np.float64)
+        members = rows["persons"].to_numpy(dtype=np.float64)
+        takes_up = rows["takes_up"].to_numpy(dtype=bool)
+        receives = rows["receives"].to_numpy(dtype=bool)
+        result: dict[str, object] = {
+            "eligible_units": int(len(rows)),
+            "eligible_persons": int(members.sum()),
+        }
+        for basis, weights in (
+            ("unit", unit_weights),
+            ("person", unit_weights * members),
+        ):
+            weight = float(weights.sum())
+            taking_up = float(weights[takes_up].sum())
+            receiving = float(weights[receives].sum())
+            result.update(
+                {
+                    f"eligible_{basis}_weight": weight,
+                    f"{basis}_take_up_weight": taking_up,
+                    f"{basis}_take_up_rate": (
+                        taking_up / weight if weight > 0 else None
+                    ),
+                    f"{basis}_receiving_weight": receiving,
+                    f"{basis}_receiving_rate": (
+                        receiving / weight if weight > 0 else None
+                    ),
+                }
+            )
+        return result
+
+    def by_type(rows: pd.DataFrame) -> dict[str, object]:
+        return {
+            kind: cell(rows.loc[rows[kind].to_numpy(dtype=bool)])
+            for kind in _QA_SNAP_HOUSEHOLD_TYPES
+        }
+
+    return {
+        "label": SNAP_DECEMBER_SNAPSHOT_LABEL,
+        "graded": False,
+        "all": cell(units),
+        "by_household_type": by_type(units),
+        "by_spine": {
+            str(spine): {"all": cell(rows), "by_household_type": by_type(rows)}
+            for spine, rows in units.groupby("spine", sort=True)
+        },
+        "by_state": {
+            str(state): cell(rows) for state, rows in units.groupby("state", sort=True)
+        },
+    }
+
+
+def do_qa(args) -> None:
+    """Chunked engine probe on the calibrated artifact.
+
+    Records per-spine SSI incidence and, informationally, a December-eligible
+    SNAP take-up snapshot (unit- and person-weighted; not the FNS fiscal-year
+    participation rate) by spine, state and household type (microcosm#1051
+    review). Loads the packaged artifact bytes PLAIN — no
+    private projection or fill — so the probe doubles as the proof that
+    ordinary ``USSingleYearDataset``/``Microsimulation`` consumers can load
+    the file (the engine-pass contract was applied at export).
     """
 
     from microcosm.build.us_runtime.base_pool import spine_column
@@ -2317,14 +2597,23 @@ def do_qa(args) -> None:
 
     adapter = PolicyEngineUSEngine()
     per_spine: dict[str, dict[str, float]] = {}
+    snap_units: list[pd.DataFrame] = []
     n_chunks = (n_households + args.hh_chunk - 1) // args.hh_chunk
     for chunk_index, low in enumerate(range(0, n_households, args.hh_chunk)):
         high = min(low + args.hh_chunk, n_households)
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
-        ssi = np.asarray(
-            adapter.materialize(sub_frame, ["ssi"], PERIOD)["ssi"],
-            dtype=np.float64,
+        values = adapter.materialize(
+            sub_frame, ["ssi", *_QA_SNAP_VARIABLES, "state_code_str"], PERIOD
+        )
+        ssi = np.asarray(values["ssi"], dtype=np.float64)
+        snap_units.append(
+            _qa_snap_eligible_units(
+                sub_frame,
+                values,
+                household_weights=household_weights,
+                position_by_id=position_by_id,
+            )
         )
         sub_person_household = sub_frame.table("person")[
             "person_household_id"
@@ -2348,7 +2637,7 @@ def do_qa(args) -> None:
             entry["ssi_dollars"] += float(
                 (ssi[recipients] * person_weight[recipients]).sum()
             )
-        del sub_frame
+        del sub_frame, values
         gc.collect()
         log(f"qa chunk {chunk_index + 1}/{n_chunks}")
 
@@ -2370,11 +2659,36 @@ def do_qa(args) -> None:
         "artifact_sha256": _sha256(args.out_h5),
         "plain_consumption": True,
         "per_spine": per_spine,
+        "snap_december_eligible_snapshot": {
+            "issue": "microcosm#1051 review",
+            "not_fns_participation_rate": SNAP_DECEMBER_SNAPSHOT_NOT_FNS,
+            "definition": (
+                "SPM units with is_snap_eligible in December (PolicyEngine "
+                "reads a monthly boolean at a year period as its last month) "
+                "and the people in them. unit_* fields weight each unit by "
+                "its household weight; person_* fields weight it by household "
+                "weight times member count, so person_take_up_rate is "
+                "eligible persons who take up over eligible persons. "
+                "*_take_up_rate reads the stored takes_up_snap_if_eligible; "
+                "*_receiving_rate counts a positive annual modeled snap, a "
+                "different window from the December eligibility. Household "
+                "types overlap; childless_adults have no children and no "
+                "elderly or disabled member."
+            ),
+            **snap_december_eligible_snapshot(
+                pd.concat(snap_units, ignore_index=True)
+                if snap_units
+                else pd.DataFrame(columns=list(_QA_SNAP_UNIT_COLUMNS))
+            ),
+        },
         "note": (
             "microcosm#403 re-measure: per-spine SSI incidence and intensity, "
             "computed by loading the packaged artifact bytes PLAIN (no "
             "private projection or fill) — the probe doubles as the "
-            "consumer-loadability proof. Recorded as evidence, not gated."
+            "consumer-loadability proof. A December-eligible SNAP take-up "
+            "snapshot (unit- and person-weighted; not the FNS fiscal-year "
+            "participation rate) is reported alongside (microcosm#1051 "
+            "review). Recorded as evidence, not gated."
         ),
     }
     (args.checkpoint_dir / "spine_qa.json").write_text(json.dumps(payload, indent=2))
@@ -2525,6 +2839,25 @@ def finalize_reviewed_limitations(
                 "own release evidence). Tip columns transfer from that "
                 "donor, so the deficit rides this artifact too."
             ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_take_up_engine_defaults",
+            "status": "reviewed_known_gap",
+            "affected_spines": ["acs_2024_1yr"],
+            "reason": (
+                "SNAP and TANF take-up on ACS rows are seeded by the local "
+                "runtime and gated by acs_local_take_up_signal "
+                "(microcosm#1019). The other runtime-owned takes_up_* flags "
+                "(EITC, ACA, Medicaid, SSI, Medicare, Head Start and the "
+                "rest) are neither transferred nor seeded on ACS rows, so "
+                "they ship at the engine default, universal take-up. The QA "
+                "probe's SNAP take-up table is a December-eligible snapshot "
+                "(unit- and person-weighted), informational and never "
+                "graded; it is not the FNS fiscal-year participation rate, "
+                "which is among eligible people over a federal fiscal year."
+            ),
+            "treatment": "Tracked via microcosm#1022.",
             "calibration_blocker": False,
         },
         {
@@ -2756,6 +3089,10 @@ def do_finalize(args) -> None:
     hours_gate = us_hours_worked_signal_gate(
         frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
     )
+    # microcosm#1019: likewise refuse SNAP/TANF take-up that is missing or
+    # constant (the engine-default universal take-up) on either spine, or
+    # unanchored or out of band on the ACS spine this tool seeds.
+    take_up_gate = acs_local_take_up_signal_gate(frame)
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2806,6 +3143,12 @@ def do_finalize(args) -> None:
             "passed": bool(hours_gate.passed),
             "failures": list(hours_gate.failures),
             "detail": dict(hours_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_TAKE_UP_GATE_NAME: {
+            "passed": bool(take_up_gate.passed),
+            "failures": list(take_up_gate.failures),
+            "detail": dict(take_up_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -2874,7 +3217,11 @@ def do_finalize(args) -> None:
                 "before transfer; the ACS spine inherits required inputs via "
                 "QRF transfer. ACS native GQ-housing / source-universe nulls "
                 "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine."
+                "are NOT re-imposed on the ACS spine. Take-up draws are not "
+                "transferred: ACS SNAP/TANF take-up is seeded by this tool "
+                "and gated by acs_local_take_up_signal (microcosm#1019); the "
+                "other ACS take-up flags are the reviewed limitation "
+                "acs_take_up_engine_defaults (microcosm#1022)."
             ),
         },
         "spine_composition": {
@@ -2923,6 +3270,7 @@ def do_finalize(args) -> None:
             "us_puma_ladder_gate",
             "hours_worked_signal",
             "acs_local_hours_signal",
+            ACS_LOCAL_TAKE_UP_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -3174,6 +3522,19 @@ def do_package(args) -> dict:
             "The hours_worked_signal gate is missing its artifact binding or "
             "certifies different H5 bytes. Re-run --stage finalize against the "
             "current artifact."
+        )
+    # microcosm#1019: a report finalized before the take-up gate existed (or
+    # against other bytes) cannot vouch for the packaged ACS take-up surface.
+    take_up_gate = gates.get(ACS_LOCAL_TAKE_UP_GATE_NAME)
+    if (
+        not isinstance(take_up_gate, dict)
+        or take_up_gate.get("passed") is not True
+        or take_up_gate.get("artifact_sha256") != h5_sha
+    ):
+        raise SystemExit(
+            f"Packaging requires a present, passing {ACS_LOCAL_TAKE_UP_GATE_NAME} "
+            "gate bound to the packaged H5; an old simulation_ready summary is "
+            "insufficient. Re-run --stage finalize against the current artifact."
         )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and

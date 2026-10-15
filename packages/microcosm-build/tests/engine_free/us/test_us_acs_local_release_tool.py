@@ -169,6 +169,209 @@ def test_spine_composition_reports_per_spine_weight_and_size() -> None:
     )
 
 
+def _snap_qa_frame(*, households, spm_unit_columns, person_spines=None):
+    """A tiny calibrated frame for the QA SNAP snapshot.
+
+    ``households`` maps household id -> (weight, state, member count); each
+    household is one SPM unit (and one unit of every other group entity).
+    ``spm_unit_columns`` adds the fake engine's per-unit inputs.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    unit_ids = np.asarray(list(households), dtype=np.int64)
+    members = np.repeat(unit_ids, [size for _, _, size in households.values()])
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, len(members) + 1),
+            spine_column("person"): (
+                person_spines
+                if person_spines is not None
+                else ["acs_2024_1yr"] * len(members)
+            ),
+        }
+    )
+    tables = {"person": person}
+    for entity in US_SCHEMA.entities:
+        if entity != "person":
+            person[f"person_{entity}_id"] = members
+            tables[entity] = pd.DataFrame({f"{entity}_id": unit_ids})
+    tables["household"]["_state"] = [state for _, state, _ in households.values()]
+    tables["spm_unit"] = tables["spm_unit"].assign(**spm_unit_columns)
+    weights = np.asarray(
+        [weight for weight, _, _ in households.values()], dtype=np.float64
+    )
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(weights, WeightKind.CALIBRATED)},
+    )
+
+
+def _run_snap_qa(module, frame, tmp_path, monkeypatch, *, hh_chunk):
+    """Run do_qa on ``frame`` under a fake engine; return (calls, payload)."""
+
+    from microcosm.frame.adapters import policyengine_us as adapter_module
+
+    calls: list[tuple[str, ...]] = []
+
+    class _Engine:
+        def materialize(self, sub_frame, variables, period):
+            calls.append(tuple(variables))
+            spm = sub_frame.table("spm_unit")
+            return {
+                "ssi": np.zeros(sub_frame.n("person")),
+                "is_snap_eligible": spm["_eligible"].to_numpy(),
+                "takes_up_snap_if_eligible": spm[
+                    "takes_up_snap_if_eligible"
+                ].to_numpy(),
+                "snap": spm["_snap"].to_numpy(),
+                "has_usda_elderly_disabled": spm["_elderly_or_disabled"].to_numpy(),
+                "spm_unit_count_children": spm["_children"].to_numpy(),
+                "snap_earned_income": spm["_earned"].to_numpy(),
+                "state_code_str": sub_frame.table("household")["_state"].to_numpy(),
+            }
+
+    monkeypatch.setattr(adapter_module, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: frame)
+    monkeypatch.setattr(module, "_sha256", lambda *_a, **_k: "artifact-sha")
+    args = SimpleNamespace(
+        out_h5=tmp_path / "calibrated.h5", hh_chunk=hh_chunk, checkpoint_dir=tmp_path
+    )
+    module.do_qa(args)
+    return calls, json.loads((tmp_path / "spine_qa.json").read_text())
+
+
+def test_do_qa_reports_a_december_eligible_snap_snapshot(tmp_path, monkeypatch):
+    """#1051 review: informational SNAP take-up by spine, state and type.
+
+    Six one-person households (household = SPM unit), weights 1..6, probed in
+    two chunks. Units 1, 2, 3, 5 and 6 are eligible (weight 17); 1, 3 and 6
+    take up (10), and 1 and 3 receive a positive benefit (4). With one-person
+    units the person-weighted rates equal the unit-weighted ones.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    spines = ["asec_puf"] * 2 + ["acs_2024_1yr"] * 4
+    frame = _snap_qa_frame(
+        households={
+            unit: (float(unit), state, 1)
+            for unit, state in zip(
+                range(1, 7), ["CA", "CA", "TX", "TX", "CA", "TX"], strict=True
+            )
+        },
+        spm_unit_columns={
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, False, True, True, False, True],
+            "_eligible": [True, True, True, False, True, True],
+            "_snap": [100.0, 0.0, 50.0, 0.0, 0.0, 0.0],
+            "_elderly_or_disabled": [False, True, False, False, False, True],
+            "_children": [0, 0, 2, 1, 0, 0],
+            "_earned": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+        },
+        person_spines=spines,
+    )
+    calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=4)
+
+    # One engine pass per chunk reads SSI and the SNAP variables together.
+    assert len(calls) == 2
+    assert set(calls[0]) == {"ssi", "state_code_str", *module._QA_SNAP_VARIABLES}
+    assert set(payload["per_spine"]) == {"asec_puf", "acs_2024_1yr"}
+    assert "snap_take_up_among_eligible" not in payload
+    table = payload["snap_december_eligible_snapshot"]
+    assert table["graded"] is False
+    assert table["label"] == "December-eligible snapshot (unit- and person-weighted)"
+    assert table["not_fns_participation_rate"].startswith(
+        "Not the FNS fiscal-year participation rate."
+    )
+    assert "December" in table["definition"]
+    assert "not the FNS fiscal-year participation rate" in payload["note"]
+
+    def rates(cell):
+        return (
+            cell["eligible_units"],
+            cell["eligible_unit_weight"],
+            pytest.approx(cell["unit_take_up_rate"]),
+        )
+
+    overall = table["all"]
+    assert rates(overall) == (5, 17.0, pytest.approx(10 / 17))
+    assert overall["unit_receiving_rate"] == pytest.approx(4 / 17)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(17.0)
+    assert overall["person_take_up_rate"] == pytest.approx(10 / 17)
+    assert overall["person_receiving_rate"] == pytest.approx(4 / 17)
+    assert {k: rates(v) for k, v in table["by_household_type"].items()} == {
+        "elderly_or_disabled": (2, 8.0, pytest.approx(0.75)),
+        "with_children": (1, 3.0, pytest.approx(1.0)),
+        "childless_adults": (2, 6.0, pytest.approx(1 / 6)),
+        "with_earnings": (2, 5.0, pytest.approx(0.6)),
+    }
+    assert rates(table["by_spine"]["asec_puf"]["all"]) == (2, 3.0, pytest.approx(1 / 3))
+    acs = table["by_spine"]["acs_2024_1yr"]
+    assert rates(acs["all"]) == (3, 14.0, pytest.approx(9 / 14))
+    assert rates(acs["by_household_type"]["childless_adults"]) == (
+        1,
+        5.0,
+        pytest.approx(0.0),
+    )
+    assert {k: rates(v) for k, v in table["by_state"].items()} == {
+        "CA": (3, 8.0, pytest.approx(1 / 8)),
+        "TX": (2, 9.0, pytest.approx(1.0)),
+    }
+
+
+def test_do_qa_snap_snapshot_weights_people_by_unit_size(tmp_path, monkeypatch) -> None:
+    """#1051 review A1 (round 4): her example, through do_qa.
+
+    One eligible one-person unit that does not take up and one eligible
+    four-person unit that does, at equal weights: half the units take up, but
+    four of the five eligible people do.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    frame = _snap_qa_frame(
+        households={1: (10.0, "CA", 1), 2: (10.0, "CA", 4)},
+        spm_unit_columns={
+            spine_column("spm_unit"): ["acs_2024_1yr"] * 2,
+            "takes_up_snap_if_eligible": [False, True],
+            "_eligible": [True, True],
+            "_snap": [0.0, 300.0],
+            "_elderly_or_disabled": [False, False],
+            "_children": [0, 2],
+            "_earned": [0.0, 100.0],
+        },
+    )
+    _calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=1)
+    overall = payload["snap_december_eligible_snapshot"]["all"]
+    assert overall["eligible_units"] == 2
+    assert overall["eligible_unit_weight"] == pytest.approx(20.0)
+    assert overall["unit_take_up_rate"] == pytest.approx(0.5)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(50.0)
+    assert overall["person_take_up_weight"] == pytest.approx(40.0)
+    assert overall["person_take_up_rate"] == pytest.approx(0.8)
+    assert overall["unit_receiving_rate"] == pytest.approx(0.5)
+    assert overall["person_receiving_rate"] == pytest.approx(0.8)
+
+
+def test_snap_december_snapshot_handles_no_eligible_units() -> None:
+    module = _load_tool_module()
+    empty = pd.DataFrame(columns=list(module._QA_SNAP_UNIT_COLUMNS))
+    table = module.snap_december_eligible_snapshot(empty)
+    assert table["all"]["eligible_units"] == 0
+    assert table["all"]["eligible_persons"] == 0
+    assert table["all"]["unit_take_up_rate"] is None
+    assert table["all"]["person_take_up_rate"] is None
+    assert table["by_spine"] == {}
+    assert table["by_state"] == {}
+
+
 def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     module = _load_tool_module()
     staging_summary = {
@@ -355,6 +558,78 @@ def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None
     assert seen == [(marker, audit)]
 
 
+def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
+    """microcosm#1019: a missing take-up cell is refused even when registered,
+    because the engine default ``True`` is universal take-up."""
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        takes_up_snap_if_eligible=[True, False] * 3 + [np.nan] * 2
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "spm_unit",
+                        "column": "takes_up_snap_if_eligible",
+                        "missing_rows": 2,
+                    }
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError,
+        match=r"spm_unit\.takes_up_snap_if_eligible \(2 null rows\)",
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
+
+
+def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
+    module = _load_tool_module()
+    for identity in (
+        {},
+        {"acs_local_take_up": {"seed": "0", "assigned_sha256": "a" * 64}},
+        {"acs_local_take_up": {"seed": 0}},
+    ):
+        with pytest.raises(SystemExit, match="Re-run --stage materialize"):
+            module._recorded_take_up(identity)
+    recorded = {"seed": 3, "assigned_sha256": "a" * 64}
+    assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
+
+
+def _record_current_materialization(module, args, identity: dict) -> dict:
+    """Record what a current materialize stage leaves for the later stages.
+
+    The release tool refuses, before any solve, a checkpoint that predates a
+    requirement of this stack: here the take-up assignment ``run_identity.json``
+    records (microcosm#1019). A test that drives ``do_calibrate`` or a later
+    stage on a stubbed checkpoint, to exercise some other refusal, records a
+    current materialization through this one helper so it still reaches the
+    refusal it tests; the sparse-CD and target-loss-weight tests load it from
+    here. ``module`` and ``args`` locate what a materialization records outside
+    its identity (the staging summary, checkpoint files) once a requirement
+    lives there.
+    """
+
+    identity["acs_local_take_up"] = {"seed": 0, "assigned_sha256": "a" * 64}
+    return identity
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 
@@ -388,6 +663,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         # The general hours gate, bound to these bytes: the package stage
         # requires it before it reaches the ACS local-hours re-check.
         "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_take_up_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -1073,6 +1354,23 @@ def _stub_local_hours_gate(module, monkeypatch) -> None:
     )
 
 
+def _stub_local_take_up_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS take-up classification pass (or fail); its tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_take_up_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_take_up_signal",
+            passed=passed,
+            failures=() if passed else ("acs_2024_1yr: invented constant take-up",),
+            details={},
+        ),
+    )
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1089,6 +1387,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     )
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
     _stub_local_hours_gate(module, monkeypatch)
+    _stub_local_take_up_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1150,6 +1449,64 @@ def test_do_finalize_hours_gate_passes_on_plausible_surface(
     frame = _staging_frame_with_hours(weekly, last_week)
     _message, report = _run_finalize(module, monkeypatch, args, frame)
     assert report["gates"]["hours_worked_signal"]["passed"] is True
+
+
+def test_do_finalize_hard_fails_on_a_failed_take_up_gate(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_take_up_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_take_up_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: invented constant take-up"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert "acs_local_take_up_signal" in summary["simulation_readiness_blockers"]
+
+
+def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 release signature: every ACS unit takes SNAP/TANF up."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_take_up_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        **{
+            spine_column("spm_unit"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "takes_up_snap_if_eligible": [True, True, True, False] + [True] * 4,
+            "takes_up_tanf_if_eligible": [True, False, False, False] + [True] * 4,
+            "receives_snap": [True] + [False] * 7,
+        }
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert all(failure.startswith("acs_2024_1yr:") for failure in gate["failures"])
+    assert any(
+        "takes_up_snap_if_eligible is constant" in failure
+        for failure in gate["failures"]
+    )
 
 
 @requires_pytables
@@ -1346,7 +1703,9 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
     assert result["root_artifact"]["sha256"] == artifact_sha
 
 
-def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
+def _package_args_with_hours(
+    module, tmp_path, monkeypatch, *, gate_state, take_up_state="passed"
+):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
     _stub_local_hours_gate(module, monkeypatch)
@@ -1375,6 +1734,13 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         if gate_state == "missing"
         else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
     )
+    take_up_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if take_up_state == "failed":
+        take_up_gate.update(passed=False, failures=["invented take-up failure"])
+    elif take_up_state == "stale":
+        take_up_gate["artifact_sha256"] = "0" * 64
+    if gates and take_up_state != "missing":
+        gates["acs_local_take_up_signal"] = take_up_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -1426,6 +1792,31 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    take_up = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_take_up_signal"
+    ]
+    assert take_up["passed"] is True
+    assert take_up["artifact_sha256"] == copied_sha
+
+
+@requires_pytables
+@pytest.mark.parametrize("take_up_state", ["missing", "failed", "stale"])
+def test_package_requires_a_current_take_up_gate(tmp_path, monkeypatch, take_up_state):
+    """microcosm#1019: a report finalized before the take-up gate, or failing
+    it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        take_up_state=take_up_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
 
 
 @requires_pytables
@@ -1857,7 +2248,11 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     module = _load_tool_module()
     calls = _recording_calibrate(monkeypatch)
     frame, design, targets = _tiny_calibration_surface()
-    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    identity = {
+        "staging_sha256": "s",
+        "target_roles_sha256": "r",
+        "acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64},
+    }
     monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
     income = TargetSpec(
         name="income",
@@ -1917,6 +2312,14 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
         )
     )
     args.checkpoint_dir.mkdir()
+    # A checkpoint materialized before #1019 is refused before any solve.
+    monkeypatch.setattr(
+        module, "_verify_run_identity", lambda args: {"staging_sha256": "s"}
+    )
+    with pytest.raises(SystemExit, match="no ACS local take-up assignment"):
+        module.do_calibrate(args)
+    assert calls == []
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
     module.do_calibrate(args)
 
     assert len(calls) == 2
