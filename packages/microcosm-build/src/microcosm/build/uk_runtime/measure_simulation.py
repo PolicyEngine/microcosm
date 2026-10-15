@@ -313,6 +313,25 @@ def compute_uk_measure_input(
     if variable in _LOSS_RELIEF_MEASURES:
         if entity != "person":
             raise KeyError(f"{variable} is person-only: {entity}")
+        person = frame.table("person")
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF and (
+            "self_employment_income" in person
+        ):
+            # A binding on a stored column reads the frame's own value, as the
+            # rows read self_employment_income before the move; the profit
+            # after the relief is read the same way (microcosm#1095).
+            stored_relief = (
+                person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
+                if LOSS_RELIEF_COLUMN in person
+                else np.zeros(len(person))
+            )
+            return (
+                self_employment_income_after_loss_relief(
+                    person["self_employment_income"].to_numpy(dtype=float),
+                    stored_relief,
+                ),
+                "frame_columns:self_employment_income_less_loss_relief",
+            )
         profit = compute_uk_measure_input(
             frame, simulation, "person", "self_employment_income", year
         )[0]

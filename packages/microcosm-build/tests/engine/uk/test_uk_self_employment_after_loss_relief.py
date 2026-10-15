@@ -71,6 +71,15 @@ def test_the_hmrc_measures_read_the_profit_after_loss_relief(tmp_path) -> None:
     total, _ = resolver.compute("person", "total_income")
 
     np.testing.assert_allclose(after, [7_000.0, 0.0, 5_000.0])
+    # The rows read self_employment_income from the frame's stored column, so
+    # the profit after the relief is read from the stored columns too, at any
+    # measurement year (microcosm#1095).
+    later = UKMeasureResolver(
+        simulation_source=None, frame=_frame(), scratch_dir=tmp_path, year=2026
+    )
+    stored, route = later.compute("person", UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF)
+    np.testing.assert_allclose(stored, [7_000.0, 0.0, 5_000.0])
+    assert route.startswith("frame_columns:")
     # The band reads total income with the profit after the relief in place of
     # the profit before it.
     np.testing.assert_allclose(banded, np.asarray(total) - np.asarray(profit) + after)
