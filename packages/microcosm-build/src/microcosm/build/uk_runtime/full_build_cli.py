@@ -216,6 +216,7 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
+from .weight_year import uk_dataset_year_frame
 
 if TYPE_CHECKING:
     from microcosm.build.staging_v2 import StagingRunBundleWriterV2
@@ -1102,6 +1103,7 @@ def prepare_full_build(
         graph,
         population=full.population,
         bindings=bindings,
+        solve_year=int(config.calibration_year),
         artifact_inputs=(
             ArtifactInput(
                 "full_gates",
@@ -2755,8 +2757,15 @@ def _execute_national_build(
     # 7. The H5, then the graph's readback of it.
     stage(telemetry, "candidate_h5_creation", "started")
     # The release boundary (microcosm#1063 c9): the reviewed export exclusions
-    # leave the candidate here, and the graph readback expects the same.
-    write_uk_national_frame(uk_release_export_frame(frame), paths["dataset"])
+    # leave the candidate here, and the graph readback expects the same. The
+    # weights are written at the dataset's year, so policyengine-uk's own
+    # projection returns the solved weights at the solve year (microcosm#796
+    # A19); the solve, its gates and its evidence keep the solved weights.
+    solve_year = int(registry_document["calibration_year"])
+    write_uk_national_frame(
+        uk_dataset_year_frame(uk_release_export_frame(frame), solve_year=solve_year),
+        paths["dataset"],
+    )
     if state is not None:
         append_phase(state, "staging_h5_written")
     stage(
@@ -2765,7 +2774,9 @@ def _execute_national_build(
         "completed",
         size_bytes=paths["dataset"].stat().st_size,
     )
-    continued = add_uk_national_readback(graph, population=national.population)
+    continued = add_uk_national_readback(
+        graph, population=national.population, solve_year=solve_year
+    )
     final = _run_graph_with_progress(
         compile_graph(continued),
         sources={**sources, "exported_dataset": paths["dataset"]},

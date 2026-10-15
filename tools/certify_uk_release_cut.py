@@ -61,6 +61,7 @@ from microcosm.build.uk_runtime.release_certification import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
+from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_input_mass_reference,
@@ -282,6 +283,10 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     append_phase(state, "registries_compiled")
 
     frame, _provenance = load_uk_national_frame(args.candidate_h5)
+    # A release carries its weights at the dataset's year (microcosm#796 A19).
+    # The gates stand on the solved weights, which policyengine-uk's own
+    # projection to the calibration year gives back.
+    frame = uk_solve_year_frame(frame, solve_year=calibration_year)
     # The spine frame is the evidence for the stage families' build state
     # (importance weights, mass receipts); the candidate is calibrated.
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)

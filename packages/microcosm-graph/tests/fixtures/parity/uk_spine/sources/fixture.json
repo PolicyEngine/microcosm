@@ -253,7 +253,7 @@
     "cgt_residential_split": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.123.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.130.1 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -1153,8 +1153,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1164,8 +1164,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -1176,7 +1176,7 @@
         "child_ema",
         "age_started_or_accepted_current_education_or_training"
       ],
-      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant.",
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant. is_in_approved_training is TRAINEE = 1 (whether on a government scheme for employment training; adult and child tables) on a child-table record: the FRS counts a 16- to 19-year-old as a dependent child only in full-time non-advanced education or unwaged government training, so such a record is a dependant in approved training (uk-data#560, uk-data#561). No adult-table record is flagged, since the FRS has already decided it is not a dependant and TRAINEE does not say the training is unwaged (UC Regs 2013 reg 5(3)); the adult-table TRAIN2 scheme codes, which microcosm#1063 read, name DWP employment schemes and are no longer read. A tab without TRAINEE refuses the build.",
       "operations": [
         {
           "delimiter": "\t",
@@ -1188,7 +1188,7 @@
         },
         {
           "kind": "derive",
-          "scope": "current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag"
+          "scope": "current/highest education, QYP inputs (approved training is TRAINEE = 1 on a child-table record), EMA cell-mean degenerate fills, and benefits-in-own-right flag"
         },
         {
           "cells": [
@@ -1269,8 +1269,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1279,7 +1279,7 @@
       "nonnegative_outputs": [
         "sic_industry_division"
       ],
-      "notes": "Ports FRS employment derivations. empstati code 11 preserves the incumbent truncated-map artifact as LONG_TERM_DISABLED, so OTHER_INACTIVE is not emitted; mjobsect and sic are direct-indexed and fail loudly if absent.",
+      "notes": "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. mjobsect and sic are direct-indexed and fail loudly if absent.",
       "operations": [
         {
           "delimiter": "\t",
@@ -1312,8 +1312,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1530,8 +1530,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1641,8 +1641,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1652,8 +1652,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -1872,8 +1872,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
-          "size_bytes": 30240,
+          "sha256": "4977df8ad7e7cbdf75fe55d721bb2f0079f986a7aa541a5a1ea7ca3e37735ac9",
+          "size_bytes": 30789,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1905,8 +1905,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
-          "size_bytes": 2185,
+          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
+          "size_bytes": 2187,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -2015,6 +2015,7 @@
         "rent_paid_as_boarder",
         "rent_paid_as_lodger",
         "age",
+        "months_since_last_birthday",
         "hours_worked",
         "employment_income",
         "self_employment_income",
@@ -2027,6 +2028,7 @@
         "student_loan_repayments",
         "statutory_sick_pay",
         "statutory_maternity_pay",
+        "statutory_paternity_pay",
         "childcare_expenses",
         "personal_pension_contributions",
         "employee_pension_contributions",
@@ -2039,7 +2041,7 @@
         "external_child_payments",
         "care_hours"
       ],
-      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except one identity-keyed draw (uk-data#527). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882).",
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882).",
       "operations": [
         {
           "delimiter": "\t",
@@ -2089,6 +2091,7 @@
         "person_household_id",
         "age",
         "gender",
+        "months_since_last_birthday",
         "marital_status",
         "hours_worked",
         "care_hours",
@@ -2118,6 +2121,7 @@
         "student_loan_repayments",
         "statutory_sick_pay",
         "statutory_maternity_pay",
+        "statutory_paternity_pay",
         "student_loans",
         "access_fund",
         "education_grants",
@@ -2194,7 +2198,7 @@
       "nonnegative_outputs": [
         "maximum_extended_childcare_hours_usage"
       ],
-      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.123.0's is_uc_eligible; the engine lockstep test pins it and names the two engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).",
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.130.1's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).",
       "operations": [
         {
           "aggregates": {
@@ -2319,7 +2323,7 @@
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.123.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.130.1 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -4918,10 +4922,11 @@
         "employment_income",
         "salary_sacrifice_pre_conversion_pay"
       ],
-      "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
+      "notes": "The QRF trains only on the 2024-25 FRS asked subset with pay. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
       "operations": [
         {
           "cache": false,
+          "clamp_maximum": "employment_income floored at zero; every row, reported or predicted, FRS and SPI channel",
           "clamp_minimum": 0,
           "kind": "fit_weighted_qrf",
           "n_estimators": 100,
@@ -4935,14 +4940,15 @@
           "targets": [
             "pension_contributions_via_salary_sacrifice"
           ],
-          "training_population": "support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1",
+          "training_population": "support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1 and employment_income > 0",
           "weight_mapping": "household_to_person",
           "weights": "household_weight"
         },
         {
           "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
           "kind": "convert_donors_to_target_stock",
-          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
+          "move": "employee_pension_contributions, up to move_pay_share_cap of employment_income, to pension_contributions_via_salary_sacrifice; the rest stays in the source; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
+          "move_pay_share_cap": 0.5,
           "rate_cap": 0.5,
           "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.",
           "receipt": "weighted_headcount",
@@ -5416,7 +5422,7 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.123.0 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine's proxies share household capital over every claimant or partner instead, which puts a parent's property on an adult child's claim; they apply only to a unit on the unavailable sentinel. The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both.",
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.130.1 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (Mar\u00eda's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine's proxies share household capital over every claimant or partner instead, which puts a parent's property on an adult child's claim; they apply only to a unit on the unavailable sentinel. The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both.",
       "operations": [
         {
           "aggregates": {

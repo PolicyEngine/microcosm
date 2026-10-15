@@ -121,12 +121,18 @@ from .national_calibration import (
     national_calibration_mass_reason,
 )
 from .national_doctrine import UKNationalSolveDoctrine, uk_national_target_loss_weights
-from .national_frame import load_uk_national_frame, uk_release_export_frame
+from .national_frame import (
+    load_uk_national_frame,
+    uk_identifier_range_failures,
+    uk_release_export_frame,
+    uk_time_period,
+)
 from .rowwise_posture import (
     UK_ROWWISE_DENSE_POSTURE,
     UK_ROWWISE_NATIONAL_POSTURE,
     UKRowwisePosture,
 )
+from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
 NATIONAL_GATE_REPORT_TYPE = ArtifactType("microcosm.uk.national-gate-report", 1)
@@ -416,9 +422,18 @@ def uk_national_graph(
 
 
 def add_uk_national_readback(
-    graph: Graph, *, population: str, dataset_source: str = "exported_dataset"
+    graph: Graph,
+    *,
+    population: str,
+    solve_year: int,
+    dataset_source: str = "exported_dataset",
 ) -> Graph:
-    """Continue the graph over the written H5: a readback gate on its content."""
+    """Continue the graph over the written H5: a readback gate on its content.
+
+    ``solve_year`` is the year the weights were solved at. The file carries
+    them at the dataset's year (``uk_runtime.weight_year``), and the readback
+    expects exactly that division of the calibrated population.
+    """
 
     node = Node(
         NATIONAL_READBACK_NODE,
@@ -426,7 +441,7 @@ def add_uk_national_readback(
         population=population,
         inputs=population_slices(population_columns(graph, population)),
         sources=(dataset_source,),
-        params={"dataset_source": dataset_source},
+        params={"dataset_source": dataset_source, "solve_year": int(solve_year)},
         artifact_outputs=(ArtifactOutput("readback", NATIONAL_READBACK_TYPE),),
         description="Read the written national H5 back and compare its content identity with the calibrated population.",
     )
@@ -989,9 +1004,9 @@ class UKNationalReadbackKernel(KernelBase):
     capabilities = Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE)
 
     def implementation_hash(self) -> str:
-        from . import content_identity, national_frame
+        from . import content_identity, national_frame, weight_year
 
-        return source_hash(type(self), content_identity, national_frame)
+        return source_hash(type(self), content_identity, national_frame, weight_year)
 
     def run(self, context: KernelContext) -> KernelResult:
         from ..artifact_files import file_artifact
@@ -1001,9 +1016,14 @@ class UKNationalReadbackKernel(KernelBase):
         dataset = file_artifact(path)
         written, _provenance = load_uk_national_frame(path)
         failures = []
-        # The writer drops the reviewed export exclusions (microcosm#1063 c9),
-        # so the expectation is the export frame, not the raw population.
-        expected = uk_frame_content_identity(uk_release_export_frame(frame))
+        # The writer drops the reviewed export exclusions (microcosm#1063 c9)
+        # and writes the weights at the dataset's year (microcosm#796 A19), so
+        # the expectation is that export frame, not the raw population.
+        solve_year = int(context.params["solve_year"])
+        release = uk_dataset_year_frame(
+            uk_release_export_frame(frame), solve_year=solve_year
+        )
+        expected = uk_frame_content_identity(release)
         actual = uk_frame_content_identity(written)
         if actual != expected:
             failures.append(
@@ -1011,10 +1031,17 @@ class UKNationalReadbackKernel(KernelBase):
             )
         if written.weights_for("household").kind is not WeightKind.CALIBRATED:
             failures.append("Written national H5 household weights are not calibrated.")
-        if written.mass_log != frame.mass_log:
+        if written.mass_log != release.mass_log:
             failures.append(
                 "Written national H5 mass log differs from the calibrated population."
             )
+        # The identifiers must survive the engine's 32-bit storage
+        # (microcosm#1194), whatever wrote the file.
+        failures.extend(
+            uk_identifier_range_failures(
+                {entity: written.table(entity) for entity in written.entities}
+            )
+        )
         if file_artifact(path) != dataset:
             raise ValueError("UK national H5 changed during graph readback validation.")
         report = {
@@ -1025,6 +1052,15 @@ class UKNationalReadbackKernel(KernelBase):
             "dataset": dataset,
             "content_identity": actual,
             "expected_content_identity": expected,
+            # The year the weights were solved at, the year the file carries
+            # them at, and the engine's own factor between the two.
+            "weight_year": {
+                "solve_year": solve_year,
+                "dataset_year": int(uk_time_period(release)),
+                "engine_projection_factor": uk_weight_projection_factor(
+                    int(uk_time_period(release)), solve_year
+                ),
+            },
         }
         return KernelResult(
             artifacts={"readback": canonical_json(report)},
