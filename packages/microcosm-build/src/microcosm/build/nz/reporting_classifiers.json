@@ -260,7 +260,7 @@
   "disclosures": [
     {
       "note": "NZ Super is overstated for single people who share a home because the shares-residence input defaults false; this moves their deciles upward.",
-      "evidence": "axiom_input_closure.json#/entries/99",
+      "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
       "citation": {
         "item": "A1",
         "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
@@ -268,7 +268,7 @@
     },
     {
       "note": "Market-income components follow the existing family gross-income concept mapping. Rental income is after business expenses. The rental and private-pension concept descriptions do not explicitly say before tax; their before-tax transport interpretation must be verified before activation.",
-      "evidence": "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json#/bindings/40; packages/microcosm-frame/src/microcosm/frame/concepts.py _amount(\"rental_income\") and _amount(\"private_pension_income\")",
+      "evidence": "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json#/bindings[canonical_input=nz:statutes~1social_security~1accommodation_supplement~1core#input.accommodation_supplement_relevant_weekly_income]; packages/microcosm-frame/src/microcosm/frame/concepts.py _amount(\"rental_income\") and _amount(\"private_pension_income\")",
       "citation": {
         "item": "A1",
         "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
@@ -734,7 +734,7 @@
   "as_non_beneficiary_audit": {
     "nz_super": "The existing accommodation_supplement_non_beneficiary state binding negates any_true over assigned member receipt flags, including NZ Super. A unit with any assigned NZ Super receipt is therefore not a non-beneficiary.",
     "veterans_pension": "The same binding omits the unsupported Veterans Pension flag, so it must be extended when that receipt input is activated. A missing Veterans Pension flag continues to block reporting rather than classify its recipients as other.",
-    "evidence": "axiom_input_closure.json#/entries/115",
+    "evidence": "axiom_input_closure.json#/entries[input=accommodation_supplement_non_beneficiary]",
     "citation": {
       "item": "A2",
       "source": "docs/nz-reporting-classifiers-method.md#a2-receipt-group"

@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "5e97ffb44bc37ebd3809e7f6cf2ad253ef4308339338b96b4bd78746a9c1888d",
+  "fingerprint": "9259333d5b7c212209654cebabc06122a8bc2dbe2cb1c776af17c6d02f1200fe",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -51,7 +51,7 @@
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
-    "reporting_classifiers.json": "789a07acd1b6724a12bbd9584ab9fa05bb01d0b675cc3a0fbc837b066dbec49e",
+    "reporting_classifiers.json": "d1a5011e2163a4ceec5f030e155a02f7bc4a3bc0ad59f06fb7a406993319512f",
     "scenarios.json": "9c70241a6203b3a66dc09587c8b955d9d421bbe32f018ea1542e7639f4c7507c",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "25ef74ecbc00c3f2ecca2d30ddd5e46a582657863c217da33ee9a396569d2cf2",

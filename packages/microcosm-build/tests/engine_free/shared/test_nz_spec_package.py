@@ -21,7 +21,16 @@ broken check:
   {entitlement, calibration}, and changes exactly one knob from the centre
   (``scenario_errors``);
 - no resource cites a line of a repository file, and foreign-file line
-  citations require a same-resource commit pin (``unpinned_line_citations``).
+  citations require a same-resource commit pin (``unpinned_line_citations``);
+- JSON citations refuse index steps into arrays consisting of mappings.
+  Instead, ``file.json#/entries[input=target]`` selects exactly one record.
+  A selector extends an RFC 6901 token naming an array; ordinary pointer
+  steps may follow it, e.g. ``/entries[input=target]/state_binding/columns/0``.
+  Comma-separated terms are a conjunction, e.g. ``[input=target,module=nz]``.
+  Fields are identifiers and values are nonempty strings; brackets, commas,
+  equals signs and whitespace are reserved. Parse the selector before
+  decoding RFC 6901 ``~0`` (tilde) and ``~1`` (slash) escapes. No match or
+  multiple matches is an error. Indexes into scalar arrays remain valid.
 
 Differential checks compare two records of one fact: the loader's target
 references with a direct parse, the rules bindings' module digests with the
@@ -608,7 +617,11 @@ unpinned_python_line_citations = unpinned_line_citations
 _DOTTED_MICROCOSM_SYMBOL = re.compile(
     r"(?<![A-Za-z0-9_./-])microcosm(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
 )
-_JSON_POINTER_CITATION = re.compile(_SOURCE_FILE + r"#(?P<pointer>(?:/[^\s,;()\"']*)+)")
+_JSON_POINTER_CITATION = re.compile(_SOURCE_FILE + r"#(?P<pointer>(?:/[^\s;()\"']*)+)")
+_JSON_RECORD_SELECTOR = re.compile(r"(?P<key>[^\[\]]+)\[(?P<terms>[^\[\]]+)\]")
+_JSON_SELECTOR_TERM = re.compile(
+    r"(?P<field>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^\[\],=\s]+)"
+)
 
 
 def resolve_dotted_symbol(dotted: str) -> object:
@@ -655,15 +668,20 @@ def dotted_symbol_citations(value: object) -> set[str]:
 
 
 def json_pointer_citations(value: object) -> list[tuple[str, str]]:
-    return [
-        (match["file"], match["pointer"])
+    """Find and validate every citation, including nested mapping keys."""
+
+    citations = [
+        (match["file"], match["pointer"].rstrip(","))
         for text in _nested_strings(value)
         for match in _JSON_POINTER_CITATION.finditer(text)
     ]
+    for citation in citations:
+        resolve_json_pointer(*citation)
+    return citations
 
 
 def resolve_json_pointer(file: str, pointer: str) -> object:
-    """Resolve an RFC 6901 pointer in one existing checkout JSON resource."""
+    """Resolve a pointer with exactly-one keyed selectors; refuse record indexes."""
 
     relative = str(PurePosixPath(file))
     candidates = {
@@ -687,15 +705,51 @@ def resolve_json_pointer(file: str, pointer: str) -> object:
     for token in pointer.split("/")[1:]:
         if re.search(r"~(?![01])", token):
             raise ValueError(f"Invalid JSON pointer escape: {pointer}")
-        key = token.replace("~1", "/").replace("~0", "~")
+        selector: dict[str, str] | None = None
+        key = token
+        if "[" in token or "]" in token:
+            match = _JSON_RECORD_SELECTOR.fullmatch(token)
+            if match is None:
+                raise ValueError(f"Invalid JSON record selector: {token}")
+            key = match["key"]
+            selector = {}
+            for term in match["terms"].split(","):
+                pair = _JSON_SELECTOR_TERM.fullmatch(term)
+                if pair is None or pair["field"] in selector:
+                    raise ValueError(f"Invalid JSON record selector: {token}")
+                selector[pair["field"]] = (
+                    pair["value"].replace("~1", "/").replace("~0", "~")
+                )
+        key = key.replace("~1", "/").replace("~0", "~")
         if isinstance(selected, list):
             if not re.fullmatch(r"0|[1-9][0-9]*", key):
                 raise ValueError(f"Invalid JSON array index: {key}")
+            if all(isinstance(record, Mapping) for record in selected):
+                raise ValueError(
+                    f"JSON citation indexes a record array: {file}#{pointer}"
+                )
             selected = selected[int(key)]
         elif isinstance(selected, Mapping):
             selected = selected[key]
         else:
             raise TypeError(f"JSON pointer traverses a scalar: {file}#{pointer}")
+        if selector is not None:
+            if not isinstance(selected, list) or not all(
+                isinstance(record, Mapping) for record in selected
+            ):
+                raise ValueError(
+                    f"JSON record selector needs an array of mappings: {token}"
+                )
+            matches = [
+                record
+                for record in selected
+                if all(record.get(field) == value for field, value in selector.items())
+            ]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"JSON selector needs one matching record, found {len(matches)}: {token}"
+                )
+            selected = matches[0]
     return selected
 
 
@@ -1882,7 +1936,150 @@ def _plant(text: str, depth: int, as_key: bool) -> object:
     return planted
 
 
+@pytest.fixture
+def citation_checkout(tmp_path, monkeypatch):
+    """An isolated file lookup; each write replaces that scratch JSON payload."""
+
+    files: set[str] = set()
+
+    def write(file: str, payload: object) -> None:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        files.add(file)
+        monkeypatch.setattr(__name__ + "._BUILD", SimpleNamespace(repository=tmp_path))
+        monkeypatch.setattr(__name__ + "._repository_files", lambda: files)
+
+    return write
+
+
 class TestSourceCitations:
+    @pytest.mark.parametrize(
+        ("pointer", "records", "message"),
+        [
+            ("/entries[input=absent]", [{"input": "target"}], "one matching record"),
+            ("/entries[unknown=target]", [{"input": "target"}], "one matching record"),
+            ("/entries[input=target]", [{"other": "target"}], "one matching record"),
+            (
+                "/entries[input=target]",
+                [{"input": "target"}, {"input": "target"}],
+                "one matching record",
+            ),
+            ("/entries[]", [{"input": "target"}], "selector"),
+            ("/entries[input]", [{"input": "target"}], "selector"),
+            ("/entries[=target]", [{"input": "target"}], "selector"),
+            ("/entries[input=]", [{"input": "target"}], "selector"),
+            ("/entries[input=target", [{"input": "target"}], "selector"),
+            ("/entries[input=target]]", [{"input": "target"}], "selector"),
+            ("/entries[[input=target]]", [{"input": "target"}], "selector"),
+            ("/entries[input=target]junk", [{"input": "target"}], "selector"),
+            ("/entries[input=target,]", [{"input": "target"}], "selector"),
+            ("/entries[input=target,input=target]", [{"input": "target"}], "selector"),
+            ("/entries/0", [{"input": "target"}], "record array"),
+            ("/entries/0/input", [{"input": "target"}], "record array"),
+        ],
+    )
+    def test_invalid_record_selectors_and_record_array_indexes_are_refused(
+        self, citation_checkout, pointer: str, records: list, message: str
+    ) -> None:
+        citation_checkout("records.json", {"entries": records})
+        with pytest.raises(ValueError, match=message):
+            resolve_json_pointer("records.json", pointer)
+        with pytest.raises(ValueError, match=message):
+            json_pointer_citations(_plant(f"records.json#{pointer}", 2, True))
+
+    def test_keyed_selector_extends_json_pointers_and_supports_conjunctions(
+        self, citation_checkout
+    ) -> None:
+        target = {"input": "target", "module": "nz/core~v1", "values": [7, 42]}
+        citation_checkout(
+            "records.json",
+            {"entries": [{"input": "target", "module": "other"}, target]},
+        )
+        pointer = "/entries[input=target,module=nz~1core~0v1]/values/1"
+        assert resolve_json_pointer("records.json", pointer) == 42
+        assert json_pointer_citations(f"records.json#{pointer}; following prose") == [
+            ("records.json", pointer)
+        ]
+        assert json_pointer_citations(f"records.json#{pointer}, following prose") == [
+            ("records.json", pointer)
+        ]
+
+    @pytest.mark.parametrize(
+        "entries", [{"input": "target"}, ["target"], [{"input": "target"}, 1]]
+    )
+    def test_record_selector_requires_an_array_of_mappings(
+        self, citation_checkout, entries: object
+    ) -> None:
+        citation_checkout("records.json", {"entries": entries})
+        pointer = "/entries[input=target]"
+        with pytest.raises(ValueError, match="array of mappings"):
+            resolve_json_pointer("records.json", pointer)
+        with pytest.raises(ValueError, match="array of mappings"):
+            json_pointer_citations(f"records.json#{pointer}")
+
+    def test_scalar_array_indexes_still_check_bounds(self, citation_checkout) -> None:
+        citation_checkout("records.json", {"values": [7, 42]})
+        assert resolve_json_pointer("records.json", "/values/1") == 42
+        with pytest.raises(IndexError):
+            resolve_json_pointer("records.json", "/values/2")
+
+    def test_keyed_selector_is_independent_of_record_position(
+        self, citation_checkout
+    ) -> None:
+        @settings(max_examples=100, deadline=None)
+        @given(keys=st.lists(_SOURCE_STEM, unique=True, max_size=25), data=st.data())
+        def check(keys: list[str], data) -> None:
+            position = data.draw(st.integers(0, len(keys)))
+            records = [{"input": f"other_{key}", "value": key} for key in keys]
+            target = {"input": "target", "value": {"answer": 42}}
+            records.insert(position, target)
+            citation_checkout("records.json", {"entries": records})
+            pointer = "/entries[input=target]"
+            assert resolve_json_pointer("records.json", pointer) == target
+            assert resolve_json_pointer("records.json", pointer + "/value/answer") == 42
+            assert json_pointer_citations(f"records.json#{pointer}") == [
+                ("records.json", pointer)
+            ]
+            with pytest.raises(ValueError, match="record array"):
+                resolve_json_pointer("records.json", f"/entries/{position}")
+            with pytest.raises(ValueError, match="record array"):
+                json_pointer_citations(f"records.json#/entries/{position}")
+
+        check()
+
+    @pytest.mark.parametrize(
+        "disclosure", ["sharing_home", "non_beneficiary", "market_income"]
+    )
+    def test_keyed_citations_survive_a_record_inserted_before_the_target(
+        self, citation_checkout, disclosure: str
+    ) -> None:
+        reporting = _load("reporting_classifiers.json")
+        if disclosure == "market_income":
+            file = "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json"
+            original = json.loads(
+                (_BUILD.repository / file).read_text(encoding="utf-8")
+            )
+            array, field = "bindings", "canonical_input"
+            expected_key = "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            evidence = reporting["disclosures"][1]["evidence"]
+        else:
+            file, array, field = "axiom_input_closure.json", "entries", "input"
+            original = _load(file)
+            if disclosure == "sharing_home":
+                expected_key = (
+                    "nz_super_shares_residence_with_person_at_least_adult_age"
+                )
+                evidence = reporting["disclosures"][0]["evidence"]
+            else:
+                expected_key = "accommodation_supplement_non_beneficiary"
+                evidence = reporting["as_non_beneficiary_audit"]["evidence"]
+        (expected,) = [row for row in original[array] if row[field] == expected_key]
+        original[array].insert(0, {field: "dummy_record"})
+        citation_checkout(file, original)
+        (citation,) = json_pointer_citations(evidence)
+        assert resolve_json_pointer(*citation) == expected
+
     def test_local_file_pins_cannot_hide_absolute_or_parent_path_aliases(self) -> None:
         relative = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
         aliases = [
@@ -2323,27 +2520,30 @@ class TestSourceCitations:
         citation = locator.format(file=f"{directory}{stem}.{extension}", symbol=symbol)
         assert source_line_citations({"rule": f"{prefix} {citation} {suffix}"}) == []
 
-    @settings(max_examples=200, deadline=None)
-    @given(
-        stem=_SOURCE_STEM,
-        key=_SOURCE_STEM,
-        index=st.integers(0, 9999),
-        depth=st.integers(0, 3),
-        as_key=st.booleans(),
-    )
     def test_a_json_pointer_citation_is_not_a_line_citation(
-        self,
-        stem: str,
-        key: str,
-        index: int,
-        depth: int,
-        as_key: bool,
+        self, citation_checkout
     ) -> None:
-        citation = f"{stem}.json#/entries/{index}/{key}"
-        assert source_line_citations(_plant(citation, depth, as_key)) == []
-        assert json_pointer_citations(_plant(citation, depth, as_key)) == [
-            (f"{stem}.json", f"/entries/{index}/{key}")
-        ]
+        @settings(max_examples=200, deadline=None)
+        @given(
+            stem=_SOURCE_STEM,
+            key=_SOURCE_STEM,
+            index=st.integers(0, 9999),
+            depth=st.integers(0, 3),
+            as_key=st.booleans(),
+        )
+        def check(stem: str, key: str, index: int, depth: int, as_key: bool) -> None:
+            citation_checkout(
+                f"{stem}.json", {"entries": {key: list(range(index + 1))}}
+            )
+            pointer = f"/entries/{key}/{index}"
+            citation = f"{stem}.json#{pointer}"
+            assert source_line_citations(_plant(citation, depth, as_key)) == []
+            assert json_pointer_citations(_plant(citation, depth, as_key)) == [
+                (f"{stem}.json", pointer)
+            ]
+            assert resolve_json_pointer(f"{stem}.json", pointer) == index
+
+        check()
 
     def test_every_json_pointer_citation_in_the_package_resolves(self) -> None:
         citations = {
@@ -2352,8 +2552,18 @@ class TestSourceCitations:
             for citation in json_pointer_citations(payload)
         }
         assert {
-            ("axiom_input_closure.json", "/entries/99"),
-            ("axiom_input_closure.json", "/entries/115"),
+            (
+                "axiom_input_closure.json",
+                "/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
+            ),
+            (
+                "axiom_input_closure.json",
+                "/entries[input=accommodation_supplement_non_beneficiary]",
+            ),
+            (
+                "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json",
+                "/bindings[canonical_input=nz:statutes~1social_security~1accommodation_supplement~1core#input.accommodation_supplement_relevant_weekly_income]",
+            ),
         } <= citations
         for file, pointer in sorted(citations):
             resolve_json_pointer(file, pointer)
@@ -2365,7 +2575,7 @@ class TestSourceCitations:
             ("axiom_input_closure.json", "/no_such_key", KeyError),
             ("no_such_citation_file.json", "/entries", ValueError),
             ("axiom_input_closure.json", "/entries/01", ValueError),
-            ("axiom_input_closure.json", "/entries/999999", IndexError),
+            ("axiom_input_closure.json", "/entries/999999", ValueError),
             ("axiom_input_closure.json", "/bad~2escape", ValueError),
         ],
     )
