@@ -29,8 +29,8 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
 
     The take-up population holds a unit with a UC claimant or partner aged 18
     to under Pension Credit qualifying age. One-person units aged 0 to 100
-    agree with the engine; the two cases below are engine conditions the
-    population does not read, named so that an engine change to either fails
+    agree with the engine; the three cases below are engine conditions the
+    population does not read, named so that an engine change to any fails
     here.
     """
 
@@ -73,3 +73,14 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
         },
     ) == [False]
     assert policy.working_age(np.array([70, 60])).tolist() == [False, True]
+
+    # Named exception (iv): from 2.128.0 the closure of tax credits moves a
+    # family onto Universal Credit (pe-uk#2119), and a pension-age Working Tax
+    # Credit recipient claims it with the upper age condition waived (SI
+    # 2014/1230 reg 60A). The population leaves them out; the build leaves
+    # would_claim_uc_at_legacy_closure at the engine's default.
+    assert _engine_uc_eligible(
+        {"wtc": {"age": {2025: 70}, "working_tax_credit_reported": {2025: 2_000}}},
+        {"b_wtc": {"members": ["wtc"]}},
+    ) == [True]
+    assert not policy.working_age(np.array([70])).any()

@@ -61,6 +61,24 @@ def source_frame():
     household["cgt_support_copy_index"] = np.zeros(len(household), dtype="int64")
     household["household_is_cgt_residential_clone"] = False
     household["cgt_residential_clone_index"] = np.zeros(len(household), dtype="int64")
+    # microcosm#1240: the housing columns the post-geography property nodes
+    # read and rewrite; one owner per region with a positive value, the
+    # Scottish household a renter, the Northern Irish one an owner at zero.
+    household["tenure_type"] = pd.array(
+        ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY", "OWNED_OUTRIGHT"][
+            : len(household)
+        ],
+        dtype="string",
+    )
+    household["main_residence_value"] = np.asarray(
+        [400_000.0, 250_000.0, 0.0, 0.0][: len(household)], dtype="float64"
+    )
+    household["property_wealth"] = np.asarray(
+        [450_000.0, 250_000.0, 0.0, 10_000.0][: len(household)], dtype="float64"
+    )
+    household["council_tax_band"] = pd.array(
+        ["D", "C", "B", "D"][: len(household)], dtype="string"
+    )
     return Frame(
         tables,
         original.schema,
@@ -111,7 +129,14 @@ def source_node(frame):
     )
 
 
-def graph_and_registry(k, *, geography_assignment="legacy", definition=None, seed=7):
+def graph_and_registry(
+    k,
+    *,
+    geography_assignment="legacy",
+    definition=None,
+    seed=7,
+    property_localisation_mode="none",
+):
     graph = append_uk_population_nodes(
         Graph(
             "uk",
@@ -127,6 +152,7 @@ def graph_and_registry(k, *, geography_assignment="legacy", definition=None, see
         geography_assignment=geography_assignment,
         atomic_geography_definition=definition,
         source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
+        property_localisation_mode=property_localisation_mode,
     )
     registry = KernelRegistry()
     registry.register(Source())

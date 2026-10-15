@@ -301,3 +301,263 @@ def test_chain_step_exposes_a_fitted_one_target_view():
     )
     pd.testing.assert_frame_equal(first, step_two_again.fitted.predict(augmented))
     np.testing.assert_array_equal(step_two.raw_draw, step_two_again.raw_draw)
+
+
+def _placements(model, n, seed):
+    rng = np.random.default_rng(seed)
+    return {
+        "sign_placement": {t: rng.random(n) for t in model.targets},
+        "quantile_placement": {t: rng.random(n) for t in model.targets},
+    }
+
+
+def test_conditional_uniforms_round_trip_reproduces_observed_targets(model):
+    """Locating the training rows and drawing at those uniforms gives them back.
+
+    Every fixture target is an atom of its conditional at each ``x`` (the
+    donor repeats each value), so the located quantile sits on a flat stretch
+    and the draw returns the atom exactly; the sign uniform lands in the
+    observed class because it is placed inside that class's gate mass.
+    """
+    x = np.tile(np.arange(30, dtype=float), 6)
+    observed = pd.DataFrame(
+        {
+            "x": x,
+            "positive": x + 1,
+            "negative": -x - 1,
+            "zero": np.zeros(len(x)),
+            "mixed": np.tile([-2.0, 0.0, 3.0], len(x) // 3),
+            "inflated": np.tile([0.0, 4.0], len(x) // 2),
+            "negative_inflated": np.tile([0.0, -4.0], len(x) // 2),
+            "two_sign": np.tile([-3.0, 4.0], len(x) // 2),
+        }
+    )
+    before = copy.deepcopy(model._rng.bit_generator.state)
+    located = model.conditional_uniforms(observed, **_placements(model, len(x), 1))
+    assert model._rng.bit_generator.state == before
+    assert located.degenerate == ("zero",)
+    assert located.ungated == ("positive", "negative")
+    for mapping in (located.quantiles, located.sign_uniforms):
+        assert set(mapping) == set(model.targets)
+        for values in mapping.values():
+            assert values.shape == (len(x),)
+            assert ((values >= 0) & (values < 1)).all()
+    drawn = model.predict_from_uniforms(
+        observed[["x"]],
+        quantiles=located.quantiles,
+        sign_uniforms=located.sign_uniforms,
+    )
+    pd.testing.assert_frame_equal(
+        drawn, observed[model.targets].astype(float), check_exact=False, rtol=1e-9
+    )
+
+
+def test_conditional_uniforms_are_row_order_invariant(model):
+    x = np.tile(np.arange(30, dtype=float), 2)
+    observed = pd.DataFrame(
+        {
+            "x": x,
+            "positive": x + 1,
+            "negative": -x - 1,
+            "zero": np.zeros(len(x)),
+            "mixed": np.tile([-2.0, 0.0, 3.0], len(x) // 3),
+            "inflated": np.tile([0.0, 4.0], len(x) // 2),
+            "negative_inflated": np.tile([0.0, -4.0], len(x) // 2),
+            "two_sign": np.tile([-3.0, 4.0], len(x) // 2),
+        }
+    )
+    placements = _placements(model, len(x), 2)
+    expected = model.conditional_uniforms(observed, **placements)
+    order = np.random.default_rng(5).permutation(len(x))
+    reordered = model.conditional_uniforms(
+        observed.iloc[order],
+        **{k: {t: v[order] for t, v in d.items()} for k, d in placements.items()},
+    )
+    for target in model.targets:
+        np.testing.assert_array_equal(
+            expected.quantiles[target][order], reordered.quantiles[target]
+        )
+        np.testing.assert_array_equal(
+            expected.sign_uniforms[target][order], reordered.sign_uniforms[target]
+        )
+
+
+def test_conditional_uniforms_are_uniform_off_sample_and_transport_standing():
+    """Held-out rows locate uniformly, and the uniforms carry a row's standing.
+
+    Population A is ``y = x + 5 + noise``; population B is ``y = 2x + 10 + noise``.
+    Locating A's held-out rows under A's forest gives magnitude quantiles close
+    to U[0, 1) (the probability integral transform), and drawing B's forest at
+    those uniforms ranks the rows within each ``x`` as A ranked them.
+    """
+    rng = np.random.default_rng(11)
+    x = np.repeat(np.arange(10, dtype=float), 300)
+    donor_a = pd.DataFrame({"x": x, "y": x + 5 + rng.normal(size=len(x))})
+    donor_b = pd.DataFrame({"x": x, "y": 2 * x + 10 + rng.normal(size=len(x))})
+    model_a = fit(donor_a, ["x"], ["y"], weights="none", n_estimators=20, seed=3)
+    model_b = fit(donor_b, ["x"], ["y"], weights="none", n_estimators=20, seed=4)
+    held = pd.DataFrame({"x": x, "y": x + 5 + rng.normal(size=len(x))})
+    placements = {
+        "sign_placement": {"y": rng.random(len(x))},
+        "quantile_placement": {"y": rng.random(len(x))},
+    }
+    located = model_a.conditional_uniforms(held, **placements)
+    quantiles = np.sort(located.quantiles["y"])
+    empirical = np.arange(1, len(quantiles) + 1) / len(quantiles)
+    kolmogorov = np.abs(empirical - quantiles).max()
+    assert kolmogorov < 0.08, kolmogorov
+    transported = model_b.predict_from_uniforms(
+        held[["x"]],
+        quantiles=located.quantiles,
+        sign_uniforms=located.sign_uniforms,
+    )["y"].to_numpy()
+    for value in np.unique(x):
+        rows = x == value
+        rank_a = pd.Series(held.y.to_numpy()[rows]).rank().to_numpy()
+        rank_b = pd.Series(transported[rows]).rank().to_numpy()
+        assert np.corrcoef(rank_a, rank_b)[0, 1] > 0.95
+    # B's level is imported: the transported draws sit on B's scale, not A's.
+    assert transported.mean() > 2 * x.mean() + 5
+
+
+def test_quantile_positions_match_chunked_and_serial_passes(model, monkeypatch):
+    from microcosm.fit import qrf as qrf_module
+
+    x = np.tile(np.arange(30, dtype=float), 2)
+    frame = pd.DataFrame({"x": x})
+    forest = model._target_models["positive"].positive
+    placement = np.random.default_rng(6).random(len(x))
+    serial = forest.quantile_positions(frame, x + 1, placement)
+    monkeypatch.setattr(qrf_module, "_PREDICT_CHUNK_ROWS", 7)
+    chunked = forest.quantile_positions(frame, x + 1, placement)
+    np.testing.assert_array_equal(serial, chunked)
+    drawn = forest.draw(frame, serial)
+    np.testing.assert_allclose(drawn, x + 1)
+
+
+def test_locate_rows_inverts_interp_rows():
+    from microcosm.fit.qrf import _interp_rows, _locate_rows
+
+    grid = np.array([0.1, 0.3, 0.5, 0.7, 0.9])
+    predictions = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0, 5.0],  # strictly increasing
+            [1.0, 2.0, 2.0, 2.0, 5.0],  # a flat stretch at 2.0
+            [1.0, 2.0, 3.0, 4.0, 5.0],  # below the first knot
+            [1.0, 2.0, 3.0, 4.0, 5.0],  # above the last knot
+            [2.0, 2.0, 2.0, 2.0, 2.0],  # one atom
+        ]
+    )
+    values = np.array([2.5, 2.0, 0.5, 7.0, 2.0])
+    placement = np.array([0.5, 0.25, 0.5, 0.5, 0.75])
+    located = _locate_rows(values, placement, grid, predictions)
+    np.testing.assert_allclose(located[0], 0.4)
+    np.testing.assert_allclose(located[1], 0.3 + 0.25 * (0.7 - 0.3))
+    np.testing.assert_allclose(located[2], 0.05)
+    np.testing.assert_allclose(located[3], 0.95)
+    np.testing.assert_allclose(located[4], 0.1 + 0.75 * 0.8)
+    assert ((located >= 0) & (located < 1)).all()
+    read_back = _interp_rows(located, grid, predictions)
+    np.testing.assert_allclose(read_back[[0, 1, 4]], values[[0, 1, 4]])
+    np.testing.assert_allclose(read_back[2], 1.0)  # clamped to the curve's ends
+    np.testing.assert_allclose(read_back[3], 5.0)
+    with pytest.raises(ValueError, match="non-decreasing"):
+        _locate_rows(
+            values[:1], placement[:1], grid, np.array([[3.0, 2.0, 2.0, 2.0, 2.0]])
+        )
+
+
+def test_conditional_uniforms_refuse_inconsistent_inputs(model):
+    x = np.arange(6, dtype=float)
+    observed = pd.DataFrame(
+        {
+            "x": x,
+            "positive": x + 1,
+            "negative": -x - 1,
+            "zero": np.zeros(6),
+            "mixed": np.tile([-2.0, 0.0, 3.0], 2),
+            "inflated": np.tile([0.0, 4.0], 3),
+            "negative_inflated": np.tile([0.0, -4.0], 3),
+            "two_sign": np.tile([-3.0, 4.0], 3),
+        }
+    )
+    placements = _placements(model, 6, 8)
+    with pytest.raises(ValueError, match="missing observed target"):
+        model.conditional_uniforms(observed.drop(columns=["mixed"]), **placements)
+    degenerate = observed.copy()
+    degenerate.loc[0, "zero"] = 1.0
+    with pytest.raises(ValueError, match="degenerate zero"):
+        model.conditional_uniforms(degenerate, **placements)
+    wrong_sign = observed.copy()
+    wrong_sign.loc[0, "positive"] = -1.0
+    with pytest.raises(ValueError, match="another sign"):
+        model.conditional_uniforms(wrong_sign, **placements)
+    unseen_class = observed.copy()
+    unseen_class.loc[0, "inflated"] = -4.0
+    with pytest.raises(ValueError, match="absent from the fitted gate"):
+        model.conditional_uniforms(unseen_class, **placements)
+    short = {k: {t: v[:5] for t, v in d.items()} for k, d in placements.items()}
+    with pytest.raises(ValueError, match="must have shape"):
+        model.conditional_uniforms(observed, **short)
+    released = copy.deepcopy(model)
+    released.predict(observed[["x"]], release_models=True)
+    with pytest.raises(RuntimeError, match="released"):
+        released.conditional_uniforms(observed, **placements)
+
+
+def test_conditional_uniforms_carry_the_zero_class_between_gated_models():
+    """A zero-inflated row's sign uniform lands by its class under another gate.
+
+    Under A half the rows are zero; under B a fifth are. A row that is positive
+    under A sits above A's zero mass, so B, whose zero mass is smaller, draws it
+    positive every time; a row that is zero under A is spread over A's zero
+    mass, so B keeps about two fifths of them at zero and the rest draw
+    positive. This is the mechanism that carries "has pay" across populations.
+    """
+    rng = np.random.default_rng(12)
+    x = np.repeat(np.arange(10, dtype=float), 300)
+    positive_a = rng.random(len(x)) < 0.5
+    donor_a = pd.DataFrame(
+        {"x": x, "y": np.where(positive_a, x + 5 + rng.normal(size=len(x)), 0.0)}
+    )
+    positive_b = rng.random(len(x)) < 0.8
+    donor_b = pd.DataFrame(
+        {"x": x, "y": np.where(positive_b, 2 * x + 10 + rng.normal(size=len(x)), 0.0)}
+    )
+    model_a = fit(donor_a, ["x"], ["y"], weights="none", n_estimators=20, seed=5)
+    model_b = fit(donor_b, ["x"], ["y"], weights="none", n_estimators=20, seed=6)
+    assert model_a.regimes() == {"y": Regime.ZERO_INFLATED_POSITIVE}
+    located = model_a.conditional_uniforms(
+        donor_a,
+        sign_placement={"y": rng.random(len(x))},
+        quantile_placement={"y": rng.random(len(x))},
+    )
+    transported = model_b.predict_from_uniforms(
+        donor_a[["x"]],
+        quantiles=located.quantiles,
+        sign_uniforms=located.sign_uniforms,
+    )["y"].to_numpy()
+    assert (transported[positive_a] > 0).all()
+    kept_zero = (transported[~positive_a] == 0).mean()
+    assert 0.3 < kept_zero < 0.5, kept_zero
+
+
+def test_sign_classes_follow_the_regime(model):
+    """The classes a target's gate orders, or the single sign of an ungated
+    regime, so a caller drawing one model at uniforms located on another can
+    check the two read a sign uniform the same way."""
+    expected = {
+        "positive": (1,),
+        "negative": (-1,),
+        "zero": (0,),
+        "mixed": (-1, 0, 1),
+        "inflated": (0, 1),
+        "negative_inflated": (-1, 0),
+        "two_sign": (-1, 1),
+    }
+    for target, classes in expected.items():
+        assert model.sign_classes(target) == classes, target
+        assert list(classes) == sorted(classes)
+    assert model.regimes()["positive"] == Regime.POSITIVE_ONLY
+    with pytest.raises(ValueError, match="unknown target"):
+        model.sign_classes("missing")

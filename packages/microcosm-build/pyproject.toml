@@ -24,7 +24,7 @@ dependencies = [
     "pyyaml>=6",
     "jsonschema>=4.23,<5",
     "referencing>=0.35,<1",
-    "microcosm-emitter==0.1.0",
+    "microcosm-emitter==0.2.1",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +46,7 @@ us = [
 # The UK extra adds the rules engine for local metric generation from a
 # Microcosm UK H5. Target tables remain explicit inputs, and the base package
 # still does not import policyengine-uk at import time.
-uk = ["policyengine-uk>=2.123.0", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
+uk = ["policyengine-uk>=2.130.1", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
 
 [project.scripts]
 microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"
@@ -81,5 +81,3 @@ microcosm-fit = { workspace = true }
 microcosm-calibrate = { workspace = true }
 microcosm-diagnostics = { workspace = true }
 microcosm-data = { workspace = true }
-# Draft-only root source pin. Replace with a published distribution before merge.
-microcosm-emitter = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "12624a118db255405a0ce7397d53b3181deaf49a" }

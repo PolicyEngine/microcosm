@@ -21,6 +21,9 @@ from microcosm.frame.adapters.policyengine_uk import (
     UK_SCHEMA,
     PolicyEngineUKEngine,
 )
+from microcosm.frame.adapters.policyengine_uk_concepts import (
+    UK_ENGINE_DEFAULT_TAKE_UP_INPUTS,
+)
 from microcosm.frame.concept_mapping import (
     Recode,
     TakeUpThreshold,
@@ -83,7 +86,10 @@ def test_take_up_bindings_are_the_engines_would_claim_inputs(engine) -> None:
         if isinstance(binding.transform, TakeUpThreshold)
         and binding.engine_input.startswith("would_claim_")
     }
-    assert bound == would_claim
+    # Every other take-up input is left at the engine default, with a reason.
+    left = set(UK_ENGINE_DEFAULT_TAKE_UP_INPUTS)
+    assert bound.isdisjoint(left)
+    assert bound | left == would_claim
 
 
 def test_structural_inputs_are_engine_inputs(engine) -> None:
@@ -104,6 +110,7 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
         "is_household_head",
         "weekly_hours",
         "tax_free_savings_income",
+        "uc_reported_capital",
     }
     inputs = set(engine.variables())
     for name in claimed:
@@ -115,9 +122,11 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     # Financial wealth is a household input. The person-level GBP stocks are a
     # debt, a car's list price and the Lifetime ISA balance, which the engine
     # documents as already inside the household's financial wealth.
-    # uc_reported_capital is a benefit-unit input, unset at -1, that the
-    # uc_assessable_capital formula reads in place of both a household proxy
-    # apportioned by claimant and partner count and the person-level sources.
+    # uc_reported_capital is formula-owned since policyengine-uk 2.124.0: unless
+    # set directly it is benunit_reported_capital, a benefit-unit input unset at
+    # -1. The uc_assessable_capital formula reads it in place of both a
+    # household proxy apportioned by claimant and partner count and the
+    # person-level sources.
     inputs = set(engine.variables())
     person_stocks = {
         name
@@ -130,13 +139,23 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "car_list_price",
         "lifetime_isa_balance",
         "student_loan_balance",
+        # Universal Credit's regulation 77 company inputs (2.130.0): no
+        # company by default, and the build sets none.
+        "owned_company_capital",
+        "owned_company_holding_value",
+        "owned_company_trade_assets",
     }
     for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
         assert name in inputs, name
         assert engine.variable_metadata(name).entity == "household", name
-    assert "uc_reported_capital" in inputs
+    assert "benunit_reported_capital" in inputs
+    assert engine.variable_metadata("benunit_reported_capital").entity == "benunit"
+    assert engine._variable("benunit_reported_capital").default_value == -1
+    assert "uc_reported_capital" not in inputs
     assert engine.variable_metadata("uc_reported_capital").entity == "benunit"
     assert engine._variable("uc_reported_capital").default_value == -1
+    reported = inspect.getsource(engine._variable("uc_reported_capital").get_formula())
+    assert 'benunit("benunit_reported_capital", period)' in reported
     assert "uc_assessable_capital" not in inputs
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "uc_reported_capital" in source

@@ -10,6 +10,7 @@ from scipy import sparse
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import full_gates as runtime
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import OrderedProblem, OrderedSolution
 from microcosm.calibrate.matrix import CalibrationProblem
@@ -114,12 +115,18 @@ def evidence(monkeypatch):
         problem, (1, 2), metadata, {"target_selection": _selection()}, "a" * 64
     )
     solution = OrderedSolution(np.ones(2), (1, 2), "a" * 64, {}, "b" * 64)
-    table = pd.DataFrame({"household_id": [1, 2], "income": [1.0, 1.0]})
-    frame = SimpleNamespace(
-        entities=("household",),
-        table=lambda entity: table,
-        schema=SimpleNamespace(entity_id_column=lambda entity: "household_id"),
-        weights_for=lambda entity: weights,
+    # A real national frame: the context reads it through the release export
+    # boundary, which renumbers identifiers (microcosm#1194).
+    ids = np.asarray([1, 2], dtype="int64")
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame({"household_id": ids, "income": [1.0, 1.0]}),
+        time_period="2024",
+        weight_kind=weights.kind,
+        household_weights=weights.values,
     )
     monkeypatch.setattr(
         runtime,
