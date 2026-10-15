@@ -433,3 +433,20 @@ def test_a_floored_family_off_the_surface_is_recorded_absent() -> None:
     }
     with pytest.raises(ValueError, match="positive loss weights"):
         assert_uk_family_loss_share_floors(rows, np.zeros(2))
+
+
+def test_a_share_equal_to_its_floor_meets_it() -> None:
+    """One family in forty (2.5 %) meets a 2.5 % floor despite rounding."""
+
+    rows = _rows(
+        *(
+            _local(f"l{i}", "la", "E06000001", f"age/{i}", f"family_{i}", 1.0)
+            for i in range(39)
+        ),
+        _local("l/gas", "la", "E06000001", "energy/gas_kwh", "domestic_energy", 1.0),
+    )
+    weights = np.full(40, 1.0 / 40.0) * 3.0  # unnormalised: shares are ratios
+    receipt = assert_uk_family_loss_share_floors(
+        rows, weights, floors={"domestic_energy": 0.025}
+    )
+    assert receipt["families"]["domestic_energy"]["status"] == "met"

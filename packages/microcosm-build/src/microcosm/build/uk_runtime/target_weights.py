@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -513,7 +514,9 @@ def assert_uk_family_loss_share_floors(
 
     A family's share is the sum of its rows' weights over all rows', every
     grain counted (microcosm#1207). Check-only: the weights are not changed.
-    A floored family the surface does not bind is recorded absent.
+    A floored family the surface does not bind is recorded absent. A share
+    equal to its floor meets it (the rule's shares are ratios of small
+    integers, so the comparison allows for rounding).
     """
 
     weights = np.asarray(weights, dtype=np.float64)
@@ -533,13 +536,14 @@ def assert_uk_family_loss_share_floors(
             receipt[family] = {"floor": float(floor), "status": "absent"}
             continue
         share = float(weights[mask].sum()) / total
+        met = share >= floor or math.isclose(share, floor, rel_tol=1e-9)
         receipt[family] = {
             "floor": float(floor),
             "loss_share": share,
             "n_targets": int(mask.sum()),
-            "status": "met" if share >= floor else "below",
+            "status": "met" if met else "below",
         }
-        if share < floor:
+        if not met:
             below.append(f"{family} ({share:.4%} < {floor:.4%})")
     if below:
         raise ValueError(
