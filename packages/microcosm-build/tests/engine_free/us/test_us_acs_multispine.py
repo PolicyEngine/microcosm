@@ -12,6 +12,7 @@ import pytest
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime import acs_multispine
+from microcosm.build.us_runtime.acs_local_hours import ACS_UNDER15_ZERO_POLICY
 from microcosm.build.us_runtime.acs_pums import AcsPumsSource
 from microcosm.build.us_runtime.acs_transfer import (
     AcsImputedInput,
@@ -334,13 +335,23 @@ def test__given_a_role_bearing_base__then_the_acs_spine_derives_the_role(
     json.dumps(result.provenance, allow_nan=False)
 
 
-def _raw_acs_frame_with_group_quarters_child() -> Frame:
-    """The family above plus a one-person group-quarters record of a child."""
+def _raw_acs_frame_with_group_quarters_child(*, hours: bool = False) -> Frame:
+    """The family above plus a one-person group-quarters record of a child.
+
+    With ``hours``, the family's second member is a nine-year-old and ``WKHP``
+    is present: 40 for the adult, blank (out of the source universe) for both
+    children, so the native hours mapping runs and only the under-15
+    completion is needed for the staged rows.
+    """
 
     family = _raw_acs_frame()
+    family_person = family.table("person").copy()
+    if hours:
+        family_person["AGEP"] = [40, 9]
+        family_person["WKHP"] = [40.0, np.nan]
     person = pd.concat(
         [
-            family.table("person"),
+            family_person,
             pd.DataFrame(
                 {
                     "person_id": [12],
@@ -359,6 +370,7 @@ def _raw_acs_frame_with_group_quarters_child() -> Frame:
                     "SSIP": [0.0],
                     "RETP": [0.0],
                     "INTP": [0.0],
+                    **({"WKHP": [np.nan]} if hours else {}),
                 }
             ),
         ],
@@ -445,6 +457,47 @@ def test__given_the_interim_drop__then_group_quarters_children_leave_first(
         assert receipt["group_quarters_units_without_classified_adult"] == 1
         assert dropped is None
     json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_the_drop_and_the_hours_completion__then_hours_receipts_agree(
+    monkeypatch, tmp_path
+) -> None:
+    """Round-4 review regression (microcosm#1264). The staging builder's
+    coverage audit accepts native hours as complete only when the native
+    receipt's missing rows equal the under-15 completion's modeled rows
+    (``_require_default_transfer_coverage``). Dropped before the native
+    mapping, the group-quarters child is in neither count; dropped after it,
+    the native receipt counted it and the audit refused a valid staging."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            _raw_acs_frame_with_group_quarters_child(hours=True),
+            {},
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        hours_under15_policy=ACS_UNDER15_ZERO_POLICY,
+        seed=4,
+        n_estimators=2,
+        drop_group_quarters_children=True,
+    )
+
+    native = result.provenance["native_inputs"]["weekly_hours_worked_before_lsr"]
+    modeled = result.provenance["hours_modeled_completion"]
+    assert result.provenance["acs_group_quarters_children"]["persons_dropped"] == 1
+    assert native["missing_rows"] == modeled["modeled_rows"] == 1
+    assert native["observed_rows"] == 1
+    assert result.provenance["spm_independence_role"]["persons"] == 2
 
 
 def test__given_a_role_free_base__then_the_acs_spine_derives_none(

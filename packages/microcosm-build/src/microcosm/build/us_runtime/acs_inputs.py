@@ -496,7 +496,9 @@ class AcsGroupQuartersChildrenResult:
     provenance: Mapping[str, Any]
 
 
-def without_acs_group_quarters_children(frame: Frame) -> AcsGroupQuartersChildrenResult:
+def without_acs_group_quarters_children(
+    frame: Frame, *, age_column: str = "age"
+) -> AcsGroupQuartersChildrenResult:
     """Remove the ACS group-quarters records whose only person is under 15.
 
     An interim (microcosm#1263, decision d1484), not a source rule. No role
@@ -511,9 +513,12 @@ def without_acs_group_quarters_children(frame: Frame) -> AcsGroupQuartersChildre
     builder stops calling this once the certified engine scopes SPM by
     universe.
 
-    Refuses when ``TYPEHUGQ``, ``age`` or a membership column is missing or
-    unreadable, or when a group-quarters record holds other than one person.
-    Housing units are never touched, whatever their ages.
+    Refuses when ``TYPEHUGQ``, the age column or a membership column is
+    missing or unreadable, or when a group-quarters record holds other than
+    one person. Housing units are never touched, whatever their ages.
+    ``age_column`` names the age: ``AGEP`` on the raw PUMS frame, where the
+    staging applies this before any receipt is computed, or ``age`` on a
+    mapped frame.
     """
 
     if frame.schema != US_SCHEMA:
@@ -521,7 +526,7 @@ def without_acs_group_quarters_children(frame: Frame) -> AcsGroupQuartersChildre
     person = frame.table("person")
     household = frame.table("household")
     for table, columns, label in (
-        (person, ("age", "person_household_id"), "person"),
+        (person, (age_column, "person_household_id"), "person"),
         (household, ("household_id", "TYPEHUGQ"), "household"),
     ):
         missing = [column for column in columns if column not in table]
@@ -544,7 +549,7 @@ def without_acs_group_quarters_children(frame: Frame) -> AcsGroupQuartersChildre
         raise ValueError(
             "ACS group-quarters children found persons in no declared household."
         )
-    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(dtype=np.float64)
     if not np.isfinite(age).all():
         raise ValueError(
             "ACS group-quarters children require an observed age for every person."

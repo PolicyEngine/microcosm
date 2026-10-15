@@ -83,6 +83,20 @@ def test_the_receipt_counts_and_discloses_the_drop():
     assert "SEHSD-WP2020-09" in provenance["authority"]
 
 
+def test_it_reads_the_raw_pums_age_when_asked():
+    """The staging applies the drop to the raw PUMS frame, whose age is AGEP."""
+
+    frame = acs_frame(_HOUSEHOLDS, typehugq=_KINDS)
+    person = frame.table("person")
+    person["AGEP"] = person.pop("age").astype(int)
+
+    result = without_acs_group_quarters_children(frame, age_column="AGEP")
+
+    assert _person_ids(result.frame) == [1, 2, 4, 5, 6]
+    with pytest.raises(ValueError, match="'age'"):
+        without_acs_group_quarters_children(frame)
+
+
 def test_a_frame_without_group_quarters_children_is_returned_unchanged():
     frame = acs_frame([[(20, 40.0), (25, 3.0)], [(37, 15.0)]], typehugq=[1, 2])
 

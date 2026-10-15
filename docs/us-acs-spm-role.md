@@ -128,9 +128,11 @@ engine scopes SPM by that declaration (policyengine-us#9462).
   `TYPEHUGQ`, an off-domain `TYPEHUGQ`, a missing or non-finite age, and a
   group-quarters record of more than one person. It never touches a housing
   unit.
-- **Where it runs.** `build_optional_acs_multispine` applies it right after
-  mapping the native ACS inputs, before the under-15 hours completion and the
-  role derivation, so every later receipt covers exactly the staged rows.
+- **Where it runs.** `build_optional_acs_multispine` applies it to the raw
+  PUMS frame (reading `AGEP`), before the native mapping. Every receipt after
+  it covers exactly the staged rows: the native-input coverage, the under-15
+  hours completion and the role. The staging builder's coverage audit
+  requires the first two to agree.
 - **When it runs.** The staging builder drops these records exactly while the
   installed policyengine-us does not define `spm_unit_spm_universe_status`
   (`_drop_acs_group_quarters_children`). That is the ruling's flip condition,

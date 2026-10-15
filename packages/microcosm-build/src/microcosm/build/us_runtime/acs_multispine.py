@@ -131,22 +131,23 @@ def build_optional_acs_multispine(
     )
     loader_provenance = _json_ready_mapping(loader_metadata)
 
+    # Interim (microcosm#1263, d1484): a group-quarters child under 15 can
+    # have no classified SPM adult, and an engine that measures every unit
+    # refuses the whole population's SPM measurement for one. The caller
+    # decides from its engine. The drop runs on the raw PUMS frame, before
+    # the native mapping, so every receipt from here on (native coverage, the
+    # hours completion, the role) counts exactly the staged rows.
+    group_quarters_children_provenance = None
+    if drop_group_quarters_children:
+        dropped = without_acs_group_quarters_children(raw_acs, age_column="AGEP")
+        raw_acs = dropped.frame
+        group_quarters_children_provenance = _json_ready_mapping(dropped.provenance)
+        del dropped
     mapped = map_acs_native_inputs(raw_acs)
     del raw_acs
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
-    # Interim (microcosm#1263, d1484): a group-quarters child under 15 can
-    # have no classified SPM adult, and an engine that measures every unit
-    # refuses the whole population's SPM measurement for one. The caller
-    # decides from its engine; the drop runs before the hours completion and
-    # the role derivation, so each receipt covers exactly the staged rows.
-    group_quarters_children_provenance = None
-    if drop_group_quarters_children:
-        dropped = without_acs_group_quarters_children(mapped_frame)
-        mapped_frame = dropped.frame
-        group_quarters_children_provenance = _json_ready_mapping(dropped.provenance)
-        del dropped
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
