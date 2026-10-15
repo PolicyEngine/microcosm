@@ -7,10 +7,13 @@ seven age groups with 75 and over pooled, and onto Table 5 (taxpayers by region)
 region groups. This script reads a built spine at its design weights and compares the liable
 gainers in each group (gains above the annual exempt amount) with those folded margins, through the
 stage's own folding functions. A reported group rests on 30 or more distinct survey source
-households (clones and copies count once): a group below that is pooled with its neighbour (the
-next older age group, or the next region group in the stage's order; the last group with the one
-before it) until every reported group clears it, so no group can be recovered by subtracting the
-others from a total.
+households (clones and copies count once), and a group that reports gains also passes two
+dominance rules on its weighted gains, counted by source household: the largest holds at most half
+of the group's gains, and what the group holds beyond its two largest is at least 10% of the
+largest (the p% rule at p = 10). A group that fails is pooled with its neighbour (the next older
+age group, or the next region group in the stage's order; the last group with the one before it)
+until every reported group passes, so no group can be recovered by subtracting the others from a
+total, and no group's gains reveal one household's.
 """
 
 from __future__ import annotations
@@ -35,24 +38,55 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
 )
 
 MINIMUM_SOURCES = 30
+#: Dominance rules on a group's weighted gains, by source household.
+TOP_SOURCE_SHARE_MAX = 0.5
+P_PERCENT = 0.10
 
 
-def pooled_groups(group_sources: list[set]) -> list[list[int]]:
-    """Adjacent groups pooled until each pool rests on MINIMUM_SOURCES sources."""
+def passes_dominance(contributions: pd.Series) -> bool:
+    """The largest source holds at most half, and the p% rule holds."""
+
+    ordered = contributions.sort_values(ascending=False).to_numpy(float)
+    total = float(ordered.sum())
+    if total <= 0.0:
+        return False
+    largest = ordered[0]
+    second = ordered[1] if len(ordered) > 1 else 0.0
+    remainder = total - largest - second
+    return largest <= TOP_SOURCE_SHARE_MAX * total and remainder >= P_PERCENT * largest
+
+
+def pooled_groups(
+    group_sources: list[set], group_contributions: list[pd.Series] | None = None
+) -> list[list[int]]:
+    """Adjacent groups pooled until each pool passes the floor and, with gains, dominance."""
+
+    def passes(pool: list[int]) -> bool:
+        sources = set().union(*(group_sources[index] for index in pool))
+        if len(sources) < MINIMUM_SOURCES:
+            return False
+        if group_contributions is None:
+            return True
+        joined = pd.concat([group_contributions[index] for index in pool])
+        return passes_dominance(joined.groupby(level=0).sum())
 
     pools: list[list[int]] = []
     current: list[int] = []
-    sources: set = set()
-    for index, group in enumerate(group_sources):
+    for index in range(len(group_sources)):
         current.append(index)
-        sources |= group
-        if len(sources) >= MINIMUM_SOURCES:
+        if passes(current):
             pools.append(current)
-            current, sources = [], set()
+            current = []
     if current:
         if not pools:
-            raise SystemExit("The liable gainers rest on too few sources to report.")
+            raise SystemExit("The liable gainers cannot be grouped to pass the rules.")
         pools[-1].extend(current)
+    # Joining the tail can break the pool it joins; join backwards until it passes.
+    while not passes(pools[-1]):
+        if len(pools) == 1:
+            raise SystemExit("The liable gainers cannot be grouped to pass the rules.")
+        tail = pools.pop()
+        pools[-1].extend(tail)
     return pools
 
 
@@ -101,8 +135,17 @@ def main(spine_path: str, out_path: str) -> None:
 
     def report(labels, groups, target_counts, target_gains=None):
         masks = [liable & (groups == index) for index in range(len(labels))]
+        contributions = (
+            None
+            if target_gains is None
+            else [
+                pd.Series((weight * gains)[mask]).groupby(source[mask]).sum()
+                for mask in masks
+            ]
+        )
         rows = []
-        for pool in pooled_groups([set(pd.unique(source[mask])) for mask in masks]):
+        sources = [set(pd.unique(source[mask])) for mask in masks]
+        for pool in pooled_groups(sources, contributions):
             mask = np.logical_or.reduce([masks[index] for index in pool])
             target_count = float(sum(target_counts[index] for index in pool))
             achieved = float(weight[mask].sum())
@@ -126,6 +169,10 @@ def main(spine_path: str, out_path: str) -> None:
         "annual_exempt_amount": exempt,
         "weights": "design (spine household_weight)",
         "minimum_distinct_sources_per_group": MINIMUM_SOURCES,
+        "gains_dominance": {
+            "top_source_share_max": TOP_SOURCE_SHARE_MAX,
+            "p_percent": P_PERCENT,
+        },
         "age_groups": report(
             age_labels(),
             age_group,

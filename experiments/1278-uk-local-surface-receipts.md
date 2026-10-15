@@ -68,4 +68,4 @@ Under the planned change, a band's private-household target sits below the incum
 - Table 6 by age, in seven groups with 75 and over pooled;
 - Table 5 by region, in four groups (taxpayers only).
 
-A group below 30 distinct survey source households is pooled with its neighbour, so no group can be recovered by subtracting the others from a total. The script has been run on the spine built from main (`121fd4dd6`); its results are not in this receipt. The calibrated view, by region and by seat, waits for the pre-Budget build (M4).
+A group below 30 distinct survey source households is pooled with its neighbour, and so is a group whose weighted gains fail either dominance rule, counted by source household: the largest holds at most half of the group's gains, and what the group holds beyond its two largest is at least 10% of the largest (the p% rule at p = 10). No group can then be recovered by subtracting the others from a total, and no group's gains reveal one household's. The script has been run on the spine built from main (`121fd4dd6`); its results are not in this receipt. The calibrated view, by region and by seat, waits for the pre-Budget build (M4).
