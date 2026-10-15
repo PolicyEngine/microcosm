@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "094fdca9928a6686e4d58f73d40420e71aac6174a732ca03fc065958d41b2627"
+    "281dc0273fbb7c6f563fd91eb50f1ff1ba106bdb67e9f94b26765bf5c66a2cc1"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "b0bd495444ec9e9c4e0c1281bf0efe1a52ddfa0d99e27b27f2a840ddbf7fb6a4"
+    "81b1ae0dd238aa751d8d965f9ce468f5b3693cdad9fc52677ad89fc1b3b2934c"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e2c05d5185e48881200792b0c1618be173a71762498b90d742f670b5ee67ba07"
+    "5fe8f8b057fb55910e18ef9a49d2167ab36ab5d29111f1616472fd5c973b0165"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -450,6 +450,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
@@ -542,6 +543,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
         "terminal",
@@ -863,6 +865,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
             "uk_target_surface",
@@ -889,10 +892,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "d8e43e2da482d28f8ed8e25115de6767390453f4d7a5f534c321dd236554acaa"
+            "11378b3379da0e59f3a6e22af0f51a81906ea6b13603289a62975e61f1b41c30"
         ),
         "policy_sha256": (
-            "9780a4a64e7a68dbe58e9b882c83be137c06cfde0ca6df13d527d2f6b8be8250"
+            "2b0682d4da1d56c1ca43c4a2143cd588e5deac7f8f61fe32c92bce2f4e72567e"
         ),
     },
 }

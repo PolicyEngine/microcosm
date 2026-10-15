@@ -974,8 +974,8 @@ class TestBatteryRegressions:
         # three evidence-backed local arms are named gaps below.
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
-        # amount.
-        assert len(passed) == 20
+        # amount, and the release-frame council-tax band check (#1278).
+        assert len(passed) == 21
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -2129,6 +2129,25 @@ class TestCouncilTaxBandDomain:
             nation: tuple(bands)
             for nation, bands in parameters["domains_by_nation"].items()
         } == dict(UK_COUNCIL_TAX_BANDS_BY_NATION)
+
+    def test_the_release_frame_instance_declares_the_same_check(self) -> None:
+        # The spine entry stops at the transferred boundary; the terminal one
+        # checks the frame the release ships, after any later step that writes
+        # the band (microcosm#1278 review). The release cut owns it.
+        from microcosm.build.uk_runtime.calibration_run import (
+            UK_NATIONAL_GATE_SCOPE,
+            UK_SPINE_GATE_SCOPE,
+        )
+
+        entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+        spine = entries["uk_council_tax_band_domain"]
+        terminal = entries["uk_council_tax_band_domain_terminal"]
+        assert (spine.gate, spine.phase) == ("enum_domain", "transferred")
+        assert (terminal.gate, terminal.phase) == ("enum_domain", "terminal")
+        assert terminal.criticality == "release_blocking"
+        assert dict(terminal.parameters) == dict(spine.parameters)
+        assert spine.id in UK_SPINE_GATE_SCOPE
+        assert terminal.id in UK_NATIONAL_GATE_SCOPE
 
     def test_each_nation_holds_its_own_bands(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain

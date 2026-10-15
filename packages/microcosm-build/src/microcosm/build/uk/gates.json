@@ -1225,6 +1225,55 @@
       "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
     },
     {
+      "id": "uk_council_tax_band_domain_terminal",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "council_tax_band"
+        ],
+        "partition_column": "region",
+        "domains_by_nation": {
+          "ENGLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "WALES": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I"
+          ],
+          "SCOTLAND": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "NORTHERN_IRELAND": [
+            "D"
+          ]
+        }
+      },
+      "notes": "The nation check of uk_council_tax_band_domain, on the frame the release ships (microcosm#1278 review). The spine entry stops at the transferred boundary, so a later step that writes council_tax_band, such as a full build's band redraw after geography derivation, is checked only here. Its parameters must equal the spine entry's."
+    },
+    {
       "id": "uk_calibration_reference_coverage",
       "gate": "calibration_reference_coverage",
       "phase": "terminal",
