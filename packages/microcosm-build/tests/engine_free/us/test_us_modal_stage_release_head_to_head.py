@@ -122,9 +122,9 @@ def test_d844_plan_validates_with_digest_pinned_loader_filenames() -> None:
     )
     assert set(tool.stages) == {"score"}
     assert set(tool.inputs) == set(tool.stages["score"].required_inputs) == set(INPUTS)
-    assert plan.options == {"maximum_microsim_batch_size": 2000, "workers": 20}
+    assert plan.options == {"maximum_microsim_batch_size": 2000, "workers": 16}
     assert plan.nonpreemptible is True
-    assert plan.max_wall_seconds == 15_900
+    assert plan.max_wall_seconds == 19_200
     for role, (filename, digest) in INPUTS.items():
         ref = plan.inputs[role]
         assert (ref.kind, ref.filename, ref.sha256) == ("volume", filename, digest)
@@ -155,7 +155,7 @@ def test_modal_argv_equals_the_local_d844_command_apart_from_paths_and_workers(
             expected[index + 1] = plan_lib.input_local_path("/work", ref)
         elif item == "--out-prefix":
             expected[index + 1] = "/work/state/h2h"
-    assert argv[3:] == [*expected, "--workers", "20"]
+    assert argv[3:] == [*expected, "--workers", "16"]
     local_args = vars(scorer_parser.parse(LOCAL_ARGV))
     modal_args = vars(scorer_parser.parse(argv[3:]))
     for flag in (*PATH_FLAGS, "--out-prefix"):
@@ -163,7 +163,7 @@ def test_modal_argv_equals_the_local_d844_command_apart_from_paths_and_workers(
         assert isinstance(local_args.pop(name), Path)
         assert isinstance(modal_args.pop(name), Path)
     assert local_args.pop("workers") == 1
-    assert modal_args.pop("workers") == 20
+    assert modal_args.pop("workers") == 16
     assert local_args == modal_args
     assert modal_args["age_targets"] is False
     assert modal_args["allow_unaged_dollar_targets"] is True
@@ -238,8 +238,9 @@ def test_head_to_head_timeout_covers_the_slice_estimate_and_cost_cap() -> None:
     plan = _plan()
     resources = plan_lib.HEAD_TO_HEAD
     assert plan.resources is resources
-    assert (resources.cpu, resources.cpu_limit, resources.memory_gib) == (20, 20, 224)
-    assert resources.timeout_s == 17_100
+    assert (resources.cpu, resources.cpu_limit, resources.memory_gib) == (16, 16, 192)
+    assert resources.memory_limit_mib == resources.memory_mib == 192 * 1024
+    assert resources.timeout_s == 20_400
     slice_wall_seconds = 1030 * 4.7 * 60 / plan.options["workers"]
     # At least ten minutes remain for initialization before the tool budget;
     # the container additionally reserves runner time and timeout margin.
@@ -248,14 +249,24 @@ def test_head_to_head_timeout_covers_the_slice_estimate_and_cost_cap() -> None:
         plan.max_wall_seconds + plan.stage_spec.runner_overhead_seconds
     )
     per_second = (
-        20 * plan_lib.CPU_USD_PER_CORE_SECOND + 224 * plan_lib.MEMORY_USD_PER_GIB_SECOND
+        resources.cpu * plan_lib.CPU_USD_PER_CORE_SECOND
+        + resources.memory_gib * plan_lib.MEMORY_USD_PER_GIB_SECOND
     )
-    ceiling = round(per_second * 17_100 * 3, 2)
-    assert ceiling == pytest.approx(38.95, abs=0.005)
+    timeout_cost = (
+        per_second * resources.timeout_s * plan_lib.NONPREEMPTIBLE_PRICE_MULTIPLIER
+    )
+    assert timeout_cost < plan_lib.HEAD_TO_HEAD_COST_CAP_USD
+    ceiling = round(timeout_cost, 2)
+    assert ceiling == pytest.approx(38.91, abs=0.005)
     assert ceiling <= plan_lib.HEAD_TO_HEAD_COST_CAP_USD == 40
-    assert resources.estimated_usd(resources.timeout_s, 3) == ceiling
+    assert (
+        resources.estimated_usd(resources.timeout_s, plan.price_multiplier) == ceiling
+    )
     assert plan_lib.estimated_usd_at_timeout(plan) == ceiling
-    assert plan_lib.summarize(plan)["estimated_usd_at_timeout"] == ceiling
+    summary = plan_lib.summarize(plan)
+    assert summary["estimated_usd_at_timeout"] == ceiling
+    assert summary["estimated_usd_at_max_wall"] == pytest.approx(38.34, abs=0.005)
+    assert summary["resources"]["memory_limit_gib"] == resources.memory_gib
 
 
 def test_head_to_head_registers_its_modal_functions_without_retries(
@@ -266,9 +277,9 @@ def test_head_to_head_registers_its_modal_functions_without_retries(
     for nonpreemptible in (False, True):
         options = app.RUNNERS[(resources.name, nonpreemptible)].modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
-            (20, 20),
-            224 * 1024,
-            17_100,
+            (16, 16),
+            (192 * 1024, 192 * 1024),
+            20_400,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
@@ -282,3 +293,14 @@ def test_head_to_head_registers_its_modal_functions_without_retries(
     data = _plan_data()
     assert runner(data) == {"ok": True}
     assert calls == [data]
+
+
+def test_a_memory_limit_below_the_request_is_refused() -> None:
+    with pytest.raises(ValueError, match="memory limit .* below the request"):
+        plan_lib.Resources(
+            "x", cpu=1, memory_mib=1024, timeout_s=60, memory_limit_mib=512
+        )
+    assert plan_lib.HEAD_TO_HEAD.modal_memory == (192 * 1024, 192 * 1024)
+    for resources in (plan_lib.CHECK, plan_lib.HEAVY, plan_lib.LIGHT, plan_lib.BASE):
+        assert resources.modal_memory == resources.memory_mib
+        assert resources.memory_limit_mib is None

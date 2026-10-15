@@ -22,7 +22,7 @@
     }
   },
   "options": {
-    "workers": 20,
+    "workers": 16,
     "maximum_microsim_batch_size": 2000
   },
   "env": {
@@ -33,6 +33,6 @@
     "NUMEXPR_NUM_THREADS": "1",
     "BLIS_NUM_THREADS": "1"
   },
-  "max_wall_seconds": 15900,
+  "max_wall_seconds": 19200,
   "nonpreemptible": true
 }

@@ -27,6 +27,12 @@ Two files do the work:
   and, for the scorer,
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_release_head_to_head.py`.
 
+The actual subprocess parser probe is covered by
+`packages/microcosm-build/tests/engine_contract/us/test_us_modal_stage_release_head_to_head.py`
+in `tools/ci_test_plan.py`'s `engine-contract-us` group. Importing the scorer
+loads the US engine through a sibling tool, so this regression runs in US
+engine CI.
+
 Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes a
 release directory onto the runs volume. Publication stays the human step in
@@ -163,19 +169,21 @@ local wall times in this table understate Modal's wall and cost.
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
-| Route A head-to-head (`score`) | unmeasured aggregate peak; about 80 core-hours estimated locally | head-to-head | 20 cores (limit 20), 224 GiB, 4 h 45 min timeout | $38.95 non-preemptible at the timeout and request |
+| Route A head-to-head (`score`) | unmeasured aggregate peak; about 80 core-hours estimated locally | head-to-head | 16 cores (limit 16), 192 GiB (limit 192), 5 h 40 min timeout | $38.91 non-preemptible compute through the timeout |
 
 The prices are Modal's list prices for standard compute, read from
-modal.com/pricing on 22 September 2026 and unchanged on 9 October:
+modal.com/pricing on 22 September 2026 and unchanged on 10 October:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
 higher of the request and actual use (modal.com/docs/guide/resources). The
 heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
 costs about $9.70 at the request; CPU or memory used above the request
 bills above that. With `"nonpreemptible": true` every figure is three times
 higher: about $3.63 an hour for the heavy class. The base and head-to-head
-classes set a CPU limit equal to their request; the others are request-only for CPU,
-and every class is request-only for memory, so a stage that used more cores
-or more memory than its request would be billed for them. The engine pass in
+classes set a CPU limit equal to their request; the others are request-only for CPU.
+The head-to-head class also sets a memory limit equal to its request. Other
+classes retain request-only memory because changing those workloads is outside
+the head-to-head trial's sizing change; their memory use above the request is
+billed. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
 image builds. The base and head-to-head classes are sized in their sections below.
@@ -1038,10 +1046,10 @@ pin is immutable: to pick up a later scorer change, update `source.commit`,
 then repeat the local validation and the Modal check.
 
 The stage runs the local comparison's argv with staged paths and
-`--workers 20` added:
+`--workers 16` added:
 
 ```text
---incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 20
+--incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 16
 ```
 
 Only `workers`, `maximum_microsim_batch_size` and `worker_max_slices` are
@@ -1055,8 +1063,8 @@ the scorer uses the same defaults as the sequential run: `False` and
 `True`, respectively. The crosswalk and candidate pool/attestation flags
 are also omitted; the scorer chooses its normal bundled crosswalk.
 Changing this scoring yardstick requires a reviewed registration change.
-The plan sets the five native numerical thread counts to `1`, so twenty
-spawned workers do not each start a twenty-thread BLAS/OpenMP pool.
+The plan sets the five native numerical thread counts to `1`, so sixteen
+spawned workers do not each start a sixteen-thread BLAS/OpenMP pool.
 That is an execution choice; the engine-free argv test does not prove
 numerical parity across platforms or thread counts.
 
@@ -1068,39 +1076,49 @@ and artifact identity. Do not upload either H5 under an extensionless hash.
 The incumbent is 826,917,837 bytes; the ledger is 164,603,204 bytes. The
 candidate's size was not supplied; its digest is the byte identity.
 
-**Resources and ceiling.** Class `head-to-head` requests 20 physical
-cores with CPU limit 20 and 224 GiB. The d844 plan uses non-preemptible
-placement; both class runners have `retries=0`. At twenty workers,
-1,030 slices × 4.7 minutes / 20 is 14,523 seconds (about 4 hours 2 minutes).
-The tool budget is 15,900 seconds (4 hours 25 minutes), with 1,377 seconds
-for initialization and compute margin. The 17,100-second timeout
-(4 hours 45 minutes) adds the normal 900-second runner reserve and
-300 seconds for staging. Slow staging reduces the tool's available time;
-the runner preserves the reserve for logs, hashes, mirroring and receipt.
-The budget estimate including the reserve is $38.27.
+**Resources and ceiling.** For the first full attempt, class `head-to-head`
+requests 16 physical cores with CPU limit 16 and 192 GiB with memory limit
+192 GiB. The d844 plan uses non-preemptible placement; both class runners
+have `retries=0`. At sixteen workers, 1,030 slices × 4.7 minutes / 16 is
+18,153.75 seconds (about 5 hours 3 minutes). The tool budget is 19,200
+seconds (5 hours 20 minutes), leaving about 1,046 seconds for initialization
+and compute margin. The 20,400-second timeout (5 hours 40 minutes) adds
+the normal 900-second runner reserve and 300 seconds for staging. Slow
+staging reduces the tool's available time; the runner preserves the reserve
+for logs, hashes, mirroring and receipt. The budget estimate including the
+reserve is $38.34.
 
 Using the existing runbook formula and [Modal's list prices](https://modal.com/pricing)
-(checked 9 October 2026), the request held through the timeout costs
-`(20 × $0.0000131 + 224 × $0.00000222) × 17,100 × 3 = $38.95`.
-**The per-attempt ceiling at the request is below $40.** Memory has no hard
-limit; use above 224 GiB bills above this estimate. Startup/image work,
-the check, storage, timeout overshoot and another attempt are outside this
-execution ceiling, as for the base stage. A 256 GiB class at this timeout
-would cost **$42.60, above $40**; use the registered 224 GiB class for this
-plan. A possible smaller fallback is 16 workers, 16 CPUs and 192 GiB with
-a 20,700-second timeout (5 hours 45 minutes), listing at $39.49; that
-requires a reviewed class and matching plan change before use.
+(checked 10 October 2026), CPU and memory compute through the timeout costs
+`(16 × $0.0000131 + 192 × $0.00000222) × 20,400 × 3 = $38.913408`,
+or **$38.91, below $40**. The CPU and memory limits equal their requests,
+so memory over-use OOM-kills the container instead of increasing the billed
+memory allocation. The function timeout covers staging, tool initialization,
+scoring and runner cleanup. Startup/image work outside that interval, the
+check, storage, timeout-enforcement overshoot and another attempt remain
+outside this compute ceiling; it is not a cap on total Modal account spend.
 
 The independent review's 9–10 GiB per worker is unmeasured. Each worker
 holds a full copy of the repaired frame, and the parent retains the
-original and repaired frames. The 224 GiB request allows 200 GiB for
-workers plus 24 GiB for the parent, runner and spawn serialization, with
-limited spare capacity. This is an estimate, not a measured aggregate
+original and repaired frames. The 192 GiB limit allows an estimated 160 GiB
+for workers plus 32 GiB for the parent, runner and spawn serialization.
+This is an estimate, not a measured aggregate
 peak. The receipt's `peak_rss_bytes` is a child-process peak from
-`RUSAGE_CHILDREN`, not the sum of twenty workers; use Modal's container
-memory measurements to assess this sizing after the run. The stage writes
+`RUSAGE_CHILDREN`, not the sum of sixteen workers; profile representative
+2,000-household slices of the full candidate and use Modal's container
+memory measurements to assess this sizing after the run. Fewer workers
+reduce aggregate memory exposure but cannot prevent one worker exceeding
+the scorer's 20 GiB RSS guard. The stage writes
 scorecards and logs, mirrors `h2h.json` and `h2h.md` first, and has no
 checkpoint/resume state or additional disk/write-probe requirement.
+
+A worker death or RSS-guard failure leaves a failed scorer exit. If the
+runner survives, it writes a **FAILED receipt and logs**; the scorer writes
+scorecards only after the comparison finishes. A whole-container OOM can
+leave a partial bill with **no final receipt or mirrored output**, because
+receipt creation and mirroring happen after the tool exits. Inspect the
+container logs and measurements when no receipt appears; do not assume the
+absence of a receipt means the attempt was free.
 
 Stage the inputs in the `policyengine` workspace. Set these variables to
 the existing local files; the ledger path is the one used by Route A's
@@ -1112,7 +1130,7 @@ that `put` and let check mode verify its digest; do not overwrite it.
 ```bash
 INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
 CANDIDATE_H5=/path/to/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/populace_us_2024.h5
-LEDGER_FACTS=$HOME/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl
+LEDGER_FACTS=/path/to/consumer_facts_us_c5e5bf8.jsonl
 python3 tools/modal_us_stage_plan.py upload-commands \
   docs/us-modal-stage-route-a-h2h-plan.json \
   incumbent_h5="$INCUMBENT_H5" candidate_h5="$CANDIDATE_H5" ledger_facts="$LEDGER_FACTS"
