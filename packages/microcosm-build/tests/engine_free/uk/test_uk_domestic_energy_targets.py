@@ -317,3 +317,22 @@ def test_both_appliers_are_registered():
         UK_UPRATING_APPLIERS[UK_GAS_METER_SHARE_INDEX_CONCEPT]
         is align_census_households_by_gas_meter_share
     )
+
+
+def test_a_household_paying_nothing_needs_no_price_region():
+    """No spend, no kWh, whatever the region (microcosm#1207 review round 1).
+
+    policyengine-uk's region enum carries UNKNOWN, which no QEP price region
+    covers: a household there that pays nothing still reads zero, and one
+    that pays is refused rather than priced somewhere arbitrary.
+    """
+
+    prices = household_energy_prices()
+    kwh = household_energy_kwh(
+        [0.0, 900.0], [0.0, 0.0], region=["UNKNOWN", "LONDON"], prices=prices
+    )
+    assert kwh[ELECTRICITY_KWH][0] == 0.0
+    assert kwh[ELECTRICITY_KWH][1] > 0.0
+    assert kwh[GAS_KWH].tolist() == [0.0, 0.0]
+    with pytest.raises(KeyError, match="UNKNOWN"):
+        household_energy_kwh([900.0], [0.0], region=["UNKNOWN"], prices=prices)
