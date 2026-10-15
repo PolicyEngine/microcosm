@@ -24,6 +24,14 @@ Microcosm executes. The direct API performs steps 2 and 3 in memory. A saved
 schema lets another process repeat step 3 without importing the original graph
 construction code.
 
+That process needs none of the build runtime either. `microcosm.graph.orrery`
+and the modules it imports use only the standard library, and `microcosm.graph`
+loads its runtime exports (the executor, content store, kernels, codecs and
+evidence capture, which need numpy, pandas and microcosm-frame) on first
+access. A test runs the projection, with an execution overlay, and the command
+in an interpreter that refuses to import numpy, pandas, microcosm-frame or the
+store. The package's declared dependencies are unchanged.
+
 A kernel is the implementation of one graph operation, with a declared input,
 output, numerical and execution contract.
 
