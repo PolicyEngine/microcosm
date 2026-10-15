@@ -7,9 +7,11 @@ complete: every validator in the schema-8 model tree must be listed.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from collections.abc import Callable
 from functools import cache
+from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -24,8 +26,15 @@ from test_support.microcosm_diagnostics.payloads import (
     schema_8_payload,
     uk_schema_8_payload,
 )
+from test_support.paths import paths_for
 
+_TEST_PATHS = paths_for("microcosm-diagnostics")
 DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+#: The documented location consumers such as the collector read.
+PUBLISHED_SCHEMA_PATH = (
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/"
+    "calibration_diagnostics.v8.schema.json"
+)
 
 DocumentBuilder = Callable[[], object]
 DocumentMutation = Callable[[dict], None]
@@ -617,3 +626,60 @@ def test_rendered_schema_is_deterministic_json_text() -> None:
         "title",
         "description",
     ]
+
+
+def _load_generator_tool():
+    path = (
+        _TEST_PATHS.repository
+        / "tools"
+        / "generate_calibration_diagnostics_json_schema.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "generate_calibration_diagnostics_json_schema", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_committed_schema_matches_the_generated_schema() -> None:
+    committed = diagnostics.committed_calibration_diagnostics_v8_json_schema_path()
+
+    assert committed.read_bytes() == (
+        diagnostics.render_calibration_diagnostics_v8_json_schema().encode("utf-8")
+    )
+    assert diagnostics.load_calibration_diagnostics_v8_json_schema() == (
+        diagnostics.calibration_diagnostics_v8_json_schema()
+    )
+    diagnostics.assert_calibration_diagnostics_v8_json_schema_current()
+
+
+def test_committed_schema_lives_at_its_documented_path() -> None:
+    committed = diagnostics.committed_calibration_diagnostics_v8_json_schema_path()
+    package_readme = (_TEST_PATHS.package / "README.md").read_text(encoding="utf-8")
+
+    assert committed.resolve() == (
+        (_TEST_PATHS.repository / PUBLISHED_SCHEMA_PATH).resolve()
+    )
+    assert committed.name == diagnostics.CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID
+    assert f"`{PUBLISHED_SCHEMA_PATH}`" in package_readme
+
+
+def test_generator_tool_writes_and_checks_the_committed_schema(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_generator_tool()
+    committed = diagnostics.committed_calibration_diagnostics_v8_json_schema_path()
+    written = tmp_path / committed.name
+
+    assert tool.main(["--check"]) == 0
+    assert tool.main(["--out", str(written)]) == 0
+    assert written.read_bytes() == committed.read_bytes()
+
+    written.write_text("{}\n", encoding="utf-8")
+    assert tool.main(["--check", "--out", str(written)]) == 1
+    assert "regenerate it with" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="differs from the schema the models generate"):
+        diagnostics.assert_calibration_diagnostics_v8_json_schema_current(written)

@@ -4,10 +4,15 @@ from microcosm.diagnostics.json_schema import (
     CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS,
     CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID,
     CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE,
+    CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_RESOURCE,
     JSON_SCHEMA_DRAFT_2020_12,
     JsonSchemaGap,
+    assert_calibration_diagnostics_v8_json_schema_current,
     calibration_diagnostics_v8_json_schema,
+    committed_calibration_diagnostics_v8_json_schema_path,
+    load_calibration_diagnostics_v8_json_schema,
     render_calibration_diagnostics_v8_json_schema,
+    write_calibration_diagnostics_v8_json_schema,
 )
 from microcosm.diagnostics.schema import (
     CALIBRATION_DIAGNOSTICS_ADAPTER,
@@ -48,6 +53,7 @@ __all__ = [
     "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS",
     "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID",
     "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE",
+    "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_RESOURCE",
     "JSON_SCHEMA_DRAFT_2020_12",
     "SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS",
     "CalibrationDiagnostics",
@@ -72,12 +78,16 @@ __all__ = [
     "UKWeakestFamily",
     "UKWeightSummary",
     "UKZeroWeightStratum",
+    "assert_calibration_diagnostics_v8_json_schema_current",
     "calibration_diagnostics_json_schema",
     "calibration_diagnostics_v8_json_schema",
+    "committed_calibration_diagnostics_v8_json_schema_path",
     "failed_diagnostics_outcome",
+    "load_calibration_diagnostics_v8_json_schema",
     "parse_calibration_diagnostics",
     "render_calibration_diagnostics_v8_json_schema",
     "write_calibration_diagnostics",
+    "write_calibration_diagnostics_v8_json_schema",
 ]
 
 __version__ = "0.1.0"

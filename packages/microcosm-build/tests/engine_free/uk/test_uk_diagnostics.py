@@ -37,6 +37,10 @@ from microcosm.diagnostics import (
     DiagnosticsWriteSuccess,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
@@ -862,6 +866,37 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
     assert invalid.error_code == "validation_error"
     assert not path.exists()
     assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    ("with_skipped", "with_consumption"),
+    [
+        pytest.param(False, False, id="scored-targets-only"),
+        pytest.param(True, True, id="skipped-target-and-consumption-drift"),
+    ],
+)
+def test_written_uk_diagnostics_match_the_published_json_schema(
+    tmp_path: Path,
+    with_skipped: bool,
+    with_consumption: bool,
+) -> None:
+    result, frame, registry, geography = _diagnostics_case(
+        with_skipped=with_skipped,
+        with_consumption=with_consumption,
+    )
+    path = tmp_path / "calibration_diagnostics.json"
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build={"release_id": "fixture"},
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteSuccess)
+    assert published_json_schema_errors(load_strict_json(path.read_bytes())) == []
 
 
 @pytest.mark.parametrize(
