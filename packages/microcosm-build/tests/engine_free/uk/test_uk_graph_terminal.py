@@ -83,7 +83,9 @@ def test_local_export_drops_the_national_boundarys_reviewed_columns():
         for column in columns:
             table[column] = 0.0
     exported = _tables(frame)
-    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    descriptor = describe_uk_export(
+        frame, bindings={"target_scope": "all"}, solve_year=2025
+    )
     for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
         assert not set(columns) & set(exported[entity].columns)
         assert not set(columns) & set(descriptor["tables"][entity]["columns"])
