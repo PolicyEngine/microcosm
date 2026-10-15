@@ -1,11 +1,11 @@
 {
- "compiled_count": 1283,
+ "compiled_count": 1292,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 45,
-  "ledger_only": 691
+  "ledger_only": 700
  },
- "difference_count": 1302,
+ "difference_count": 1311,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -382,6 +382,69 @@
    "kind": "ledger_only",
    "ledger_value": 1347434943.01459,
    "name": "dft.bus_fare_receipts.london",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 163902020.46597,
+   "name": "dft.bus_journeys.east_midlands",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 161939341.50538,
+   "name": "dft.bus_journeys.east_of_england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1821485000.0,
+   "name": "dft.bus_journeys.london",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 139215323.89253,
+   "name": "dft.bus_journeys.north_east",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 339352717.50098,
+   "name": "dft.bus_journeys.north_west",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 322147459.66648,
+   "name": "dft.bus_journeys.south_east",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 192416317.98334,
+   "name": "dft.bus_journeys.south_west",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295332910.62634,
+   "name": "dft.bus_journeys.west_midlands",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 236203795.62029,
+   "name": "dft.bus_journeys.yorkshire_and_the_humber",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

@@ -412,13 +412,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     # add 25 by_area targets and retire eight, and the City's band A is no
     # longer a separate suppression. microcosm#1123 adds the higher rate
     # taxpayer cells (Scilly's is signed under the SPI coverage gap).
-    # microcosm#1240 adds the three high_value_homes local-authority legs.
-    assert len(rows) == 45
-    assert sum(len(row["area_ids"]) for row in rows) == 85
+    # microcosm#1240 adds the three high_value_homes local-authority legs, and
+    # microcosm#1207 the three DESNZ energy rows.
+    assert len(rows) == 48
+    assert sum(len(row["area_ids"]) for row in rows) == 91
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 40, "E09000001": 45}
+    } == {"E06000053": 43, "E09000001": 48}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do

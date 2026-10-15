@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-735820c-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1303,
-  "contract_target_count": 348,
-  "active_reference_count": 1283,
+  "candidate_count": 1312,
+  "contract_target_count": 357,
+  "active_reference_count": 1292,
   "status_counts": {
-    "active": 1283,
+    "active": 1292,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 15
   },
@@ -2003,6 +2003,42 @@
     "dft.bus_net_support.uk": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "dft.bus_journeys.london": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dft.bus_journeys.north_east": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dft.bus_journeys.north_west": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dft.bus_journeys.yorkshire_and_the_humber": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dft.bus_journeys.east_midlands": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dft.bus_journeys.west_midlands": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dft.bus_journeys.east_of_england": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dft.bus_journeys.south_east": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dft.bus_journeys.south_west": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
     },
     "obr.fuel_duties_cars": {
       "geography_level": "country",
@@ -6824,6 +6860,78 @@
       "name": "dft.bus_net_support.london",
       "from": "2024",
       "to": "2025"
+    },
+    {
+      "name": "dft.bus_journeys.london",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "1821485000.0"
+    },
+    {
+      "name": "dft.bus_journeys.north_east",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "139215323.89253"
+    },
+    {
+      "name": "dft.bus_journeys.north_west",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "339352717.50098"
+    },
+    {
+      "name": "dft.bus_journeys.yorkshire_and_the_humber",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "236203795.62029"
+    },
+    {
+      "name": "dft.bus_journeys.east_midlands",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "163902020.46597"
+    },
+    {
+      "name": "dft.bus_journeys.west_midlands",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "295332910.62634"
+    },
+    {
+      "name": "dft.bus_journeys.east_of_england",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "161939341.50538"
+    },
+    {
+      "name": "dft.bus_journeys.south_east",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "322147459.66648"
+    },
+    {
+      "name": "dft.bus_journeys.south_west",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.bus01.stage_pricing_year",
+      "factor": "1",
+      "value_before_uprating": "192416317.98334"
     },
     {
       "name": "obr.fuel_duties_cars",
@@ -19111,6 +19219,186 @@
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
           "signed_rationale": "BUS05i publishes no UK total and no England-to-UK uplift is declared. Net support binds instead as four country legs whose scopes differ: DfT BUS05bi net support (England, operators' view), Scottish Transport Statistics all government support (Scotland), StatsWales revenue outturn gross expenditure on concessionary fares and support to operators through local authorities only (Wales: no operator-side series and no Welsh Government grants outside the outturn), and the NITHC accounts' Public Service Obligation plus concessionary compensation as one bus-plus-rail cell excluding GBP 53.2m of other revenue funding (Northern Ireland). The legs are bound on their own terms; they are not a UK total under another name."
+        }
+      ]
+    },
+    "dft.bus_journeys.london": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.london",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 1821485000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_56195cb6235aeccc8b72cb21",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "1821485000.0"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.north_east": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.north_east",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 139215323.89253,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f729e9d184fd2b42da69c7e8",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "139215323.89253"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.north_west": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.north_west",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 339352717.50098,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2141b3580d89d6e580c065b9",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "339352717.50098"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.yorkshire_and_the_humber": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.yorkshire_and_the_humber",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 236203795.62029,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_914b4aa7a302ca75184bc55f",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "236203795.62029"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.east_midlands": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.east_midlands",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 163902020.46597,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_34838f992e9c421d7f612e60",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "163902020.46597"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.west_midlands": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.west_midlands",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 295332910.62634,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd4192304b8225e79d6847cb",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "295332910.62634"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.east_of_england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.east_of_england",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 161939341.50538,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_df157c32fd1f43f1f188a55a",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "161939341.50538"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.south_east": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.south_east",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 322147459.66648,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9406a1b16c75ba1b900d3d0",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "322147459.66648"
+          }
+        }
+      ]
+    },
+    "dft.bus_journeys.south_west": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_journeys.south_west",
+          "status": "active",
+          "matched_fact_count_overall": 21,
+          "matched_fact_count_at_or_before_period": 21,
+          "resolved_period": 2025,
+          "resolved_value": 192416317.98334,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f01a441c6130ef2fd5e4f0c0",
+          "uprating": {
+            "index": "dft.bus01.stage_pricing_year",
+            "factor": "1",
+            "value_before_uprating": "192416317.98334"
+          }
         }
       ]
     },

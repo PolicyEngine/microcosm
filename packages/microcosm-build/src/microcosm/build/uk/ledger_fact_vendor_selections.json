@@ -2,7 +2,7 @@
   "schema_version": 1,
   "country": "uk",
   "kind": "uk_ledger_fact_vendor_selections",
-  "description": "Which pinned Chronicle facts are vendored into UK build resources, resource by resource. Selectors use the target-reference selector vocabulary and are matched by the same function; tools/vendor_uk_ledger_facts.py regenerates every listed resource from the national feed pin and refuses a selection whose match count differs from expected_row_count. Consumers declare their own arithmetic on the vendored rows; no value in a vendored resource is derived. consumers lists the modules that read the resource today (a test checks each names the file); planned_consumers lists the spine stages and gate policies that will read it once the #890 spine half lands.",
+  "description": "Which pinned Chronicle facts are vendored into UK build resources, resource by resource. Selectors use the target-reference selector vocabulary and are matched by the same function; tools/vendor_uk_ledger_facts.py regenerates every listed resource from the national feed pin and refuses a selection whose match count differs from expected_row_count. Consumers declare their own arithmetic on the vendored rows; no value in a vendored resource is derived. consumers lists the modules that read the resource today (a test checks each names the file); planned_consumers lists the stages and gate policies meant to read it.",
   "resources": [
     {
       "resource": "dft_bus_value_anchors.json",
@@ -189,7 +189,7 @@
     },
     {
       "resource": "ofgem_price_cap_facts.json",
-      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter). Since chronicle #271 the stage prices at the DESNZ QEP average prices paid (qep_energy_prices.json); the cap levels stay vendored as the regional maximum that the QEP-versus-cap lockstep test and the receipts compare against.",
+      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. The LCFS energy pricing read these levels until chronicle #271 (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge); since then it prices at the DESNZ QEP average prices paid (qep_energy_prices.json), and the cap levels stay vendored for validation only, as the regional maximum the QEP-versus-cap lockstep test compares against.",
       "consumers": [],
       "planned_consumers": [
         "uk_runtime.energy_pricing"
@@ -502,7 +502,7 @@
     },
     {
       "resource": "desnz_domestic_energy_facts.json",
-      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to over FY2024-25), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters).",
+      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to, summed over the four quarters of calendar 2024; microcosm#1113), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters; and the Great Britain totals that level the local-authority energy rows, microcosm#1207).",
       "consumers": [
         "uk_runtime.energy_pricing"
       ],
