@@ -31,7 +31,7 @@ bindings).
 - **One registry.** `microcosm.data.registry` names every file any consumer
   serves, and policyengine.py's bundle mirrors it.
 - **Publishing refuses** any release that does not conform, from 2026-11-06.
-- **Retired:** policyengine-uk-data, the Build P patch lanes, the second US
+- **Retired:** the incumbent UK data package (uk-data), the Build P patch lanes, the second US
   calibration driver and staging version 1.
 
 The plan that gets there, with owners and dates, is the 2026-10-09 systems
@@ -50,7 +50,7 @@ Read on 2026-10-15 from policyengine.py's bundle 6.4.3
 | US national (policyengine.py and `latest.json`) | `populace-us-2024-spm-20260915` | A source enrichment of a parent release (its manifest declares `release_type: source_enrichment` and ships the parent's manifests); the 10-09 report traces the parent to Build P | No: a separate source-enrichment contract, no certification, no Logbook row |
 | US state and district (policyengine.py `regional_release_manifest_uri`) | `populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z` | `tools/build_us_acs_local_release.py` | No: not in the registry, no staging, no Logbook row |
 | US candidate (tag only) | `populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z` (Route A) | `tools/route_a/` then the fiscal-refresh tool | No: 16 gates in an ad hoc `gates` dict, staging `{"enabled": false, "reason": "--no-staging"}`, no certification |
-| UK, PolicyEngine app | policyengine-uk-data 1.58.1, `enhanced_frs_2024_25` | policyengine-uk-data | Not a Microcosm release; certified for policyengine-uk 2.130.1 on the `legacy_compatible_model_package` basis |
+| UK, PolicyEngine app | uk-data 1.58.1, `enhanced_frs_2024_25` | the incumbent UK data package (uk-data) | Not a Microcosm release; certified for policyengine-uk 2.130.1 on the `legacy_compatible_model_package` basis |
 | UK, `microcosm.data.resolve("uk")` | `populace_uk_2023.h5` (the June 2023 file) | none current | Grandfathered id |
 | UK national line | `latest-national.json` names `microcosm-uk-2024-25-national` at a per-cut tag | `microcosm-build-uk` on `run_graph`, then `tools/certify_uk_release_cut.py` and `tools/assemble_uk_release_dir.py` | The assembler refuses to write a cut that fails today's C1, and line promotion runs C5's guards. It lacks what no producer writes yet: C1's declared identity, C3's run-outcome binding and C4's Logbook binding |
 
@@ -291,7 +291,7 @@ model package or `policyengine-core`:
 microcosm.data's loader and policyengine.py's bundle certification both
 implement this rule. policyengine.py's `legacy_compatible_model_package` label
 becomes `publisher_claim`, and it gains the Core check. Owner: anth-volk at M2.
-policyengine.py keeps its current rule for policyengine-uk-data releases only
+policyengine.py keeps its current rule for uk-data releases only
 while one is still served.
 
 ### C3: staging telemetry and run outcome
@@ -417,7 +417,7 @@ manifests carry the attempt id and cut tag, not a row digest.
   `("us", 2024, "compact")`.
 - **The gaps.** The US state and district file that policyengine.py serves has
   no registry entry. The UK default disagrees three ways: the registry's default
-  is the June file, policyengine.py serves policyengine-uk-data, and the
+  is the June file, policyengine.py serves uk-data, and the
   microcosm national line has its own pointer.
 
 #### From 11-06 (C5 v1)
