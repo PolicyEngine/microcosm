@@ -330,6 +330,33 @@
       "approved_on": "2026-10-15",
       "status": "approved",
       "expires_on": "2026-12-15"
+    },
+    {
+      "scope": "local",
+      "kind": "matched_period",
+      "target_ids": [
+        "desnz.subnational.electricity_kwh",
+        "desnz.subnational.gas_kwh"
+      ],
+      "reason": "DESNZ sub-national domestic consumption for 2024 (electricity meters read February 2024 to January 2025, as reported; gas mid-May 2024 to mid-May 2025, weather-corrected), levelled onto the lcfs stage's calendar-2024 Energy Trends level. The binding measures the frame's stored calendar-2024 spend turned back into kWh at the stage's prices, so both sides are 2024 on purpose; Energy Trends 2025 was weighed as an index and not taken, so the weights do not absorb the change in use per household (microcosm#1207).",
+      "tracking": "microcosm#1207",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-15",
+      "status": "approved",
+      "expires_on": "2026-12-15"
+    },
+    {
+      "scope": "local",
+      "kind": "control_rescaled",
+      "target_ids": [
+        "desnz.subnational.gas_connected_households"
+      ],
+      "reason": "Census 2021 (Scotland 2022) households times DESNZ's 2024 gas-to-electricity meter share. The level follows the authority's household reconciliation through the census partition (census_gas_connected_share), so only the meter share is held at 2024 (microcosm#1207).",
+      "tracking": "microcosm#1207",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-15",
+      "status": "approved",
+      "expires_on": "2026-12-15"
     }
   ]
 }
