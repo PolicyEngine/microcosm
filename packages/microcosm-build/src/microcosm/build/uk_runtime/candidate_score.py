@@ -28,7 +28,14 @@ from typing import Any
 
 from microcosm.build.target_materialization import MeasureResolutionError
 from microcosm.build.uk_runtime.national_calibration import prepare_uk_target_frame
-from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_time_period,
+)
+from microcosm.build.uk_runtime.weight_year import (
+    uk_engine_year_frame,
+    uk_weight_projection_factor,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
     exclusion_evaluation_date,
@@ -149,6 +156,14 @@ def score_uk_national_candidate(
             "candidate": candidate_resolution,
             "incumbent": incumbent_resolution,
         },
+        # Each file's own year and the factor the engine multiplies its
+        # household weights by to reach the scored year. Scores taken before
+        # this block existed used the stored weights and do not compare.
+        "weight_year": {
+            "scored_year": int(calibration_year),
+            "candidate": _weight_year(candidate_frame, calibration_year),
+            "incumbent": _weight_year(incumbent_frame, calibration_year),
+        },
         "target_drift": _target_drift(
             target_registry, candidate_errors, incumbent_errors
         ),
@@ -173,6 +188,16 @@ def score_uk_national_candidate(
             target_registry,
             candidate_errors,
             incumbent_errors,
+        ),
+    }
+
+
+def _weight_year(frame: Any, calibration_year: int) -> dict[str, object]:
+    dataset_year = int(uk_time_period(frame))
+    return {
+        "dataset_year": dataset_year,
+        "engine_projection_factor": uk_weight_projection_factor(
+            dataset_year, int(calibration_year)
         ),
     }
 
@@ -263,6 +288,10 @@ def _scored_frame(
     band_edge_registry: TargetRegistry | None = None,
 ) -> tuple[Any, Any]:
     frame, _provenance = load_uk_national_frame(h5_path)
+    # policyengine-uk projects a file's household weights from the file's own
+    # year to the scored year, so each side is scored with the weights its
+    # users get there (microcosm#796 A19). The engine reads the file itself.
+    frame = uk_engine_year_frame(frame, simulation_year=calibration_year)
     resolver = None if factory is None else factory(Path(h5_path), frame)
     return prepare_uk_target_frame(
         frame,

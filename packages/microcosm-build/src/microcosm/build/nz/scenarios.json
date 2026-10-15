@@ -150,7 +150,7 @@
     "annualisation": {
       "weeks_per_year": 52,
       "method_card_row": "MC12",
-      "note": "the conformance harness uses 365/7 weeks (ops main run.py:168); the model states and uses 52"
+      "note": "the conformance harness uses 365/7 weeks (WEEKS_IN_MODEL_YEAR in TheAxiomFoundation/ops nz-lane/emtr_reproduction/run.py at ba6e7d6e); the model states and uses 52"
     },
     "groupings": {
       "method_card_row": "MC3",

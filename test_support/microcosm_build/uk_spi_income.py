@@ -46,6 +46,7 @@ from microcosm.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
     support_channel_column,
 )
+from microcosm.fit import ConditionalUniforms
 from microcosm.frame import WeightKind
 from test_support.paths import paths_for
 
@@ -59,6 +60,54 @@ class _FakeFittedQRF:
     def __init__(self, targets: tuple[str, ...], weight_kind: str) -> None:
         self.targets = targets
         self.weight_kind = weight_kind
+
+    def regimes(self) -> dict[str, str]:
+        return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def sign_classes(self, target: str) -> tuple[int, ...]:
+        return (0, 1)
+
+    def conditional_uniforms(
+        self,
+        frame: pd.DataFrame,
+        *,
+        sign_placement: dict[str, np.ndarray],
+        quantile_placement: dict[str, np.ndarray],
+    ) -> ConditionalUniforms:
+        """Hand the placements back: a fake reference forest locates nothing."""
+
+        missing = [target for target in self.targets if target not in frame.columns]
+        assert not missing, missing
+        return ConditionalUniforms(
+            quantiles={
+                target: np.asarray(quantile_placement[target], dtype=float)
+                for target in self.targets
+            },
+            sign_uniforms={
+                target: np.asarray(sign_placement[target], dtype=float)
+                for target in self.targets
+            },
+            degenerate=(),
+            ungated=(),
+        )
+
+    def predict_from_uniforms(
+        self,
+        predictors: pd.DataFrame,
+        *,
+        quantiles: dict[str, np.ndarray],
+        sign_uniforms: dict[str, np.ndarray],
+    ) -> pd.DataFrame:
+        """Draw as ``predict`` does; the uniforms are kept for tests to read."""
+
+        assert set(quantiles) == set(self.targets) == set(sign_uniforms)
+        self.last_uniforms = {
+            "quantiles": {k: np.asarray(v, dtype=float) for k, v in quantiles.items()},
+            "sign_uniforms": {
+                k: np.asarray(v, dtype=float) for k, v in sign_uniforms.items()
+            },
+        }
+        return self.predict(predictors)
 
     def predict(self, predictors: pd.DataFrame) -> pd.DataFrame:
         values: dict[str, np.ndarray] = {}
@@ -128,6 +177,9 @@ def _dead_support(
         "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
         # Each one-person benefit unit is its own claimant.
         "is_uc_claimant": np.ones(4, dtype=bool),
+        # The bridge predictors and the recipient income rule read these.
+        "employment_status": ["FT_EMPLOYED"] * 4,
+        "miscellaneous_income": np.zeros(4, dtype=float),
     }
     for position, column in enumerate(SPI_INCOME_IMPUTATION_COLUMNS, start=1):
         if column == drop_income_component:
@@ -203,6 +255,12 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             # relief in TAX_CRED (microcosm#1106).
             "LLIR_RESTRICT_AMT_TOT": [0.0, 0.0, 200.0, 300.0],
             "TAX_CRED": [0.0, 0.0, 40.0, 60.0],
+            # Annex A bridge codes, consistent with the leaves above: pay is
+            # every record's main source, every record files trade pages, and
+            # the two State Pension recipients are at State Pension age.
+            "MAINSRCE": [1, 1, 1, 1],
+            "SEINC_NUM": [1, 1, 1, 1],
+            "SPA": [0, 0, 1, 1],
         }
     )
     employment = (

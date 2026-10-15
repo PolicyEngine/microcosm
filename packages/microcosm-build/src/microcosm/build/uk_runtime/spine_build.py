@@ -128,6 +128,9 @@ from microcosm.build.uk_runtime.graph_evidence import (
     register_spine_gate_kernel,
     spine_sidecar_evidence,
 )
+from microcosm.build.uk_runtime.high_value_home_support import (
+    UKHighValueHomeSupportStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
@@ -1698,6 +1701,12 @@ def prepare_uk_spine_execution(
         implementations["uc_deduction_attributes"] = (
             UKUCDeductionAttributesStageTransform(
                 stage=stages_by_name["uc_deduction_attributes"]
+            )
+        )
+    if "high_value_home_support" in stage_names:
+        implementations["high_value_home_support"] = (
+            UKHighValueHomeSupportStageTransform(
+                stage=stages_by_name["high_value_home_support"]
             )
         )
     if "cgt_support_split" in stage_names:

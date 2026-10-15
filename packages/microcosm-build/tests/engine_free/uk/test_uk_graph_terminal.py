@@ -12,6 +12,10 @@ from microcosm.build.uk_runtime.graph_terminal import (
     register_uk_terminal_kernels,
     validate_uk_export,
 )
+from microcosm.build.uk_runtime.weight_year import (
+    UK_WEIGHT_YEAR_MASS_REASON,
+    uk_weight_projection_factor,
+)
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.microcosm_build.uk_hierarchy_fixtures import (
@@ -48,7 +52,9 @@ def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_pat
         "ward_code",
         "itl1_code",
     } <= set(exported)
-    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    descriptor = describe_uk_export(
+        frame, bindings={"target_scope": "all"}, solve_year=2025
+    )
     assert "output_area_code" not in descriptor["tables"]["household"]["columns"]
     path = tmp_path / "full.h5"
     materialize_uk_export(frame, descriptor, path)
@@ -78,7 +84,9 @@ def test_export_writes_area_codes_under_consumer_names_and_refuses_ladder_names(
         assert exported[export_name].tolist() == ladder[ladder_name].tolist()
     # The in-memory frame is untouched: gates and diagnostics keep the ladder names.
     assert "constituency_code" in frame.table("household").columns
-    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    descriptor = describe_uk_export(
+        frame, bindings={"target_scope": "all"}, solve_year=2025
+    )
     assert descriptor["area_codes"]["columns"] == dict(UK_EXPORT_AREA_CODE_COLUMNS)
     frames = descriptor["area_codes"]["frames"]
     assert set(frames) == set(UK_EXPORT_AREA_CODE_COLUMNS.values())
@@ -125,6 +133,7 @@ def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_pa
     descriptor = describe_uk_export(
         frame,
         bindings={"pool_replicates": 1, "dataset_households": 2, "target_scope": "all"},
+        solve_year=2025,
     )
     path = tmp_path / "full.h5"
     record = materialize_uk_export(frame, descriptor, path)
@@ -134,6 +143,22 @@ def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_pa
     assert descriptor["tables"]["person"]["dtypes"][-1] == "float32"
     assert descriptor["time_period"] == "2024"
     assert descriptor["weight_kind"] == "calibrated"
+    # The artifact carries the solved weights at the dataset's year
+    # (microcosm#796 A19); the frame the graph holds keeps them as solved.
+    factor = uk_weight_projection_factor(2024, 2025)
+    assert descriptor["weight_year"] == {
+        "solve_year": 2025,
+        "dataset_year": 2024,
+        "engine_projection_factor": factor,
+    }
+    assert descriptor["mass_log"][-1]["reason"] == UK_WEIGHT_YEAR_MASS_REASON
+    assert descriptor["mass_log"][-1]["declared_factor"] == 1.0 / factor
+    with pd.HDFStore(path) as store:
+        np.testing.assert_array_equal(
+            store["household"]["household_weight"].to_numpy(),
+            np.array([13.0, 87.0]) / factor,
+        )
+    np.testing.assert_array_equal(frame.weights_for("household").values, [13.0, 87.0])
     path.unlink()
     materialize_uk_export(frame, descriptor, path)
     assert validate_uk_export(path, descriptor)["passed"] is True
@@ -141,7 +166,7 @@ def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_pa
 
 def test_export_refuses_population_changed_after_descriptor(tmp_path):
     frame = _frame()
-    descriptor = describe_uk_export(frame, bindings={})
+    descriptor = describe_uk_export(frame, bindings={}, solve_year=2025)
     frame.table("person").loc[0, "income"] = 99.0
     with pytest.raises(ValueError, match="descriptor"):
         materialize_uk_export(frame, descriptor, tmp_path / "changed.h5")
@@ -150,7 +175,7 @@ def test_export_refuses_population_changed_after_descriptor(tmp_path):
 def test_export_readback_reports_changed_stored_values(tmp_path):
     pytest.importorskip("tables")
     frame = _frame()
-    descriptor = describe_uk_export(frame, bindings={})
+    descriptor = describe_uk_export(frame, bindings={}, solve_year=2025)
     path = tmp_path / "full.h5"
     materialize_uk_export(frame, descriptor, path)
     with pd.HDFStore(path) as store:
@@ -227,6 +252,7 @@ def test_graph_export_continuation_reuses_numerics_and_validates_recreated_file(
         graph,
         population="root",
         bindings={"pool_replicates": 1, "dataset_households": 2, "target_scope": "all"},
+        solve_year=2025,
     )
     registry = KernelRegistry()
     registry.register(Create())
@@ -415,6 +441,7 @@ def test_terminal_byte_materialization_recreates_exact_files(tmp_path):
         "calibration_diagnostics": b'{"score":1}',
         "target_diagnostics_csv": b"target,estimate\na,1\n",
         "area_support_csv": b"area,rows\na,2\n",
+        "high_value_home_support_csv": b"level,area_code,rows\nconstituency,a,2\n",
         "holdout": b'{"report_only":true}',
         "selection": b'{"registry":{}}',
     }
@@ -578,6 +605,18 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     tables["household"]["source_household_id"] = [1, 2]
     tables["household"]["household_is_spi_synthetic"] = False
     tables["household"]["household_is_capital_gains_clone"] = False
+    # microcosm#1240: the terminal kernel builds the high-value homes
+    # evidence on the calibrated pool, so the fixture carries tenure and value.
+    from microcosm.build.uk_runtime.tenure_constants import (
+        UK_TENURE_OWNED_OUTRIGHT,
+        UK_TENURE_PRIVATE_RENT,
+    )
+
+    tables["household"]["tenure_type"] = [
+        UK_TENURE_OWNED_OUTRIGHT,
+        UK_TENURE_PRIVATE_RENT,
+    ]
+    tables["household"]["main_residence_value"] = [2_500_000.0, 0.0]
     initial = Frame(
         tables,
         original.schema,
