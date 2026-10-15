@@ -245,3 +245,29 @@ def test_the_committed_membership_defers_each_rules_cells():
             {"constituency": 155, "local_authority": 37}
         ),
     }
+
+
+def test_the_parity_receipt_names_the_rule_on_a_small_cell_deferral():
+    # A cell the incumbent carries but a signed rule defers is fixture-only in
+    # the local parity receipt, and its reason is the deferral's own signed
+    # rationale, which names the rule (microcosm#1278 review).
+    reason_by_cell = {
+        (deferral["target_id"], area): deferral["reason_id"]
+        for deferral in _committed("local_target_reference_membership.json")[
+            "signed_deferrals"
+        ]
+        if deferral["reason_id"]
+        in {"council_tax_band_household_floor", "hmrc_rounded_thousand_floor"}
+        for area in deferral["area_ids"]
+    }
+    rows = [
+        row
+        for row in _committed(
+            "ledger_compile_parity_local_incumbent_2025_signed_differences.json"
+        )["differences"]
+        if tuple(row["name"].split("@", 1)) in reason_by_cell
+    ]
+    assert rows
+    for row in rows:
+        assert row["kind"] == "fixture_only"
+        assert reason_by_cell[tuple(row["name"].split("@", 1))] in row["reason"]

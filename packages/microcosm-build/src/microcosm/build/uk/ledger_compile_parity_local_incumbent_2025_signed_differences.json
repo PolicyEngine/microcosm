@@ -21334,7 +21334,7 @@
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_g@E09000002",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved by juaristi22 on 2026-10-14."
   },
   {
    "fixture_value": 110.0,
