@@ -208,6 +208,8 @@ OUTPUT_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
     "private_pension_income",
     "tax_free_savings_income",
     "savings_interest_income",
@@ -547,6 +549,10 @@ def _assemble_frame(
     self_employment = _number(person, "seincam2") * WEEKS_IN_YEAR
     pe_person["self_employment_income"] = np.maximum(self_employment, 0)
     pe_person["trading_loss"] = np.maximum(-self_employment, 0)
+    # The FRS records no losses of earlier years; the SPI channel moves the
+    # tape's into both inputs (microcosm#1095).
+    pe_person["loss_relief"] = 0.0
+    pe_person["ni_class_4_losses_brought_forward"] = 0.0
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)

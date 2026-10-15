@@ -461,10 +461,12 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    # The 49 declared outputs (stage 2's trading_loss since microcosm#1095),
-    # less the ten spi_benefit_coherence replaces on every SPI-channel row
-    # (microcosm#1100); they hold no forest draw.
-    assert surface["declared_qrf_outputs"] == 39
+    # The 51 declared outputs (since microcosm#1095, stage 2's trading_loss and
+    # stage 1's two loss draws, which the stage moves into loss_relief and
+    # drops, so a frame never carries them), less the ten
+    # spi_benefit_coherence replaces on every SPI-channel row (microcosm#1100);
+    # they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 41
     assert surface["superseded_by_spi_benefit_coherence"] == [
         "income_support_reported",
         "working_tax_credit_reported",

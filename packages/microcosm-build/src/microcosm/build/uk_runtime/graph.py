@@ -1040,6 +1040,8 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "esa_contrib_reported",
     "esa_income_reported",
     "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income",

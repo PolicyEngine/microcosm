@@ -246,6 +246,9 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "esa_income_reported",
     # The stage-2 fill's trading loss (uk-data#528, microcosm#1095).
     "trading_loss",
+    # The tape's losses brought forward, moved out of the profit (microcosm#1095).
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,
@@ -282,7 +285,14 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
     for column in UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
     if column not in FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
     and column
-    not in (FRS_HMRC_PAY_COLUMN, FRS_HMRC_UBISJA_COLUMN, FRS_HMRC_INCPBEN_COLUMN)
+    not in (
+        FRS_HMRC_PAY_COLUMN,
+        FRS_HMRC_UBISJA_COLUMN,
+        FRS_HMRC_INCPBEN_COLUMN,
+        # Written from the stage-1 loss draws, not drawn by stage 2.
+        "loss_relief",
+        "ni_class_4_losses_brought_forward",
+    )
 )
 #: Both forests are queried over every SPI-channel person aged 16 and over,
 #: and the dependants' rows are discarded (uk-data#504, microcosm#1095).

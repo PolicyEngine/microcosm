@@ -449,11 +449,17 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         result.person.loc[spi_people, "employment_income"],
         expected_pe_employment,
     )
+    # HMRC's earned income holds the profit after losses brought forward,
+    # which the stage keeps apart in loss_relief (microcosm#1095).
+    profit_after_relief = (
+        result.person.loc[spi_people, "self_employment_income"]
+        - result.person.loc[spi_people, "loss_relief"]
+    ).clip(lower=0.0)
     expected_total_earned = (
         expected_employed
         + result.person.loc[spi_people, SPI_HMRC_OTHER_INCOME_COLUMN]
         + result.person.loc[spi_people, SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
-        + result.person.loc[spi_people, "self_employment_income"]
+        + profit_after_relief
         + result.person.loc[spi_people, "private_pension_income"]
     )
     expected_total_investment = (

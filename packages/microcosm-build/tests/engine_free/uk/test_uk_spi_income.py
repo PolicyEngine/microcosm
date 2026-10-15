@@ -352,6 +352,105 @@ def test_spi_donor_keeps_narrow_pe_employment_and_broad_hmrc_measure(
     )
 
 
+def test_spi_donor_carries_the_profit_before_losses_and_the_losses(tmp_path) -> None:
+    """The chain's two last draws (uk-data#528, microcosm#1095)."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+
+    donor = spi_income._prepare_spi_donor(raw, seed=7)
+    profit = donor[spi_income.SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN]
+    losses = donor[spi_income.SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN]
+    np.testing.assert_array_equal(
+        profit, (raw["PROFITS"] - raw["CAPALL"]).clip(lower=0.0)
+    )
+    np.testing.assert_array_equal(losses, raw["LOSSBF"].clip(lower=0.0))
+    # The profit after the losses is the profit the chain draws.
+    np.testing.assert_array_equal(
+        (profit - losses).clip(lower=0.0), donor["self_employment_income"]
+    )
+    assert list(spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-2:]) == list(
+        spi_income.SPI_LOSS_DRAW_COLUMNS
+    )
+
+
+def test_losses_brought_forward_move_out_of_the_profit_into_loss_relief() -> None:
+    """The drawn rows' profit becomes the year's profit, its losses brought
+    forward go to both loss inputs, and the profit after the relief is the
+    one the chain drew (uk-data#528, microcosm#1095)."""
+
+    profit_draw = spi_income.SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN
+    loss_draw = spi_income.SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN
+    person = pd.DataFrame(
+        {
+            # Row 1: a profit left after its losses; row 2: losses larger than
+            # the profit; row 3: no losses; row 4: a base row.
+            "self_employment_income": [6_000.0, 0.0, 4_000.0, 500.0],
+            profit_draw: [9_000.0, 5_000.0, 4_000.0, 0.0],
+            loss_draw: [2_500.0, 8_000.0, 0.0, 0.0],
+            "loss_relief": [0.0, 0.0, 0.0, 0.0],
+            "ni_class_4_losses_brought_forward": [0.0, 0.0, 0.0, 0.0],
+        },
+        index=[1, 2, 3, 4],
+    )
+    spi_people = pd.Series([True, True, True, False], index=person.index)
+    net = person["self_employment_income"].copy()
+
+    moved = spi_income._move_losses_brought_forward_to_loss_relief(
+        person, spi_people=spi_people
+    )
+
+    assert moved["self_employment_income"].tolist() == [
+        9_000.0,
+        5_000.0,
+        4_000.0,
+        500.0,
+    ]
+    # Row 1's whole loss was relieved, so the relief is the gap to the drawn
+    # net profit; row 2 keeps its losses, at least the profit.
+    assert moved["loss_relief"].tolist() == [3_000.0, 8_000.0, 0.0, 0.0]
+    assert moved["ni_class_4_losses_brought_forward"].tolist() == [
+        3_000.0,
+        8_000.0,
+        0.0,
+        0.0,
+    ]
+    np.testing.assert_array_equal(
+        (moved["self_employment_income"] - moved["loss_relief"]).clip(lower=0.0), net
+    )
+    assert not set(spi_income.SPI_LOSS_DRAW_COLUMNS) & set(moved.columns)
+    # A frame without the draws (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"self_employment_income": [1.0]}, index=[1])
+    assert spi_income._move_losses_brought_forward_to_loss_relief(
+        bare, spi_people=pd.Series([True], index=[1])
+    ).equals(bare)
+
+
+def test_hmrc_earned_income_reads_the_profit_after_loss_relief(tmp_path) -> None:
+    """TEI and TI are the same before and after the move (microcosm#1095)."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    donor = spi_income._prepare_spi_donor(raw, seed=7).assign(
+        tax_free_savings_income=0.0, loss_relief=0.0
+    )
+    before = spi_income.derive_hmrc_income_auxiliaries(donor.copy())
+    moved = spi_income._move_losses_brought_forward_to_loss_relief(
+        donor.copy(), spi_people=pd.Series(True, index=donor.index)
+    )
+    assert (moved["loss_relief"] > 0).any()
+    after = spi_income.derive_hmrc_income_auxiliaries(moved)
+
+    for column in (
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+    ):
+        np.testing.assert_array_equal(after[column], before[column])
+
+
 def test_spi_donor_rejects_leaf_reconciliation_drift(tmp_path) -> None:
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -423,9 +522,13 @@ def test_spi_donor_carries_restricted_finance_costs_with_their_relief(
         3.0 * 200.0 + 4.0 * 300.0
     )
     assert check["median_relief_ratio"] == pytest.approx(0.2)
-    # The leaf is drawn last, so it conditions on every income leaf and moves
-    # no earlier draw.
-    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-1] == "property_finance_costs"
+    # The leaf is drawn after every income leaf, so it conditions on them all
+    # and moves no earlier draw; only the two loss draws, which the stage
+    # drops, come after it (microcosm#1095).
+    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-3] == "property_finance_costs"
+    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-2:] == (
+        spi_income.SPI_LOSS_DRAW_COLUMNS
+    )
 
     wrong = raw.copy()
     wrong["TAX_CRED"] = wrong["LLIR_RESTRICT_AMT_TOT"] * 0.4

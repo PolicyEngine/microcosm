@@ -3684,11 +3684,12 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_income_band",
-          "value_variable": "self_employment_income",
+          "value_variable": "self_employment_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
               "variable": "income_tax",
@@ -3741,10 +3742,11 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
-              "variable": "self_employment_income",
+              "variable": "self_employment_income_after_loss_relief",
               "operator": "!=",
               "value": 0
             },
@@ -28309,7 +28311,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/self_employment_income/amount",
-          "value_variable": "self_employment_income",
+          "value_variable": "self_employment_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "filters": [
@@ -28374,7 +28376,7 @@
           "map_to": "household",
           "filters": [
             {
-              "variable": "self_employment_income",
+              "variable": "self_employment_income_after_loss_relief",
               "operator": "!=",
               "value": 0
             },

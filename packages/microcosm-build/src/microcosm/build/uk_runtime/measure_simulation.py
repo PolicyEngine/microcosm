@@ -17,6 +17,10 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
@@ -183,6 +187,23 @@ def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
     ).to_numpy(dtype=float)
 
 
+#: The HMRC self-employment rows count the year's profit after losses brought
+#: forward, which policyengine-uk keeps apart in loss_relief, and band on total
+#: income with that profit (microcosm#1095). The engine's total_income adds the
+#: profit before the relief, so the band variable swaps the one for the other.
+UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
+UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
+_LOSS_RELIEF_MEASURES = (
+    UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+)
+_LOSS_RELIEF_MEASURE_COMPONENTS = (
+    "self_employment_income",
+    LOSS_RELIEF_COLUMN,
+    "total_income",
+)
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -285,6 +306,26 @@ def compute_uk_measure_input(
         return (
             household_bus_boardings(frame, variable),
             f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
+        )
+
+    if variable in _LOSS_RELIEF_MEASURES:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        profit = compute_uk_measure_input(
+            frame, simulation, "person", "self_employment_income", year
+        )[0]
+        relief = compute_uk_measure_input(
+            frame, simulation, "person", LOSS_RELIEF_COLUMN, year
+        )[0]
+        after = self_employment_income_after_loss_relief(profit, relief)
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
+            return after, "engine_components:self_employment_income_less_loss_relief"
+        total = compute_uk_measure_input(
+            frame, simulation, "person", "total_income", year
+        )[0]
+        return (
+            np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
+            "engine_components:total_income_with_profit_after_loss_relief",
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -773,6 +814,10 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
             )
+        if variable in _LOSS_RELIEF_MEASURES:
+            return entity == "person" and all(
+                self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
+            )
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -792,6 +837,8 @@ class UKMeasureResolver:
         if variable in _BUS_BOARDING_MEASURES:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
+            return "person"
+        if variable in _LOSS_RELIEF_MEASURES:
             return "person"
         if (
             variable

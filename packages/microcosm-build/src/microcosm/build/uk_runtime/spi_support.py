@@ -113,6 +113,18 @@ SPI_HMRC_DERIVED_AUXILIARY_COLUMNS = (
 #: last, so it conditions on every income leaf and leaves every earlier draw
 #: where it was (microcosm#1106).
 SPI_PROPERTY_FINANCE_COSTS_COLUMN = "property_finance_costs"
+#: The year's trading profit before losses brought forward (PROFITS less
+#: CAPALL, floored at zero) and the losses brought forward themselves (LOSSBF),
+#: drawn after every other leaf so every earlier draw stays where it was. The
+#: stage moves the losses out of self_employment_income, which the chain
+#: still draws net of them, into loss_relief and the Class 4 losses brought
+#: forward, then drops both draws (uk-data#528, microcosm#1095).
+SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN = "spi_profit_before_losses_draw"
+SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN = "spi_losses_brought_forward_draw"
+SPI_LOSS_DRAW_COLUMNS = (
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN,
+)
 SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     *(
         column
@@ -121,6 +133,7 @@ SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     ),
     *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
+    *SPI_LOSS_DRAW_COLUMNS,
 )
 
 # The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
@@ -1291,8 +1304,11 @@ __all__ = [
     "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
+    "SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN",
+    "SPI_LOSS_DRAW_COLUMNS",
     "SPI_PENSION_AGE_STRATUM_COLUMN",
     "SPI_PRIOR_MASS_CHANGE_REASON",
+    "SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN",
     "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",

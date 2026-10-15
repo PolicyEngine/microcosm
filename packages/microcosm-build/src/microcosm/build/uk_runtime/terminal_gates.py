@@ -273,6 +273,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
+    "person.loss_relief",
+    "person.ni_class_4_losses_brought_forward",
     "person.ons_family_index",
     "person.ons_family_role",
     "person.other_local_bus_trips",
