@@ -189,6 +189,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         {"household": combined.weights_for("household")},
     )
     immigration_receipt = {"issue": "microcosm#1020", "assigned_sha256": "b" * 64}
+    # What build_optional_acs_multispine records for the native ACS
+    # work/disability inputs (microcosm#1021).
+    work_disability_receipt = {
+        "issue": "microcosm#1021",
+        "is_disabled": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
+        "is_blind": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
+    }
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -271,6 +278,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "unmodeled_recipient_rows": 0,
                     }
                 ],
+                "acs_local_work_disability": work_disability_receipt,
             },
         )
 
@@ -282,9 +290,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         captured["puma_ladder_path"] = path
         return puma_ladder
 
+    order: list[str] = []
+
     def fake_immigration(frame, *, seed, time_period):
         assert frame is combined
         captured["immigration"] = (seed, time_period)
+        order.append("immigration")
         return labelled, immigration_receipt
 
     def fake_immigration_gate(frame):
@@ -296,9 +307,21 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             details={"per_spine": {}},
         )
 
+    def fake_work_disability_gate(frame, *, receipt):
+        assert frame is labelled
+        assert receipt is work_disability_receipt
+        order.append("work_disability_gate")
+        return GateResult(
+            name="acs_local_work_disability_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
     def fake_null_audit(frame):
         assert frame is labelled
         captured["audited"] = True
+        order.append("null_audit")
         return [reviewed_null]
 
     def staging_hours_gate(frame, *, source_null_audit):
@@ -374,6 +397,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(
         builder, "acs_local_immigration_signal_gate", fake_immigration_gate
     )
+    monkeypatch.setattr(
+        builder, "acs_local_work_disability_signal_gate", fake_work_disability_gate
+    )
 
     arguments = [
         "--base-h5",
@@ -425,6 +451,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "acs_share": 0.4,
         "target_families": transfer_plan,
         "hours_under15_policy": None,
+        "work_disability_inputs": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -435,6 +462,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert captured["immigration_donor"] == (base, 2024)
     assert captured["immigration"] == (11, 2024)
     assert captured["audited"] is True
+    # microcosm#1021: the work/disability gate sees the labelled frame, after
+    # the immigration stage and before the input-null audit.
+    assert order == ["immigration", "work_disability_gate", "null_audit"]
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
@@ -456,6 +486,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert summary["acs_local_immigration"] == immigration_receipt
     assert summary["acs_local_immigration_gate"] == {
         "name": "acs_local_immigration_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert summary["acs_local_work_disability"] == work_disability_receipt
+    assert summary["acs_local_work_disability_gate"] == {
+        "name": "acs_local_work_disability_signal",
         "passed": True,
         "failures": [],
         "details": {"per_spine": {}},
@@ -573,6 +610,44 @@ def test_immigration_donor_preflight_refuses_before_transfer(monkeypatch) -> Non
     monkeypatch.setattr(builder, "require_acs_local_immigration_donor", refusing_donor)
     with pytest.raises(SystemExit, match=r"cannot seed .* \['PRCITSHP'\]"):
         builder._require_immigration_donor(_frame(), period=2024)
+
+
+def test_work_disability_gate_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1021: no receipt, or a failed gate, never reaches the audit."""
+
+    builder = _load_builder_module()
+    without = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    with pytest.raises(SystemExit, match=r"no native work/disability receipt"):
+        builder._require_local_work_disability(without)
+
+    receipt = {"issue": "microcosm#1021"}
+    result = builder.AcsMultispineResult(
+        frame=_frame(), provenance={"acs_local_work_disability": receipt}
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_work_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_work_disability_signal",
+            passed=False,
+            failures=("acs_2024_1yr: is_disabled is constant False",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging work/disability gate failed: acs_2024_1yr"
+    ):
+        builder._require_local_work_disability(result)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_work_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_work_disability_signal", passed=True, failures=()
+        ),
+    )
+    entries = builder._require_local_work_disability(result)
+    assert entries["acs_local_work_disability"] is receipt
+    assert entries["acs_local_work_disability_gate"]["passed"] is True
 
 
 def test_weights_audit_failure_aborts_before_export() -> None:
@@ -1093,6 +1168,119 @@ def test_native_complete_hours_satisfy_coverage_without_a_fabricated_fit(
         assert coverage["registered_inputs"] == []
         if modeled_rows is not None:
             assert coverage["modeled_hours_rows"] == modeled_rows
+
+
+_ACS_ITEMS = ["DDRS", "DEAR", "DEYE", "DOUT", "DPHY", "DREM"]
+
+
+@pytest.mark.parametrize(
+    "column, receipt_overrides, covered",
+    [
+        ("is_disabled", {}, True),
+        ("is_blind", {}, True),
+        ("is_disabled", {"missing_rows": 1}, False),
+        ("is_disabled", {"provenance": "acs_transfer"}, False),
+        ("is_disabled", {"source_columns": ["DEYE", "SSIP", "AGEP"]}, False),
+        ("is_blind", {"entity": "household"}, False),
+        ("is_blind", {"observed_rows": 2}, False),
+    ],
+    ids=[
+        "disabled-native",
+        "blind-native",
+        "partial",
+        "not-native",
+        "missing-items",
+        "wrong-entity",
+        "wrong-coverage",
+    ],
+)
+def test_native_complete_disability_satisfies_coverage_without_a_fit(
+    column, receipt_overrides, covered
+):
+    """microcosm#1021: the local lane maps is_disabled/is_blind natively on
+    every ACS row, so the null-only transfer never fits them."""
+
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    tables["person"][column] = [False, True]
+    frame = Frame(
+        tables,
+        before.schema,
+        {"household": before.weights_for("household")},
+    )
+    receipt = {
+        "entity": "person",
+        "provenance": "acs_2024_1yr_native",
+        "source_columns": (
+            [*_ACS_ITEMS, "SSIP", "AGEP"]
+            if column == "is_disabled"
+            else ["DEYE", "AGEP"]
+        ),
+        "missing_rows": 0,
+        "observed_rows": 1,
+        **receipt_overrides,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={"imputed_inputs": [], "native_inputs": {column: receipt}},
+    )
+    plan = {"person": {"model_required_boolean": (column,)}}
+    if not covered:
+        with pytest.raises(SystemExit, match=column):
+            builder._require_default_transfer_coverage(
+                result, before, target_families=plan
+            )
+        return
+    coverage = builder._require_default_transfer_coverage(
+        result, before, target_families=plan
+    )
+    assert coverage["native_registered_inputs"] == [column]
+    assert coverage["registered_inputs"] == []
+
+
+def test_native_disability_and_hours_share_the_coverage_exception() -> None:
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    tables["person"]["is_disabled"] = [False, True]
+    tables["person"]["weekly_hours_worked_before_lsr"] = [40.0, 0.0]
+    frame = Frame(tables, before.schema, {"household": before.weights_for("household")})
+    native = {
+        "entity": "person",
+        "provenance": "acs_2024_1yr_native",
+        "missing_rows": 0,
+        "observed_rows": 1,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [],
+            "native_inputs": {
+                "is_disabled": {
+                    **native,
+                    "source_columns": [*_ACS_ITEMS, "SSIP", "AGEP"],
+                },
+                "weekly_hours_worked_before_lsr": {
+                    **native,
+                    "source_columns": ["WKHP", "AGEP", "WKL"],
+                },
+            },
+        },
+    )
+    plan = {
+        "person": {
+            "model_required_boolean": ("is_disabled",),
+            "source_operator_hours_worked": ("weekly_hours_worked_before_lsr",),
+        }
+    }
+    coverage = builder._require_default_transfer_coverage(
+        result, before, target_families=plan
+    )
+    assert coverage["native_registered_inputs"] == [
+        "is_disabled",
+        "weekly_hours_worked_before_lsr",
+    ]
 
 
 def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
