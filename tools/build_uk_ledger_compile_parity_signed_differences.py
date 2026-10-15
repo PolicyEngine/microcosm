@@ -9,6 +9,9 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -734,6 +737,20 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
 
 
+#: microcosm#1240: the high_value_homes family binds a Microcosm-derived
+#: estimate (HM Land Registry stock counts), not a published per-area fact,
+#: so the incumbent register has nothing to compare it with.
+_DERIVED_STOCK_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: the target is a Microcosm-derived estimate "
+    "of the owner-occupied dwelling stock above a value threshold "
+    "(uk/high_value_home_stock_facts.json, fence "
+    "high_value_home_stock_derived_estimate), compiled beside the Chronicle "
+    "feed; no publisher counts such dwellings by area, so the incumbent "
+    "registry carries no row to compare and the difference is the derived "
+    "target itself (microcosm#1240)."
+)
+
+
 def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
     """Replace generic classifier reasons with the ruled per-family rationales.
 
@@ -768,6 +785,8 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _LOCAL_FIXTURE_ONLY_RATIONALES[metric]
         elif kind == "ledger_only" and metric == "households":
             row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and metric.startswith("high_value_homes/"):
+            row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 
@@ -780,7 +799,7 @@ def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            facts,
+            (*facts, *load_uk_high_value_home_stock_facts().rows),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "240b3dd2824f689fba108513bd95e493d5f7a579a1d1c3b1516df0150df750ad"
+    "214b09ea87bc37ac832c73e59fc04ff507b1f45db132906aeb75210480f4b598"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "30473a8cfab032d25d59e621a8e42e27644edd9e1a71b53378e9241a98108295"
+    "9b597286621f1c0e4eb4e4f0c197bb4c38afa663ae456205483a082a6aac73fa"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "ff1addad053e3485b15ea0f90d3335dcdc88a9d0e692f6b22303244a1b2716fd"
+    "91d8d1a660a3823a95d2d13935f1af9a6927d8d647c9a24dc8c0511c104fcd3d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -495,6 +495,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_support_split_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_residential_split_mass": ("stage_health", "transferred"),
     "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
@@ -559,9 +560,13 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
     "uk_local_weight_ratio": ("weight_ratio", "terminal"),
     "uk_local_weight_ess": ("weight_ess", "terminal"),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal"),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
-_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -597,6 +602,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
+        "uk_stage_high_value_home_support_mass",
         "uk_stage_cgt_support_split_mass",
         "uk_stage_cgt_residential_split_mass",
         "uk_stage_spi_income_band_donors_support",
@@ -775,6 +781,8 @@ _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
         "uk_local_per_family_fit",
         "uk_local_weight_ratio",
         "uk_local_weight_ess",
+        "uk_high_value_homes_benchmarks",
+        "uk_high_value_homes_support",
     }
 )
 _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
@@ -800,6 +808,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
@@ -861,10 +870,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "5bdabd730cf1073624b109f2a51caa340129d647520a6a7e7461e44f99a0cd28"
+            "075efba197b35648b64dae294d41ced01d49c4853f7ef7756ee335247ddce479"
         ),
         "policy_sha256": (
-            "4890cb7d519165f0e4d32905b75a498d28ed10d2442cf00d36ec89ee762dcb7b"
+            "65113710ee51bdc832b5de3d58b3f20b62cccfc7bbe51948368a9137aba452dc"
         ),
     },
     "calibration_seam": {
@@ -877,10 +886,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c5144655556355db8192730ab4238d4580f4a6ad6107a43609e969b57c9e9fcf"
+            "d8e43e2da482d28f8ed8e25115de6767390453f4d7a5f534c321dd236554acaa"
         ),
         "policy_sha256": (
-            "18e5ff379bfd9aa306864da0ab341aaaca203dd7855c6d878fb720fcf1aa8d45"
+            "9780a4a64e7a68dbe58e9b882c83be137c06cfde0ca6df13d527d2f6b8be8250"
         ),
     },
 }

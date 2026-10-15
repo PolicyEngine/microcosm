@@ -8865,6 +8865,73 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "stratum_lower",
+      "copies",
+      "stratum_rule",
+      "copy_rule",
+      "id_remapping",
+      "flag_column",
+      "copies_column",
+      "copy_index_column",
+      "values",
+      "weight_kind_out",
+      "conservation",
+      "declared_factor",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "split_top_value_owner_households"
+      },
+      "stratum_lower": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "exclusiveMaximum": 1
+      },
+      "copies": {
+       "type": "integer",
+       "minimum": 2
+      },
+      "stratum_rule": {
+       "type": "string"
+      },
+      "copy_rule": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "copies_column": {
+       "type": "string"
+      },
+      "copy_index_column": {
+       "type": "string"
+      },
+      "values": {
+       "type": "string"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "conservation": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "population",
       "model",
       "stock_log_odds",

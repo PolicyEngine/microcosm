@@ -51,6 +51,9 @@
       },
       "dfc_ni": {
         "label": "Department for Communities (Northern Ireland)"
+      },
+      "microcosm": {
+        "label": "Microcosm derived statistics"
       }
     },
     "categories": {
@@ -233,6 +236,10 @@
       "dwp.attendance_allowance": {
         "provider_id": "dwp",
         "label": "Attendance Allowance"
+      },
+      "microcosm.high_value_homes": {
+        "provider_id": "microcosm",
+        "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
       }
     },
     "target_categories": {

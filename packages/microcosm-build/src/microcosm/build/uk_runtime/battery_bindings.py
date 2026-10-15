@@ -64,6 +64,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
 from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
+from microcosm.build.uk_runtime.high_value_home_gates import (
+    high_value_home_benchmarks_gate,
+    high_value_home_support_gate,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
     load_hmrc_cgt_conditioning_facts,
@@ -733,6 +737,10 @@ def _evaluate_support(
         "uc_deduction_support_bounds.json",
         "nts_bus_travel_support_bounds.json",
         "was_lisa_support_bounds.json",
+        # microcosm#1240: the post-geography value map's declared cap replaces the
+        # WAS donor bound for the two columns it rewrites; it is listed after the
+        # WAS resource so its bounds win.
+        "price_paid_property_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -1211,6 +1219,22 @@ def _local_area_roster(
             raise ValueError(f"{resource} level {level!r} must expose area_ids.")
         roster[level] = tuple(str(area_id) for area_id in area_ids)
     return roster
+
+
+def _evaluate_high_value_home_benchmarks(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_benchmarks_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
+
+
+def _evaluate_high_value_home_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_support_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
 
 
 def _evaluate_area_support(
@@ -1831,6 +1855,24 @@ def _ledger_compile_parity_required_artifacts(
 #: state).
 UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     **DEFAULT_REGISTRY,
+    "high_value_home_benchmarks": UKGateBinding(
+        name="high_value_home_benchmarks",
+        evaluator=_evaluate_high_value_home_benchmarks,
+        parameter_keys=frozenset(
+            {"minimum_rank_correlation", "maximum_regional_share_gap"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
+    "high_value_home_support": UKGateBinding(
+        name="high_value_home_support",
+        evaluator=_evaluate_high_value_home_support,
+        parameter_keys=frozenset(
+            {"minimum_distinct_sources", "minimum_target_homes", "dominance_share"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
     "weights_audit": UKGateBinding(
         name="weights_audit",
         evaluator=_evaluate_weights_audit,
@@ -1896,6 +1938,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
+                # microcosm#1240 high_value_home_support stage-health check.
+                "stratum_lower",
+                "copies",
                 "minimum_identity_rows",
                 "minimum_target_count",
                 "minimum_signal_rows",

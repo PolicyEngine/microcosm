@@ -441,6 +441,7 @@ def test_terminal_byte_materialization_recreates_exact_files(tmp_path):
         "calibration_diagnostics": b'{"score":1}',
         "target_diagnostics_csv": b"target,estimate\na,1\n",
         "area_support_csv": b"area,rows\na,2\n",
+        "high_value_home_support_csv": b"level,area_code,rows\nconstituency,a,2\n",
         "holdout": b'{"report_only":true}',
         "selection": b'{"registry":{}}',
     }
@@ -604,6 +605,18 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     tables["household"]["source_household_id"] = [1, 2]
     tables["household"]["household_is_spi_synthetic"] = False
     tables["household"]["household_is_capital_gains_clone"] = False
+    # microcosm#1240: the terminal kernel builds the high-value homes
+    # evidence on the calibrated pool, so the fixture carries tenure and value.
+    from microcosm.build.uk_runtime.tenure_constants import (
+        UK_TENURE_OWNED_OUTRIGHT,
+        UK_TENURE_PRIVATE_RENT,
+    )
+
+    tables["household"]["tenure_type"] = [
+        UK_TENURE_OWNED_OUTRIGHT,
+        UK_TENURE_PRIVATE_RENT,
+    ]
+    tables["household"]["main_residence_value"] = [2_500_000.0, 0.0]
     initial = Frame(
         tables,
         original.schema,

@@ -1060,6 +1060,10 @@ class TestUnevidencedArms:
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
+            # microcosm#1240: the two report-only high-value homes gates read
+            # the evidence the terminal kernel computes on the calibrated pool.
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
         }
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
@@ -1078,8 +1082,11 @@ class TestUnevidencedArms:
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
+        # The two diagnostic gates report their missing evidence and block
+        # nothing in any posture.
+        diagnostic = {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
         assert blocked == {
-            *set(absent),
+            *(set(absent) - diagnostic),
             "uk_local_geography_ladder_post_calibration",
         }
 
@@ -1659,8 +1666,11 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 21_804
-        assert result.details["reference_targets"] == 23_386
+        # microcosm#1240 adds 2,679 high-value homes cells (575 constituencies
+        # and 318 authorities in England and Wales, three thresholds), six of
+        # them deferred by the two micro-authorities' support floor.
+        assert result.details["candidate_targets"] == 24_477
+        assert result.details["reference_targets"] == 26_065
         # Only the 1,582 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
@@ -1669,7 +1679,7 @@ class TestPreflightBindings:
         # are unsigned, so they defer nothing yet: signing them moves these
         # counts with the regenerated references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_582
+        assert len(exclusions) == 1_588
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

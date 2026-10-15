@@ -41,6 +41,9 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
@@ -260,7 +263,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         ledger_registries[period] = compilation.registry
         ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
-        artifact.facts,
+        (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )

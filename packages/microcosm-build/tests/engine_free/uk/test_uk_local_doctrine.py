@@ -94,7 +94,11 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_LOCAL_CLONE_COUNT == 15
     assert UK_LOCAL_SOLVE_DOCTRINE.target_loss_cap == UK_LOCAL_TARGET_LOSS_CAP
     assert UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio == UK_LOCAL_MAX_WEIGHT_RATIO
-    assert UK_LOCAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
+    # microcosm#1240: the default rule with the reviewed family floors.
+    assert (
+        UK_LOCAL_SOLVE_DOCTRINE.scale_rule
+        == "default_target_loss_scales_with_family_floors"
+    )
     assert (
         UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule
         == "nation_grain_family_equal_sqrt_count"

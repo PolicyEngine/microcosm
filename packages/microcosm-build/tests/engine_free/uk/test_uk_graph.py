@@ -54,8 +54,9 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # are retired (#901), so the manifest roster is the graph roster.
     # microcosm#1063 also adds cgt_residential_split after the anchor,
     # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
-    # and microcosm#1106 property_components after the regional uprating.
-    assert len(expected) == 40
+    # microcosm#1106 property_components after the regional uprating, and
+    # microcosm#1240 high_value_home_support between those two.
+    assert len(expected) == 41
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -94,7 +95,11 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compile_graph(reversed_declaration).order == compiled.order
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
-    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "regional_property_uprating" in compiled.predecessors["high_value_home_support"]
+    )
+    assert "high_value_home_support" in compiled.predecessors["property_components"]
+    assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
     assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 

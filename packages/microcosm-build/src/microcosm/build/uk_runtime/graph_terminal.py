@@ -55,6 +55,11 @@ from .geography_ladder import (
     uk_geography_ladder_gate,
 )
 from .graph_population import context_frame, population_columns, population_slices
+from .high_value_home_gates import uk_high_value_home_evidence
+from .high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+    load_vendored_obr_hvcts_facts,
+)
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _read_uk_national_tables,
@@ -554,6 +559,9 @@ FULL_GATE_REPORT_TYPE = ArtifactType("microcosm.uk.full-gate-report", 1)
 FULL_DIAGNOSTICS_TYPE = ArtifactType("microcosm.uk.full-calibration-diagnostics", 1)
 FULL_DIAGNOSTICS_CSV_TYPE = ArtifactType("microcosm.uk.full-target-diagnostics-csv", 1)
 FULL_SUPPORT_CSV_TYPE = ArtifactType("microcosm.uk.full-area-support-csv", 1)
+FULL_HIGH_VALUE_SUPPORT_CSV_TYPE = ArtifactType(
+    "microcosm.uk.full-high-value-home-support-csv", 1
+)
 FULL_HOLDOUT_TYPE = ArtifactType("microcosm.uk.full-rotated-holdout", 1)
 
 
@@ -850,6 +858,17 @@ class UKFullGateKernel(KernelBase):
                 ignore_index=True,
             )
             supporting["uk_area_support_summary"] = support_frame
+            # microcosm#1240 fix 8: the high-value homes evidence, once, on the
+            # calibrated pool; the per-area table is a candidate artifact only.
+            initial = np.asarray(problem.problem.initial_weights.values, dtype=float)
+            hv_evidence = uk_high_value_home_evidence(
+                household,
+                weights=household["household_weight"].to_numpy(dtype=float),
+                facts=load_uk_high_value_home_stock_facts(),
+                initial_weights=initial if len(initial) == len(household) else None,
+                obr_rows=load_vendored_obr_hvcts_facts(),
+            )
+            supporting["uk_high_value_home_evidence"] = hv_evidence.summary
             evidence = build_full_gate_context(
                 frame,
                 ordered_problem=problem,
@@ -910,6 +929,9 @@ class UKFullGateKernel(KernelBase):
                     .to_csv(index=False)
                     .encode(),
                     "area_support_csv": support_frame.to_csv(index=False).encode(),
+                    "high_value_home_support_csv": hv_evidence.support.to_csv(
+                        index=False
+                    ).encode(),
                 }
             )
         else:
@@ -1096,6 +1118,9 @@ def append_uk_full_gate_nodes(
             ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),
             ArtifactOutput("target_diagnostics_csv", FULL_DIAGNOSTICS_CSV_TYPE),
             ArtifactOutput("area_support_csv", FULL_SUPPORT_CSV_TYPE),
+            ArtifactOutput(
+                "high_value_home_support_csv", FULL_HIGH_VALUE_SUPPORT_CSV_TYPE
+            ),
         ),
     )
     return replace(graph, nodes=(*nodes, preflight, holdout, final))
@@ -1323,6 +1348,11 @@ def materialize_uk_terminal_artifacts(
             "uk.full.gates.calibrated",
             "area_support_csv",
             ".area_support.csv",
+        ),
+        "high_value_home_support": (
+            "uk.full.gates.calibrated",
+            "high_value_home_support_csv",
+            ".high_value_home_support.csv",
         ),
         "holdout": ("uk.full.holdout", "holdout", ".holdout.json"),
         "target_registry": (

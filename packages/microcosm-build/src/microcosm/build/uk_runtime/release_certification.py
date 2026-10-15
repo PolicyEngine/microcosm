@@ -47,6 +47,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -77,7 +78,9 @@ __all__ = [
 UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 UK_RELEASE_CUT_POSTURE = "release_cut"
-UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE)
+UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE) | frozenset(
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE
+)
 
 #: Each certification part's declared scope, phases, and manifest policy
 #: suffix. The suffixes are load-bearing: they are what the producers bake
