@@ -29,6 +29,8 @@ class FakeUKSimulation:
         self.data = {
             "household_id": [101, 102, 103],
             "self_employment_income": [0.0, 100.0, 0.0, 50.0],
+            # Losses brought forward the profit is counted after (microcosm#1095).
+            "loss_relief": [0.0, 0.0, 0.0, 0.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0],
             "tax_band": ["HIGHER", "HIGHER", "BASIC", "HIGHER"],
@@ -242,6 +244,20 @@ def test_compute_constituency_household_metrics() -> None:
     assert metrics["uc_hh_1_child"].tolist() == [0.0, 0.0, 1.0]
 
 
+def test_the_area_self_employment_rows_count_the_profit_after_loss_relief() -> None:
+    # HMRC counts the profit after losses brought forward (microcosm#1095).
+    sim = FakeUKSimulation()
+    sim.data["loss_relief"] = [0.0, 0.0, 0.0, 20.0]
+    metrics = compute_household_metrics(sim, "constituency")
+    assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 30.0]
+    assert metrics["hmrc/self_employment_income/count"].tolist() == [0.0, 0.0, 1.0]
+    # Losses that absorb the whole profit leave no self-employment income.
+    sim.data["loss_relief"] = [0.0, 0.0, 0.0, 80.0]
+    metrics = compute_household_metrics(sim, "constituency")
+    assert metrics["hmrc/self_employment_income/amount"].tolist() == [0.0, 0.0, 0.0]
+    assert metrics["hmrc/self_employment_income/count"].tolist() == [0.0, 0.0, 0.0]
+
+
 def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
     class MultiBenunitUKSimulation(FakeUKSimulation):
         def __init__(self):
@@ -254,6 +270,7 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
             self.data = {
                 "household_id": [101],
                 "self_employment_income": [0.0] * 9,
+                "loss_relief": [0.0] * 9,
                 "employment_income": [0.0] * 9,
                 "income_tax": [0.0] * 9,
                 "tax_band": ["NONE"] * 9,

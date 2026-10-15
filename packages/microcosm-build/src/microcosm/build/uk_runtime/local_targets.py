@@ -28,6 +28,10 @@ from microcosm.build.uk_runtime.high_value_homes import (
     uk_high_value_home_metric_names,
     uk_high_value_home_thresholds,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
     UK_TENURE_OWNED_WITH_MORTGAGE,
@@ -301,6 +305,12 @@ def compute_household_metrics(
 
     for income_variable in INCOME_VARIABLES:
         income_values = _values(_calculate(sim, income_variable, period))
+        if income_variable == "self_employment_income":
+            # HMRC's area rows count the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            income_values = self_employment_income_after_loss_relief(
+                income_values, _values(_calculate(sim, LOSS_RELIEF_COLUMN, period))
+            )
         in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
         matrix[f"hmrc/{income_variable}/amount"] = _map_result(
             sim,
