@@ -26,3 +26,13 @@ reach validation as non-finite numbers fail construction. The writer also uses
 strict JSON serialization with non-finite output disabled, so a value introduced
 after model construction returns a structured serialization failure instead of
 silently becoming `null`.
+
+`calibration_diagnostics_v8_json_schema()` generates a Draft 2020-12 JSON
+Schema for schema 8 from `CalibrationDiagnosticsV8`, for consumers that check
+the file without importing these models. The models remain the authority.
+Their cross-field reconciliations, finite-number and non-blank-text checks,
+and strict integers cannot be written in a schema generated this way. The
+schema's description lists each of these rules
+(`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS`), and a test fails if a model
+validator is added without being listed. Complete validation still goes
+through `parse_calibration_diagnostics`.

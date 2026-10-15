@@ -1,5 +1,14 @@
 """Typed calibration diagnostics shared across the Microcosm stack."""
 
+from microcosm.diagnostics.json_schema import (
+    CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS,
+    CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID,
+    CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE,
+    JSON_SCHEMA_DRAFT_2020_12,
+    JsonSchemaGap,
+    calibration_diagnostics_v8_json_schema,
+    render_calibration_diagnostics_v8_json_schema,
+)
 from microcosm.diagnostics.schema import (
     CALIBRATION_DIAGNOSTICS_ADAPTER,
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
@@ -36,6 +45,10 @@ from microcosm.diagnostics.writer import (
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_ADAPTER",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
+    "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS",
+    "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID",
+    "CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE",
+    "JSON_SCHEMA_DRAFT_2020_12",
     "SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS",
     "CalibrationDiagnostics",
     "CalibrationDiagnosticsV8",
@@ -43,6 +56,7 @@ __all__ = [
     "DiagnosticsWriteFailure",
     "DiagnosticsWriteOutcome",
     "DiagnosticsWriteSuccess",
+    "JsonSchemaGap",
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "UKAreaFit",
@@ -59,8 +73,10 @@ __all__ = [
     "UKWeightSummary",
     "UKZeroWeightStratum",
     "calibration_diagnostics_json_schema",
+    "calibration_diagnostics_v8_json_schema",
     "failed_diagnostics_outcome",
     "parse_calibration_diagnostics",
+    "render_calibration_diagnostics_v8_json_schema",
     "write_calibration_diagnostics",
 ]
 
