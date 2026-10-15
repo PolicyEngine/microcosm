@@ -263,6 +263,8 @@ def restrict_bands_to_nation(
         if rows.any():
             allowed[np.ix_(rows, np.isin(classes, bands))] = True
     outside = ~allowed[np.arange(len(choice)), choice]
+    # Exact row counts for the stage's own evidence, which no gate reads: band
+    # them before any gate detail or report carries them (microcosm#1278).
     redrawn = {
         f"council_tax_band:redrawn:{nation}": int(
             (outside & (pd.Series(regions).map(UK_NATION_BY_REGION) == nation)).sum()
