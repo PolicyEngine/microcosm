@@ -93,7 +93,9 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared

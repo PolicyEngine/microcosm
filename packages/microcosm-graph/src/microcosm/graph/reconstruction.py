@@ -1,0 +1,227 @@
+"""Declaration-only graph schemas rebuilt after a build from its recorded files.
+
+A build that recorded its graph declaration but no run binding cannot have its
+execution verified, yet its declared graph is still exact. A reconstructed
+schema projects that recorded declaration alone and carries a marker in its
+producer extensions: the marker says the schema was rebuilt afterwards, names
+the code revision that declared the graph, and binds every input file by
+digest. Because the marker lives in ``graph.schema.json``, any later
+projection of the saved schema keeps it, and Orrery documents show it under
+``metadata.microcosm.extensions``. Nothing here presents an operation as
+executed; no receipt, cache or gate state is attached.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from collections.abc import Mapping, Sequence
+
+from .decl import compile_graph
+from .schema import _plain_json, graph_schema
+from .serialize import graph_from_json
+
+__all__ = [
+    "DECLARATION_ONLY",
+    "DECLARATION_ROLE",
+    "GIT_COMMIT_PATTERN",
+    "INPUT_VERIFICATIONS",
+    "RECONSTRUCTION_EXTENSION",
+    "RECONSTRUCTION_PROTOCOL",
+    "REVISION_ORIGINS",
+    "reconstructed_schema",
+    "reconstruction_marker",
+    "validate_reconstruction",
+]
+
+RECONSTRUCTION_EXTENSION = "microcosm.reconstruction"
+RECONSTRUCTION_PROTOCOL = "microcosm.graph.reconstruction.v1"
+DECLARATION_ONLY = "declaration_only"
+DECLARATION_ROLE = "declaration"
+# ``recorded``: the build wrote the revision itself. ``caller_asserted``: the
+# build recorded none, and whoever ran the reconstruction supplied it.
+REVISION_ORIGINS = frozenset({"recorded", "caller_asserted"})
+# Whether a digest the build itself recorded for the file was matched, or the
+# build recorded none and the file is bound only by the digest listed here.
+INPUT_VERIFICATIONS = frozenset({"recorded_digest_matched", "no_recorded_digest"})
+RECONSTRUCTION_SCOPE = (
+    "Rebuilt after the build from its recorded graph declaration. Operations "
+    "carry no execution, cache or gate state; nothing here was observed running."
+)
+_MARKER_FIELDS = frozenset(
+    {"protocol", "reconstructed", "basis", "source_revision", "inputs", "scope"}
+)
+_REVISION_FIELDS = frozenset({"git_commit", "git_dirty", "origin"})
+_INPUT_FIELDS = frozenset({"name", "role", "sha256", "bytes", "verification"})
+# A full lowercase SHA-1 or SHA-256 git object name; abbreviations are refused.
+GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(f"Graph reconstruction: {message}.")
+
+
+def _text(value: object, label: str) -> str:
+    _require(type(value) is str and bool(value.strip()), f"{label} must be text")
+    return value  # type: ignore[return-value]
+
+
+def _file_name(value: object) -> str:
+    name = _text(value, "input name")
+    _require(
+        name not in {".", ".."}
+        and not any(separator in name for separator in ("/", "\\"))
+        and not any(ord(character) < 32 for character in name),
+        "input names must be plain file names",
+    )
+    return name
+
+
+def _validated_marker(value: object) -> dict[str, object]:
+    marker = _plain_json(value)
+    _require(type(marker) is dict, "marker must be an object")
+    assert isinstance(marker, dict)
+    _require(set(marker) == _MARKER_FIELDS, "marker fields")
+    _require(marker["protocol"] == RECONSTRUCTION_PROTOCOL, "marker protocol")
+    _require(marker["reconstructed"] is True, "marker must say reconstructed")
+    _require(marker["basis"] == DECLARATION_ONLY, "marker basis")
+    _text(marker["scope"], "marker scope")
+    revision = marker["source_revision"]
+    _require(
+        type(revision) is dict and set(revision) == _REVISION_FIELDS,
+        "source revision fields",
+    )
+    _require(
+        type(revision["git_commit"]) is str
+        and GIT_COMMIT_PATTERN.fullmatch(revision["git_commit"]) is not None,
+        "source revision must be a full lowercase git commit",
+    )
+    _require(
+        type(revision["git_dirty"]) in (bool, type(None)),
+        "source revision dirty flag must be true, false or null",
+    )
+    _require(revision["origin"] in REVISION_ORIGINS, "source revision origin")
+    inputs = marker["inputs"]
+    _require(type(inputs) is list and bool(inputs), "marker inputs")
+    names = []
+    for item in inputs:
+        _require(type(item) is dict and set(item) == _INPUT_FIELDS, "input fields")
+        names.append(_file_name(item["name"]))
+        _text(item["role"], "input role")
+        _require(
+            type(item["sha256"]) is str
+            and _SHA256.fullmatch(item["sha256"]) is not None,
+            "input digests must be lowercase SHA-256",
+        )
+        _require(
+            type(item["bytes"]) is int and item["bytes"] > 0,
+            "input sizes must be positive integers",
+        )
+        _require(
+            item["verification"] in INPUT_VERIFICATIONS, "input verification state"
+        )
+    _require(len(set(names)) == len(names), "duplicate input name")
+    _require(names == sorted(names), "inputs must be listed in name order")
+    _require(
+        sum(item["role"] == DECLARATION_ROLE for item in inputs) == 1,
+        "exactly one input must be the declaration",
+    )
+    return marker
+
+
+def _declaration_input(marker: Mapping[str, object]) -> Mapping[str, object]:
+    inputs = marker["inputs"]
+    assert isinstance(inputs, list)
+    return next(item for item in inputs if item["role"] == DECLARATION_ROLE)
+
+
+def reconstruction_marker(
+    *,
+    git_commit: str,
+    git_dirty: bool | None,
+    revision_origin: str,
+    inputs: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Return a validated marker naming the revision and every input read.
+
+    Each input is a mapping with ``name`` (a plain file name), ``role``,
+    ``sha256``, ``bytes`` and ``verification``; exactly one has role
+    ``declaration``. Inputs are listed in name order.
+    """
+
+    ordered = sorted(
+        (dict(item) for item in inputs), key=lambda item: str(item.get("name"))
+    )
+    return _validated_marker(
+        {
+            "protocol": RECONSTRUCTION_PROTOCOL,
+            "reconstructed": True,
+            "basis": DECLARATION_ONLY,
+            "source_revision": {
+                "git_commit": git_commit,
+                "git_dirty": git_dirty,
+                "origin": revision_origin,
+            },
+            "inputs": ordered,
+            "scope": RECONSTRUCTION_SCOPE,
+        }
+    )
+
+
+def validate_reconstruction(schema: Mapping[str, object]) -> dict[str, object] | None:
+    """Return a schema's validated reconstruction marker, or ``None`` if absent.
+
+    The marker must name the declaration embedded in the schema: its
+    declaration input's digest equals the schema's ``graph_sha256``.
+    """
+
+    extensions = schema["extensions"]
+    _require(isinstance(extensions, Mapping), "schema extensions must be an object")
+    assert isinstance(extensions, Mapping)
+    if RECONSTRUCTION_EXTENSION not in extensions:
+        return None
+    marker = _validated_marker(extensions[RECONSTRUCTION_EXTENSION])
+    _require(
+        _declaration_input(marker)["sha256"] == schema["graph_sha256"],
+        "marker does not name this declaration",
+    )
+    return marker
+
+
+def reconstructed_schema(
+    declaration: bytes, marker: Mapping[str, object]
+) -> dict[str, object]:
+    """Project recorded declaration bytes into a marked compiler schema.
+
+    ``declaration`` is the exact ``graph.json`` a build wrote. The marker must
+    name those bytes, and the current serializer must reproduce them exactly;
+    otherwise the projection would describe a different declaration from the
+    one that was recorded, and the declaration is refused.
+    """
+
+    _require(type(declaration) is bytes, "declaration must be bytes")
+    checked = _validated_marker(marker)
+    named = _declaration_input(checked)
+    declaration_sha256 = hashlib.sha256(declaration).hexdigest()
+    _require(
+        named["sha256"] == declaration_sha256 and named["bytes"] == len(declaration),
+        "marker does not name this declaration",
+    )
+    try:
+        text = declaration.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            "Graph reconstruction: declaration must be UTF-8 JSON."
+        ) from error
+    schema = graph_schema(
+        compile_graph(graph_from_json(text)),
+        extensions={RECONSTRUCTION_EXTENSION: checked},
+    )
+    _require(
+        schema["graph_sha256"] == declaration_sha256,
+        "the declaration does not reproduce its recorded bytes through the "
+        "current serializer",
+    )
+    return schema

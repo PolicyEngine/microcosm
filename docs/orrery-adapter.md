@@ -268,6 +268,68 @@ mismatches, missing required bytes and corrupt files refuse export. Unavailable
 gate-blocked outputs, omitted operations and unconfigured summary providers are
 explicit. Earlier phases not supplied to the exporter remain unknown.
 
+## Reconstructed declarations
+
+A build from before #1144 recorded its graph declaration, but not the run
+binding that execution export validates, so its execution cannot be shown.
+`microcosm.graph.reconstruction` rebuilds that build's schema from the recorded
+declaration alone and marks it as reconstructed:
+
+```python
+from microcosm.graph.reconstruction import reconstructed_schema, reconstruction_marker
+
+marker = reconstruction_marker(
+    git_commit=recorded_commit,
+    git_dirty=False,
+    revision_origin="recorded",
+    inputs=inputs,  # one {name, role, sha256, bytes, verification} per file read
+)
+schema = reconstructed_schema(declaration_bytes, marker)
+```
+
+The marker is the producer extension `microcosm.reconstruction`:
+
+```json
+{
+  "protocol": "microcosm.graph.reconstruction.v1",
+  "reconstructed": true,
+  "basis": "declaration_only",
+  "source_revision": {
+    "git_commit": "<full lowercase commit>",
+    "git_dirty": false,
+    "origin": "recorded"
+  },
+  "inputs": [
+    {"name": "graph.json", "role": "declaration", "sha256": "<hex>",
+     "bytes": 4096, "verification": "no_recorded_digest"},
+    {"name": "rowwise_candidate_manifest.json", "role": "code_pin",
+     "sha256": "<hex>", "bytes": 2048, "verification": "recorded_digest_matched"}
+  ],
+  "scope": "Rebuilt after the build from its recorded graph declaration. ..."
+}
+```
+
+- **`source_revision`:** `origin` is `recorded` when the build wrote the
+  revision itself, and `caller_asserted` when the build recorded none and the
+  caller supplied one. `git_dirty` is `null` when the build did not record it.
+- **`inputs`:** every file the reconstruction read, in name order, by digest
+  and size. `verification` is `recorded_digest_matched` when a digest the build
+  itself recorded for that file matched, and `no_recorded_digest` when the
+  build recorded none. Exactly one input is the declaration, and its digest
+  equals the schema's `graph_sha256`.
+- **Exact bytes:** `reconstructed_schema` refuses a declaration that the
+  current serializer would not write byte for byte. The schema therefore
+  describes the recorded file, not a reinterpretation of it.
+- **Where it travels:** the marker is saved in `graph.schema.json`, so any
+  later projection of the saved schema keeps it. Orrery documents show it at
+  `metadata.microcosm.extensions["microcosm.reconstruction"]`.
+  `validate_reconstruction(schema)` returns the marker, or `None` for a schema
+  that was not reconstructed.
+- **No execution claims:** a reconstructed document has no activities,
+  artifacts, statuses or `metadata.execution`. No operation appears as
+  executed, cached or gated. CI parses one with Orrery's public parser
+  (`tools/orrery-contract/verify-reconstruction.mjs`).
+
 ## Orrery evidence panels
 
 | Surface | Exported evidence |
