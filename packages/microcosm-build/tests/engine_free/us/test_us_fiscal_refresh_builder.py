@@ -13755,6 +13755,8 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
             staging_run_id=None,
             staging_prefix=args.staging_prefix,
             staging_upload_interval_seconds=60.0,
+            epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+            dense_default_dataset=False,
         )
 
     progress = module._build_progress(
@@ -13802,6 +13804,132 @@ def test_hosted_progress_survives_staging_bundle_failure() -> None:
             {"status": "running", "message": None, "batches": 4},
         )
     ]
+
+
+def _solver_epoch_events(phase: str, epochs: int) -> list[dict[str, object]]:
+    """One solve's per-epoch reports, as the calibrator emits them."""
+
+    return [
+        {
+            "phase": phase,
+            "kind": "calibration_epoch",
+            "epoch": epoch,
+            "epochs": epochs,
+            "loss": 100.0 / epoch,
+        }
+        for epoch in range(1, epochs + 1)
+    ]
+
+
+def _forwarded_calibration_events(emitter: _TestEmitter) -> list[dict[str, object]]:
+    return [recorded[1] for recorded in emitter.events if recorded[0] == "calibration"]
+
+
+def test_us_build_progress_forwards_every_tenth_and_each_solve_final_calibration_epoch(
+    tmp_path,
+) -> None:
+    """The US forwards the UK's epochs: every tenth and each solve's last.
+
+    The solver reports every epoch (microcosm#1292). An L0 selection and its
+    refit are two solves whose epoch counters each restart at 1, so each
+    keeps its own final epoch, and both the hosted emitter and the staging
+    bundle receive the same thinned rows.
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    run_dir = tmp_path / "stage"
+    progress = module._BuildProgress(
+        run_id="rel-1",
+        emitter=emitter,
+        staging_bundle=module.StagingRunBundleWriter(
+            run_id="rel-1",
+            candidate_release_id="rel-1",
+            run_dir=run_dir,
+        ),
+    )
+    solver_reports = [
+        *_solver_epoch_events("l0_selection", 25),
+        {"kind": "budget_probe", "budget_iteration": 1},
+        *_solver_epoch_events("post_l0_refit", 25),
+    ]
+
+    for report in solver_reports:
+        progress.calibration_progress(report)
+
+    expected_rows = [
+        (phase, epoch, 100.0 / epoch)
+        for phase in ("l0_selection", "post_l0_refit")
+        for epoch in (10, 20, 25)
+    ]
+    forwarded = _forwarded_calibration_events(emitter)
+    assert [
+        (event.get("phase"), event.get("epoch"), event.get("loss"))
+        for event in forwarded
+    ] == expected_rows
+    staged_rows = json.loads((run_dir / "calibration_progress.json").read_text())[
+        "events"
+    ]
+    assert [(row["epoch"], row["epochs"], row["loss"]) for row in staged_rows] == [
+        (epoch, 25, loss) for _phase, epoch, loss in expected_rows
+    ]
+    latest = json.loads((run_dir / "progress.json").read_text())["calibration"]
+    assert (latest["epoch"], latest["epochs"], latest["loss"]) == (25, 25, 4.0)
+
+
+@pytest.mark.parametrize(
+    ("epochs", "dense_default_dataset", "expected_stride", "expected_rows"),
+    [
+        # The default L0 selection and refit: 2 x 1,500 epochs.
+        (1_500, False, 10, 300),
+        # 2 x 15,000 epochs would be 3,000 rows at the base stride.
+        (15_000, False, 13, 2_308),
+        # A single dense solve of the same total length.
+        (30_000, True, 13, 2_308),
+    ],
+)
+def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
+    tmp_path, epochs, dense_default_dataset, expected_stride, expected_rows
+) -> None:
+    """The stride grows with the run's solves, as the UK's does.
+
+    No run forwards more than the UK's 2,400 rows plus each solve's last
+    epoch, whatever ``--epochs`` says (microcosm#1292).
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    args = SimpleNamespace(
+        no_staging=True,
+        staging_dir=None,
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+        epochs=epochs,
+        dense_default_dataset=dense_default_dataset,
+    )
+    progress = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=emitter,
+    )
+    phases = ("dense",) if dense_default_dataset else ("l0_selection", "post_l0_refit")
+
+    for phase in phases:
+        for report in _solver_epoch_events(phase, epochs):
+            progress.calibration_progress(report)
+
+    forwarded = _forwarded_calibration_events(emitter)
+    assert len(forwarded) == expected_rows
+    assert len(forwarded) <= 2_400 + len(phases)
+    for phase in phases:
+        assert [event["epoch"] for event in forwarded if event["phase"] == phase] == [
+            epoch
+            for epoch in range(1, epochs + 1)
+            if epoch % expected_stride == 0 or epoch == epochs
+        ]
 
 
 def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
@@ -13893,6 +14021,8 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
     )
     first = module._build_progress(
         args,
@@ -13958,6 +14088,8 @@ def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
     )
 
     with pytest.raises(ValueError, match="no destination"):
