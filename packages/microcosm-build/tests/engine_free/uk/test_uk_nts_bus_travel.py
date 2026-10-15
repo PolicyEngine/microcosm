@@ -405,7 +405,11 @@ class _Engine:
     def materialize(self, frame, variables, period):
         # The band reads HBAI net income plus the HBAI deductions (#1164).
         rows = len(frame.table("household"))
-        values = {"hbai_household_net_income": self.rng.uniform(5e3, 9e4, rows)}
+        values = {
+            "hbai_household_net_income_before_reset_to_zero": self.rng.uniform(
+                5e3, 9e4, rows
+            )
+        }
         return {name: values.get(name, np.zeros(rows)) for name in variables}
 
 
@@ -459,7 +463,7 @@ def test_recipient_income_band_is_hbai_gross_income() -> None:
         def materialize(self, frame, variables, period):
             requested.extend(variables)
             values = {
-                "hbai_household_net_income": net,
+                "hbai_household_net_income_before_reset_to_zero": net,
                 "income_tax": np.full(rows, 6_000.0),
             }
             return {name: values.get(name, np.zeros(rows)) for name in variables}

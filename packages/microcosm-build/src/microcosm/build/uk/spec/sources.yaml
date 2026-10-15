@@ -2822,7 +2822,7 @@ stages:
     codebook_status: verified 2026-09-22 against the deposited SN 5340 19th-edition lookup tables and the data extract user guide. Frequency is OrdBus2Freq_B01ID (asked since 2019; OrdBusFreq_B01ID ended in 2018), ten codes folded onto the seven NTS0313 bands (codes 1 to 3 are the three-or-more-times-a-week band, 9 and 10 the less-than-once-a-year-or-never band); code -9 (question not applicable, proxy responses) is declared a non-user because the published NTS0313 shares reproduce only with those persons in the base (2024 at-least-yearly share 0.526 without them, 0.505 with them, the published 0.505); code -8 (no answer) is dropped and receipted. Age_B01ID has 21 bands, each mapped to its lower age and then banded on the declared edges, so donor and recipient share one banding (every NTS band lies inside one declared band). Region codes 10 and 11 (Wales, Scotland) occur only before 2013 and never in the declared years. HHIncome2002_B02ID -8 (no answer) is dropped. The trip weight is W5, which carries the diary household weight W2 (the user guide's trips per person per year is 52.14 x sum(JJXSC x W5) over sum(W2) on the diary sample), so each person's counted trips are divided by W2 before the W2-weighted mean; W5xHH is the within-household factor only. W2 is zero for interview-only households, which leave the donor (the fit and the diary means use the diary sample, as the user guide prescribes for trip measures). Stage and ticket tables, verified 2026-09-23. A stage is a boarding (NumBoardings counts the vehicles), StageMode_B04ID carries the trip-mode categories, StageFareCost is the boarding cost paid at the point of use and IndTicketID links a stage to a held ticket; SpecialTicket_B01ID codes 7 to 11 are the concessionary passes (older people, scholars, disabled persons, subsidised tokens, other concessionary), 1 to 6 non-concessionary season tickets and passes. A boarding with no ticket record and a positive cost paid a single, return or day fare at the point of use; with no record and zero cost it travelled free (children, in the main); with no cost recorded its class is unknown.
   - kind: materialize_rules_engine_predictors
     predictors:
-    - hbai_household_net_income
+    - hbai_household_net_income_before_reset_to_zero
     - council_tax
     - domestic_rates
     - income_tax
@@ -3185,7 +3185,7 @@ stages:
     - employment_income
     - self_employment_income
     - private_pension_income
-    - hbai_household_net_income
+    - hbai_household_net_income_before_reset_to_zero
     - council_tax
     - domestic_rates
     - income_tax
@@ -3600,7 +3600,7 @@ stages:
   - kind: materialize_rules_engine_predictors
     predictors:
     - is_SP_age
-    - hbai_household_net_income
+    - hbai_household_net_income_before_reset_to_zero
     - council_tax
     - domestic_rates
     - income_tax
@@ -3711,7 +3711,7 @@ stages:
     - is_SP_age
     - dla
     - pip
-    - hbai_household_net_income
+    - hbai_household_net_income_before_reset_to_zero
     - current_education
     derived_predictors:
       is_adult: count of household members with is_uc_claimant (FRS claimants and partners)

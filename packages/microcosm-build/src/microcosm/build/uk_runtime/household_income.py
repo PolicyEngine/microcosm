@@ -48,9 +48,17 @@ UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
 #: so adding it back would band a loss-making household on its income before
 #: the loss.
 UK_HBAI_NET_INCOME_SUBTRACTS_NOT_ADDED_BACK = ("trading_loss",)
+#: The engine variable the build reads for a household's HBAI net income: the
+#: figure before negative incomes are reset to zero (policyengine-uk 2.132.4,
+#: pe-uk#2402). The surveys' incomes the stages match recipients to are not
+#: reset, and net income plus the deductions is gross income only before the
+#: reset.
+UK_HBAI_NET_INCOME_VARIABLE = "hbai_household_net_income_before_reset_to_zero"
+#: The predictor name the stages and their donors give that income.
+UK_HBAI_NET_INCOME_PREDICTOR = "hbai_household_net_income"
 #: The engine variables a stage materializes to build the gross income.
 UK_HBAI_GROSS_INCOME_VARIABLES = (
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
 )
 #: The direct taxes the ETB takes from gross income for disposable income.

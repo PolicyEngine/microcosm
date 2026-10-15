@@ -607,7 +607,7 @@
             "is_SP_age",
             "dla",
             "pip",
-            "hbai_household_net_income",
+            "hbai_household_net_income_before_reset_to_zero",
             "current_education"
           ]
         },
@@ -974,7 +974,7 @@
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
             "is_SP_age",
-            "hbai_household_net_income",
+            "hbai_household_net_income_before_reset_to_zero",
             "council_tax",
             "domestic_rates",
             "income_tax",
@@ -3829,7 +3829,7 @@
             "employment_income",
             "self_employment_income",
             "private_pension_income",
-            "hbai_household_net_income",
+            "hbai_household_net_income_before_reset_to_zero",
             "council_tax",
             "domestic_rates",
             "income_tax",
@@ -4498,7 +4498,7 @@
           "consumed_only": true,
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "hbai_household_net_income",
+            "hbai_household_net_income_before_reset_to_zero",
             "council_tax",
             "domestic_rates",
             "income_tax",

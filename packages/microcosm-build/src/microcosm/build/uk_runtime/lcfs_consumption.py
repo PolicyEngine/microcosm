@@ -58,6 +58,8 @@ from microcosm.build.uk_runtime.energy_pricing import (
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
     hbai_gross_income,
     household_level,
 )
@@ -357,7 +359,7 @@ UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
@@ -2836,10 +2838,17 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     household = frame.table("household")
     person = frame.table("person")
     result = pd.DataFrame(index=household.index)
-    for predictor in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS:
-        if predictor not in UK_HBAI_GROSS_INCOME_DEDUCTIONS:
+    for variable in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS:
+        if variable not in UK_HBAI_GROSS_INCOME_DEDUCTIONS:
+            # The HBAI net income is read before the reset to zero and keeps
+            # its predictor name, the donor's p389p column.
+            predictor = (
+                UK_HBAI_NET_INCOME_PREDICTOR
+                if variable == UK_HBAI_NET_INCOME_VARIABLE
+                else variable
+            )
             result[predictor] = household_level(
-                frame, engine, predictor, materialized[predictor]
+                frame, engine, variable, materialized[variable]
             )
     result["household_gross_income"] = hbai_gross_income(frame, engine, materialized)
     age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)

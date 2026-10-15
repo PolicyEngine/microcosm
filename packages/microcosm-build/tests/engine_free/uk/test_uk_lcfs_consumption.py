@@ -602,7 +602,9 @@ def test_recipient_need_band_income_is_hbai_gross_income() -> None:
             assert "household_gross_income" not in variables
             assert set(UK_HBAI_GROSS_INCOME_DEDUCTIONS) <= set(variables)
             values = {
-                "hbai_household_net_income": np.array([20_000.0, 50_000.0]),
+                "hbai_household_net_income_before_reset_to_zero": np.array(
+                    [20_000.0, 50_000.0]
+                ),
                 "income_tax": np.array([3_000.0, 20_000.0]),
                 "council_tax": np.array([1_500.0, 2_500.0]),
                 "national_insurance": np.array([500.0, 7_500.0]),
@@ -644,6 +646,8 @@ def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
 
     from microcosm.build.uk_runtime.household_income import (
         UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+        UK_HBAI_NET_INCOME_PREDICTOR,
+        UK_HBAI_NET_INCOME_VARIABLE,
     )
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
@@ -685,11 +689,15 @@ def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
 
     assert predictors["num_vehicles"].tolist() == [0, 3, 5]
     assert predictors["num_vehicles"].dtype == np.int64
-    # The HBAI deductions only build the NEED band's gross income.
-    assert (
-        set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS)
-        - set(UK_HBAI_GROSS_INCOME_DEDUCTIONS)
-    ) | {"household_gross_income"} <= set(predictors.columns)
+    # The HBAI deductions only build the NEED band's gross income, and the HBAI
+    # net income, read before the reset to zero, keeps its predictor name.
+    engine_columns = {
+        UK_HBAI_NET_INCOME_PREDICTOR if name == UK_HBAI_NET_INCOME_VARIABLE else name
+        for name in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
+        if name not in UK_HBAI_GROSS_INCOME_DEDUCTIONS
+    }
+    assert engine_columns | {"household_gross_income"} <= set(predictors.columns)
+    assert UK_HBAI_NET_INCOME_VARIABLE not in predictors.columns
     without = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
@@ -1089,9 +1097,9 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
                 "employment_income": rng.uniform(0.0, 5e4, rows),
                 "self_employment_income": rng.uniform(0.0, 5e3, rows),
                 "private_pension_income": rng.uniform(0.0, 1e4, rows),
-                "hbai_household_net_income": frame.table("household")[
-                    "household_gross_income"
-                ].to_numpy()
+                "hbai_household_net_income_before_reset_to_zero": frame.table(
+                    "household"
+                )["household_gross_income"].to_numpy()
                 * 0.8,
                 # The NEED band adds the HBAI deductions back (microcosm#1164).
                 "income_tax": frame.table("household")[
