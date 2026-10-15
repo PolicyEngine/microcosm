@@ -566,8 +566,11 @@ def test_bus_journey_rows_select_bus01a_by_english_region() -> None:
         # BUS01c's concessionary rows share the concept and carry a journey
         # category; BUS01a's carry none.
         assert selector["dimensions"] == []
-        # The latest outturn, held at its own period: no year is pinned.
+        # No year is pinned in the selector: the row's uprating_index holds
+        # it at the year the stage prices from and refuses another
+        # (microcosm#1207 review round 1).
         assert "period_value" not in selector
+        assert row["uprating_index"] == "dft.bus01.stage_pricing_year"
         assert selector["layout_groupby_value_id"] in BUS_JOURNEY_AREAS
     london = journeys["dft.bus_journeys.london"]["bindings"]["policyengine"]
     assert london["value_variable"] == "bus_in_london_boardings"

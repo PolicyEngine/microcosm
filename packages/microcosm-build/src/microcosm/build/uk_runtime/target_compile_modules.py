@@ -26,6 +26,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.ledger_targets",
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
+    "microcosm.build.uk_runtime.bus_fare_pricing",
     "microcosm.build.uk_runtime.cgt_calibration",
     "microcosm.build.uk_runtime.chronicle_feed",
     "microcosm.build.uk_runtime.council_tax_constants",
@@ -79,8 +80,8 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "the engine-key resolver for the ladder gate and the engine column"
         ),
         "microcosm.build.uk_runtime.rowwise_geography": (
-            "geography_ladder imports the fixed FRS-region code map "
-            "FRS_REGION_TO_REGION_CODE, pinned by its own tests"
+            "geography_ladder and bus_fare_pricing import the fixed FRS-region "
+            "code map FRS_REGION_TO_REGION_CODE, pinned by its own tests"
         ),
         "microcosm.build.uk_runtime.hmrc_income": (
             "local_target_census imports HMRC_SPI_TARGET_RECORD_COUNT for the "

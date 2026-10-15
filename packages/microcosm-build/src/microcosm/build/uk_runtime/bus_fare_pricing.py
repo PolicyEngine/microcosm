@@ -43,13 +43,17 @@ check, never a level the stage set.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from microcosm.build.ledger_targets import CALENDAR_YEAR_WINDOW_WEIGHTS
+from microcosm.build.ledger_targets import (
+    CALENDAR_YEAR_WINDOW_WEIGHTS,
+    LedgerTargetReference,
+    TargetRegistry,
+)
 from microcosm.build.uk_runtime.energy_pricing import period_quarters
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
@@ -70,6 +74,7 @@ UK_ENGINE_BUS_AREA_BY_STAGE_AREA: Mapping[str, str] = {
 #: so a gap is a re-pin or a publisher restatement the engine has not taken.
 UK_BUS_ENGINE_PARITY_TOLERANCE = 0.001
 UK_DFT_BUS_JOURNEYS_RESOURCE = "dft_bus_journeys.json"
+BUS01_JOURNEYS_CONCEPT = "dft.local_bus_passenger_journeys"
 BUS_IN_LONDON = "bus_in_london"
 OTHER_LOCAL_BUS = "other_local_bus"
 SERIES: tuple[str, str] = (BUS_IN_LONDON, OTHER_LOCAL_BUS)
@@ -610,12 +615,16 @@ def price_bus_journeys(
     eligibility_column: str,
     household_weights: np.ndarray,
     raw_household_fares: np.ndarray,
+    region_boardings: Mapping[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """Household fares from persons' journeys; unpriced regions keep the raw draw.
 
     Returns the household fare vector, the boolean mask of priced households
     and the receipt (factors, persons priced and zeroed, the frame-implied
     boardings and eligible trip share per area, totals before and after).
+    ``region_boardings`` (BUS01a journeys by English region outside London,
+    keyed by FRS region) adds the per-region receipt of
+    :func:`england_outside_london_region_shares`.
     """
 
     for series in SERIES:
@@ -635,6 +644,7 @@ def price_bus_journeys(
         raise BusFarePricingError(
             "household_weights must align with the household table."
         )
+    region_boardings = dict(region_boardings or {})
     region_by_household = household.set_index("household_id")["region"].map(
         lambda v: str(getattr(v, "name", v))
     )
@@ -735,4 +745,179 @@ def price_bus_journeys(
             **{a.label: a.receipt for a in prices.other_by_region.values()},
         },
     }
+    if region_boardings:
+        receipt["england_outside_london_regions"] = (
+            england_outside_london_region_shares(
+                region_boardings,
+                person_region=person_region,
+                person_weight=person_weight,
+                other_trips=other_trips,
+            )
+        )
     return result, priced_household, receipt
+
+
+def english_region_boardings(
+    parameters: Mapping[str, Any], *, allowed_resources: Sequence[str]
+) -> dict[str, float]:
+    """BUS01a journeys of each English region outside London, keyed by FRS region.
+
+    Read at the declaration's ``fiscal_start`` from the same vendored rows the
+    London and England-outside-London boardings come from (microcosm#1207).
+    """
+
+    from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
+
+    fiscal_start = str(parameters.get("fiscal_start") or "")
+    boardings: dict[str, float] = {}
+    for region, code in FRS_REGION_TO_REGION_CODE.items():
+        if not code.startswith("E12") or region == "LONDON":
+            continue
+        boardings[region], _ = published_fact(
+            {
+                "resource": UK_DFT_BUS_JOURNEYS_RESOURCE,
+                "concept": BUS01_JOURNEYS_CONCEPT,
+                "geography_id": code,
+            },
+            unit="count",
+            allowed_resources=allowed_resources,
+            fiscal_start=fiscal_start,
+        )
+    return boardings
+
+
+def england_outside_london_region_shares(
+    region_boardings: Mapping[str, float],
+    *,
+    person_region: np.ndarray,
+    person_weight: np.ndarray,
+    other_trips: np.ndarray,
+) -> dict[str, Any]:
+    """Each region's share of the frame's other local bus trips beside BUS01a's.
+
+    Report only (microcosm#1207): one boardings-per-trip factor prices every
+    English region's other local bus trips, so the frame's share of the eight
+    regions' trips is its share of their boardings. Set beside BUS01a's share
+    of the eight regions' journeys, a region far from one is a gap the
+    calibration's regional journey rows will close through the weights:
+    interchange, cross-boundary travel and NTS coverage as much as who
+    travels. London residents' other local bus trips count toward England
+    outside London and fall in no region row; their share is recorded.
+    """
+
+    regions = sorted(region_boardings)
+    frame = {
+        region: float(
+            np.dot(
+                other_trips[person_region == region],
+                person_weight[person_region == region],
+            )
+        )
+        for region in regions
+    }
+    london = float(
+        np.dot(
+            other_trips[person_region == "LONDON"],
+            person_weight[person_region == "LONDON"],
+        )
+    )
+    frame_total = float(sum(frame.values()))
+    published_total = float(sum(region_boardings.values()))
+    by_region: dict[str, dict[str, float | None]] = {}
+    for region in regions:
+        frame_share = frame[region] / frame_total if frame_total > 0 else None
+        published_share = float(region_boardings[region]) / published_total
+        by_region[region] = {
+            "frame_share": frame_share,
+            "published_share": published_share,
+            "frame_over_published_share": (
+                frame_share / published_share if frame_share is not None else None
+            ),
+        }
+    return {
+        "report_only": True,
+        "basis": (
+            "prior weights; each region's residents' other local bus trips at "
+            "England outside London's one boardings-per-trip factor, as a share "
+            "of the eight regions', beside BUS01a's journeys as a share of theirs"
+        ),
+        "regions": by_region,
+        "london_residents_share_of_other_local_trips": (
+            london / (frame_total + london) if frame_total + london > 0 else None
+        ),
+    }
+
+
+#: The BUS01a journey rows' period guard (microcosm#1207, review round 1). The
+#: rows bind journeys of the fiscal year the lcfs stage prices boardings per
+#: trip from and are held there (matched period). A row resolved to another
+#: year, a later edition in the feed, would bind journeys the stage's factors
+#: do not describe, so it is refused until the stage's ``fiscal_start`` moves
+#: with it.
+UK_BUS_JOURNEYS_YEAR_INDEX = "dft.bus01.stage_pricing_year"
+UK_BUS_JOURNEYS_HOLD = "matched_period"
+UK_BUS_JOURNEYS_YEAR_BASIS = (
+    "DfT BUS01a passenger journeys of the fiscal year opening {fiscal_start}, "
+    "the year the lcfs stage prices boardings per trip from; held there "
+    "(factor one, matched period)"
+)
+
+
+def declared_bus_pricing() -> Mapping[str, Any]:
+    """The lcfs stage's declared ``price_bus_journeys`` parameters."""
+
+    from microcosm.build.country_spec import load_country_spec
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    for operation in stage.operations:
+        if operation.kind == PRICE_BUS_JOURNEYS_KIND:
+            return dict(operation.parameters)
+    raise BusFarePricingError("the lcfs stage declares no price_bus_journeys step.")
+
+
+def hold_bus_journeys_at_the_stage_year(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    parameters: Mapping[str, Any] | None = None,
+) -> TargetRegistry:
+    """Hold each BUS01a journey row at the stage's pricing year, or refuse it."""
+
+    if reference.uprating_index != UK_BUS_JOURNEYS_YEAR_INDEX:
+        return registry
+    parameters = declared_bus_pricing() if parameters is None else parameters
+    fiscal_start = str(parameters.get("fiscal_start") or "")
+    year = fiscal_start[:4]
+    if not year.isdigit() or fiscal_start[4:] != "-04-01":
+        raise BusFarePricingError(
+            f"price_bus_journeys declares fiscal_start {fiscal_start!r}, not an "
+            "April 1st."
+        )
+    basis = UK_BUS_JOURNEYS_YEAR_BASIS.format(fiscal_start=fiscal_start)
+    held = []
+    for spec in registry.specs:
+        fact_period = str(spec.metadata.get("ledger_fact_period") or "")
+        if fact_period != year:
+            raise ValueError(
+                f"UK target {spec.name!r} resolved BUS01a journeys of the fiscal "
+                f"year opening in {fact_period or '?'}, but the lcfs stage prices "
+                f"boardings per trip from the year opening {fiscal_start}: move "
+                "the stage's fiscal_start and the hold together."
+            )
+        metadata = {
+            **spec.metadata,
+            "uprating_index": UK_BUS_JOURNEYS_YEAR_INDEX,
+            "uprating_index_basis": basis,
+            "uprating_index_resource": UK_DFT_BUS_JOURNEYS_RESOURCE,
+            "uprating_factor": "1",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_hold": UK_BUS_JOURNEYS_HOLD,
+        }
+        held.append(replace(spec, metadata=metadata))
+    return TargetRegistry(held, country="uk")
+
+
+def bus_journey_appliers() -> dict[str, Any]:
+    """The appliers this module contributes to ``UK_UPRATING_APPLIERS``."""
+
+    return {UK_BUS_JOURNEYS_YEAR_INDEX: hold_bus_journeys_at_the_stage_year}

@@ -15715,7 +15715,7 @@
         "policyengine": {
           "metric_name": "dft/bus_journeys/london",
           "value_variable": "bus_in_london_boardings",
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). London's buses carry every resident's bus-in-London trips wherever they live, so the row has no residence filter."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). London's buses carry every resident's bus-in-London trips wherever they live, so the row has no residence filter. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/london",
@@ -15732,6 +15732,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "London"
     },
@@ -15763,7 +15764,7 @@
               "value": "NORTH_EAST"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/north_east",
@@ -15780,6 +15781,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "North East"
     },
@@ -15811,7 +15813,7 @@
               "value": "NORTH_WEST"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/north_west",
@@ -15828,6 +15830,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "North West"
     },
@@ -15859,7 +15862,7 @@
               "value": "YORKSHIRE"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/yorkshire_and_the_humber",
@@ -15876,6 +15879,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "Yorkshire and The Humber"
     },
@@ -15907,7 +15911,7 @@
               "value": "EAST_MIDLANDS"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/east_midlands",
@@ -15924,6 +15928,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "East Midlands"
     },
@@ -15955,7 +15960,7 @@
               "value": "WEST_MIDLANDS"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/west_midlands",
@@ -15972,6 +15977,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "West Midlands"
     },
@@ -16003,7 +16009,7 @@
               "value": "EAST_OF_ENGLAND"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/east_of_england",
@@ -16020,6 +16026,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "East of England"
     },
@@ -16051,7 +16058,7 @@
               "value": "SOUTH_EAST"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/south_east",
@@ -16068,6 +16075,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "South East"
     },
@@ -16099,7 +16107,7 @@
               "value": "SOUTH_WEST"
             }
           ],
-          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row."
+          "notes": "DfT BUS01a local bus passenger journeys (boardings), year ending March 2025 (DfT's closing-year label fy2025; the compile reads it as FY2024-25, held at its own period). The frame carries NTS trips, not boardings: the measure is each household's trips on the series times the boardings per trip the lcfs stage priced it at. Those factors divide published boardings by published NTS trip rates times population, so London's row and the England-outside-London total constrain the frame's trip level and only the split between the eight other regions is new information. BUS01 counts boardings where buses run; the model counts trips where people live (microcosm#1207). The region's residents' other local bus trips stand for the boardings on its buses; London residents' trips on buses outside London fall in no region row. Its uprating_index (dft.bus01.stage_pricing_year) holds the row at the fiscal year the stage prices boardings per trip from and refuses a row resolved to another year."
         },
         "axiom": {
           "metric_name": "dft/bus_journeys/south_west",
@@ -16116,6 +16124,7 @@
         "period_type": "fiscal_year",
         "dimensions": []
       },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "category_id": "dft.local_bus_journeys",
       "label": "South West"
     },

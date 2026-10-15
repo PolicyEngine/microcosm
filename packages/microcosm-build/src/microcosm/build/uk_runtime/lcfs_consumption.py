@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.bus_fare_pricing import (
     PRICE_BUS_JOURNEYS_KIND,
     UK_DFT_BUS_JOURNEYS_RESOURCE,
     bus_fare_prices,
+    english_region_boardings,
     price_bus_journeys,
 )
 from microcosm.build.uk_runtime.donor_uprating import (
@@ -2256,6 +2257,9 @@ def lcfs_bus_fare_pricing(
         eligibility_column=str(parameters["eligibility_column"]),
         household_weights=frame.weights_for("household").values,
         raw_household_fares=household_draws[column].to_numpy(dtype=float),
+        region_boardings=english_region_boardings(
+            parameters, allowed_resources=UK_LCFS_VENDORED_RESOURCES
+        ),
     )
     priced_draws = household_draws.copy()
     priced_draws[column] = fares

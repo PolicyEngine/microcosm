@@ -33,6 +33,7 @@ from microcosm.build.target_materialization import (
     TargetMaterializationResult,
     materialize_target_bindings,
 )
+from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
@@ -677,6 +678,7 @@ UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     **hmrc_uprating_appliers(),
     **tenure_drift_appliers(),
     **domestic_energy_appliers(),
+    **bus_journey_appliers(),
 }
 
 
