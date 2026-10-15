@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "3208901a27e6f09885e5990517c80e2d418425d937aa33fb0f6dacbbf290dd23",
+  "fingerprint": "5e97ffb44bc37ebd3809e7f6cf2ad253ef4308339338b96b4bd78746a9c1888d",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -41,7 +41,7 @@
     "as_rate_bridge.json": "c6e21af7b090283431973a5610cc3adf5d783a4a01fb0051d5dc6c8347eeabb0",
     "axiom_input_closure.json": "c3c164f437b05d598af7e604d2cb46365a8323a8043da49b08c5e0cdf32e2ec1",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
-    "benefit_unit_rule.json": "5c1cf16daaae482ea3ec53495f4c2e4ae452d928c6240a5284dbbf30cd2dfe37",
+    "benefit_unit_rule.json": "a9e8cbfd38a64d2f8db0002fe8c31bb5a18fb34dbe59fa943336487ce95e2ca8",
     "chronicle_feed.json": "68eb7af364bcdcfa7490af38f66dda0622aa97d77dd9841c646b7f225985680f",
     "country_package.json": "97ef40edd0fa0e22a3fe534306474a908c7f3ad37f46be7e245147d0f9036712",
     "currency_bridge.json": "aa6a4b286a6a1a015088f32ac013148553422c3d45eeef7d7a15af08388857ca",
@@ -51,8 +51,8 @@
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
-    "reporting_classifiers.json": "b5af9e4737af4717d86aedfe651df8b3c18c3875763726e7a6a0b9b1168ed133",
-    "scenarios.json": "30f96f3063773d77e3c70119c8f5d99d3528eca87428903da00ca071ab34cfaf",
+    "reporting_classifiers.json": "789a07acd1b6724a12bbd9584ab9fa05bb01d0b675cc3a0fbc837b066dbec49e",
+    "scenarios.json": "9c70241a6203b3a66dc09587c8b955d9d421bbe32f018ea1542e7639f4c7507c",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "25ef74ecbc00c3f2ecca2d30ddd5e46a582657863c217da33ee9a396569d2cf2",
     "spec/catalogs.yaml": "3ab2025af39cba93ead707b9463e428430a45b30696a43d0906cbcd97ed36631",
