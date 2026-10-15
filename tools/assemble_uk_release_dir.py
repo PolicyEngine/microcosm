@@ -406,7 +406,7 @@ def uk_national_release_manifests(
             "git_dirty": False,
         },
         "build_sha": code_pin[:7],
-        "runtime": runtime,
+        "runtime": dict(runtime),
         "dataset": {
             "filename": _DATASET_FILENAME,
             "sha256": measured["candidate"],

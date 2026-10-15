@@ -74,9 +74,11 @@ def test_every_fixture_byte_is_pinned_by_sha256sums():
 
 
 def test_uk_national_manifests_pass_every_check_but_the_omitted_files(tmp_path):
-    """The manifests satisfy the whole release contract; the fixture omits only
-    the diagnostics and the signed certification, which bind live gate digests
-    (docs/release-contract.md, Golden fixtures)."""
+    """Every check that can run without the diagnostics, the certification and
+    the four evidence files passes: the only refusals are the two required files
+    the fixture omits on purpose. Those bind live gate digests
+    (docs/release-contract.md, Golden fixtures); the assembler's own tests
+    validate a full signed directory."""
 
     release_dir = tmp_path / UK_RELEASE_ID
     shutil.copytree(UK_RELEASE_DIR, release_dir)
@@ -98,6 +100,17 @@ def test_uk_national_manifests_pass_the_manifest_checks_directly():
         build_manifest, release_manifest, None, failures
     )
     assert failures == []
+
+
+def test_uk_national_gates_are_the_certifications_part_censuses():
+    """The build manifest copies each certification part's ``statuses``, which
+    the contract requires to be a census of that part's gates, all passed."""
+
+    gates = _json(UK_RELEASE_DIR / "build_manifest.json")["gates"]
+    assert set(gates) == set(contract._UK_CERTIFICATION_PART_EVIDENCE_FILES)
+    for part, census in gates.items():
+        assert list(census) == ["passed"], part
+        assert isinstance(census["passed"], int) and census["passed"] > 0, part
 
 
 def test_loader_selects_the_national_artifact_through_the_registry():

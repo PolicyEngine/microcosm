@@ -15,8 +15,11 @@ freezes the staging documents that calibration-diagnostics byte-checks:
   ``latest-national.json``), serialized as ``publish_release`` serializes them,
   and ``registry.json``, a snapshot of ``microcosm.data.registry.REGISTRY``.
 
-Every digest, version and identifier is synthetic. A digest is the SHA-256 of
-``release-contract-fixture:<name>``, so none can be mistaken for a real artifact.
+Every digest, version, identifier and gate count in the C1 manifests and the
+pointers is synthetic. A digest is the SHA-256 of ``release-contract-fixture:<name>``,
+so none can be mistaken for a real artifact. ``inventory.json`` and
+``registry.json`` carry live values on purpose: they freeze the contract's
+constants and the registry.
 The fixtures deliberately carry no gate-battery report or signed certification:
 those bind the UK gate spec's live digests, which change with most UK pull
 requests, so the certification's shape is frozen as ``inventory.json`` instead and
@@ -136,9 +139,12 @@ def _c1_uk_national(root: Path, assembler: ModuleType) -> str:
         code_pin=hashlib.sha1(b"release-contract-fixture").hexdigest(),
         target_surface={"sha256": fixture_digest("target surface"), "n_targets": 2},
         target_registry={"version": "release-contract-fixture-v1", "n_specs": 2},
-        spine_part={"statuses": {"uk_release_input_coverage": "passed"}},
-        seam_part={"statuses": {"uk_input_mass_parity": "passed"}},
-        release_cut_part={"statuses": {"uk_aggregate_admin": "passed"}},
+        # Each part's statuses are the certifier's census of its gates by status
+        # (``_status_census``); a shippable part is all "passed". The counts are
+        # synthetic, so the fixture does not move when a UK gate scope grows.
+        spine_part={"statuses": {"passed": 3}},
+        seam_part={"statuses": {"passed": 2}},
+        release_cut_part={"statuses": {"passed": 4}},
         staging_delivery=validate_staging_delivery(UK_STAGING_DELIVERY),
         created_at=FIXTURE_TIME,
         publisher_labels={"ons": "Office for National Statistics"},

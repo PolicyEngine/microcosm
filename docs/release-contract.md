@@ -34,9 +34,9 @@ bindings).
 - **Retired:** policyengine-uk-data, the Build P patch lanes, the second US
   calibration driver and staging version 1.
 
-The plan that gets there, with owners and dates, is the 10-09 systems report
-(`REPORT.md` in the systems-map folder, milestones M0 to M7). This document is
-M0's deliverable. Milestones that change what the contract enforces are listed
+The plan that gets there, with owners and dates, is the 2026-10-09 systems
+report that cos d1160 cites (Max's planning record, not in this repository;
+milestones M0 to M7). This document is M0's deliverable. Milestones that change what the contract enforces are listed
 under [Enforcement timeline](#enforcement-timeline).
 
 ## What is served today
@@ -78,7 +78,9 @@ sibling). It dispatches in three steps:
 1. **Release type.** `release_manifest.json`'s `release_type`.
    `source_enrichment` hands off to `validate_source_enrichment_candidate`, a
    separate contract for the Build P inheritance path. The served US default is
-   one of these. Any other value except `calibration` is refused.
+   one of these. An absent `release_type` means `calibration`; any other present
+   value is refused. An annual-projection extension, when the manifest declares
+   one, is validated next (`validate_annual_projection_extension`).
 2. **Dataset role.** `dataset_role` is `national_default` (also when absent) or
    `non_default_local_area`. A local-area release goes to
    `_validate_local_area_release_dir`, or to `_validate_uk_dense_release_dir` when
@@ -92,9 +94,10 @@ sibling). It dispatches in three steps:
      `calibration_diagnostics.json`.
    - `_expected_model_package(release_id)` names `policyengine-us` or
      `policyengine-uk` from the same prefixes. For any other id it returns
-     `None`, and the checks then skip the build manifest's model-package
-     runtime pin, the built model package's name and the
-     `compatible_model_packages` list entirely.
+     `None`. The checks then skip the build manifest's model-package runtime
+     pin and the `compatible_model_packages` list entirely, and they no longer
+     check which package `build.built_with_model_package` names (it still needs
+     a non-empty name and a resolved version).
    - The US critical-target fit, stored-input evidence and source-coverage
      checks fire on the `populace-us-` prefix; the UK identity checks fire on
      `populace-uk-` and the exact-k pattern.
@@ -103,22 +106,25 @@ Whatever the id, a `calibration` release in the national-default role must carry
 
 - **`build_manifest.json`**: `build_id` equal to the directory name; `code`
   with `repository`, a 40-character `git_commit` and `git_dirty: false`;
-  `runtime` with resolved `python`, `policyengine-core` and (when the id names
-  one) model-package versions; `dataset` and `calibration` with filenames and
+  `runtime` with resolved `python`, `policyengine-core` and, when the id names
+  a model package, that package's versions; `dataset` and `calibration` with filenames and
   SHA-256s, the calibration naming its target surface and registry; and a
   `gates` object (`_check_build_manifest`).
 - **`release_manifest.json`**: `schema_version` 1
   (`RELEASE_MANIFEST_SCHEMA_VERSION`); `build.build_id` equal to the directory
   name; `build.built_with_core_package` and `build.built_with_model_package`;
-  non-empty `compatible_core_packages` and `compatible_model_packages` lists
-  that include the built versions; `data_package`; `default_datasets.national`
+  a non-empty `compatible_core_packages` list that includes the built Core
+  version and, when the id names a model package, a non-empty
+  `compatible_model_packages` list that includes the built model version;
+  `data_package`; `default_datasets.national`
   naming a `microdata` artifact; and `artifacts`, each with `kind`, `path`,
   `repo_id`, `revision` and `sha256`, all pinned to one revision
   (`_check_release_manifest`).
 
 The **certification** is UK-only. For `microcosm-uk-2024-25-national`,
-`release_certification.json` is a required file, and any directory that carries
-a national-line gate report without one is refused.
+`release_certification.json` is a required file. Any directory that carries a
+`release_cut_gates.json`, or a `terminal_gates.json` whose `posture` is
+`calibration_seam`, without one is refused, whatever its id.
 `_check_uk_release_certification` then requires `kind:
 uk_release_certification`, `country: uk`, the release id, three signed parts
 (`spine`, `calibration_seam`, `release_cut`) whose scoped spec digests match the
@@ -172,23 +178,35 @@ From 11-06 (M3), C1 dispatches on what the manifest declares instead:
 2. **One country table in the data shard** replaces the prefix tests. Each
    registered country declares its model package, the files its releases add to
    the C1 base set (the US adds `us_source_coverage.json` and the stored-input
-   evidence; every country adds its certification part reports), the lines it may
-   publish, and its Hub repository. `required_release_files`,
-   `_expected_model_package` and `line_for_release_id` read the table through the
-   declared country, never the id.
+   evidence; every country adds its certification part reports), its
+   country-specific checks (the US critical-target fit, stored-input,
+   source-coverage and split-microdata checks; the UK identity, diagnostics and
+   gate-report checks), the lines it may publish, and its Hub repository. Every
+   check that keys on an id string today reads the table through the declared
+   country instead: `required_release_files`, `_expected_model_package` and
+   `line_for_release_id`, and also each `startswith("populace-us-")`,
+   exact-k and constant-id test in `contract.py`, `release.py` and `loader.py`
+   (about 35 sites). A schema-2 US release then cannot skip the US checks by
+   choosing another id.
 3. **An unknown country is refused.** The validator fails closed instead of
    falling back to the base set. NZ is registered before the switch (cos d962's
    late-November deliverable depends on it).
 4. **The id is derived, not parsed.** A schema-2 release id must equal
    `microcosm-<country>-<vintage>-<line>` rendered from the declared fields, and
    the directory name must equal the id. Nothing reads meaning out of the id
-   string any more.
+   string any more. The pointer readers validate a line before they fetch the
+   manifest, so schema-2 pointers also carry `country`, `vintage` and `line`.
+   The reader checks them against the registry entry, then against the manifest
+   it fetches.
 5. **The year is declared once.** The registry entry carries the vintage string,
    and the loader compares the manifest's `vintage` with it exactly, which
    removes the `2025` versus `2024-25` mismatch.
-6. **Grandfathering is a frozen list.** Schema-1 manifests keep today's id-keyed
-   dispatch only for the release ids published before 11-06. A new schema-1
-   release is refused.
+6. **Grandfathering is a frozen list of published revisions.** Schema-1
+   manifests keep today's id-keyed dispatch only for the (release id, revision)
+   pairs published before 11-06: the `populace-*` release ids and the per-cut
+   tags of the UK national and dense lines. The list cannot hold release ids
+   alone, because the UK lines keep one constant id across cuts, so an id-only
+   list would grandfather every future cut. A new schema-1 cut is refused.
 
 #### The frozen shape
 
@@ -223,11 +241,17 @@ PEP 440 specifier, and the built version must satisfy one of them. At load,
 `_enforce_package_compatibility` refuses unless the installed model package and
 the installed `policyengine-core` each satisfy one of their specifiers.
 
-**The release validator.** `_check_compatible_package_entries` checks the same
-lists at publication. An entry may declare `basis: publisher_claim` with a
-`declared_by` naming who made the claim; an entry without a basis records what
-the build measured. It does not require an entry wider than the built version
-to declare that basis.
+**The release validator.** For `calibration` releases,
+`_check_compatible_package_entries` checks the same lists at publication. An
+entry may declare `basis: publisher_claim` with a `declared_by` naming who made
+the claim; an entry without a basis records what the build measured. It does
+not require an entry wider than the built version to declare that basis. For
+`source_enrichment` releases (the served US default),
+`validate_source_enrichment_candidate` is already stricter. Each list must be
+the exact pin `=={version}` unless the certified report declares a publisher
+claim. A claim is accepted only as `compatibility_claim_entry` builds it: it
+names its declarer and is bounded above and below. Core is always pinned
+exactly ("no producer can declare a Core range", `source_enrichment.py`).
 
 **policyengine.py.** `validate_release_manifest`
 (`src/policyengine/provenance/certification.py`) admits a model version when it
@@ -240,19 +264,29 @@ manifest model but does not test the Core version against it there. Bundle
 
 #### From 11-06: one rule (C2 v1)
 
-For a release and an installed (package, version), where the package is the
-declared country's model package or `policyengine-core`:
+It generalizes the source-enrichment rule to every release. For a release and
+an installed (package, version), where the package is the declared country's
+model package or `policyengine-core`:
 
-1. The specifiers are the release manifest's `compatible_<kind>_packages`
-   entries for that package. There must be at least one, each valid.
-2. The built version satisfies at least one. Otherwise the release is invalid.
-3. The installed version satisfies at least one. Otherwise the pair is refused.
-4. The basis is `built_with_model_package` when the installed version equals the
-   built version. Otherwise it is `publisher_claim`, attributed to the matching
-   entry's `declared_by`.
-5. An entry that admits any version other than the built one must declare
-   `basis: publisher_claim` and `declared_by`. This is the one tightening of the
-   validator.
+1. **Entries.** The specifiers are the release manifest's
+   `compatible_<kind>_packages` entries for that package. There must be at least
+   one, and each must be a valid PEP 440 specifier.
+2. **Exact pins and claims.** An entry whose specifier is exactly `==V` or
+   `===V`, with no wildcard, where `V` is the built version, is an exact pin.
+   Every other entry is a claim. It must declare `basis: publisher_claim` and a
+   `declared_by`, must contain the built version, and must be bounded above and
+   below, as `compatibility_claim_entry` requires today. This is the one
+   tightening for `calibration` releases.
+3. **Core.** `policyengine-core` takes exact pins only. Claims apply to the model
+   package alone, as on the source-enrichment path.
+4. **Admission.** The installed version is admitted when
+   `Version(installed) == Version(built)`, PEP 440 equality with any local label
+   included, or when it satisfies a claim. Containment in an exact pin alone is
+   not enough, because `2.0.0+local` satisfies `==2.0.0`. Otherwise the pair is
+   refused.
+5. **Basis.** The basis is `built_with_model_package` for the first case and
+   `publisher_claim` for the second, attributed to the first matching claim in
+   manifest order.
 
 microcosm.data's loader and policyengine.py's bundle certification both
 implement this rule. policyengine.py's `legacy_compatible_model_package` label
@@ -300,11 +334,22 @@ while one is still served.
 
 - A `national_default` or local-area release may not opt out of staging, and
   `--allow-missing-staging` no longer applies to those roles.
-- The build manifest records the build's `run_outcome`, read from its local
-  staging version-3 terminal document and bound by that document's digest. The
-  publisher refuses any outcome other than `completed`.
-- The publisher reads only local records. Emitter delivery is never a
-  precondition, so a collector outage cannot block a release.
+- Remote staging delivery stays required, as it is today. It is the
+  pre-publication review: the build appears on the staging dashboard before
+  anyone serves it. That is the deliberate difference from the emitter and the
+  Logbook, whose remote halves never gate. A staging outage must not force a
+  rebuild, though. M3 adds a command that re-delivers the release's own staging
+  bundle and reads it back, so the publisher can accept the build once that
+  succeeds. M3 also moves the delivery gate from `publish_cli` into
+  `prepare_release`, so every publish path runs it.
+- The release directory ships the build's staging version-3 terminal document
+  (its `progress.json`), bound by digest from `build_manifest.json` and listed in
+  the country's C1 file set. The build manifest records the `run_outcome` it
+  says, and the publisher refuses any outcome other than `completed`. Builds run
+  on Modal and other hosts while publishing runs elsewhere, so the record
+  travels with the release instead of being read from the build host.
+- Emitter delivery is never a precondition, so a collector outage cannot block a
+  release.
 - Staging version 1, its re-export from `microcosm.build` and the version-1
   branch of `publish_cli` are deleted at M2, once the US writes version 3
   (microcosm#933). The dashboard keeps its version-1 reader for history.
@@ -323,9 +368,10 @@ every non-chain field followed by `prev_row_digest`. The disposition is one of
 onto one.
 
 The UK full build, spine build, row-wise drivers and release-cut certifier write
-rows. On the US side only `tools/build_us_multispine_pool.py` and
-`tools/us_bundle_generation/core.py` do. Neither the fiscal-refresh tool nor the
-ACS-local tool writes one. `logbook/us.jsonl` holds 28 rows, the last from
+rows. On the US side only `tools/build_us_multispine_pool.py` writes one;
+`tools/us_bundle_generation/core.py` reads `logbook/us.jsonl` and verifies a
+row's digest. Neither the fiscal-refresh tool nor the ACS-local tool writes
+one. `logbook/us.jsonl` holds 28 rows, the last from
 2026-08-09. No release directory binds a Logbook row today: the UK national
 manifests carry the attempt id and cut tag, not a row digest.
 
@@ -333,11 +379,12 @@ manifests carry the attempt id and cut tag, not a row digest.
 
 - Every terminal build attempt writes one row through `record_build_attempt`,
   with its disposition from `logbook_disposition(run_outcome)`.
-- The release's `build_manifest.json` records its terminal attempt's
+- The release directory ships its terminal attempt's spooled row
+  (`<row_digest>.json`), and `build_manifest.json` records
   `logbook.row_digest`.
-- The publisher refuses a `national_default` or local-area release whose row is
-  missing from the local spool or does not hash to that digest. The remote insert
-  is not required.
+- The publisher refuses a `national_default` or local-area release whose shipped
+  row is missing, does not validate as a Logbook row, or does not hash to that
+  digest. The remote insert is not required.
 - Whether microcosm#739's Logbook family model folds into `run_outcome` is
   anth-volk's call.
 
@@ -386,7 +433,7 @@ manifests carry the attempt id and cut tag, not a row digest.
   bundle `data_releases` entry resolves through a registry entry (anth-volk, M3).
 - **Publishing enforces C1 to C4.** For `national_default` and local-area
   releases the publisher refuses a release without a certification, without a
-  local `run_outcome` of `completed`, or without a Logbook row digest, and
+  shipped `run_outcome` of `completed`, or without a shipped Logbook row, and
   refuses an unknown country.
 
 ## The parity rule
@@ -441,8 +488,11 @@ staging documents that calibration-diagnostics vendors and byte-checks.
 | `SHA256SUMS` | | the generator |
 
 `tools/generate_release_contract_fixtures.py` writes them, and `--check`
-regenerates them into a temporary directory and compares every byte. Every value
+regenerates them into a temporary directory and compares every byte. Every
+digest, version, identifier and gate count in the C1 manifests and the pointers
 is synthetic: each digest is the SHA-256 of `release-contract-fixture:<name>`.
+`inventory.json` and `registry.json` carry live values on purpose, because they
+freeze the contract's constants and the registry.
 
 The fixtures carry no gate-battery report and no signed certification, on
 purpose. Those embed the UK gate spec's live digests, which change with most UK
@@ -463,7 +513,12 @@ The tests:
   executable statements of today's id-string keying, which M3 flips
   deliberately.
 - `packages/microcosm-build/tests/engine_free/shared/test_release_contract_fixture_generation.py`:
-  the generator reproduces the committed bytes.
+  the generator reproduces the committed bytes, and a Hypothesis property holds
+  `uk_national_release_manifests` to the contract for every valid input.
+- `test_assembled_release_has_the_release_contract_golden_shape` in
+  `packages/microcosm-build/tests/engine_free/uk/test_uk_release_assembler.py`:
+  a real assembly's manifests match the golden key for key and type for type,
+  and its directory holds exactly the inventory's files.
 
 **Regenerate** when the contract changes on purpose, in the pull request that
 changes it and this document:
@@ -494,10 +549,10 @@ The 10-09 report's "retire now" items, checked against GitHub and main on
 | #822, #824, #826 (Axiom and Belgium drafts) | Closed by this milestone; BE re-enters through the transport composer after BE-1 |
 | #642 (US legislative-district layer) | Closed by this milestone; district products come from the one US population (M5) or #922 |
 | #378 (Build K epic) | Closes when this document merges |
-| #873 (typed model artifacts) | Kept open: microcosm-dynamics still pins `microcosm-frame` and `microcosm-graph` to its head, 3ff92b0ae, which is not on main. The dynamics work repins or lands it first, then closes it |
-| `tools/build_uk_rowwise_dataset.py` | Kept. The report's premise does not hold: the graph driver accepts `--candidate-clone-counts` only with `--dry-run`, docs/uk-full-build-graph.md keeps the row-wise driver, and UK-3 (dense or local-k) is undecided |
+| #873 (typed model artifacts) | Kept open: microcosm-dynamics still pins `microcosm-frame` and `microcosm-graph` to 3ff92b0ae, a commit on #873's branch that is not on main. The dynamics work repins or lands it first, then closes it |
+| `tools/build_uk_rowwise_dataset.py` | Kept. The report's reason, that the graph driver already takes `--candidate-clone-counts`, does not settle it: both drivers accept the flag only for a dry run. docs/uk-full-build-graph.md keeps the row-wise driver as a separate driver, and UK-3 (dense or local-k) is undecided |
 | `format_uk_release_id`, `apply_uk_release_identity` | Deleted by this milestone, with `UKReleaseIdentity`, which is built on `format_uk_release_id` and is equally unused: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | Owned by a separate task (task_d2b70813) |
-| microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; a separate task |
+| microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) |
 | cos d816 | Ruled 10-09 (per-country Core pins, microcosm#1143) |
 | cos d928 | Parked; its 10-10 note records it resolved on main (the plan-2 exclusions renewed to 11-03). Nothing to rule |

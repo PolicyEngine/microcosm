@@ -36,13 +36,13 @@
  },
  "gates": {
   "spine": {
-   "uk_release_input_coverage": "passed"
+   "passed": 3
   },
   "calibration_seam": {
-   "uk_input_mass_parity": "passed"
+   "passed": 2
   },
   "release_cut": {
-   "uk_aggregate_admin": "passed"
+   "passed": 4
   }
  },
  "attempt_id": "uk-frs-calibration-attempt-20260101T000000Z-00000000",

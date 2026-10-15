@@ -11,7 +11,7 @@ only the fixture's.
 from __future__ import annotations
 
 import importlib.util
-import string
+import json
 import subprocess
 import sys
 
@@ -64,12 +64,9 @@ _attempt_suffix = st.builds(
     st.integers(0, 59),
     st.text(_HEX, min_size=8, max_size=8),
 )
-_statuses = st.dictionaries(
-    st.text(string.ascii_lowercase + "_", min_size=1, max_size=24),
-    st.sampled_from(["passed", "not_applicable"]),
-    min_size=1,
-    max_size=4,
-)
+#: A shippable part's statuses: the certifier's census of its gates by status
+#: (``_status_census``), which the contract requires to be all "passed".
+_statuses = st.integers(1, 500).map(lambda count: {"passed": count})
 _staging = st.sampled_from(
     [
         {
@@ -178,8 +175,16 @@ def test_national_manifests_satisfy_the_release_contract(inputs):
     assert certified.model.built_version == inputs["runtime"]["policyengine-uk"]
     assert certified.core.built_version == inputs["runtime"]["policyengine-core"]
 
-    # Deterministic: the builder is a function of its inputs alone.
-    assert ASSEMBLER.uk_national_release_manifests(**inputs) == (
-        build_manifest,
-        release_manifest,
-    )
+    # The manifest records each part's census exactly as the certification signed it.
+    assert build_manifest["gates"] == {
+        "spine": inputs["spine_part"]["statuses"],
+        "calibration_seam": inputs["seam_part"]["statuses"],
+        "release_cut": inputs["release_cut_part"]["statuses"],
+    }
+
+    # Deterministic, key order included: the builder is a function of its inputs.
+    again = ASSEMBLER.uk_national_release_manifests(**inputs)
+    assert [json.dumps(document, indent=1) for document in again] == [
+        json.dumps(document, indent=1)
+        for document in (build_manifest, release_manifest)
+    ]
