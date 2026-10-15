@@ -583,8 +583,8 @@ def _area_signed_deferrals(
             rationale=(
                 "E06000053 and E09000001 are reviewed exclusions of the "
                 "local-authority support floor (uk/local_area_support_"
-                "exclusions.json, microcosm#762 A4): respectively 7 and 14 "
-                "positive-weight rows at K=4, and 17 and 49 at K=10. Their own "
+                "exclusions.json, microcosm#762 A4): each misses the floor at "
+                "every K measured. Their own "
                 "local-authority cells are signed-deferred on the same "
                 "evidence; their rows stay in the solve through the "
                 "constituency families and the national rows (A14 amendment "
