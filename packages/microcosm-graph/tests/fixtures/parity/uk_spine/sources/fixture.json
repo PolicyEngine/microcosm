@@ -2772,7 +2772,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.",
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, flags the rows it drew (person_is_spi_income_recipient) so later stages tell tape-concept rows from FRS-concept ones without re-deriving the recipient rule (microcosm#840), leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path. Stage 2 also draws trading_loss, the year's trading loss the tape does not carry, from the FRS rows (uk-data#528), and a drawn row whose self_employment_income is positive keeps no loss, so profit and loss never both hold an amount, as on the FRS rows (microcosm#1095).",
       "operations": [
         {
           "artifact_roles": [
@@ -3154,7 +3154,8 @@
             "jsa_contrib_reported",
             "jsa_income_reported",
             "esa_contrib_reported",
-            "esa_income_reported"
+            "esa_income_reported",
+            "trading_loss"
           ],
           "postprocess": {
             "gross_savings_interest_income": "stage1 INCBBS draw + stage2 tax_free_savings_income",
@@ -3532,6 +3533,7 @@
         "jsa_income_reported",
         "esa_contrib_reported",
         "esa_income_reported",
+        "trading_loss",
         "hmrc_spi_pay",
         "hmrc_spi_unemployment_benefit_income",
         "hmrc_spi_incapacity_benefit_income"

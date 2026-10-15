@@ -244,6 +244,8 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    # The stage-2 fill's trading loss (uk-data#528, microcosm#1095).
+    "trading_loss",
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,

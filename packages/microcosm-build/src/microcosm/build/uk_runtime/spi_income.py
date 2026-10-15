@@ -1222,6 +1222,7 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_esa_support_component(person, spi_people=spi_people)
+    person = _clear_trading_loss_beside_profit(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     person, gainful_self_employment = _refresh_uc_gainful_self_employment(
         person, spi_people=spi_people
@@ -2595,6 +2596,34 @@ def _refresh_esa_support_component(
         "esa_includes_support_component",
         np.ones(int(spi_people.sum()), dtype=bool),
         default=True,
+    )
+    return person
+
+
+def _clear_trading_loss_beside_profit(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """A redrawn row with a positive profit keeps no drawn trading loss.
+
+    policyengine-uk takes a trade's profit in ``self_employment_income`` and
+    the year's loss in ``trading_loss``, and the FRS rows never hold both
+    (uk-data#528). Stage 2 draws the loss from the FRS rows, and its forests
+    can mix a loss into a row the tape gives a profit, so the tape's profit
+    holds and the loss goes (microcosm#1095).
+    """
+
+    if "trading_loss" not in person.columns:
+        return person
+    profit = pd.to_numeric(
+        person.loc[spi_people, "self_employment_income"], errors="coerce"
+    ).fillna(0.0)
+    loss = pd.to_numeric(person.loc[spi_people, "trading_loss"], errors="coerce")
+    _assign_spi_values(
+        person,
+        spi_people,
+        "trading_loss",
+        np.where(profit.to_numpy() > 0.0, 0.0, loss.fillna(0.0).to_numpy()),
+        default=0.0,
     )
     return person
 

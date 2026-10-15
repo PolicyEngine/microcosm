@@ -177,6 +177,9 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    # uk-data#528: the year's trading loss, which the SPI tape does not
+    # carry; a redrawn row with a positive profit keeps none (microcosm#1095).
+    "trading_loss",
 )
 
 _PERSON_ID_COLUMNS = (

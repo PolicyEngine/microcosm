@@ -125,6 +125,32 @@ def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
     )
 
 
+def test_a_redrawn_row_with_a_profit_keeps_no_drawn_trading_loss() -> None:
+    """Profit and loss never both hold an amount (uk-data#528, microcosm#1095)."""
+
+    person = pd.DataFrame(
+        {
+            # Row 20: the tape's profit beside a drawn loss, which goes. Row 30:
+            # no profit, so its drawn loss stays. Row 40 is a base row whose
+            # FRS values are left alone.
+            "self_employment_income": [0.0, 900.0, 0.0, 0.0],
+            "trading_loss": [0.0, 250.0, 400.0, 600.0],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, False], index=person.index)
+
+    result = spi_income._clear_trading_loss_beside_profit(person, spi_people=spi_people)
+
+    assert result["trading_loss"].tolist() == [0.0, 0.0, 400.0, 600.0]
+    assert result["self_employment_income"].tolist() == [0.0, 900.0, 0.0, 0.0]
+    # A frame without the column (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"self_employment_income": [1.0]}, index=[1])
+    assert "trading_loss" not in spi_income._clear_trading_loss_beside_profit(
+        bare, spi_people=pd.Series([True], index=[1])
+    )
+
+
 def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None:
     """A drawn row's gainful self-employment takes the root's whole rule."""
 
