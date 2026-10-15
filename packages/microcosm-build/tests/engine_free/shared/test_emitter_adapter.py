@@ -66,7 +66,7 @@ def test_selects_both_workers_once_with_shared_path_and_build_identity(
     assert modules["telemetry"]["registration"]["run_id"] == "run-one"
     assert modules["telemetry"]["heartbeat_seconds"] == 123
     assert modules["telemetry"]["identity"] == {"commit": "synthetic"}
-    assert options["startup_timeout"] == 3
+    assert options["startup_timeout"] == 15
     # The service emits one run-start event from its startup configuration.
     # The build adapter must not send a second run-start request.
     assert messages == []

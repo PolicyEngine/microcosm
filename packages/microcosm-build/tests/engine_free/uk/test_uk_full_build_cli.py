@@ -85,8 +85,8 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
         posture.epochs,
         posture.learning_rate,
     )
-    assert (args.n_clones, args.epochs, args.learning_rate) == (15, 1500, 0.15)
-    assert args.target_weight_rule == "grain_equal"
+    assert (args.n_clones, args.epochs, args.learning_rate) == (15, 2000, 0.15)
+    assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert args.expected_constituency_vintage == "2024_pcon"
     assert args.sample_seed == 578
     assert args.staging_upload_interval_seconds == 300.0
@@ -111,6 +111,88 @@ def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):
     with pytest.raises(ValueError, match="--release-role dense refuses") as excinfo:
         cli.validate_cli_args(args)
     assert needle in str(excinfo.value)
+
+
+def test_dense_role_admits_the_row_metadata_rules_as_candidate_overrides(tmp_path):
+    """microcosm#1124: candidate-only rules; release candidates and the national role refuse them."""
+    for rule in (
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ):
+        args = arguments(tmp_path, "--target-weight-rule", rule)
+        cli.validate_cli_args(args)
+        assert args.target_weight_rule == rule
+    with pytest.raises(ValueError, match="--release-candidate refuses non-release"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--target-weight-rule",
+                "grain_family_equal",
+            )
+        )
+    national = cli.parse_args(
+        _national_argv(tmp_path, "--target-weight-rule", "grain_family_equal")
+    )
+    with pytest.raises(ValueError, match="--target-weight-rule grain_family_equal"):
+        cli.validate_cli_args(national)
+
+
+def test_size_stage_l2_flags_are_validated_and_recorded_only_when_on(tmp_path):
+    """microcosm#1124: candidate-only, size-run-only, refused by the national role."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    # A sized build takes the doctrine's refit L2 unless it is turned off.
+    defaulted = arguments(tmp_path, "--dataset-households", "2")
+    cli.validate_cli_args(defaulted)
+    assert set(rowwise_parameters(defaulted, source_year=2024)) >= {"refit_l2"}
+    plain = arguments(tmp_path, "--dataset-households", "2", "--refit-l2-lambda", "0")
+    cli.validate_cli_args(plain)
+    assert not {"selection_l2", "refit_l2"} & set(
+        rowwise_parameters(plain, source_year=2024)
+    )
+    on = arguments(
+        tmp_path,
+        "--dataset-households",
+        "2",
+        "--refit-l2-lambda",
+        "0.03",
+        "--refit-l2-anchor",
+        "uniform",
+        "--selection-l2-lambda",
+        "1e-3",
+    )
+    cli.validate_cli_args(on)
+    parameters = rowwise_parameters(on, source_year=2024)
+    assert parameters["refit_l2"] == {
+        "lambda": 0.03,
+        "anchor": "uniform",
+        "basis": "chi_square",
+    }
+    assert parameters["selection_l2"]["lambda"] == 1e-3
+    with pytest.raises(
+        ValueError, match="--refit-l2-lambda requires --dataset-households"
+    ):
+        cli.validate_cli_args(arguments(tmp_path, "--refit-l2-lambda", "0.03"))
+    with pytest.raises(ValueError, match="without a positive"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path, "--dataset-households", "2", "--refit-l2-anchor", "uniform"
+            )
+        )
+    with pytest.raises(ValueError, match="finite number"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path, "--dataset-households", "2", "--selection-l2-lambda", "-1"
+            )
+        )
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--refit-l2-basis", "record")
+    national = cli.parse_args(_national_argv(tmp_path, "--refit-l2-lambda", "0.03"))
+    with pytest.raises(ValueError, match="--refit-l2-lambda"):
+        cli.validate_cli_args(national)
 
 
 def test_engine_blocks_must_be_positive_and_equal_the_clone_count(tmp_path):
@@ -557,7 +639,7 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     )
     assert (manifest["parameters"]["n_clones"], manifest["parameters"]["epochs"]) == (
         15,
-        1500,
+        2000,
     )
     for key in (
         "solve",
@@ -2099,3 +2181,125 @@ def test_a_sigterm_during_the_national_build_records_a_discarded_row(
     )
     rows = load_spool_rows(out / "logbook-spool")
     assert [row.disposition for row in rows] == ["discarded"]
+
+
+def test_inspection_export_is_candidate_only_and_dense_only(tmp_path):
+    args = arguments(tmp_path, "--inspection-export")
+    cli.validate_cli_args(args)
+    assert args.inspection_export
+    assert not arguments(tmp_path).inspection_export
+    with pytest.raises(ValueError, match="--inspection-export is candidate-only"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", "--inspection-export")
+        )
+    national = cli.parse_args(_national_argv(tmp_path, "--inspection-export"))
+    with pytest.raises(ValueError, match="--inspection-export"):
+        cli.validate_cli_args(national)
+
+
+def test_inspection_export_swaps_only_the_export_node():
+    from dataclasses import dataclass, field
+
+    from microcosm.build.uk_runtime import inspection_export
+    from microcosm.build.uk_runtime.graph_terminal import UKExportPrepareKernel
+
+    @dataclass(frozen=True)
+    class Node:
+        id: str
+        kernel: str
+        params: dict = field(default_factory=dict)
+
+    @dataclass(frozen=True)
+    class Graph:
+        nodes: tuple
+
+    export = Node(
+        "uk.full.export.prepare", UKExportPrepareKernel.ref, {"bindings": "{}"}
+    )
+    other = Node("uk.full.gates.calibrated", "gate@1")
+    swapped = inspection_export.use_inspection_export(Graph((other, export)))
+    nodes = {node.id: node for node in swapped.nodes}
+    assert nodes["uk.full.gates.calibrated"] is other
+    assert nodes["uk.full.export.prepare"].kernel == (
+        inspection_export.UKInspectionExportPrepareKernel.ref
+    )
+    assert nodes["uk.full.export.prepare"].params == {
+        "bindings": "{}",
+        "inspection_export": True,
+    }
+    assert export.params == {"bindings": "{}"}
+    with pytest.raises(ValueError, match="Expected one"):
+        inspection_export.use_inspection_export(Graph((other,)))
+
+
+def test_inspection_kernel_describes_past_a_gate_block_only_when_requested(monkeypatch):
+    from microcosm.build.uk_runtime import inspection_export
+
+    monkeypatch.setattr(inspection_export, "context_frame", lambda context: "frame")
+    monkeypatch.setattr(
+        inspection_export.graph_terminal,
+        "describe_uk_export",
+        lambda frame, *, bindings: {"frame": frame, "bindings": bindings},
+    )
+    kernel = inspection_export.UKInspectionExportPrepareKernel()
+    gate = SimpleNamespace(key="g" * 64)
+
+    def context(params):
+        return SimpleNamespace(params=params, artifacts={"full_gates": gate})
+
+    result = kernel.run(
+        context({"bindings": '{"inspection_export":true}', "inspection_export": True})
+    )
+    descriptor = json.loads(result.artifacts["export_descriptor"])
+    assert descriptor["bindings"]["inspection_export"] is True
+    assert descriptor["bindings"]["artifacts"] == {"full_gates": "g" * 64}
+    with pytest.raises(ValueError, match="requires inspection_export"):
+        kernel.run(context({"bindings": '{"inspection_export":true}'}))
+    with pytest.raises(ValueError, match="must record inspection_export"):
+        kernel.run(context({"bindings": "{}", "inspection_export": True}))
+
+
+def test_sized_dense_builds_take_the_doctrine_size_defaults(tmp_path):
+    """microcosm#1124: draw ceiling, refit floor and refit L2 default only when sized."""
+    from microcosm.build.uk_runtime import local_doctrine as doctrine
+
+    unsized = arguments(tmp_path)
+    cli.validate_cli_args(unsized)
+    assert (unsized.selection_pi_hi, unsized.baseline_pi_floor) == (1.0, 0.0)
+    assert unsized.refit_l2_lambda is None
+    assert cli.cli_size_l2(unsized, "refit") is None
+
+    sized = arguments(tmp_path, "--dataset-households", "100000")
+    cli.validate_cli_args(sized)
+    assert sized.selection_pi_hi == doctrine.UK_LOCAL_SIZE_SELECTION_PI_HI == 0.5
+    assert sized.baseline_pi_floor == doctrine.UK_LOCAL_SIZE_BASELINE_PI_FLOOR == 0.5
+    l2 = cli.cli_size_l2(sized, "refit")
+    assert l2.l2_lambda == doctrine.UK_LOCAL_SIZE_REFIT_L2_LAMBDA
+    assert (l2.anchor, l2.basis) == ("uniform", "chi_square")
+    assert cli.cli_size_l2(sized, "selection") is None
+
+    explicit = arguments(
+        tmp_path,
+        "--dataset-households",
+        "100000",
+        "--selection-pi-hi",
+        "0.95",
+        "--baseline-pi-floor",
+        "0",
+        "--refit-l2-lambda",
+        "0",
+    )
+    cli.validate_cli_args(explicit)
+    assert (explicit.selection_pi_hi, explicit.baseline_pi_floor) == (0.95, 0.0)
+    assert cli.cli_size_l2(explicit, "refit") is None
+
+
+def test_the_doctrine_is_k15_2000_epochs_nation_grain():
+    from microcosm.build.uk_runtime import local_doctrine as doctrine
+
+    assert doctrine.UK_LOCAL_CLONE_COUNT == 15
+    assert doctrine.UK_LOCAL_SOLVE_EPOCHS == 2000
+    assert doctrine.UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule == (
+        "nation_grain_family_equal_sqrt_count"
+    )
+    assert doctrine.UK_LOCAL_MAX_WEIGHT_RATIO == 10.0

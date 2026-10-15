@@ -255,14 +255,16 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # Engine-free: the landlords' profit and finance costs, the inputs that
-    # split the two income concepts (the SPI recipient rule and the household
-    # reference person's sub-letting rent) and the rental property values the
-    # coherence receipt reads (microcosm#1106).
+    # split the two income concepts (the income stage's recipient flag, the
+    # channel and the household reference person's sub-letting rent), the
+    # landlords' ages the FRS-concept finance-cost draw conditions on, and the
+    # rental property values the coherence receipt reads (microcosm#1106,
+    # microcosm#840).
     "property_components": frozenset(
         {
             ("person", "age"),
             ("person", "is_household_head"),
-            ("person", "is_uc_claimant"),
+            ("person", "person_is_spi_income_recipient"),
             ("person", "person_support_channel"),
             ("person", "property_income"),
             ("person", "property_finance_costs"),
@@ -1052,6 +1054,8 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",
+    # The rows stage 1 drew, read by property_components (microcosm#840).
+    "person_is_spi_income_recipient",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

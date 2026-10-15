@@ -49,13 +49,13 @@ def _good_candidate(tmp_path: Path) -> Path:
         "release_role": "dense",
         "parameters": {
             "release_candidate": True,
-            "epochs": 1500,
+            "epochs": 2000,
             "n_clones": 15,
             "skip_holdout": False,
             "doctrine": {
                 "max_weight_ratio": 10.0,
-                "target_weight_rule": "grain_equal",
-                "solve_epochs": 1500,
+                "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+                "solve_epochs": 2000,
                 "clone_count": 15,
             },
         },
@@ -265,6 +265,12 @@ def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> Non
         ),
         (lambda m, r: m["parameters"].__setitem__("skip_holdout", True), "holdout"),
         (
+            lambda m, r: m["parameters"].__setitem__(
+                "refit_l2", {"lambda": 0.03, "anchor": "initial", "basis": "chi_square"}
+            ),
+            "refit L2 penalty",
+        ),
+        (
             lambda m, r: m["census_household_uprating"]["tenure_cells"].__setitem__(
                 "applied", False
             ),
@@ -302,6 +308,126 @@ def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None
     )
     failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
     assert any(needle in failure for failure in failures), failures
+
+
+def _per_clone(exact: bool = True, blocks: int = 15) -> dict:
+    return {
+        "blocks": blocks,
+        "engine_population_representation": {
+            "mode": "block_weights_scaled_to_pool",
+            "blocks": blocks,
+            "exact": exact,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("resolution", "passes"),
+    [
+        (_per_clone(), True),
+        (_per_clone(exact=False), False),
+        # One block per clone, so the count must be the run's K.
+        (_per_clone(blocks=5), False),
+        ({"blocks": 15}, False),
+    ],
+)
+def test_one_engine_block_per_clone_passes_only_when_recorded_exact(
+    tmp_path: Path, resolution: dict, passes: bool
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["solve"]["measure_resolution"] = resolution
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert (failures == []) is passes, failures
+    if not passes:
+        assert any("without an exact pool representation" in f for f in failures)
+
+
+def _sized(manifest: dict) -> None:
+    """Make the fixture a sized run at the size doctrine."""
+
+    manifest["parameters"].update(
+        {
+            "dataset_households": 100_000,
+            "selection_pi_hi": 0.5,
+            "baseline_pi_floor": 0.5,
+            "refit_l2": {
+                "lambda": 0.0215748772773509,
+                "anchor": "uniform",
+                "basis": "chi_square",
+            },
+        }
+    )
+    manifest["solve"]["dataset_size"] = {
+        "requested_households": 100_000,
+        "realized_households": 100_000,
+    }
+    manifest.setdefault("release_posture", {})["size_doctrine"] = True
+
+
+@pytest.mark.parametrize(
+    ("mutate", "needle"),
+    [
+        (lambda m: None, None),
+        (
+            lambda m: m["parameters"].__setitem__("dataset_households", 60_000),
+            "parameters.dataset_households",
+        ),
+        (
+            lambda m: m["parameters"].__setitem__("selection_pi_hi", 0.95),
+            "parameters.selection_pi_hi",
+        ),
+        (lambda m: m["parameters"].__setitem__("refit_l2", None), "refit_l2"),
+        (
+            lambda m: m["solve"]["dataset_size"].__setitem__(
+                "realized_households", 99_998
+            ),
+            "realized",
+        ),
+        (
+            lambda m: m["release_posture"].__setitem__("size_doctrine", False),
+            "size_doctrine",
+        ),
+        (lambda m: m["solve"].pop("dataset_size"), "dataset_size is missing"),
+        (
+            lambda m: m["parameters"].__setitem__("resume_size_checkpoint", "ck"),
+            "resumed from a size checkpoint",
+        ),
+        (
+            lambda m: m["parameters"].__setitem__("selection_l2", {"lambda": 0.5}),
+            "selection L2 penalty",
+        ),
+    ],
+)
+def test_a_sized_run_passes_only_at_the_size_doctrine(
+    tmp_path: Path, mutate, needle
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    _sized(manifest)
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    if needle is None:
+        assert failures == []
+    else:
+        assert any(needle in failure for failure in failures), failures
+
+
+def test_an_unsized_run_carries_no_refit_penalty(tmp_path: Path) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["parameters"]["refit_l2"] = {"lambda": 0.01}
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any("without a size request" in failure for failure in failures)
 
 
 @pytest.mark.parametrize(

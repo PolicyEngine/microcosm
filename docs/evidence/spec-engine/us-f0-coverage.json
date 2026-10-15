@@ -1656,13 +1656,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "41a64b8820bf161e316c49e3f2b666a247b58f6f6d50dd4395b89c8f5b1399f6",
-          "protocol_sha256": "0e4c8a4ace5e10747065669a009691d0eee9179ca42b344f8912c5ca239ebde6"
+          "map_sha256": "158e0a7fb281ca879094bd3bfd226c790a92fb9bde45dab7343ad2cd62d28440",
+          "protocol_sha256": "e1cf6b795f88a070ca43259857a77ecc7bfcda127fadc4bd45bea44315aef09b"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "41a64b8820bf161e316c49e3f2b666a247b58f6f6d50dd4395b89c8f5b1399f6",
-          "protocol_sha256": "0e4c8a4ace5e10747065669a009691d0eee9179ca42b344f8912c5ca239ebde6"
+          "map_sha256": "158e0a7fb281ca879094bd3bfd226c790a92fb9bde45dab7343ad2cd62d28440",
+          "protocol_sha256": "e1cf6b795f88a070ca43259857a77ecc7bfcda127fadc4bd45bea44315aef09b"
         },
         "status": "covered"
       },
@@ -1677,7 +1677,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "0e4c8a4ace5e10747065669a009691d0eee9179ca42b344f8912c5ca239ebde6",
+          "implementation_sha256": "e1cf6b795f88a070ca43259857a77ecc7bfcda127fadc4bd45bea44315aef09b",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1698,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "0e4c8a4ace5e10747065669a009691d0eee9179ca42b344f8912c5ca239ebde6",
+          "implementation_sha256": "e1cf6b795f88a070ca43259857a77ecc7bfcda127fadc4bd45bea44315aef09b",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "3080fe938df62216dc4853c1163639817de3c537e0e932309642fbd3f7d8f266"
+      "spec_sha256": "6338821db4619b1443f8790469d289cf3aa292ab10b66932b70786aabb2308d3"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "3080fe938df62216dc4853c1163639817de3c537e0e932309642fbd3f7d8f266"
+    "spec_sha256": "6338821db4619b1443f8790469d289cf3aa292ab10b66932b70786aabb2308d3"
   },
   "status": "pass"
 }

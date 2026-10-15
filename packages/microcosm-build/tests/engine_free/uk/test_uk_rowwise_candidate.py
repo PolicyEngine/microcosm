@@ -97,7 +97,7 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     assert plan["default_scope"] == "all_geographies"
     assert plan["configuration"]["n_clones"] == 2
     assert plan["configuration"]["seed"] == 7
-    assert plan["configuration"]["calibration"]["epochs"] == 1500
+    assert plan["configuration"]["calibration"]["epochs"] == 2000
     assert plan["configuration"]["target_families"] is None
     assert {node["id"] for node in plan["nodes"]} >= {
         "uk.full.dense",
@@ -280,10 +280,10 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
     args = builder._parse_args(base)
     builder._validate_cli_args(args)
     assert args.n_clones == builder.UK_ROWWISE_DENSE_POSTURE.clone_count == 15
-    assert args.epochs == builder.UK_ROWWISE_DENSE_POSTURE.epochs == 1500
-    assert args.target_weight_rule == "grain_equal"
+    assert args.epochs == builder.UK_ROWWISE_DENSE_POSTURE.epochs == 2000
+    assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
 
-    with pytest.raises(ValueError, match=r"--epochs != doctrine 1500"):
+    with pytest.raises(ValueError, match=r"--epochs != doctrine 2000"):
         builder._validate_cli_args(builder._parse_args([*base, "--epochs", "512"]))
     with pytest.raises(ValueError, match=r"--n-clones != doctrine 15"):
         builder._validate_cli_args(builder._parse_args([*base, "--n-clones", "10"]))
@@ -376,7 +376,27 @@ def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
     assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
 
 
-def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
+@pytest.mark.parametrize(
+    ("extra", "needle"),
+    [
+        (["--dataset-households", "50000"], "dataset_households 50000"),
+        (
+            ["--dataset-households", "100000", "--selection-pi-hi", "0.9"],
+            "selection_pi_hi 0.9",
+        ),
+        (
+            ["--dataset-households", "100000", "--refit-l2-lambda", "0"],
+            "refit_l2_lambda",
+        ),
+        (
+            ["--dataset-households", "100000", "--selection-seed", "7"],
+            "selection_seed 7",
+        ),
+    ],
+)
+def test_a_sized_release_candidate_must_carry_the_size_doctrine(
+    tmp_path, extra, needle
+):
     builder = _load_builder_module()
     args = builder._parse_args(
         [
@@ -388,13 +408,66 @@ def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
             str(tmp_path / "ladder.npz"),
             "--out",
             str(tmp_path / "out"),
-            "--dataset-households",
-            "50000",
+            *extra,
             "--release-candidate",
         ]
     )
-    with pytest.raises(ValueError, match="candidate-only"):
+    with pytest.raises(ValueError, match="local size doctrine") as refused:
         builder._validate_cli_args(args)
+    assert needle in str(refused.value)
+
+
+def test_the_doctrine_size_is_a_release_size_and_any_other_a_candidate(tmp_path):
+    from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_DATASET_HOUSEHOLDS
+    from microcosm.build.uk_runtime.rowwise_cli import size_doctrine_drift
+
+    builder = _load_builder_module()
+
+    def parsed(*extra):
+        return builder._parse_args(
+            [
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--release-role",
+                "dense",
+                "--ladder",
+                str(tmp_path / "ladder.npz"),
+                "--out",
+                str(tmp_path / "out"),
+                *extra,
+            ]
+        )
+
+    assert UK_LOCAL_DATASET_HOUSEHOLDS == 100_000
+    # The role fills the size doctrine, so the bare request carries it.
+    assert size_doctrine_drift(parsed("--dataset-households", "100000")) == []
+    assert size_doctrine_drift(parsed()) == []
+    assert size_doctrine_drift(parsed("--dataset-households", "60000"))
+    # A selection penalty or a resumed selection is not the doctrine's draw.
+    with_selection_l2 = size_doctrine_drift(
+        parsed(
+            "--dataset-households",
+            "100000",
+            "--selection-l2-lambda",
+            "0.5",
+            "--selection-l2-anchor",
+            "uniform",
+            "--selection-l2-basis",
+            "chi_square",
+        )
+    )
+    assert any("selection L2 penalty" in item for item in with_selection_l2)
+    resumed = parsed("--dataset-households", "100000")
+    resumed.resume_size_checkpoint = tmp_path / "checkpoint"
+    assert any(
+        "resume_size_checkpoint" in item for item in size_doctrine_drift(resumed)
+    )
+    # Off the doctrine a sized build is still a candidate request: whatever
+    # else the bare request lacks, the size doctrine is not what refuses it.
+    try:
+        builder._validate_cli_args(parsed("--dataset-households", "60000"))
+    except ValueError as error:
+        assert "size doctrine" not in str(error)
 
 
 def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
@@ -513,7 +586,7 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
         posture.epochs,
         posture.learning_rate,
     )
-    assert dense.target_weight_rule == "grain_equal"
+    assert dense.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert dense.expected_constituency_vintage == "2024_pcon"
     assert dense.staging_upload_interval_seconds == 300.0
     assert dense._explicit_arguments == frozenset()

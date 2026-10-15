@@ -7743,6 +7743,136 @@
       "recipient_role_column": {
        "type": "string"
       },
+      "bridge_predictors": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "tape",
+         "twin",
+         "validation"
+        ],
+        "properties": {
+         "tape": {
+          "type": "string"
+         },
+         "twin": {
+          "type": "string"
+         },
+         "validation": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "recipient_income_rule": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "drawn",
+        "undrawn",
+        "unearned_income_floor_gbp"
+       ],
+       "properties": {
+        "drawn": {
+         "type": "string"
+        },
+        "undrawn": {
+         "type": "string"
+        },
+        "unearned_income_floor_gbp": {
+         "type": "number"
+        }
+       }
+      },
+      "draw": {
+       "type": "string"
+      },
+      "reference_model": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "population",
+        "predictors",
+        "targets",
+        "analogue_columns",
+        "weight",
+        "weight_mapping",
+        "fit_weight_kind",
+        "seed",
+        "method",
+        "receipt"
+       ],
+       "properties": {
+        "population": {
+         "type": "string"
+        },
+        "predictors": {
+         "type": "string"
+        },
+        "targets": {
+         "type": "string"
+        },
+        "analogue_columns": {
+         "type": "object",
+         "additionalProperties": {
+          "type": [
+           "string",
+           "null"
+          ]
+         }
+        },
+        "weight": {
+         "type": "string"
+        },
+        "weight_mapping": {
+         "type": "string"
+        },
+        "fit_weight_kind": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        },
+        "n_estimators": {
+         "type": "integer"
+        },
+        "folds": {
+         "type": "integer"
+        },
+        "fold_key": {
+         "type": "string"
+        },
+        "method": {
+         "type": "string"
+        },
+        "receipt": {
+         "type": "string"
+        }
+       }
+      },
+      "identity_uniforms": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "key",
+        "salt",
+        "seed"
+       ],
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "salt": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        }
+       }
+      },
       "rebase_income_to_build_period": {
        "type": "boolean"
       },

@@ -187,7 +187,7 @@ rejected before remote storage is called.
 ## Staged datasets
 
 Telemetry is not the dataset. The build command (`microcosm-build-uk`; dense
-K=15, exact-count `--dataset-households` and national runs alike) also stages the bundle its
+exact-count `--dataset-households` and national runs alike) also stages the bundle its
 manifest vouches for, so a run can be inspected by the team without being
 published. The two destinations share one run id:
 

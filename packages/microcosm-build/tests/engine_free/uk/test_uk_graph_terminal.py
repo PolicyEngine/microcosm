@@ -473,7 +473,12 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
 
     def solve(frame, training, **kwargs):
         calls.append(
-            (kwargs["seed"], kwargs["dataset_households"], kwargs["selection_seed"])
+            (
+                kwargs["seed"],
+                kwargs["dataset_households"],
+                kwargs["selection_seed"],
+                kwargs["selection_initial_lambda"],
+            )
         )
         return SimpleNamespace(weights=np.ones(2), selected_support=np.array([0, 2]))
 
@@ -509,6 +514,8 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
             "selection_seed": 17,
             "selection_pi_hi": 1.0,
             "baseline_pi_floor": 0.0,
+            # Every fold's budget search starts where the main search started.
+            "selection_initial_lambda": 1.7e-7,
         },
         artifacts={
             "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
@@ -525,11 +532,12 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         dataset_households=2,
         solve_seed=42,
         selection_seed=17,
+        selection_initial_lambda=1.7e-7,
     )
     assert {
         key: value for key, value in result.items() if key != "graph_binding"
     } == expected
-    assert calls == [(42, 2, 17)] * 10
+    assert calls == [(42, 2, 17, 1.7e-7)] * 10
 
 
 def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(

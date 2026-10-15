@@ -290,9 +290,16 @@ def run_acceptance(
             }
         )
 
+    # A sized release candidate at the size doctrine may be releasable
+    # (microcosm#1124, 2026-10-13); every other sized run stays a candidate.
+    size_release_candidate = bool(
+        _mapping(manifest.get("parameters")).get("release_candidate")
+    )
     add(
         "releasable_false",
-        manifest.get("releasable") is False if is_size else None,
+        manifest.get("releasable") is False
+        if is_size and not size_release_candidate
+        else None,
         manifest.get("releasable"),
         False,
     )

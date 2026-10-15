@@ -1032,6 +1032,7 @@ def _optimize(
     progress_context: Mapping[str, object] | None = None,
     return_gate_open_probabilities: bool = False,
     selection_receipt: dict[str, object] | None = None,
+    retain_best_objective: bool = False,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Run the torch optimization and return weights plus its trajectory.
 
@@ -1129,7 +1130,14 @@ def _optimize(
         w0_t = None
         anchor_share_t = None
 
-    retain_best = gates is None and not conserve_mass and l2_lambda == 0.0
+    # Without an L2 penalty the solve keeps its best target-loss epoch. With
+    # one, ``retain_best_objective`` keeps the epoch with the lowest objective
+    # the optimizer minimizes (target loss plus the weighted penalty); without
+    # it the closing state is returned, as before.
+    track_objective = l2_lambda != 0.0 and retain_best_objective
+    retain_best = (
+        gates is None and not conserve_mass and (l2_lambda == 0.0 or track_objective)
+    )
     best_loss = float("inf")
     best_epoch = 0
     best_log_w: torch.Tensor | None = None
@@ -1166,8 +1174,13 @@ def _optimize(
             l2_penalty = _l2_penalty(torch.exp(log_w), w0_t, anchor_share_t, l2_basis)
         total_loss = loss + penalty + l2_lambda * l2_penalty
         trajectory[epoch] = float(loss.item())
-        if retain_best and trajectory[epoch] < best_loss:
-            best_loss = trajectory[epoch]
+        tracked = (
+            float((loss + l2_lambda * l2_penalty).item())
+            if track_objective
+            else trajectory[epoch]
+        )
+        if retain_best and tracked < best_loss:
+            best_loss = tracked
             best_epoch = epoch
             best_log_w = log_w.detach().clone()
         if progress_callback is not None:
@@ -1233,6 +1246,10 @@ def _optimize(
                 target_loss_scales,
                 target_loss_cap,
             )
+            if track_objective:
+                closing_loss = closing_loss + l2_lambda * _l2_penalty(
+                    weights, w0_t, anchor_share_t, l2_basis
+                )
             if float(closing_loss.item()) > best_loss:
                 # retain_best requires free mass, so never under softmax.
                 assert not softmax_mass, "best-iterate retention under softmax"
@@ -1245,7 +1262,11 @@ def _optimize(
             if selection_receipt is not None:
                 selection_receipt.update(
                     {
-                        "rule": "best_feasible_loss",
+                        "rule": (
+                            "best_feasible_objective"
+                            if track_objective
+                            else "best_feasible_loss"
+                        ),
                         "selected_epoch": selected_epoch,
                         "epochs_executed": epochs,
                         "epoch_convention": "completed_optimizer_updates; zero is start",
@@ -1986,6 +2007,7 @@ def calibrate(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    retain_best_objective: bool = False,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -2136,6 +2158,13 @@ def calibrate(
             "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
             Build drivers use this to publish staging telemetry; calibration
             results are unchanged.
+        retain_best_objective: With ``l2_lambda > 0`` on the plain Adam path
+            (free mass, no L0), return the epoch with the lowest objective the
+            optimizer minimizes, target loss plus ``l2_lambda`` times the
+            penalty, instead of the closing state. Recorded as
+            ``options["iterate_selection"] == "best_feasible_objective"``.
+            Without an L2 penalty the solve already keeps its best target-loss
+            epoch, and the flag changes nothing.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -2470,6 +2499,7 @@ def calibrate(
             progress_callback=progress_callback,
             return_gate_open_probabilities=True,
             selection_receipt=iterate_selection_receipt,
+            retain_best_objective=retain_best_objective,
             **(
                 {}
                 if gate_initialization is None
@@ -2543,13 +2573,15 @@ def calibrate(
             "epochs": epochs,
             "learning_rate": learning_rate,
             "iterate_selection": (
-                "best_feasible_loss"
-                if method == "adam"
-                and mass == FREE_MASS
-                and l0_lambda == 0.0
-                and l2_lambda == 0.0
-                and target_records is None
-                else "closing_state"
+                "closing_state"
+                if method != "adam"
+                or mass != FREE_MASS
+                or l0_lambda != 0.0
+                or target_records is not None
+                or (l2_lambda != 0.0 and not retain_best_objective)
+                else "best_feasible_objective"
+                if l2_lambda != 0.0
+                else "best_feasible_loss"
             ),
             "iterate_selection_receipt": iterate_selection_receipt,
             "mass": mass,
@@ -2837,6 +2869,7 @@ def refit_l0_selection(
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    retain_best_objective: bool = False,
 ) -> L0RefitResult:
     """Refit ordinary calibration on a frozen support from an L0 solve.
 
@@ -3022,6 +3055,7 @@ def refit_l0_selection(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=progress_callback,
+        retain_best_objective=retain_best_objective,
     )
     return L0RefitResult(
         selection=selection,

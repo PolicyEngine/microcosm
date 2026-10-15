@@ -48,6 +48,7 @@ from microcosm.graph.codecs import SOURCE_CODECS
 from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame
 from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
+from .dataset_size import UK_SIZE_L2_PARAM_KEYS
 from .geography_ladder import (
     UK_EXPORT_AREA_CODE_COLUMNS,
     export_area_code_columns,
@@ -1090,7 +1091,14 @@ class UKFullHoldoutKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from ..country_spec import load_country_spec
-        from . import dataset_size, graph_targets, local_rowwise
+        from . import (
+            dataset_size,
+            graph_targets,
+            local_doctrine,
+            local_rowwise,
+            national_doctrine,
+            target_weights,
+        )
 
         return hashlib.sha256(
             canonical_json(
@@ -1100,6 +1108,9 @@ class UKFullHoldoutKernel(KernelBase):
                         graph_targets,
                         local_rowwise,
                         dataset_size,
+                        local_doctrine,
+                        national_doctrine,
+                        target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
@@ -1152,6 +1163,12 @@ class UKFullHoldoutKernel(KernelBase):
                 selection_seed=context.params.get("selection_seed"),
                 selection_pi_hi=float(context.params["selection_pi_hi"]),
                 baseline_pi_floor=float(context.params["baseline_pi_floor"]),
+                selection_initial_lambda=context.params.get("selection_initial_lambda"),
+                **{
+                    key: context.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in context.params
+                },
             )
         report = {
             **report,
@@ -1194,6 +1211,21 @@ def uk_full_holdout_node(
             "selection_pi_hi": 1.0 if size is None else size.params["pi_hi"],
             "baseline_pi_floor": (
                 0.0 if size is None else size.params["baseline_pi_floor"]
+            ),
+            # microcosm#1124: each fold's budget search starts where the main
+            # search started, so five folds do not each search from zero.
+            "selection_initial_lambda": (
+                None if size is None else size.params.get("initial_lambda")
+            ),
+            # microcosm#1124: the size stages' L2 penalties, present only when on.
+            **(
+                {}
+                if size is None
+                else {
+                    key: size.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in size.params
+                }
             ),
         },
         artifact_inputs=(
@@ -1364,6 +1396,7 @@ def rowwise_candidate_manifest_from_graph(
         local_vintage_census,
         release_verdict,
         rowwise_parameters,
+        size_doctrine_drift,
     )
 
     nodes = final_manifest.nodes
@@ -1449,6 +1482,7 @@ def rowwise_candidate_manifest_from_graph(
     representation = dict(bindings.get("measure_resolution", {})).get(
         "engine_population_representation"
     )
+    size_drift = size_doctrine_drift(args)
     releasable, release_posture = release_verdict(
         sample_fraction=args.sample_fraction,
         engine_blocks=args.engine_blocks,
@@ -1677,6 +1711,15 @@ def rowwise_candidate_manifest_from_graph(
                     }
                 }
             ),
+            **(
+                {}
+                if "target_loss_weight_receipt" not in bindings
+                else {
+                    "target_loss_weight_receipt": dict(
+                        bindings["target_loss_weight_receipt"]
+                    )
+                }
+            ),
             "measure_resolution": dict(bindings.get("measure_resolution", {})),
             "cross_grain": dict(bindings.get("cross_geography", {})),
             "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
@@ -1744,13 +1787,18 @@ def rowwise_candidate_manifest_from_graph(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": bool(releasable and args.dataset_households is None),
+        # microcosm#1124 (2026-10-13): a sized build is releasable only at the
+        # local size doctrine; no matched-size certification is required.
+        "releasable": bool(releasable and not size_drift),
         "release_posture": {
             **release_posture,
             **(
                 {}
                 if args.dataset_households is None
-                else {"size_certification_present": False}
+                else {
+                    "size_certification_present": False,
+                    "size_doctrine": not size_drift,
+                }
             ),
         },
         "census_household_uprating": dict(
