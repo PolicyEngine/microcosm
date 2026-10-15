@@ -224,3 +224,13 @@ Telemetry is written locally under
 and supervisor resource series do not emit these staging records. If uploads
 fail, dashboard visibility is not guaranteed. A staging upload does not publish
 the release or update production `latest.json`.
+
+## 18 October rerun (d1386)
+
+Use [the prepared rerun sequence](../../docs/us-route-a-rerun-20261018.md)
+and [its settings template](../../docs/us-route-a-rerun-20261018.env.example).
+For a newer committed feed/crosswalk, set `FEED_SHA`, `FEED_BYTES` and
+`CROSSWALK_SHA` together with the corresponding paths after checking the chosen
+commit. Historical defaults remain unchanged. `BASE_LEDGER_FACTS` and its SHA
+can intentionally retain the old base-only feed while the release uses main's
+new pin. An actual machine-local `route_a.env` must stay outside Git.

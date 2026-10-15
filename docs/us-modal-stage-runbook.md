@@ -3,12 +3,15 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Four tools are registered
+digest and outputs listed with sha256 receipts. Five tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
 `tools/build_us_puf_support_base.py` (tool `us-puf-support-base`, stage
-`all`; see "Route A's base stage"), the ACS multispine staging builder,
+`all`; see "Route A's base stage"), its current-main rerun registration
+`us-puf-support-base-rerun` (same script and stage, with the reviewed current
+district crosswalk; see [the 18 October rerun](us-route-a-rerun-20261018.md)),
+the ACS multispine staging builder,
 `tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
 stage `all`; see "ACS multispine staging"), and `runner-smoke` (stage
 `smoke`), an inline script that proves the run path on any pushed commit (see
@@ -443,6 +446,14 @@ across containers would let preemption lose one chunk instead of the run.
 
 ## Route A's base stage
 
+For Max's d1386 rerun on **18 October 2026**, use
+[the rerun preparation and launch sequence](us-route-a-rerun-20261018.md) and
+`us-modal-stage-route-a-rerun-base-plan.json`. Its commit is intentionally
+unresolved. That procedure separates the historical base feed from main's
+new release feed, pins the current in-tree crosswalk with a scoped registration,
+and requires fresh local 000/001 evidence for the selected commit and CT ladder.
+The historical plan/reference below cannot qualify that rerun.
+
 On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
 non-preemptible, capped at 4 hours of wall, about $15. The release, its
 preflight and certification stay on the build machine.
@@ -527,7 +538,7 @@ Two kinds of test hold the command:
   command with its paths tokenized
   (`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
   and the registration's owned flags equal the flags of this tree's tool.
-- Only in a clone that has commit `4b57d15a2`, four tests in
+- Only in a clone that has commit `4b57d15a2`, five tests in
   `test_us_modal_stage_puf_support_base.py` that read that commit with
   `git show` and skip without it:
   - `test_the_tool_s_own_parser_reads_the_same_build_from_both_commands`:
@@ -543,10 +554,13 @@ Two kinds of test hold the command:
     its `_stage_run_config` locks, from the Modal argv, the run config the
     local run locked (paths by file name), including `PYTHONHASHSEED` `0`
     when the runner's tool environment removed a container's value, and a
-    forced `12345` is what compare-lineage refuses.
+    forced `12345` is what compare-lineage refuses;
+  - `test_rerun_crosswalk_refuses_the_historical_tree`: the rerun registration
+    refuses that commit's historical crosswalk bytes while retaining its
+    separately reviewed current-main pin.
 
 CI checks out only the commit under test (`actions/checkout` fetches one
-commit by default), so there those four tests report a skip rather than
+commit by default), so there those five tests report a skip rather than
 pass. Run them in a full clone before a paid run (step 2 below).
 
 The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
@@ -825,7 +839,7 @@ python3 tools/modal_us_stage_plan.py upload-commands --shell \
 # 2. Validate locally: the argv, class base (cpu_limit 4.0), the $14.63
 #    estimate and the $14.90 ceiling at the request
 #    (estimated_usd_at_timeout). Then run the base's tests, and confirm the
-#    four pinned-commit tests passed rather than skipped (-rs lists skips).
+#    five pinned-commit tests passed rather than skipped (-rs lists skips).
 python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-base-plan.json
 uv run pytest -rs packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py
 
