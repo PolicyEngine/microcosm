@@ -94,6 +94,37 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
     )
 
 
+def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
+    """A redrawn row's ESA comes from another donor, so its group is reset."""
+
+    person = pd.DataFrame(
+        {
+            # Root-stage answers: rows 20 and 40 reported a group outside the
+            # support group; row 40 is a base row whose answer must survive.
+            "esa_includes_support_component": [True, False, True, False],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, False], index=person.index)
+
+    result = spi_income._refresh_esa_support_component(person, spi_people=spi_people)
+
+    assert result["esa_includes_support_component"].tolist() == [
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert result["esa_includes_support_component"].dtype == bool
+    # A frame without the flag (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"esa_income_reported": [1.0]}, index=[1])
+    assert "esa_includes_support_component" not in (
+        spi_income._refresh_esa_support_component(
+            bare, spi_people=pd.Series([True], index=[1])
+        )
+    )
+
+
 def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None:
     """A drawn row's gainful self-employment takes the root's whole rule."""
 

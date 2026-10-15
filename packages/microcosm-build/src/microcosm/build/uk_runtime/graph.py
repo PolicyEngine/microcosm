@@ -525,6 +525,7 @@ class _Cell:
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
+    "esa_includes_support_component",
     "is_benunit_head",
     "is_parent",
     "is_blind",
@@ -1062,6 +1063,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#525: a redrawn row's gainful self-employment follows its drawn
     # incomes.
     "uc_is_in_gainful_self_employment",
+    # A redrawn row's ESA comes from another FRS donor, so its group returns
+    # to the engine's default for an award of one's own (microcosm#1095).
+    "esa_includes_support_component",
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",

@@ -452,6 +452,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 16,
                 "VAR2": 3,
+                # ESAGROUP: 1 work-related activity group, 3 assessment phase.
+                "VAR3": 1,
                 "BENAMT": 4.0,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -462,6 +464,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 16,
                 "VAR2": 4,
+                # ESAGROUP: 1 work-related activity group, 3 assessment phase.
+                "VAR3": 3,
                 "BENAMT": 5.0,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -1310,6 +1314,39 @@ def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
     assert not person["is_blind"].any()
 
 
+def test_esa_support_group_is_read_from_the_esa_rows(tmp_path: Path) -> None:
+    """``esa_includes_support_component`` reads ESAGROUP (VAR3) on ESA rows.
+
+    The fixture's adult in household 1 reports ESA in the work-related activity
+    group and in the assessment phase, so the column is false for them and
+    true for everyone else, the engine's own default (microcosm#1095).
+    """
+
+    stage = _write_fixture(tmp_path / "groups")
+    person = build_uk_frs_spine_frame(tmp_path / "groups", stage=stage).table("person")
+    group = person.set_index("person_id")["esa_includes_support_component"]
+    assert group.dtype == bool
+    assert group.to_dict() == {1001: False, 1002: True, 2001: True}
+
+    # One ESA row in the support group is enough.
+    tables = _fixture_tables()
+    esa_rows = [row for row in tables["benefits"] if row["BENEFIT"] == 16]
+    esa_rows[0]["VAR3"] = 2
+    stage = _write_fixture(tmp_path / "support", tables)
+    person = build_uk_frs_spine_frame(tmp_path / "support", stage=stage).table("person")
+    assert person["esa_includes_support_component"].all()
+
+    # A benefits tab without VAR3 refuses rather than set nobody's group.
+    tables = _fixture_tables()
+    tables["benefits"] = [
+        {key: value for key, value in row.items() if key != "VAR3"}
+        for row in tables["benefits"]
+    ]
+    stage = _write_fixture(tmp_path / "unasked", tables)
+    with pytest.raises(KeyError, match="no VAR3 column"):
+        build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage)
+
+
 def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
     tmp_path: Path,
 ) -> None:
@@ -1579,6 +1616,7 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
             "person_id": [1001, 1001, 1002, 1002, 1003, 1003, 1001, 1002],
             "benefit": [117, 118, 121, 122, 96, 1, 69, 70],
             "var2": [0] * 8,
+            "var3": [0] * 8,
             "benamt": [110.40, 28.70, 72.65, 28.70, 73.90, 29.20, 9.0, 11.0],
         }
     )
@@ -1590,7 +1628,11 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     assert weekly["pip_m_reported"].tolist() == pytest.approx([28.70, 0.0, 0.0])
     assert weekly["dla_sc_reported"].tolist() == pytest.approx([0.0, 72.65, 29.20])
     assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 28.70, 0.0])
-    reported = pe_person.drop(columns="winter_fuel_allowance_reported")
+    # With no ESA rows, nobody's ESA group is recorded outside the support group.
+    assert pe_person["esa_includes_support_component"].all()
+    reported = pe_person.drop(
+        columns=["winter_fuel_allowance_reported", "esa_includes_support_component"]
+    )
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
     )

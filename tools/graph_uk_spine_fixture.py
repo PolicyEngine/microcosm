@@ -521,6 +521,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PERSON": 1,
                 "BENEFIT": benefit,
                 "VAR2": variant,
+                # ESAGROUP on the ESA rows: the support group on odd households,
+                # the work-related activity group on even ones.
+                "VAR3": (2 if household_id % 2 else 1) if benefit == 16 else 0,
                 "BENAMT": amount,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -545,6 +548,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "PERSON": 1,
                     "BENEFIT": 95,
                     "VAR2": 0,
+                    "VAR3": 0,
                     "BENAMT": 8.0,
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",

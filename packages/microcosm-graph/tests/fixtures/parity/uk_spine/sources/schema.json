@@ -47,6 +47,7 @@
       "employee_pension_contributions": "float64",
       "employment_income": "float64",
       "esa_contrib_reported": "float64",
+      "esa_includes_support_component": "bool",
       "esa_income_reported": "float64",
       "free_school_breakfasts": "float64",
       "free_school_fruit_veg": "float64",

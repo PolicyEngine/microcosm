@@ -261,6 +261,7 @@ OUTPUT_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    "esa_includes_support_component",
     "bsp_reported",
     "benunit_id",
     "frs_benunit_capital",
@@ -876,6 +877,9 @@ def _add_benefits(
         )
         * WEEKS_IN_YEAR
     )
+    pe_person["esa_includes_support_component"] = _esa_includes_support_component(
+        benefits, person_id, person["person_id"]
+    )
     pe_person["bsp_reported"] = (
         _sum_to_entity(amount * benefit.isin((6, 9)), person_id, person["person_id"])
         * WEEKS_IN_YEAR
@@ -1119,6 +1123,37 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     if unknown:
         raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
+
+
+def _esa_includes_support_component(
+    benefits: pd.DataFrame, person_id: pd.Series, person_ids: pd.Series
+) -> np.ndarray:
+    """Whether each person's ESA includes the support component.
+
+    An ESA row (BENEFIT 16) records the group in VAR3 (ESAGROUP): 1 the
+    work-related activity group, 2 the support group, 3 the assessment phase.
+    A stored column replaces policyengine-uk's default for everyone, which
+    assumes the support group for anyone with an ESA award of their own
+    (2.129.0), so the column is false only where the survey records a group
+    outside it and never the support group, and true everywhere else: the
+    engine reads it only where there is an award of one's own (microcosm#1095).
+    A tab without VAR3 refuses, rather than set nobody's group.
+    """
+
+    if "var3" not in benefits.columns:
+        raise KeyError(
+            "The FRS benefits tab has no VAR3 column, so the ESA group "
+            "(esa_includes_support_component) cannot be set."
+        )
+    esa_row = _number(benefits, "benefit") == 16
+    group = _number(benefits, "var3")
+    outside = _sum_to_entity(
+        (esa_row & group.isin((1, 3))).astype(float), person_id, person_ids
+    )
+    support = _sum_to_entity(
+        (esa_row & (group == 2)).astype(float), person_id, person_ids
+    )
+    return ~((np.asarray(outside) > 0) & ~(np.asarray(support) > 0))
 
 
 def _number(frame: pd.DataFrame, column: str) -> pd.Series:

@@ -1221,6 +1221,7 @@ def impute_uk_spi_income_support(
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person = _refresh_esa_support_component(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     person, gainful_self_employment = _refresh_uc_gainful_self_employment(
         person, spi_people=spi_people
@@ -2570,6 +2571,30 @@ def _refresh_carer_take_up_input(
     )
     _assign_spi_values(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
+    )
+    return person
+
+
+def _refresh_esa_support_component(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Return a redrawn row's ESA group to the engine's default.
+
+    The root stage reads the ESA group from the FRS benefits tab
+    (``esa_includes_support_component``); the SPI fill re-imputes the ESA
+    receipts on the redrawn rows from other FRS donors, so the twin's answer no
+    longer describes them. The flag returns to true, policyengine-uk's own
+    default for an award of one's own (microcosm#1095).
+    """
+
+    if "esa_includes_support_component" not in person.columns:
+        return person
+    _assign_spi_values(
+        person,
+        spi_people,
+        "esa_includes_support_component",
+        np.ones(int(spi_people.sum()), dtype=bool),
+        default=True,
     )
     return person
 

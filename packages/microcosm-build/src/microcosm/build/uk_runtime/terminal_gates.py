@@ -256,6 +256,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.dla_sc_category",
     "person.employment_sector",
     "person.esa_health_condition_proxy",
+    "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
     "person.gift_aid",
     "person.has_lifetime_isa",
