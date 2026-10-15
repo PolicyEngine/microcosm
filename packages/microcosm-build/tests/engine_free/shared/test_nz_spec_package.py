@@ -58,6 +58,11 @@ such as LICENSE and .gitignore):
   and L12-L20 of/in file. Words ignore case; the L prefix is uppercase.
 - Numbers may form comma lists or ranges with hyphen, en dash, em dash,
   or "to", with optional spaces and an L on either endpoint.
+- HTTP(S) URLs may be bare or Markdown destinations. GitHub blob/<ref>/path,
+  raw/<ref>/path and raw.githubusercontent.com/<owner>/<repo>/<ref>/path
+  accept #L12, #L12-L20 and #L12C3-L20C9 fragments. PolicyEngine/microcosm
+  URLs at any ref name local files; foreign URLs still require a same-resource
+  {path, commit} pin, even when the URL itself contains a commit.
 
 In-scope examples:
     file:12
@@ -103,6 +108,9 @@ In-scope examples:
     ![x](file) L5
     LICENSE:12
     .gitignore:12
+    [the source](https://github.com/PolicyEngine/microcosm/blob/main/file#L12)
+    https://github.com/PolicyEngine/microcosm/raw/main/file#L12-L20
+    https://raw.githubusercontent.com/PolicyEngine/microcosm/main/file#L12C3-L20C9
 
 Out of scope: bare prose numbers ("line 12" without a file), unknown
 extensionless names ("unknown_source:12"), spelled-out numbers ("file line
@@ -133,6 +141,7 @@ from functools import cache
 from pathlib import PurePosixPath
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from hypothesis import assume, given, settings
@@ -611,7 +620,69 @@ _MARKDOWN_LINK = re.compile(
     r"\((?P<destination>(?:[^()\n]|\([^()\n]*\))*)\))"
 )
 _MARKDOWN_LINE_CITATIONS = _line_citation_patterns(_MARKDOWN_LINK.pattern)
+_SOURCE_URL = re.compile(r"(?P<url>(?i:https?)://[^\s<>\[\]()`\"']+)")
+_URL_LINE_CITATIONS = _line_citation_patterns(_SOURCE_URL.pattern)
+_URL_LINE_FRAGMENT = re.compile(r"L\d+(?:C\d+)?(?:-L\d+(?:C\d+)?)?")
 _COMMIT_PIN = re.compile(r"[0-9a-f]{7,40}")
+
+
+@dataclasses.dataclass(frozen=True)
+class _CitationFile:
+    path: str
+    # URLs declare repository identity; plain filenames use checkout lookup.
+    repository: bool | None = None
+
+
+def _citation_destination(destination: str) -> tuple[_CitationFile, bool] | None:
+    """Parse a path or HTTP(S) file URL and retain its repository identity."""
+
+    destination = destination.strip().removeprefix("<").removesuffix(">")
+    path, separator, fragment = destination.partition("#")
+    path = path.split("?", 1)[0]
+    repository = None
+    if re.match(r"(?i:https?)://", destination):
+        try:
+            url = urlsplit(destination)
+        except ValueError:
+            return None
+        if not url.hostname:
+            return None
+        path, fragment = url.path.lstrip("/"), url.fragment
+        repository = False
+        parts = path.split("/")
+        if url.hostname.lower() == "github.com":
+            if len(parts) < 5 or parts[2] not in {"blob", "raw"}:
+                return None
+            repository = "/".join(parts[:2]).lower() == "policyengine/microcosm"
+            path = "/".join(parts[4:])
+        elif url.hostname.lower() == "raw.githubusercontent.com":
+            if len(parts) < 4:
+                return None
+            repository = "/".join(parts[:2]).lower() == "policyengine/microcosm"
+            path = "/".join(parts[3:])
+        if repository:
+            # A branch may contain slashes. Prefer the longest known checkout
+            # suffix, while keeping files absent from this ref local as well.
+            path = max(
+                (
+                    tracked
+                    for tracked in _repository_files()
+                    if path == tracked or path.endswith("/" + tracked)
+                ),
+                key=len,
+                default=path,
+            )
+    if re.fullmatch(_SOURCE_FILE, path) or _extensionless_file_pattern().fullmatch(
+        path
+    ):
+        return _CitationFile(str(PurePosixPath(path)), repository), bool(
+            _URL_LINE_FRAGMENT.fullmatch(fragment)
+        )
+    if repository is None and not separator:
+        for pattern in (*_LINE_CITATIONS, *_extensionless_line_patterns()):
+            if located := pattern.fullmatch(path):
+                return _CitationFile(str(PurePosixPath(located["file"]))), True
+    return None
 
 
 def _mask_json_pointer_citations(text: str) -> str:
@@ -622,26 +693,23 @@ def _mask_json_pointer_citations(text: str) -> str:
     )
 
 
-def _markdown_link_files(match: re.Match[str]) -> frozenset[str]:
+def _markdown_link_files(
+    match: re.Match[str], destination: _CitationFile
+) -> frozenset[_CitationFile]:
     """Attribute a link to its destination and every filename in its label."""
 
-    destination = re.split(r"[?#]", match["destination"], maxsplit=1)[0].strip("<>")
     files = {
-        str(PurePosixPath(named["file"]))
+        _CitationFile(str(PurePosixPath(named["file"])))
         for pattern in (re.compile(_SOURCE_FILE), _extensionless_file_pattern())
         for named in pattern.finditer(match["label"])
     }
-    if re.fullmatch(_SOURCE_FILE, destination) or _extensionless_file_pattern().fullmatch(
-        destination
-    ):
-        files.add(str(PurePosixPath(destination)))
-    for pattern in (*_LINE_CITATIONS, *_extensionless_line_patterns()):
-        for located in pattern.finditer(destination):
-            files.add(str(PurePosixPath(located["file"])))
+    files.add(destination)
     return frozenset(files)
 
 
-def _source_line_citation_groups(value: object) -> Iterator[tuple[frozenset[str], str]]:
+def _source_line_citation_groups(
+    value: object,
+) -> Iterator[tuple[frozenset[_CitationFile], str]]:
     """Keep all files sharing a link's locator together for the pin check."""
 
     patterns = (*_LINE_CITATIONS, *_extensionless_line_patterns())
@@ -652,20 +720,52 @@ def _source_line_citation_groups(value: object) -> Iterator[tuple[frozenset[str]
             for pattern in _MARKDOWN_LINE_CITATIONS
             for match in pattern.finditer(prose)
         }
+        parsed_links = set()
         for link in _MARKDOWN_LINK.finditer(prose):
-            path, separator, fragment = link["destination"].partition("#")
-            target = path.split("?", 1)[0] + separator + fragment.split("?", 1)[0]
-            if link.span("link") in located_links or any(
-                pattern.search(target) or pattern.search(link["label"])
-                for pattern in patterns
+            destination = _citation_destination(link["destination"])
+            if destination is None:
+                continue
+            file, located = destination
+            parsed_links.add(link.span())
+            if (
+                located
+                or link.span("link") in located_links
+                or any(pattern.search(link["label"]) for pattern in patterns)
             ):
-                if files := _markdown_link_files(link):
-                    yield files, text
-        # Links have already been attributed as units; do not scan their parts.
-        prose = _MARKDOWN_LINK.sub(lambda match: " " * len(match[0]), prose)
+                yield _markdown_link_files(link, file), text
+        # Unparseable destinations must leave the full link available to scan.
+        prose = _MARKDOWN_LINK.sub(
+            lambda match, spans=parsed_links: (
+                " " * len(match[0]) if match.span() in spans else match[0]
+            ),
+            prose,
+        )
+        located_urls = {
+            match.span("url")
+            for pattern in _URL_LINE_CITATIONS
+            for match in pattern.finditer(prose)
+        }
+        parsed_urls = set()
+        for url in _SOURCE_URL.finditer(prose):
+            destination = _citation_destination(url[0].rstrip(".,;"))
+            if destination is None:
+                continue
+            file, located = destination
+            parsed_urls.add(url.span())
+            if located or url.span() in located_urls:
+                yield frozenset({file}), text
+        prose = _SOURCE_URL.sub(
+            lambda match, spans=parsed_urls: (
+                " " * len(match[0]) if match.span() in spans else match[0]
+            ),
+            prose,
+        )
         for pattern in patterns:
             for match in pattern.finditer(prose):
-                yield frozenset({str(PurePosixPath(match["file"]))}), text
+                yield (
+                    frozenset({_CitationFile(str(PurePosixPath(match["file"])))}),
+                    text,
+                )
 
 
 def source_line_citations(value: object) -> list[tuple[str, str]]:
@@ -674,7 +774,7 @@ def source_line_citations(value: object) -> list[tuple[str, str]]:
     return [
         (name, text)
         for files, text in _source_line_citation_groups(value)
-        for name in sorted(files)
+        for name in sorted({file.path for file in files})
     ]
 
 
@@ -761,11 +861,15 @@ def unpinned_line_citations(document: object) -> list[tuple[str, str]]:
         (name, text)
         for files, text in _source_line_citation_groups(document)
         if not all(
-            not _repository_source(name)
-            and any(_pin_covers(name, pin) for pin in pinned)
-            for name in files
+            not (
+                file.repository
+                if file.repository is not None
+                else _repository_source(file.path)
+            )
+            and any(_pin_covers(file.path, pin) for pin in pinned)
+            for file in files
         )
-        for name in sorted(files)
+        for name in sorted({file.path for file in files})
     ]
 
 
@@ -2119,6 +2223,11 @@ _BRANCH_NAMES = (
     "BA6E7D6",
     "",
 )
+_SOURCE_URL_FORMS = (
+    "https://github.com/{repository}/blob/{ref}/{path}",
+    "http://github.com/{repository}/raw/{ref}/{path}",
+    "https://raw.githubusercontent.com/{repository}/{ref}/{path}",
+)
 
 
 def _plant(text: str, depth: int, as_key: bool) -> object:
@@ -2214,6 +2323,7 @@ class TestSourceCitations:
         }
         assert (unpinned_line_citations(document) == []) is exempt
 
+    @pytest.mark.parametrize("url_form", [None, *_SOURCE_URL_FORMS])
     @settings(max_examples=200, deadline=None)
     @given(
         label=st.sampled_from(("concepts.py", "the source", "upstream.rs")),
@@ -2221,27 +2331,162 @@ class TestSourceCitations:
         reverse=st.booleans(),
         depth=st.integers(0, 4),
         as_key=st.booleans(),
+        fragment=st.sampled_from(("", "#L12", "#L12-L20", "#L12C3-L20C9")),
+        query=st.sampled_from(("", "?raw=1")),
     )
     def test_markdown_link_exemption_requires_every_file_to_be_pinned_and_foreign(
-        self, label: str, destination: str, reverse: bool, depth: int, as_key: bool
+        self,
+        url_form: str | None,
+        label: str,
+        destination: str,
+        reverse: bool,
+        depth: int,
+        as_key: bool,
+        fragment: str,
+        query: str,
     ) -> None:
-        link = f"[{label}]({destination})"
+        path = destination
+        if url_form is not None:
+            if destination == "concepts.py":
+                path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+            destination = url_form.format(
+                repository="PolicyEngine/microcosm"
+                if destination == "concepts.py"
+                else "Other/repository",
+                ref="a" * 40,
+                path=path,
+            )
+        link = f"[{label}]({destination}{query}{fragment})"
         citation = f"lines 12-20 of {link}" if reverse else f"{link} lines 12-20"
         # Even an explicit pin for the local file cannot exempt it.
         document = {
             "pins": [
                 {"path": file, "commit": "abcdef0"}
-                for file in ("concepts.py", "upstream.rs")
+                for file in ("concepts.py", path, "upstream.rs")
+                if file != "other.rs"
             ],
             "notes": _plant(citation, depth, as_key),
         }
-        attributed = {destination} | ({label} if label != "the source" else set())
+        attributed = {path} | ({label} if label != "the source" else set())
         assert set(source_line_citations(document)) == {
             (file, citation) for file in attributed
         }
         assert (unpinned_line_citations(document) == []) is (
             attributed <= {"upstream.rs"}
         )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    @pytest.mark.parametrize("ref", ["main", "feature/citations", "a" * 40])
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            "[the source]({url}#L889-L928)",
+            "[upstream.rs]({url}#L889-L928)",
+            "{url}#L889-L928",
+            "[x]({url}) lines 889-928",
+            "lines 889-928 of [x]({url})",
+            "[upstream.rs]({url}) lines 889-928",
+            "lines 889-928 of [upstream.rs]({url})",
+            "{url} lines 889-928",
+            "lines 889-928 of {url}",
+            "[the source]({url}#L12)",
+            "{url}#L12",
+            "[the source]({url}#L12C3-L20C9)",
+            "{url}#L12C3-L20C9",
+        ],
+    )
+    def test_this_repository_url_lines_are_never_exempt(
+        self, url_form: str, ref: str, spelling: str, as_key: bool
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = url_form.format(repository="PolicyEngine/microcosm", ref=ref, path=path)
+        citation = spelling.format(url=url)
+        document = {
+            "pins": [
+                {"path": file, "commit": "abcdef0"} for file in (path, "upstream.rs")
+            ],
+            "notes": _plant(citation, 3, as_key),
+        }
+        expected = {path} | ({"upstream.rs"} if "[upstream.rs]" in citation else set())
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in expected
+        }
+        assert set(unpinned_line_citations(document)) == {
+            (file, citation) for file in expected
+        }
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    @pytest.mark.parametrize("pin", [None, "concepts.py", "other.rs"])
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    def test_foreign_url_lines_require_the_same_resource_file_pin(
+        self, url_form: str, pin: str | None, bare: bool, as_key: bool
+    ) -> None:
+        # A foreign file remains foreign even when its name exists locally.
+        url = url_form.format(
+            repository="Other/repository", ref="a" * 40, path="concepts.py"
+        )
+        citation = f"{url}#L12" if bare else f"[the source]({url}#L12)"
+        document = {"notes": _plant(citation, 3, as_key)}
+        if pin is not None:
+            document["source"] = {"path": pin, "commit": "abcdef0"}
+        assert source_line_citations(document) == [("concepts.py", citation)]
+        assert unpinned_line_citations(document) == (
+            [] if pin == "concepts.py" else [("concepts.py", citation)]
+        )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "citation",
+        [
+            "[the source](not a path concepts.py#L12)",
+            "[the source](https://[broken concepts.py#L12)",
+        ],
+    )
+    def test_unparseable_link_destinations_cannot_hide_line_citations(
+        self, citation: str, as_key: bool
+    ) -> None:
+        assert ("concepts.py", citation) in unpinned_line_citations(
+            _plant(citation, 3, as_key)
+        )
+
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    def test_repository_urls_keep_identity_for_files_absent_from_the_checkout(
+        self, url_form: str
+    ) -> None:
+        path = "retired/source.rs"
+        url = url_form.format(
+            repository="policyengine/MICROCOSM", ref="a" * 40, path=path
+        )
+        citation = f"[the source]({url}#L12)"
+        document = {"source": {"path": path, "commit": "abcdef0"}, "note": citation}
+        assert unpinned_line_citations(document) == [(path, citation)]
+
+    @pytest.mark.parametrize(
+        "fragment", ["heading12", "L12_symbol", "/key/concepts.py:L12"]
+    )
+    def test_url_stable_fragments_keep_independent_line_locators_visible(
+        self, fragment: str
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = f"https://github.com/PolicyEngine/microcosm/blob/main/{path}?raw=1#{fragment}"
+        for source in (url, f"[the source]({url})"):
+            assert source_line_citations(source) == []
+            for citation in (f"{source} L99", f"L99 in {source}"):
+                assert unpinned_line_citations(citation) == [(path, citation)]
+
+    @pytest.mark.parametrize("scheme", ["http", "https"])
+    def test_other_http_file_urls_use_the_existing_foreign_pin_rule(
+        self, scheme: str
+    ) -> None:
+        path = "src/upstream.rs"
+        url = f"{scheme}://example.org/{path}?raw=1#L12C3-L20C9"
+        for citation in (url, f"[the source]({url})"):
+            document = {"source": {"path": path, "commit": "abcdef0"}, "note": citation}
+            assert source_line_citations(document) == [(path, citation)]
+            assert unpinned_line_citations(document) == []
+            assert unpinned_line_citations(citation) == [(path, citation)]
 
     @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
     @pytest.mark.parametrize("selector", [False, True], ids=["pointer", "selector"])
@@ -2264,7 +2509,10 @@ class TestSourceCitations:
             ("concepts.py", prose)
         ]
         # A stable destination fragment cannot hide a locator outside its link.
-        for linked in (f"[the source]({citation}) L99", f"L99 in [the source]({citation})"):
+        for linked in (
+            f"[the source]({citation}) L99",
+            f"L99 in [the source]({citation})",
+        ):
             assert source_line_citations(_plant(linked, 3, as_key)) == [
                 ("records.json", linked)
             ]
