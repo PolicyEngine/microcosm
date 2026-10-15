@@ -335,6 +335,28 @@ def test__given_a_role_bearing_base__then_the_acs_spine_derives_the_role(
     json.dumps(result.provenance, allow_nan=False)
 
 
+def _load_staging_builder():
+    """The legacy staging builder, for its transfer-coverage audit."""
+
+    import importlib.util
+
+    from test_support.paths import paths_for
+
+    path = (
+        paths_for("microcosm-build").repository
+        / "tools"
+        / "_legacy"
+        / "build_us_acs_multispine_base.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "legacy_build_us_acs_multispine_base_for_multispine_tests", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def _raw_acs_frame_with_group_quarters_child(*, hours: bool = False) -> Frame:
     """The family above plus a one-person group-quarters record of a child.
 
@@ -498,6 +520,15 @@ def test__given_the_drop_and_the_hours_completion__then_hours_receipts_agree(
     assert native["missing_rows"] == modeled["modeled_rows"] == 1
     assert native["observed_rows"] == 1
     assert result.provenance["spm_independence_role"]["persons"] == 2
+    # The staging builder's own audit accepts the staged hours as native and
+    # complete (round-5 review: call the audit rather than restate it).
+    coverage = _load_staging_builder()._require_default_transfer_coverage(
+        result,
+        base,
+        target_families={"person": {"hours": ("weekly_hours_worked_before_lsr",)}},
+    )
+    assert coverage["native_registered_inputs"] == ["weekly_hours_worked_before_lsr"]
+    assert coverage["modeled_hours_rows"] == 1
 
 
 def test__given_a_role_free_base__then_the_acs_spine_derives_none(
