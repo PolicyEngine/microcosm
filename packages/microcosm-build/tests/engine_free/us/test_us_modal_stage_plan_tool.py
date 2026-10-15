@@ -1372,13 +1372,18 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
         options = runner.modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
             resources.modal_cpu,
-            resources.memory_mib,
+            resources.modal_memory,
             resources.timeout_s,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
-        # Memory is a request everywhere (an int, never a (request, limit)).
-        assert isinstance(options["memory"], int)
+        # The first scorer attempt caps memory to keep its compute cost under
+        # $40. Existing ACS/base/smoke requests retain their reviewed behavior.
+        if name == "head-to-head":
+            assert options["memory"] == (192 * 1024, 192 * 1024)
+        else:
+            assert isinstance(options["memory"], int)
+            assert resources.memory_limit_mib is None
     # The base sets a CPU limit equal to its request, and Modal throttles CPU
     # use above the limit, which is what the $15 ceiling counts on; the ACS
     # classes keep request-only.

@@ -77,7 +77,8 @@ WORK_ROOT = "/work"
 # Modal list prices for standard (non-sandbox) compute, read from
 # https://modal.com/pricing on 2026-09-22. Modal bills the higher of the
 # request and actual use, so an estimate from the request is exact while the
-# stage stays inside its request and a floor when it uses more.
+# stage stays inside its request and a floor when it uses more. Resource
+# limits equal to the requests bound the head-to-head class's compute bill.
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEMORY_USD_PER_GIB_SECOND = 0.00000222
 # Modal applies this to the CPU and memory list price of a function set
@@ -161,8 +162,10 @@ class Resources:
     limit can bill CPU above its request, and :meth:`estimated_usd` is then a
     floor. For a class whose limit equals its request, Modal throttles CPU
     use above the limit, which is the request, and the estimate counts CPU
-    at the request on that basis. Memory has no limit in any class: use
-    above the request is billed at use.
+    at the request on that basis. ``memory_limit_mib`` supplies Modal's hard
+    memory limit (``memory=(request, limit)``); exceeding it OOM-kills the
+    container. Memory remains request-only when no limit is set, so use
+    above the request can then raise the bill.
     """
 
     name: str
@@ -170,6 +173,7 @@ class Resources:
     memory_mib: int
     timeout_s: int
     cpu_limit: float | None = None
+    memory_limit_mib: int | None = None
 
     def __post_init__(self) -> None:
         if self.cpu_limit is not None and self.cpu_limit < self.cpu:
@@ -177,12 +181,30 @@ class Resources:
                 f"class {self.name!r}: CPU limit {self.cpu_limit} is below "
                 f"the request {self.cpu}"
             )
+        if (
+            self.memory_limit_mib is not None
+            and self.memory_limit_mib < self.memory_mib
+        ):
+            raise ValueError(
+                f"class {self.name!r}: memory limit {self.memory_limit_mib} MiB "
+                f"is below the request {self.memory_mib} MiB"
+            )
 
     @property
     def modal_cpu(self) -> float | tuple[float, float]:
         """The ``cpu`` argument of the class's Modal functions."""
 
         return self.cpu if self.cpu_limit is None else (self.cpu, self.cpu_limit)
+
+    @property
+    def modal_memory(self) -> int | tuple[int, int]:
+        """The ``memory`` argument of the class's Modal functions, in MiB."""
+
+        return (
+            self.memory_mib
+            if self.memory_limit_mib is None
+            else (self.memory_mib, self.memory_limit_mib)
+        )
 
     @property
     def memory_gib(self) -> float:
@@ -259,7 +281,28 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
-RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
+# Route A's head-to-head: each spawned worker retains a full repaired frame.
+# The independent review's 9-10 GiB/worker is unmeasured: 16 * 10 GiB plus
+# 32 GiB for the parent and headroom, not a measured aggregate peak. At
+# 1,030 slices * 4.7 minutes / 16 workers the tool takes about 18,154 s.
+# 20,400 s leaves staging, the normal 900 s runner reserve and compute margin.
+# CPU and memory are limited to their requests, bounding the non-preemptible
+# execution-time compute estimate at $38.91 for the whole timeout. Exceeding
+# the memory limit kills the container before it can write a final receipt.
+# Other classes retain their reviewed request-only memory behavior: this
+# first scorer attempt has an explicit $40 cap and unmeasured worker peaks.
+HEAD_TO_HEAD = Resources(
+    "head-to-head",
+    cpu=16.0,
+    memory_mib=192 * 1024,
+    timeout_s=20_400,
+    cpu_limit=16.0,
+    memory_limit_mib=192 * 1024,
+)
+HEAD_TO_HEAD_COST_CAP_USD = 40.0
+RESOURCE_CLASSES = {
+    item.name: item for item in (CHECK, HEAVY, LIGHT, BASE, HEAD_TO_HEAD)
+}
 #: Max's cap for the base run (2026-09-29: non-preemptible, 4 hours, "about
 #: $15"). The base class's ceiling at its request (its timeout,
 #: non-preemptible, at list price) must not exceed it; a test holds this.
@@ -835,9 +878,73 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+
+def _release_head_to_head_argv(
+    plan: Plan, input_paths: Mapping[str, str], state_dir: str
+) -> list[str]:
+    return [
+        "--incumbent",
+        input_paths["incumbent_h5"],
+        "--candidate",
+        input_paths["candidate_h5"],
+        "--ledger-facts",
+        input_paths["ledger_facts"],
+        "--out-prefix",
+        str(PurePosixPath(state_dir) / "h2h"),
+    ]
+
+
+US_RELEASE_HEAD_TO_HEAD = ToolSpec(
+    name="us-release-head-to-head",
+    script="tools/score_us_release_head_to_head.py",
+    inputs=("incumbent_h5", "candidate_h5", "ledger_facts"),
+    stages={
+        "score": StageSpec(
+            "score",
+            HEAD_TO_HEAD,
+            ("incumbent_h5", "candidate_h5", "ledger_facts"),
+            mirror_first=("h2h.json", "h2h.md"),
+        )
+    },
+    options={
+        "workers": OptionFlag("--workers", int),
+        "maximum_microsim_batch_size": OptionFlag("--maximum-microsim-batch-size", int),
+        # Off unless a plan sets it; the scorer refuses it on interpreters
+        # where replacing a recycled worker can deadlock.
+        "worker_max_slices": OptionFlag("--worker-max-slices", int),
+    },
+    owned_flags=frozenset(
+        {
+            "--incumbent",
+            "--candidate",
+            "--ledger-facts",
+            "--out-prefix",
+            "--candidate-manifest-sha256",
+            "--candidate-worker-identity-attestation",
+            "--congressional-district-vintage-crosswalk",
+            # Omit both BooleanOptionalActions to preserve the local run's
+            # defaults (age_targets=False, allow_unaged_dollar_targets=True).
+            # Reserve both spellings so plans cannot change that yardstick.
+            "--age-targets",
+            "--no-age-targets",
+            "--allow-unaged-dollar-targets",
+            "--no-allow-unaged-dollar-targets",
+            # Only the canonical batch-size spelling is a plan option.
+            "--maximum-microsimulation-batch-size",
+        }
+    ),
+    argv_builder=_release_head_to_head_argv,
+    parse_function="_parse_args",
+)
+
 TOOLS: dict[str, ToolSpec] = {
     tool.name: tool
-    for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE, US_PUF_SUPPORT_BASE)
+    for tool in (
+        US_ACS_LOCAL_RELEASE,
+        RUNNER_SMOKE,
+        US_PUF_SUPPORT_BASE,
+        US_RELEASE_HEAD_TO_HEAD,
+    )
 }
 
 
@@ -1896,6 +2003,11 @@ def build_receipt(
             "cpu": resources.cpu,
             "cpu_limit": resources.cpu_limit,
             "memory_mib": resources.memory_mib,
+            **(
+                {"memory_limit_mib": resources.memory_limit_mib}
+                if resources.memory_limit_mib is not None
+                else {}
+            ),
             "timeout_s": resources.timeout_s,
             "nonpreemptible": plan.nonpreemptible,
         },
@@ -2438,8 +2550,10 @@ def estimated_usd_at_timeout(plan: Plan) -> float:
     (modal.com/docs/guide/timeouts). This is the ceiling of one attempt at
     the request: for CPU it rests on a CPU limit equal to the request
     (``Resources.cpu_limit``), above which Modal throttles CPU use, and it
-    never holds for memory used above the request, which is billed at use
-    (modal.com/docs/guide/resources). Scheduling is outside the timeout,
+    holds for memory when its hard limit also equals the request
+    (``Resources.memory_limit_mib``). Without that limit, memory use above
+    the request is billed at use (modal.com/docs/guide/resources).
+    Scheduling is outside the timeout,
     container startup is timed separately (``startup_timeout``), and a
     function may run a handful of seconds past its timeout
     (modal.com/docs/guide/timeouts); Modal's billing report is the billed
@@ -2464,6 +2578,11 @@ def summarize(plan: Plan) -> dict[str, object]:
             "cpu": resources.cpu,
             "cpu_limit": resources.cpu_limit,
             "memory_gib": resources.memory_gib,
+            **(
+                {"memory_limit_gib": resources.memory_limit_mib / 1024}
+                if resources.memory_limit_mib is not None
+                else {}
+            ),
             "timeout_h": resources.timeout_s / 3600,
             "timeout_s": resources.timeout_s,
             "nonpreemptible": plan.nonpreemptible,
