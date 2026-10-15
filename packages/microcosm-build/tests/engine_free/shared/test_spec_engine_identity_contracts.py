@@ -118,13 +118,13 @@ def test_identity_contract_objects_are_closed_world(
         load_schema_registry().validate(mutated, "spine.schema.json")
 
 
-def test_all_53_seed_sites_resolve_to_typed_real_owners(
+def test_all_54_seed_sites_resolve_to_typed_real_owners(
     identity_documents: tuple[dict[str, object], list[dict[str, object]]],
 ) -> None:
     spine, source_stages = identity_documents
     bindings = _resolve(spine, source_stages)
 
-    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 54
     assert [binding.site for binding in bindings] == [
         site.id for site in LEGACY_V1_PROTOCOL.sites
     ]
@@ -142,6 +142,12 @@ def test_all_53_seed_sites_resolve_to_typed_real_owners(
         "prepare_stacked_tail_derivation"
     )
     assert by_site["torch_calibration_reseed"].owners[0].id == "calibrate"
+    for site_id in (
+        "retirement_contributions_cps_joint_draw",
+        "retirement_contributions_puf_joint_draw",
+    ):
+        assert by_site[site_id].owners[0].kind is SeedSiteOwnerKind.SOURCE_STAGE
+        assert by_site[site_id].owners[0].id == "retirement_contributions"
 
 
 def test_missing_duplicate_unknown_site_or_dangling_owner_is_refused(

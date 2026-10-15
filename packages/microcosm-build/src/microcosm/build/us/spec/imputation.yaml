@@ -11505,15 +11505,6 @@ producer_graph:
       required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: has_esi
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:employer_health_coverage'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: WSAL_VAL
           entity: person
           value_kind: finite_numeric
@@ -11530,15 +11521,6 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: '@effective:person_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_tax_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:person_tax_unit_link'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -11587,42 +11569,6 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: '@effective:self_employment_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: A_SEX
-          entity: person
-          value_kind: finite_numeric
-      - - column: is_female
-          entity: person
-          value_kind: finite_numeric
-      - - column: is_male
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:sex'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: SS_VAL
-          entity: person
-          value_kind: finite_numeric
-      - - column: social_security_dependents
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_disability
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_retirement
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_survivors
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:social_security_income'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -11728,15 +11674,6 @@ producer_graph:
       tolerated_absence_receipts:
       - optional_input:source:with_us_retirement_contribution_inputs:support_clone_index
     - alternatives:
-      - - column: tax_unit_role_input
-          entity: person
-          value_kind: non_null
-      column: '@effective:tax_unit_role'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: '@resolved_weight'
           entity: person
           value_kind: non_null
@@ -11836,42 +11773,6 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: social_security_dependents
-          entity: person
-          value_kind: non_null
-      column: social_security_dependents
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_disability
-          entity: person
-          value_kind: non_null
-      column: social_security_disability
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_retirement
-          entity: person
-          value_kind: non_null
-      column: social_security_retirement
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_survivors
-          entity: person
-          value_kind: non_null
-      column: social_security_survivors
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: spm_unit_id
           entity: spm_unit
           value_kind: finite_numeric
@@ -11890,31 +11791,10 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: filing_status
-          entity: tax_unit
-          value_kind: non_null
-      - - column: filing_status_input
-          entity: tax_unit
-          value_kind: non_null
-      column: '@effective:filing_status'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: tax_unit_id
           entity: tax_unit
           value_kind: finite_numeric
       column: '@effective:source_wrapper:tax_unit_id'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_id
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: '@effective:tax_unit_id'
       entity: tax_unit
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -11970,7 +11850,7 @@ producer_graph:
           family: retirement_contributions
           phases:
           - post_clone
-          mechanism: role-aware QRF replacement uses remapped structural IDs
+          mechanism: role-aware weighted joint donor-vector replacement preserves participation
           execution_scope: cps_source
         formula_owned_outputs_removed: {}
         force_puf_imputation: null

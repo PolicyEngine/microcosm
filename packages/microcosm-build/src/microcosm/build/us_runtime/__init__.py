@@ -764,6 +764,17 @@ from microcosm.build.us_runtime.scf_auto_loans import (
     us_scf_auto_loans_summary,
     with_us_scf_auto_loan_inputs,
 )
+from microcosm.build.us_runtime.scf_retirement import (
+    SCF_RETIREMENT_MEMBER,
+    SCF_RETIREMENT_MEMBER_SHA256,
+    SCF_RETIREMENT_OUTPUT_COLUMNS,
+    SCF_RETIREMENT_SOURCE_COLUMNS,
+    SCF_RETIREMENT_URL,
+    SCF_RETIREMENT_ZIP_SHA256,
+    extract_scf_retirement_donor,
+    fetch_scf_retirement_extract,
+    load_scf_retirement_donor,
+)
 from microcosm.build.us_runtime.scf_wealth import (
     FINANCIAL_ASSET_BLEND_AUDIT_KEY,
     FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
@@ -1575,6 +1586,15 @@ __all__ = [
     "us_scf_auto_loans_stage_spec",
     "us_scf_auto_loans_summary",
     "with_us_scf_auto_loan_inputs",
+    "SCF_RETIREMENT_MEMBER",
+    "SCF_RETIREMENT_MEMBER_SHA256",
+    "SCF_RETIREMENT_OUTPUT_COLUMNS",
+    "SCF_RETIREMENT_SOURCE_COLUMNS",
+    "SCF_RETIREMENT_URL",
+    "SCF_RETIREMENT_ZIP_SHA256",
+    "extract_scf_retirement_donor",
+    "fetch_scf_retirement_extract",
+    "load_scf_retirement_donor",
     "FINANCIAL_ASSET_BLEND_AUDIT_KEY",
     "FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
@@ -2412,13 +2432,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
         ),
     ),
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME: DonorSpec(
-        survey="Census CPS ASEC + published retirement-contribution shares",
-        source="https://www.census.gov/programs-surveys/cps.html",
+        survey="Federal Reserve SCF 2022 + Census CPS ASEC",
+        source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
             "Measured ASEC RETCB_VAL is allocated across five desired "
-            "retirement-contribution leaves using archived IRS/BEA/Vanguard/"
-            "PSCA shares, then CPS-trained QRF predictions replace the PUF "
-            "support half. PolicyEngine-US owns all statutory caps."
+            "retirement-contribution leaves using complete observed SCF "
+            "participant/amount vectors, conditioned on age and earned-income "
+            "source. Weighted joint CPS donor vectors replace the PUF support "
+            "half. PolicyEngine-US owns statutory caps and deductions. "
+            "Employer-only allocations and defined-benefit coverage remain "
+            "a separate later coverage step."
         ),
     ),
     "capital_gain_distributions": DonorSpec(

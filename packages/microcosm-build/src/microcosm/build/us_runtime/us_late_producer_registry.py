@@ -618,6 +618,23 @@ _COMMON_ROLE_AWARE_INPUTS = (
     ),
 )
 
+# Joint retirement draws consume age and earnings sources, unlike the QRF
+# families that also consume sex, health coverage and tax-unit predictors.
+_JOINT_RETIREMENT_ROLE_AWARE_INPUTS = tuple(
+    requirement
+    for requirement in _COMMON_ROLE_AWARE_INPUTS
+    if requirement.label
+    in {
+        "person_id",
+        "resolved_person_weight",
+        "support_channel",
+        "support_clone_index",
+        "age",
+        "employment_income",
+        "self_employment_income",
+    }
+)
+
 
 def _raw_person_requirements(
     columns: Sequence[str],
@@ -922,7 +939,7 @@ _source_input_inventories = {
     "with_us_retirement_contribution_inputs": _inventory(
         "with_us_retirement_contribution_inputs",
         *_raw_person_requirements(("RETCB_VAL", "WSAL_VAL", "SEMP_VAL")),
-        *_COMMON_ROLE_AWARE_INPUTS,
+        *_JOINT_RETIREMENT_ROLE_AWARE_INPUTS,
     ),
     "with_us_retirement_distribution_inputs": _inventory(
         "with_us_retirement_distribution_inputs",

@@ -273,6 +273,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "h5_io.py",  # US artifact I/O; no population treatment.
         "immigration.py",
         "input_mass.py",
+        # Pure weighted whole-vector draw helper; the registered retirement
+        # operator owns receiver selection and Frame replacement. This helper
+        # reads no source provenance and remains subject to the runtime scan.
+        "joint_retirement.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
@@ -308,6 +312,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "release_input_coverage.py",
         "release_target_parity.py",
         "scf_auto_loans.py",
+        # Pinned public SCF fetch and factual donor-table extraction; no Frame
+        # population treatment. Retirement's registered operator consumes it.
+        "scf_retirement.py",
         "scf_wealth.py",
         "sipp_financial_assets.py",
         "sipp_tips.py",
@@ -3486,15 +3493,16 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 74 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # 76 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
         # projection names the SPM role as a required source input (#893),
         # plus asec_sources.py, whose default ASEC pool the education sidecar
-        # loader now defaults to. All four are classified in
-        # _OTHER_US_RUNTIME_MODULES and scanned below like every other
+        # loader now defaults to, plus joint_retirement.py and scf_retirement.py
+        # reached by the joint SCF retirement vector producer. All six are
+        # classified in _OTHER_US_RUNTIME_MODULES and scanned below like every other
         # reached module.
-        assert len(runtime_graph) == 74, (
-            f"{tool.name} must reach the pinned 74-module runtime graph; "
+        assert len(runtime_graph) == 76, (
+            f"{tool.name} must reach the pinned 76-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

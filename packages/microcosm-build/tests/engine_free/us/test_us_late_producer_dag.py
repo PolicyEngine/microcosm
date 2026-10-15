@@ -1308,7 +1308,6 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
         "with_us_workers_compensation",
         "with_us_childcare_inputs",
         "with_us_energy_subsidy_input",
-        "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
     }
     for operator in common_role_operators:
@@ -1322,6 +1321,27 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             for alternative in sex.alternatives
             for column in alternative
         } == {"finite_numeric"}
+
+    retirement_requirements = {
+        requirement.label: requirement
+        for requirement in US_LATE_SOURCE_INPUT_INVENTORIES[
+            "with_us_retirement_contribution_inputs"
+        ].requirements
+    }
+    for label, columns in {
+        "age": {"age", "A_AGE"},
+        "employment_income": {"employment_income_before_lsr", "WSAL_VAL"},
+        "self_employment_income": {"self_employment_income_before_lsr", "SEMP_VAL"},
+    }.items():
+        requirement = retirement_requirements[label]
+        assert not requirement.optional
+        assert {
+            tuple(
+                (column.entity, column.column, column.value_kind) for column in option
+            )
+            for option in requirement.alternatives
+        } == {(("person", column, "finite_numeric"),) for column in columns}
+    assert "sex" not in retirement_requirements
 
 
 def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string() -> (

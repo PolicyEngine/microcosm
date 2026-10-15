@@ -6,8 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import microcosm.build.us_runtime.retirement_contributions as module
-from microcosm.build.source_runtime import SourceRuntimeError
+from microcosm.build.source_runtime import (
+    SourceRuntimeConfig,
+    SourceRuntimeContext,
+    SourceRuntimeError,
+)
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.retirement_contributions import (
     US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
@@ -17,7 +20,7 @@ from microcosm.build.us_runtime.retirement_contributions import (
     us_retirement_contributions_summary,
     with_us_retirement_contribution_inputs,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 
 
 def _person_source() -> pd.DataFrame:
@@ -79,17 +82,50 @@ def _frame() -> Frame:
     )
 
 
-def _derive(frame: pd.DataFrame) -> pd.DataFrame:
-    operation = next(
-        operation
-        for operation in us_retirement_contributions_stage_spec().operations
-        if operation.kind == "derive_retirement_contributions"
+def _donor() -> pd.DataFrame:
+    values = [
+        [0.85, 0.15, 0, 0, 0],
+        [0, 0, 0.4, 0.6, 0],
+        [0.4, 0.1, 0.2, 0.1, 0.2],
+        [0, 0, 0.4, 0.6, 0],
+    ]
+    donor = pd.DataFrame(values, columns=US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)
+    return donor.assign(
+        donor_id=range(4),
+        age=[35, 45, 55, 25],
+        has_wages=[True, False, True, False],
+        has_self_employment=[False, True, True, False],
+        scf_weight=1.0,
     )
-    return derive_us_retirement_contributions_from_manifest(frame, operation, None)
+
+
+def _derive(frame: pd.DataFrame, seed: int = 0) -> pd.DataFrame:
+    operation = us_retirement_contributions_stage_spec().operations[1]
+    frame = frame.assign(person_weight=1.0)
+    context = SourceRuntimeContext(
+        SourceRuntimeConfig(seed=seed), {"scf_retirement": _donor()}
+    )
+    return derive_us_retirement_contributions_from_manifest(frame, operation, context)
+
+
+def _with(
+    frame: Frame,
+    *,
+    seed: int = 0,
+    time_period: int = 2024,
+    draw_audit: dict[str, object] | None = None,
+) -> Frame:
+    return with_us_retirement_contribution_inputs(
+        frame,
+        seed=seed,
+        time_period=time_period,
+        donor=_donor(),
+        draw_audit=draw_audit,
+    )
 
 
 def _stacked_frame() -> Frame:
-    direct = with_us_retirement_contribution_inputs(
+    direct = _with(
         _frame(),
         seed=0,
         time_period=2024,
@@ -121,24 +157,24 @@ def test_stage_manifest_pins_sources_operations_and_five_desired_leaves() -> Non
     ]
     derive = spec.operations[1]
     assert derive.parameters == {
-        "se_pension_share": 0.046,
-        "dc_share_of_remainder": 0.908,
+        "donor_table": "scf_retirement",
+        "age_breaks": [35, 50, 65],
+        "seed_from_build_config": True,
         "roth_dc_share": 0.15,
-        "traditional_ira_share": 0.392,
     }
 
 
-def test_direct_split_matches_archived_wage_and_self_employment_cases() -> None:
+def test_direct_allocation_preserves_source_joint_cases_and_cps_total() -> None:
     result = _derive(_person_source())
 
     np.testing.assert_allclose(
         result[list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)].to_numpy(),
         np.asarray(
             [
-                [0.7718, 0.1362, 0.036064, 0.055936, 0.0],
-                [0.0, 0.0, 0.373968, 0.580032, 0.046],
-                [0.7362972, 0.1299348, 0.034405056, 0.053362944, 0.046],
-                [0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.85, 0.15, 0, 0, 0],
+                [0, 0, 0.4, 0.6, 0],
+                [0.4, 0.1, 0.2, 0.1, 0.2],
+                [0, 0, 0.4, 0.6, 0],
             ]
         ),
         rtol=0,
@@ -167,7 +203,7 @@ def test_direct_split_rejects_invalid_measured_totals(
 
 
 def test_with_inputs_materializes_signal_and_preserves_reported_total() -> None:
-    result = with_us_retirement_contribution_inputs(
+    result = _with(
         _frame(),
         seed=0,
         time_period=2024,
@@ -177,8 +213,57 @@ def test_with_inputs_materializes_signal_and_preserves_reported_total() -> None:
     assert gate.passed, gate.failures
     person = result.table("person")
     allocated = person[list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)].sum(axis=1)
-    np.testing.assert_allclose(allocated.iloc[:3], person["RETCB_VAL"].iloc[:3])
-    assert allocated.iloc[3] == 0.0
+    np.testing.assert_allclose(allocated, person["RETCB_VAL"])
+
+
+@pytest.mark.parametrize("with_support_roles", [False, True])
+def test_wrapper_preserves_existing_metadata_mass_history_and_draw_evidence(
+    with_support_roles: bool,
+) -> None:
+    frame = _frame().with_weights(
+        "household",
+        Weights(np.full(4, 2.0), WeightKind.IMPORTANCE),
+        mass=MassChange(factor=2.0, reason="Regression fixture population scaling"),
+    )
+    if with_support_roles:
+        frame = clone_us_frame_for_puf_support(_with(frame))
+    frame = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={"assembly": {"sources": ["fixture"], "seed": 4}},
+    )
+    donor = _donor()
+    donor.attrs["scf_retirement"] = {"source": "hermetic regression donor"}
+    draw_audit: dict[str, object] = {}
+
+    result = with_us_retirement_contribution_inputs(
+        frame,
+        seed=7,
+        time_period=2024,
+        donor=donor,
+        draw_audit=draw_audit,
+    )
+
+    assert frame.mass_log
+    assert result.metadata == frame.metadata
+    assert result.mass_log == frame.mass_log
+    pd.testing.assert_series_equal(result.strata, frame.strata)
+    for entity in frame.weighted_entities:
+        np.testing.assert_array_equal(
+            result.weights_for(entity).values, frame.weights_for(entity).values
+        )
+    assert draw_audit["method"] == "weighted_joint_hot_deck_v1"
+    assert draw_audit["seed"] == 7
+    assert draw_audit["donor"] == donor.attrs["scf_retirement"]
+    assert draw_audit["cps_draw"]["cells"]
+    if with_support_roles:
+        assert draw_audit["puf_draw"]["cells"]
+    else:
+        assert draw_audit["puf_draw"] is None
+    assert us_retirement_contributions_signal_gate(result).passed
 
 
 def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> None:
@@ -200,78 +285,60 @@ def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> 
         us_retirement_contributions_summary(stacked)
 
 
-def test_puf_half_uses_qrf_predictions_and_applies_income_constraints(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    direct = with_us_retirement_contribution_inputs(
-        _frame(),
-        seed=0,
-        time_period=2024,
-    )
+def test_puf_half_draws_complete_asec_vectors_and_preserves_joint_participation() -> (
+    None
+):
+    direct = _with(_frame())
     expanded = clone_us_frame_for_puf_support(direct)
-    calls: dict[str, object] = {}
-
-    class FakeFitted:
-        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
-            calls["test"] = test.copy()
-            return pd.DataFrame(
-                {
-                    column: np.full(len(test), index + 1.0)
-                    for index, column in enumerate(
-                        US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
-                    )
-                },
-                index=test.index,
-            )
-
-    class FakeQRF:
-        def __init__(self, **kwargs: object) -> None:
-            calls["init"] = kwargs
-
-        def fit(
-            self,
-            training: pd.DataFrame,
-            predictors: list[str],
-            targets: list[str],
-            *,
-            weights: np.ndarray,
-        ) -> FakeFitted:
-            calls["training"] = training.copy()
-            calls["predictors"] = predictors
-            calls["targets"] = targets
-            calls["weights"] = weights.copy()
-            return FakeFitted()
-
-    monkeypatch.setattr(module, "QRF", FakeQRF)
-
-    result = with_us_retirement_contribution_inputs(
-        expanded,
-        seed=7,
-        time_period=2024,
-    )
-
-    assert calls["init"] == {"n_estimators": 100, "seed": 7}
-    assert len(calls["training"]) == 4
-    assert len(calls["test"]) == 4
+    result = _with(expanded, seed=7)
     person = result.table("person")
     puf = person[person["person_support_channel"] == "puf_tax_detail"]
-    # Fake predictions are 1,2,3,4,5. The no-wage rows lose both 401(k)
-    # values, and the no-self-employment rows lose the SE-pension value.
     np.testing.assert_allclose(
         puf[list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)].to_numpy(),
-        np.asarray(
-            [
-                [1.0, 2.0, 3.0, 4.0, 0.0],
-                [0.0, 0.0, 3.0, 4.0, 5.0],
-                [1.0, 2.0, 3.0, 4.0, 5.0],
-                [0.0, 0.0, 3.0, 4.0, 0.0],
-            ]
-        ),
+        direct.table("person")[
+            list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)
+        ].to_numpy(),
     )
+    assert us_retirement_contributions_signal_gate(result).passed
+
+
+def test_legacy_valid_split_is_rebuilt_instead_of_passing_through() -> None:
+    frame = _frame()
+    for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
+        frame.table("person")[column] = 0.2
+    draw_audit: dict[str, object] = {}
+    result = _with(frame, draw_audit=draw_audit)
+    assert draw_audit["method"] == "weighted_joint_hot_deck_v1"
+    assert us_retirement_contributions_signal_gate(result).passed
+    assert (
+        not result.table("person")["traditional_ira_contributions_desired"]
+        .eq(0.2)
+        .all()
+    )
+
+
+def test_fixed_overlap_surface_fails_joint_participation_gate() -> None:
+    frame = _with(_frame())
+    for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
+        frame.table("person")[column] = [0.2, 0.2, 0.2, 0]
+    gate = us_retirement_contributions_signal_gate(frame)
+    assert not gate.passed
+    assert any("ira_only" in failure for failure in gate.failures)
+    assert any("employer_only" in failure for failure in gate.failures)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_bundled_totals_reconcile_for_varied_nonnegative_amounts(seed) -> None:
+    person = _person_source()
+    person["RETCB_VAL"] = np.random.default_rng(seed).uniform(0, 25000, len(person))
+    result = _derive(person, seed)
+    values = result[list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)]
+    assert (values.to_numpy() >= 0).all()
+    np.testing.assert_allclose(values.sum(axis=1), person.RETCB_VAL, rtol=1e-12)
 
 
 def test_signal_gate_rejects_a_default_leaf() -> None:
-    result = with_us_retirement_contribution_inputs(
+    result = _with(
         _frame(),
         seed=0,
         time_period=2024,
@@ -282,3 +349,15 @@ def test_signal_gate_rejects_a_default_leaf() -> None:
 
     assert not gate.passed
     assert any("roth_ira_contributions_desired" in failure for failure in gate.failures)
+
+
+@pytest.mark.parametrize("source_total", [0.0, 1.0])
+def test_signal_gate_rejects_corrupted_direct_bundled_total(source_total):
+    result = _with(_frame())
+    person = result.table("person")
+    person.loc[0, "RETCB_VAL"] = source_total
+    person.loc[0, "traditional_401k_contributions_desired"] = 5.0
+    gate = us_retirement_contributions_signal_gate(result)
+    assert not gate.passed
+    assert gate.details["allocation_mismatch_rows"] == 1
+    assert any("do not reconcile" in failure for failure in gate.failures)

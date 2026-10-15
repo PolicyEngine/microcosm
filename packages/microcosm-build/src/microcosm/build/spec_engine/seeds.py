@@ -318,6 +318,7 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.geography_ladder",
     "microcosm.build.us_runtime.housing_inputs",
     "microcosm.build.us_runtime.immigration",
+    "microcosm.build.us_runtime.joint_retirement",
     "microcosm.build.us_runtime.medicaid_take_up",
     "microcosm.build.us_runtime.other_health_insurance",
     "microcosm.build.us_runtime.pregnancy",
@@ -331,6 +332,7 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.retirement_contributions",
     "microcosm.build.us_runtime.retirement_distributions",
     "microcosm.build.us_runtime.scf_auto_loans",
+    "microcosm.build.us_runtime.scf_retirement",
     "microcosm.build.us_runtime.scf_wealth",
     "microcosm.build.us_runtime.sipp_financial_assets",
     "microcosm.build.us_runtime.sipp_tips",
@@ -386,7 +388,6 @@ _QRF_RNG_VERSION = ";".join(
 _BUILD_CAP_SITES = (
     "prior_year_income_training_cap",
     "childcare_training_cap",
-    "retirement_contributions_training_cap",
     "disability_benefits_training_cap",
     "housing_inputs_training_cap",
     "workers_compensation_training_cap",
@@ -824,6 +825,35 @@ LEGACY_V1_SITES = (
             "one_uniform_per_sorted_recipient_tax_unit",
         ),
         reset_boundary="fresh_generator_per_tail_stage",
+    ),
+    *tuple(
+        _site(
+            site_id,
+            "build_model",
+            value_source="run_request.build_model_seed",
+            default=0,
+            seed_material=("build_model_seed",),
+            consumption_order=(
+                "sorted_age_wage_self_employment_cells",
+                "sorted_donor_id_and_person_id",
+                "donor_pool_permutation_then_recipient_permutation",
+                "stable_rank_sort_preserves_seeded_tie_order",
+                "donor_weight_cdf_at_recipient_weighted_midpoints_whole_vector",
+            ),
+            reset_boundary="fresh_generator_per_joint_donor_call",
+            draw_condition=condition,
+            derivation="numpy_default_rng(build_model_seed); whole_donor_vector",
+        )
+        for site_id, condition in (
+            (
+                "retirement_contributions_cps_joint_draw",
+                "positive_reported_retirement_contributions",
+            ),
+            (
+                "retirement_contributions_puf_joint_draw",
+                "nonempty_puf_tax_detail_support",
+            ),
+        )
     ),
     _site(
         "torch_calibration_reseed",

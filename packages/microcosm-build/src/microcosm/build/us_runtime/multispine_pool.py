@@ -88,6 +88,7 @@ from microcosm.build.us_runtime.relationship_inputs import (
     with_us_relationship_inputs,
 )
 from microcosm.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     with_us_retirement_contribution_inputs,
 )
 from microcosm.build.us_runtime.retirement_distributions import (
@@ -615,7 +616,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
     "with_us_retirement_contribution_inputs": SourceOperatorContract(
         "retirement_contributions",
         (_POST_CLONE_PHASE,),
-        "role-aware QRF replacement uses remapped structural IDs",
+        "role-aware weighted joint donor-vector replacement preserves participation",
     ),
     "with_us_retirement_distribution_inputs": SourceOperatorContract(
         "retirement_distributions",
@@ -1891,6 +1892,19 @@ def complete_multispine_source_inputs(
 def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
     """Return the fixed-seed, fixed-period post-clone kernel mapping."""
 
+    def retirement_contributions_with_receipt(current: Frame) -> PoolStageOutput:
+        draw_audit: dict[str, object] = {}
+        completed = with_us_retirement_contribution_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+            draw_audit=draw_audit,
+        )
+        return PoolStageOutput(
+            completed,
+            {US_RETIREMENT_CONTRIBUTION_STAGE_NAME: draw_audit},
+        )
+
     operators: Mapping[str, SourceFrameOperator] = {
         "with_us_prior_year_income_inputs": lambda current: (
             with_us_prior_year_income_inputs(
@@ -1966,13 +1980,7 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
-        "with_us_retirement_contribution_inputs": lambda current: (
-            with_us_retirement_contribution_inputs(
-                current,
-                seed=POOL_RANDOM_SEED,
-                time_period=POOL_TIME_PERIOD,
-            )
-        ),
+        "with_us_retirement_contribution_inputs": retirement_contributions_with_receipt,
         "with_us_retirement_distribution_inputs": lambda current: (
             with_us_retirement_distribution_inputs(
                 current,

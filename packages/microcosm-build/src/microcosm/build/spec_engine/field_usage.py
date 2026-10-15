@@ -26,9 +26,12 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_404
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_184
+# Retirement donor and seed contracts add net 32 fields (42,184 -> 42,216).
+# Canonical generation removes 98 terminals from 11 retired QRF producer inputs,
+# yielding 42,118. These are net inventories; ordered array pointers can shift.
+EXPECTED_AUTHORED_FIELD_COUNT = 32_315
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_803
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_118
 
 
 class FieldUsageError(AssertionError):
@@ -421,8 +424,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_488,
-        "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        24_390,
+        "b017e0f66703f2914b6c137d8e0e9c0c1048620cd554432a5146d87d8317b2db",
     ),
     "imputation_transfer_execution": (
         97,
@@ -453,12 +456,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        826,
-        "7ff2d5d1c2fd8026d17a57244f969dc0e9625a9e47304b693ad15df329041282",
+        846,
+        "e960e3010450f7721cc8ea0365f951b230083f843607a8fe79b5b572181c8d14",
     ),
     "resolved_seed_site_bindings": (
-        277,
-        "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        280,
+        "1f88dfbe50cabf8e57c36f717b0cc952b5c423c1c2d62ac4219ec3c3872ead9f",
     ),
     "resolved_vintage_authorities": (
         63,
@@ -485,8 +488,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_716,
-        "3e808ed9f5a791c0dfb85be0c59adf803366bf6e8c7a9f5a58f92974e044b607",
+        1_722,
+        "06f1a6abfef33ffc3a7c189ed6147fea0f3af78cd422338bb576b8004dc98a41",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -513,8 +516,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
     ),
     "spine_seed_site_bindings": (
-        277,
-        "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        280,
+        "6cb87c6d4e3cca9907cc85d78a0ebd391281dc70391d30111d57a8bc84848bb6",
     ),
     "spine_support_roles": (
         29,

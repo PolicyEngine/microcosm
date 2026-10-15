@@ -56,7 +56,8 @@ EXPECTED_LEGACY_V1_SITES = {
     "puf_archived_aggregate_disaggregation",
     "puf_clone_attachment",
     "puf_live_aggregate_disaggregation",
-    "retirement_contributions_training_cap",
+    "retirement_contributions_cps_joint_draw",
+    "retirement_contributions_puf_joint_draw",
     "retirement_distributions_training_cap",
     "scf_household_source_selector",
     "scf_auto_loan_qrf_model",
@@ -158,7 +159,8 @@ AUDITED_SOURCE_BY_SITE = {
     "exact_k_pcg64_selection": "packages/microcosm-calibrate/src/microcosm/calibrate/exact_k.py",
     "prior_year_income_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py",
     "childcare_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/childcare.py",
-    "retirement_contributions_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_contributions.py",
+    "retirement_contributions_cps_joint_draw": "packages/microcosm-build/src/microcosm/build/us_runtime/joint_retirement.py",
+    "retirement_contributions_puf_joint_draw": "packages/microcosm-build/src/microcosm/build/us_runtime/joint_retirement.py",
     "disability_benefits_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/disability_benefits.py",
     "housing_inputs_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/housing_inputs.py",
     "workers_compensation_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/workers_compensation.py",
@@ -342,6 +344,26 @@ def test_adult_tail_and_live_puf_orders_are_literal() -> None:
         "aggregate_recids_in_runtime_declared_order",
         "per_bucket_assign_s006_choice_then_donor_choice",
     )
+
+
+def test_retirement_joint_draws_attest_complete_vectors_and_distinct_owners() -> None:
+    for site_id in (
+        "retirement_contributions_cps_joint_draw",
+        "retirement_contributions_puf_joint_draw",
+    ):
+        site = LEGACY_V1_PROTOCOL.site(site_id)
+        assert site.stream == "build_model"
+        assert site.seed_material == ("build_model_seed",)
+        assert site.rng_family == "numpy.random.Generator(PCG64)"
+        assert site.reset_boundary == "fresh_generator_per_joint_donor_call"
+        assert "whole_donor_vector" in site.derivation
+    assert (
+        LEGACY_V1_PROTOCOL.site(
+            "retirement_contributions_cps_joint_draw"
+        ).draw_condition
+        == "positive_reported_retirement_contributions"
+    )
+    assert "retirement_contributions_training_cap" not in EXPECTED_LEGACY_V1_SITES
 
 
 def test_acs_family_pattern_seed_and_label_golden_vectors() -> None:

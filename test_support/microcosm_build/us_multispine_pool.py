@@ -22,6 +22,7 @@ from microcosm.build.us_runtime import housing_inputs as housing_inputs_module
 from microcosm.build.us_runtime import multispine_pool as multispine_pool_module
 from microcosm.build.us_runtime import prior_year_income as prior_year_income_module
 from microcosm.build.us_runtime import puf_support as puf_support_module
+from microcosm.build.us_runtime import scf_retirement as scf_retirement_module
 from microcosm.build.us_runtime import stacked_spine as stacked_spine_module
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
@@ -29,6 +30,7 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
+from microcosm.build.us_runtime.joint_retirement import RETIREMENT_COLUMNS
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
@@ -693,7 +695,6 @@ _PRODUCER_DTYPE_QRF_MODULES = (
     "weeks_unemployed",
     "childcare",
     "energy_subsidy",
-    "retirement_contributions",
     "retirement_distributions",
 )
 
@@ -795,6 +796,26 @@ def _primary_puf_dtype_donor() -> pd.DataFrame:
     return donor
 
 
+def _retirement_dtype_donor() -> pd.DataFrame:
+    """Joint contributor tuples for the age-40 wage/SE producer fixture."""
+
+    donor = pd.DataFrame(
+        [
+            [0.0, 0.0, 500.0, 500.0, 0.0],
+            [850.0, 150.0, 0.0, 0.0, 250.0],
+            [850.0, 150.0, 600.0, 400.0, 200.0],
+        ],
+        columns=RETIREMENT_COLUMNS,
+    )
+    donor["donor_id"] = ["ira-only", "employer-only", "both"]
+    donor["age"] = 40.0
+    donor["has_wages"] = True
+    donor["has_self_employment"] = True
+    donor["scf_weight"] = 1.0
+    donor["rank_value"] = donor[list(RETIREMENT_COLUMNS)].sum(axis=1)
+    return donor
+
+
 def _run_pool_transfer_dtype_producers(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -804,6 +825,11 @@ def _run_pool_transfer_dtype_producers(
 ) -> Frame:
     """Execute the small production producer path used by the dtype guard."""
 
+    monkeypatch.setattr(
+        scf_retirement_module,
+        "load_scf_retirement_donor",
+        lambda **_kwargs: _retirement_dtype_donor(),
+    )
     for module_name in _PRODUCER_DTYPE_QRF_MODULES:
         module = importlib.import_module(f"microcosm.build.us_runtime.{module_name}")
         monkeypatch.setattr(
