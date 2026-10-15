@@ -478,6 +478,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "desnz_local_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "local_small_cell_rule.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

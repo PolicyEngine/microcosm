@@ -37,8 +37,9 @@ from microcosm.calibrate import (
 #: added the high-value homes cells, and microcosm#1278 signed the two
 #: small-cell rules (uk/local_small_cell_rule.json), which defer 208 cells,
 #: and moved it to 24,269 (uk/local_target_reference_membership.json,
-#: ``active_reference_count``).
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 24_269
+#: ``active_reference_count``); microcosm#1207's DESNZ energy rows add 1,040
+#: authority cells, to 25,309.
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 25_309
 _LOCAL_GRAINS = ("constituency", "local_authority", "la")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no

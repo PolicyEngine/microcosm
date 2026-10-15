@@ -1669,18 +1669,23 @@ class TestPreflightBindings:
         # microcosm#1240 adds 2,679 high-value homes cells (575 constituencies
         # and 318 authorities in England and Wales, three thresholds), six of
         # them deferred by the two micro-authorities' support floor.
-        assert result.details["candidate_targets"] == 24_269
-        assert result.details["reference_targets"] == 26_065
-        # Only the 1,796 signed area deferrals and absences remain (2,100
+        # microcosm#1207 adds 1,050 DESNZ energy cells (350 authorities in
+        # Great Britain, three rows), 1,040 of them compiled: the support
+        # floor defers five, Orkney and Shetland's gas-connected cells are
+        # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
+        # kWh row.
+        assert result.details["candidate_targets"] == 25_309
+        assert result.details["reference_targets"] == 27_115
+        # Only the 1,806 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
-        # higher-rate cells); the 1,011 household rows are ordinary
-        # Chronicle-compiled references.
+        # higher-rate cells; microcosm#1207 the ten energy cells above); the
+        # 1,011 household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_796
+        assert len(exclusions) == 1_806
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

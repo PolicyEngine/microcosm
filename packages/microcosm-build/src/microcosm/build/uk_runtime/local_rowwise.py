@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.target_weights import (
     UKTargetRows,
+    assert_uk_family_loss_share_floors,
     uk_family_floored_loss_scales,
     uk_target_loss_weights_for_rows,
     uk_target_rows_from_targets,
@@ -1137,6 +1138,10 @@ class UKPreparedFullSolve:
     #: family floors) and the receipt that names what the floors raised.
     target_loss_scales: np.ndarray | None = None
     target_loss_scale_receipt: Mapping[str, Any] | None = None
+    #: The family loss-share floors' check (microcosm#1207), run on the
+    #: row-metadata rules' weights; ``None`` under the grain rules, whose
+    #: weights carry no family.
+    family_loss_share_floor_receipt: Mapping[str, Any] | None = None
 
 
 def prepare_uk_full_solve(
@@ -1273,7 +1278,11 @@ def prepare_uk_full_solve(
         target_loss_weights = uk_target_loss_weights_for_rows(
             target_rows, rule=target_weight_rule
         )
+        family_floor_receipt = assert_uk_family_loss_share_floors(
+            target_rows, target_loss_weights
+        )
     else:
+        family_floor_receipt = None
         target_loss_weights = uk_local_target_loss_weights(
             grain_labels,
             rule=target_weight_rule,
@@ -1293,6 +1302,7 @@ def prepare_uk_full_solve(
         target_rows=target_rows,
         target_loss_scales=target_loss_scales,
         target_loss_scale_receipt=scale_receipt,
+        family_loss_share_floor_receipt=family_floor_receipt,
     )
 
 

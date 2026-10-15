@@ -68,6 +68,8 @@ def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
         _frame(), problem, bound_families=_FAMILIES, target_weight_rule="grain_equal"
     )
     assert legacy.target_rows is None
+    # The grain rules' weights carry no family: the floors are not checked.
+    assert legacy.family_loss_share_floor_receipt is None
     np.testing.assert_array_equal(
         legacy.target_loss_weights,
         uk_local_target_loss_weights(
@@ -88,6 +90,9 @@ def test_prepared_solve_binds_the_rule_computed_from_its_own_rows() -> None:
             prepared.target_loss_weights,
             uk_target_loss_weights_for_rows(rows, rule=rule),
         )
+        floors = prepared.family_loss_share_floor_receipt
+        assert floors is not None and floors["check_only"] is True
+        assert floors["families"]["domestic_energy"]["status"] == "absent"
     # One grain, two families: grain_family_equal halves the loss by family,
     # where grain_equal is uniform over the ten rows.
     family = prepare_uk_full_solve(

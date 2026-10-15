@@ -461,6 +461,11 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
         receipt["register_resource"] == UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
     )
     assert receipt["dormant"] == [
+        # microcosm#1207: the DESNZ energy family's four fences.
+        "desnz_meters_for_households",
+        "desnz_northern_ireland_interim_share",
+        "desnz_regional_meter_share_in_stage",
+        "desnz_subnational_consumption_basis",
         "full_frs_tei_band_unavailable",
         "high_value_home_stock_derived_estimate",
         "hmrc_spi_frame_model_proxy",

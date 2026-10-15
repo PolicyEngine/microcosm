@@ -120,6 +120,69 @@ def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
     return np.maximum(0.0, values["net_income"] - allowances)
 
 
+#: DfT BUS01 boardings from the NTS trips the frame carries (microcosm#1207):
+#: each household's trips on the series times the boardings per trip the
+#: lcfs stage priced that series at, by the household's region (Wales is
+#: unpriced and no row binds it). Reserved names: a persisted column of
+#: either would bypass the stage's factor.
+_BUS_BOARDING_MEASURES = {
+    "bus_in_london_boardings": "bus_in_london_trips",
+    "other_local_bus_boardings": "other_local_bus_trips",
+}
+
+
+def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
+    """A household's boardings on one bus series, in the frame's household order."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    trips_column = _BUS_BOARDING_MEASURES[variable]
+    declared = bus_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    if declared is None:
+        raise KeyError("the lcfs stage declares no bus pricing")
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    person = frame.table("person")
+    household = frame.table("household")
+    trips = person[trips_column].to_numpy(dtype=float)
+    if not np.isfinite(trips).all() or (trips < 0).any():
+        raise ValueError(f"{trips_column} must be finite and non-negative.")
+    if variable == "bus_in_london_boardings":
+        # London's buses carry every resident's bus-in-London trips, wherever
+        # they live: the series is priced once, at London's factor.
+        per_trip = np.full(len(person), prices.london.boardings_per_trip)
+    else:
+        region_by_household = pd.Series(
+            household["region"].astype(str).to_numpy(),
+            index=household["household_id"].to_numpy(),
+        )
+        region = region_by_household.loc[
+            person["person_household_id"].to_numpy()
+        ].to_numpy()
+        per_trip = np.asarray(
+            [
+                prices.other_by_region[name].boardings_per_trip
+                if name in prices.other_by_region
+                else 0.0
+                for name in region
+            ]
+        )
+    boardings = (
+        pd.Series(trips * per_trip)
+        .groupby(person["person_household_id"].to_numpy())
+        .sum()
+    )
+    return boardings.reindex(
+        household["household_id"].to_numpy(), fill_value=0.0
+    ).to_numpy(dtype=float)
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -214,6 +277,14 @@ def compute_uk_measure_input(
         return (
             cgt_taxable_income_from_components(parts),
             "engine_components:capital_gains_tax_taxable_income",
+        )
+
+    if variable in _BUS_BOARDING_MEASURES:
+        if entity != "household":
+            raise KeyError(f"bus boardings are household-only: {entity}")
+        return (
+            household_bus_boardings(frame, variable),
+            f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -513,6 +584,34 @@ def _engine_scratch_frame(
     return engine_frame, dropped
 
 
+def engine_bus_pricing_parameters(
+    tax_benefit_system: Any, year: int
+) -> dict[str, dict[str, float]]:
+    """policyengine-uk's bus boardings per trip and yield per boarding by area.
+
+    Read at ``year`` in the resolver's own period form (the engine resolves
+    a year to its 1 January instant) for every area the stage prices
+    (``UK_ENGINE_BUS_AREA_BY_STAGE_AREA``); raises AttributeError when the
+    engine carries no such parameters.
+    """
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+    )
+
+    parameters = getattr(tax_benefit_system, "parameters", None)
+    if parameters is None:
+        raise AttributeError("the engine exposes no parameters")
+    bus = parameters(str(int(year))).gov.dft.bus
+    return {
+        name: {
+            area: float(getattr(getattr(bus, name), area))
+            for area in UK_ENGINE_BUS_AREA_BY_STAGE_AREA.values()
+        }
+        for name in ("boardings_per_trip", "yield_per_boarding")
+    }
+
+
 class UKMeasureResolver:
     """B2 measure provider backed by a policyengine-uk Microsimulation."""
 
@@ -580,6 +679,14 @@ class UKMeasureResolver:
             raise ValueError(
                 "CGT calibration measures must not be persisted as source inputs: "
                 f"{sorted(reserved)}"
+            )
+        persisted_boardings = sorted(
+            set(_BUS_BOARDING_MEASURES) & set(map(str, frame.table("household")))
+        )
+        if persisted_boardings:
+            raise ValueError(
+                "Bus boarding measures must not be persisted as source inputs: "
+                f"{persisted_boardings}"
             )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
@@ -657,6 +764,8 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
+        if variable in _BUS_BOARDING_MEASURES:
+            return entity == "household"
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
@@ -680,6 +789,8 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
+        if variable in _BUS_BOARDING_MEASURES:
+            return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"
         if (
@@ -936,8 +1047,54 @@ class UKMeasureResolver:
         self._counterfactuals[key] = simulation
         return simulation
 
+    def _bus_engine_parity(self) -> dict[str, Any]:
+        """The engine's bus pricing against the lcfs stage's, computed once.
+
+        Report only (microcosm#1207): the engine prices bus fares from the
+        trips the dataset carries at its own boardings per trip and yield per
+        boarding, so the receipt records how far those stand from the ones the
+        stage priced at. An engine without them records why it has none.
+        """
+
+        cached = getattr(self, "_bus_parity", None)
+        if cached is not None:
+            return cached
+        from microcosm.build.country_spec import load_country_spec
+        from microcosm.build.uk_runtime.bus_fare_pricing import (
+            bus_engine_parity,
+            bus_fare_prices,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_VENDORED_RESOURCES,
+            bus_pricing_operation,
+        )
+
+        declared = bus_pricing_operation(
+            load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+        )
+        try:
+            if declared is None:
+                raise AttributeError("the lcfs stage declares no bus pricing")
+            engine = engine_bus_pricing_parameters(
+                getattr(self.simulation, "tax_benefit_system", None), self.year
+            )
+        except AttributeError as error:
+            parity: dict[str, Any] = {
+                "report_only": True,
+                "available": False,
+                "reason": str(error),
+            }
+        else:
+            parity = bus_engine_parity(
+                bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES),
+                engine,
+            )
+        self._bus_parity = parity
+        return parity
+
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        receipt["bus_engine_parity"] = self._bus_engine_parity()
         if getattr(self, "_engine_weight_scale", None) is not None:
             receipt["engine_weight_scale"] = float(self._engine_weight_scale)
         if getattr(self, "_engine_scratch_dropped_columns", ()):

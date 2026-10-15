@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
+from types import MappingProxyType
 
 import numpy as np
 
@@ -93,6 +94,24 @@ UK_LOCAL_MAX_WEIGHT_RATIO = 10.0
 #: remain (microcosm#1123). ``grain_equal`` and ``uniform`` stay receipted
 #: overrides; the other row-metadata rules too.
 UK_LOCAL_TARGET_WEIGHT_RULE = "nation_grain_family_equal_sqrt_count"
+
+#: The least share of the dense solve's loss weight a named family must carry
+#: (microcosm#1207, ruling of 2026-10-14: a check on the rule, never a change
+#: to its arithmetic). Under the doctrine's rule DESNZ's local energy is one of
+#: nine local-authority families (about 2.8 % of the loss) and the BUS01 region
+#: journeys one of seventeen nation and region families (about 1.5 %); a
+#: surface or a rule that dilutes either below its floor is refused before
+#: the solve runs. Families are the census families (local) and the register
+#: families (national), as the rule reads them. María's ruling of 2026-10-15:
+#: 2.5 % and 1.25 %, checked under the doctrine's row-metadata rules only (the
+#: ``uniform`` and ``grain_equal`` overrides carry no family and stay usable
+#: for experiments; a release candidate refuses them anyway).
+UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS: Mapping[str, float] = MappingProxyType(
+    {
+        "domestic_energy": 0.025,
+        "dft_bus_journeys": 0.0125,
+    }
+)
 
 #: Declared solve length for the UK local solve (Adam epochs).
 #:

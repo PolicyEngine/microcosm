@@ -464,6 +464,15 @@ DFT_BUS_AREA_GEOGRAPHY_IDS = {
     "london": "E12000007",
     "england_outside_london": "dft:england_outside_london",
     "uk": UK_GEOGRAPHY_IDS["uk"],
+    # microcosm#1207: BUS01a passenger journeys by English region.
+    "north_east": "E12000001",
+    "north_west": "E12000002",
+    "yorkshire_and_the_humber": "E12000003",
+    "east_midlands": "E12000004",
+    "west_midlands": "E12000005",
+    "east_of_england": "E12000006",
+    "south_east": "E12000008",
+    "south_west": "E12000009",
 }
 
 

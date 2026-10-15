@@ -644,6 +644,58 @@ def test_consumption_drift_compares_design_and_final_weights() -> None:
     )
     with pytest.raises(ValueError, match="align"):
         uk_consumption_drift(household, design[:3], final)
+    assert "full_rate_vat_base" not in drift["totals"]
+
+
+def test_consumption_drift_carries_the_full_rate_vat_base() -> None:
+    """Consumption times the ETB VAT stage's full-rate share (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["full_rate_vat_expenditure_rate"] = [0.5, 0.5, 0.25, 0.0]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    base = drift["totals"]["full_rate_vat_base"]
+    assert base["design"] == pytest.approx(120.0 * (0.5 + 0.5 + 0.25))
+    assert base["final"] == pytest.approx(120.0 * (2 * 0.5 + 0.25))
+
+
+def test_consumption_drift_carries_the_stage_s_kwh() -> None:
+    """The electricity and gas kWh at both weights, from the spend (#1207)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+
+    household = pd.DataFrame(_consumption_columns(4))
+    household["electricity_consumption"] = [900.0, 1100.0, 700.0, 1300.0]
+    household["gas_consumption"] = [800.0, 0.0, 950.0, 0.0]
+    household["region"] = ["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"]
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    kwh = household_energy_kwh(
+        household["electricity_consumption"],
+        household["gas_consumption"],
+        region=household["region"],
+        prices=household_energy_prices(),
+    )
+    for name in ("electricity_kwh", "gas_kwh"):
+        assert drift["totals"][name]["design"] == pytest.approx(design @ kwh[name])
+        assert drift["totals"][name]["final"] == pytest.approx(final @ kwh[name])
+    assert drift["totals"]["gas_kwh"]["design"] > 0
+    without_region = uk_consumption_drift(
+        household.drop(columns="region"), design, final
+    )
+    assert "electricity_kwh" not in without_region["totals"]
 
 
 def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:

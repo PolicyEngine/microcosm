@@ -10,6 +10,10 @@ from microcosm.build.uk_runtime import (
     metric_names,
     metric_names_from_target_profile,
 )
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
 
 
 class Result:
@@ -52,6 +56,11 @@ class FakeUKSimulation:
             # microcosm#1240: stored home values at the dataset period; only the
             # owner-occupied first household clears the deflated thresholds.
             "main_residence_value": [2_500_000.0, 1_800_000.0, 0.0],
+            # microcosm#1207: the lcfs stage's stored energy spend; the second
+            # household pays for no gas.
+            "electricity_consumption": [900.0, 1100.0, 700.0],
+            "gas_consumption": [800.0, 0.0, 950.0],
+            "region": ["LONDON", "WALES", "SCOTLAND"],
         }
 
     def calculate(self, variable, **_kwargs):
@@ -112,7 +121,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-14:] == (
+    assert names[-17:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -127,7 +136,11 @@ def test_metric_names_match_expected_la_surface() -> None:
         "high_value_homes/over_1m",
         "high_value_homes/over_1_5m",
         "high_value_homes/over_2m",
+        "energy/electricity_kwh",
+        "energy/gas_kwh",
+        "energy/gas_connected_households",
     )
+    assert not any(name.startswith("energy/") for name in metric_names("constituency"))
 
 
 def test_metric_names_can_come_from_ledger_target_profile() -> None:
@@ -315,6 +328,41 @@ def test_compute_la_household_metrics() -> None:
     assert metrics["council_tax/band_a"].tolist() == [1.0, 0.0, 0.0]
     assert metrics["council_tax/band_d"].tolist() == [0.0, 0.0, 1.0]
     assert metrics["council_tax/band_h"].tolist() == [0.0, 1.0, 0.0]
+
+
+class PeriodRecordingUKSimulation(FakeUKSimulation):
+    """The fake, recording the periods each variable is read at."""
+
+    def __init__(self):
+        super().__init__()
+        self.periods: dict[str, set] = {}
+
+    def calculate(self, variable, **kwargs):
+        self.periods.setdefault(variable, set()).add(kwargs.get("period"))
+        return super().calculate(variable, **kwargs)
+
+
+def test_la_energy_metrics_read_the_stored_spend_back_into_kwh() -> None:
+    """The stage's calendar-2024 spend, at the dataset period (#1207)."""
+
+    sim = PeriodRecordingUKSimulation()
+    metrics = compute_household_metrics(sim, "la", period=2025, input_period=2023)
+
+    kwh = household_energy_kwh(
+        sim.data["electricity_consumption"],
+        sim.data["gas_consumption"],
+        region=sim.data["region"],
+        prices=household_energy_prices(),
+    )
+    assert metrics["energy/electricity_kwh"].tolist() == pytest.approx(
+        kwh["electricity_kwh"].tolist()
+    )
+    assert metrics["energy/gas_kwh"].tolist() == pytest.approx(kwh["gas_kwh"].tolist())
+    assert metrics["energy/gas_connected_households"].tolist() == [1.0, 0.0, 1.0]
+    assert metrics["energy/gas_kwh"].iloc[1] == 0.0
+    # Read where they are stored, never where the engine would uprate them.
+    for variable in ("electricity_consumption", "gas_consumption", "region"):
+        assert sim.periods[variable] == {2023}, variable
 
 
 def test_compute_household_metrics_validates_area_type() -> None:

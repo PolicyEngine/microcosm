@@ -54,6 +54,9 @@
       },
       "microcosm": {
         "label": "Microcosm derived statistics"
+      },
+      "desnz": {
+        "label": "Department for Energy Security and Net Zero"
       }
     },
     "categories": {
@@ -240,6 +243,14 @@
       "microcosm.high_value_homes": {
         "provider_id": "microcosm",
         "label": "High-value homes (HM Land Registry Price Paid, UK HPI, NSPL)"
+      },
+      "desnz.domestic_energy": {
+        "provider_id": "desnz",
+        "label": "Domestic energy consumption"
+      },
+      "dft.local_bus_journeys": {
+        "provider_id": "dft",
+        "label": "Local bus passenger journeys"
       }
     },
     "target_categories": {
@@ -252,6 +263,15 @@
       "dfi_ni.bus.passenger_receipts": "dfi_ni.local_bus_finances",
       "dft.bus_fare_receipts.england": "dft.local_bus_finances",
       "dft.bus_fare_receipts.london": "dft.local_bus_finances",
+      "dft.bus_journeys.east_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.east_of_england": "dft.local_bus_journeys",
+      "dft.bus_journeys.london": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.north_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_east": "dft.local_bus_journeys",
+      "dft.bus_journeys.south_west": "dft.local_bus_journeys",
+      "dft.bus_journeys.west_midlands": "dft.local_bus_journeys",
+      "dft.bus_journeys.yorkshire_and_the_humber": "dft.local_bus_journeys",
       "dft.bus_net_support.england": "dft.local_bus_finances",
       "dft.bus_net_support.london": "dft.local_bus_finances",
       "dwp.attendance_allowance.recipients_england": "dwp.attendance_allowance",
@@ -590,6 +610,15 @@
       "dfi_ni.bus.passenger_receipts": "Translink passenger receipts",
       "dft.bus_fare_receipts.england": "England",
       "dft.bus_fare_receipts.london": "London",
+      "dft.bus_journeys.east_midlands": "East Midlands",
+      "dft.bus_journeys.east_of_england": "East of England",
+      "dft.bus_journeys.london": "London",
+      "dft.bus_journeys.north_east": "North East",
+      "dft.bus_journeys.north_west": "North West",
+      "dft.bus_journeys.south_east": "South East",
+      "dft.bus_journeys.south_west": "South West",
+      "dft.bus_journeys.west_midlands": "West Midlands",
+      "dft.bus_journeys.yorkshire_and_the_humber": "Yorkshire and The Humber",
       "dft.bus_net_support.england": "England",
       "dft.bus_net_support.london": "London",
       "dwp.attendance_allowance.recipients_england": "Attendance Allowance recipients, England",
@@ -23908,6 +23937,240 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "london",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/london",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.north_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "north_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/north_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.north_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.yorkshire_and_the_humber",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "yorkshire_and_the_humber",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/yorkshire_and_the_humber",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.yorkshire_and_the_humber",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.west_midlands",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "west_midlands",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/west_midlands",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.west_midlands",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.east_of_england",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "east_of_england",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/east_of_england",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.east_of_england",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_east",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_east",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_east",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_east",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_journeys.south_west",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_journeys",
+        "source_measure_id": "passenger_journeys",
+        "layout_groupby_value_id": "south_west",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimensions": [],
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "dft/bus_journeys/south_west",
+      "family": "dft_bus_journeys",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_journeys.south_west",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.bus01.stage_pricing_year",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

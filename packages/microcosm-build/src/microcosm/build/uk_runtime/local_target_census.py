@@ -127,6 +127,13 @@ _POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
 _CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
 _COUNCIL_TAX_UNIVERSE_FENCE_ID = "voa_dwellings_vs_household_frame"
 _HIGH_VALUE_HOME_STOCK_FENCE_ID = "high_value_home_stock_derived_estimate"
+_DESNZ_BASIS_FENCE_ID = "desnz_subnational_consumption_basis"
+_DESNZ_METERS_FENCE_ID = "desnz_meters_for_households"
+_DESNZ_STAGE_SHARE_FENCE_ID = "desnz_regional_meter_share_in_stage"
+_DESNZ_NI_INTERIM_FENCE_ID = "desnz_northern_ireland_interim_share"
+#: The DESNZ, LFS and census pages were fetched and checked on this date
+#: (microcosm#1207).
+_ENERGY_SOURCES_VERIFIED_ON = "2026-10-14"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -150,6 +157,7 @@ _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
     ("tenure/", "tenure"),
     ("council_tax/", "council_tax"),
     ("high_value_homes/", "high_value_homes"),
+    ("energy/", "domestic_energy"),
 )
 
 _FAMILIES: tuple[dict[str, Any], ...] = (
@@ -237,6 +245,34 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
+    },
+    {
+        "family": "domestic_energy",
+        "description": (
+            "Domestic electricity and gas consumption (kWh) and gas-connected "
+            "households by local authority, Great Britain, from DESNZ's "
+            "sub-national statistics (microcosm#1207). The kWh cells keep "
+            "DESNZ's split between authorities at the lcfs stage's Energy "
+            "Trends level (one factor per fuel); the gas-connected cells are "
+            "each authority's census households times its gas meters over its "
+            "electricity meters, a member of the census household partition. "
+            "The frame reads each household's stored spend at the dataset "
+            "period and turns it back into kWh at the stage's declared prices. "
+            "DESNZ publishes no constituency cut, so the family is "
+            "local-authority only."
+        ),
+        "sources": [
+            "desnz_subnational_electricity_la",
+            "desnz_subnational_gas_la",
+            "ons_census2021_ts041_households",
+            "nrs_census2022_uv404_households",
+        ],
+        "adjudications": [
+            _DESNZ_BASIS_FENCE_ID,
+            _DESNZ_METERS_FENCE_ID,
+            _DESNZ_STAGE_SHARE_FENCE_ID,
+            _DESNZ_NI_INTERIM_FENCE_ID,
+        ],
     },
     {
         "family": "council_tax",
@@ -658,6 +694,68 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "frame nationally, the residual the universe fence records."
         ),
     },
+    {
+        "source_id": "desnz_subnational_electricity_la",
+        "publisher": "Department for Energy Security and Net Zero",
+        "product": (
+            "Subnational electricity consumption statistics, Great Britain, "
+            "2005 to 2024: domestic consumption (kWh) and meter counts by "
+            "local authority (microcosm#1207)."
+        ),
+        "url": (
+            "https://www.gov.uk/government/statistics/"
+            "regional-and-local-authority-electricity-consumption-statistics"
+        ),
+        "geographies": ["la"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _ENERGY_SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record set desnz.subnational.electricity.cy2024 "
+            "supplies the 350 Great Britain authorities on the NSPL of the "
+            "2025 publication (publication_2025_nspl): the roster's "
+            "boundaries, with Barnsley and Sheffield under their April 2025 "
+            "codes through the crosswalk's aliases. Non-half-hourly meters "
+            "are read from 31 January to 30 January and half-hourly meters "
+            "over the calendar year; both are counted, as reported. Each cell "
+            "binds the "
+            "authority's consumption times one Great Britain factor "
+            "(desnz.energy_trends.gb_domestic_level), so the cells keep "
+            "DESNZ's split at the stage's level. Northern Ireland is outside "
+            "the publication."
+        ),
+    },
+    {
+        "source_id": "desnz_subnational_gas_la",
+        "publisher": "Department for Energy Security and Net Zero",
+        "product": (
+            "Subnational gas consumption statistics, Great Britain, 2005 to "
+            "2024: weather-corrected domestic consumption (kWh) and meter "
+            "counts by local authority (microcosm#1207)."
+        ),
+        "url": (
+            "https://www.gov.uk/government/statistics/"
+            "regional-and-local-authority-gas-consumption-statistics"
+        ),
+        "geographies": ["la"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _ENERGY_SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record set desnz.subnational.gas.cy2024 supplies "
+            "347 authorities: the Isles of Scilly, Orkney and Shetland have no "
+            "mains gas network and no row. The gas year runs from mid-May to "
+            "mid-May and is weather-corrected. Each kWh cell binds the "
+            "authority's consumption times one Great Britain factor; the "
+            "authority's gas meters over its electricity meters (2024) give "
+            "the share of its census households bound as gas-connected "
+            "(desnz.subnational.gas_meter_share). Orkney and Shetland are "
+            "signed deferrals, the Isles of Scilly sits under the support "
+            "floor."
+        ),
+    },
 )
 
 _BINDING_FENCES: tuple[dict[str, Any], ...] = (
@@ -855,6 +953,89 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "council tax surcharge (April 2026) paragraph 1.13; "
             "PolicyEngine/chronicle#343 boundary ruling; microcosm#1240 plan "
             "rulings of 2026-10-13."
+        ),
+    },
+    {
+        "fence_id": _DESNZ_BASIS_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "DESNZ's sub-national consumption is not the Energy Trends level "
+            "the lcfs stage rakes every household's kWh to: it reads "
+            "electricity from 31 January to 30 January on non-half-hourly "
+            "meters and over the calendar year on half-hourly meters (as "
+            "reported), and gas from mid-May to mid-May (weather-corrected), "
+            "and its Great Britain totals sit above Energy Trends' Great "
+            "Britain part. The family binds DESNZ's split between "
+            "authorities, not its level: one factor per fuel puts the cells on "
+            "the stage's level (desnz.energy_trends.gb_domestic_level), and "
+            "the cells keep the fact's own year (a matched-period hold). "
+            "Binding needs an adjudication that the split is the target and "
+            "the basis gap is not."
+        ),
+        "authority": (
+            "DESNZ sub-national electricity and gas consumption statistics "
+            "methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; "
+            "microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the "
+            "stage's level; local-authority grain only)."
+        ),
+    },
+    {
+        "fence_id": _DESNZ_METERS_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The gas-connected cells read an authority's domestic gas meters "
+            "over its domestic electricity meters as the share of its "
+            "households connected to gas. Meters are not households: a "
+            "dwelling can carry more than one meter, a meter can serve an "
+            "empty dwelling or a second home, and DESNZ classes a gas meter as "
+            "domestic by a consumption threshold. The share is applied to the "
+            "authority's census households, whose level the household "
+            "controls set through the census partition. Binding needs an "
+            "adjudication accepting the ratio as the household share."
+        ),
+        "authority": (
+            "DESNZ sub-national gas consumption statistics methodology (meter "
+            "classification); microcosm#890 F (the stage's published "
+            "connection share); microcosm#1207 plan of 2026-10-14."
+        ),
+    },
+    {
+        "fence_id": _DESNZ_STAGE_SHARE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The lcfs stage already imposes the same published ratio by "
+            "region (gas meters over electricity meters by FRS region), so "
+            "the authority cells constrain a quantity the stage set: within a "
+            "region they add the split between authorities, and the region's "
+            "weighted share follows from them. The kWh cells likewise sit on "
+            "the level the stage raked to. An adjudication names this overlap."
+        ),
+        "authority": (
+            "uk_runtime.energy_pricing (published_gas_connected_shares, "
+            "published_energy_level); microcosm#1207 plan of 2026-10-14."
+        ),
+    },
+    {
+        "fence_id": _DESNZ_NI_INTERIM_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "Energy Trends is a United Kingdom total and the sub-national "
+            "statistics cover Great Britain. Until Chronicle carries Northern "
+            "Ireland's domestic consumption, Great Britain's part of the level "
+            "is taken at its share of UK households (ONS LFS, April to June of "
+            "the level's year). Northern Ireland's share of UK domestic gas is "
+            "well below its household share, so the interim puts Great "
+            "Britain's gas level low by about 1.5 per cent. The adjudication "
+            "lapses when the Northern Ireland facts land."
+        ),
+        "authority": (
+            "PolicyEngine/chronicle#356 (filed 2026-10-14); microcosm#1207 plan "
+            "ruling of 2026-10-14 (the interim stands in, declared and "
+            "expiring)."
         ),
     },
 )

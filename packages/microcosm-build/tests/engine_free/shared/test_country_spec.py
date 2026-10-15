@@ -1008,6 +1008,7 @@ class TestUKCountryPackage:
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1145,6 +1146,7 @@ class TestExistingPackagesGeneralize:
             "cross_grain_declarations.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "desnz_local_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
         )
@@ -1154,7 +1156,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1283
+            len(references) == 1292
         )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1180,7 +1182,9 @@ class TestExistingPackagesGeneralize:
         # microcosm#1123: the 12 nation household control cells and the 24
         # ITL Table 2.2 marginal-rate cells;
         # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
-        # total-income band, bound unscaled once the x1.9 exclusion retired
+        # total-income band, bound unscaled once the x1.9 exclusion retired;
+        # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
+        # eight English regions outside London)
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

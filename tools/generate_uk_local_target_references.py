@@ -571,6 +571,36 @@ def _area_signed_deferrals(
         rationale="The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
         area_ids=ni_local_authorities,
     )
+    # microcosm#1207: Orkney and Shetland have no mains gas network, so DESNZ
+    # publishes no domestic gas for them; neither cell is bound at zero.
+    gas_network_absent_area_ids = ("S12000023", "S12000027")
+    add(
+        target_id="desnz.subnational.gas_kwh",
+        geography_level="local_authority",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "DESNZ's sub-national gas statistics carry no domestic consumption "
+            "for Orkney (S12000023) or Shetland (S12000027), which have no "
+            "mains gas network; the cells are signed absent rather than bound "
+            "at zero (never_fabricate; microcosm#1207)."
+        ),
+        area_ids=gas_network_absent_area_ids,
+    )
+    add(
+        target_id="desnz.subnational.gas_connected_households",
+        geography_level="local_authority",
+        reason_id="desnz_gas_no_mains_network",
+        rationale=(
+            "Orkney (S12000023) and Shetland (S12000027) have no mains gas "
+            "network and DESNZ publishes no gas meters for them, so no meter "
+            "share puts their census households on the gas network. The "
+            "census base compiles there, so the cells are deferred by this "
+            "adjudication (defer_if_compiles) rather than bound at zero "
+            "(microcosm#1207)."
+        ),
+        area_ids=gas_network_absent_area_ids,
+        defer_if_compiles=True,
+    )
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):
             continue

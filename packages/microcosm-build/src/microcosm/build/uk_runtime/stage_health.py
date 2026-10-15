@@ -258,7 +258,8 @@ def _energy_rake_gate(
     recomputed here from the vendored rows the stage declares (never taken
     from the receipt): each cell's ``shape_target`` must be the vendored NEED
     mean of the declared consumption year; each fuel's level block must be
-    the vendored DESNZ Energy Trends fiscal-year total, its ``factor`` that
+    the vendored DESNZ Energy Trends total over the stage's declared level
+    year (calendar 2024; microcosm#1113), its ``factor`` that
     total over the frame's pre-level total, and the levelled frame total the
     published one; each cell's ``target`` must be shape times factor; and,
     where the stage declares the published gas-connected share, every region

@@ -11180,33 +11180,49 @@
           "type": "string"
          },
          "price_index": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-           "resource",
-           "concept",
-           "frequency"
-          ],
-          "properties": {
-           "resource": {
-            "type": "string"
+          "oneOf": [
+           {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+             "resource",
+             "concept",
+             "frequency"
+            ],
+            "properties": {
+             "resource": {
+              "type": "string"
+             },
+             "concept": {
+              "type": "string"
+             },
+             "geography_id": {
+              "type": "string"
+             },
+             "frequency": {
+              "enum": [
+               "quarterly",
+               "annual"
+              ]
+             },
+             "basis": {
+              "type": "string"
+             }
+            }
            },
-           "concept": {
-            "type": "string"
-           },
-           "geography_id": {
-            "type": "string"
-           },
-           "frequency": {
-            "enum": [
-             "quarterly",
-             "annual"
-            ]
-           },
-           "basis": {
-            "type": "string"
+           {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+             "basis"
+            ],
+            "properties": {
+             "basis": {
+              "const": "own_fiscal_yields"
+             }
+            }
            }
-          }
+          ]
          },
          "trips_basis": {
           "enum": [

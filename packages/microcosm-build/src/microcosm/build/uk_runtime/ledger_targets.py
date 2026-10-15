@@ -33,6 +33,7 @@ from microcosm.build.target_materialization import (
     TargetMaterializationResult,
     materialize_target_bindings,
 )
+from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
@@ -41,6 +42,9 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_grain,
     uk_cross_grain_partitions,
     uk_fanout_sum_bridges,
+)
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    domestic_energy_appliers,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
@@ -88,6 +92,9 @@ _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
     f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
 }
 UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
+#: The census household partition member the meter share divides
+#: (microcosm#1207): it takes the grain's census uprating as tenure does.
+UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID = "desnz.subnational.gas_connected_households"
 
 
 #: Every region-tier code is a leg of its own; the national parents cover the
@@ -670,6 +677,8 @@ UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
     **tenure_drift_appliers(),
+    **domestic_energy_appliers(),
+    **bus_journey_appliers(),
 }
 
 
@@ -2319,6 +2328,8 @@ def uk_local_target_surface(
     # calibration period carries no hold and is never touched.
     tenure_uprated: dict[str, int] = {}
     tenure_holds: list[dict[str, Any]] = []
+    gas_connected_uprated: dict[str, int] = {}
+    gas_connected_holds: list[dict[str, Any]] = []
     household_uprated: dict[str, int] = {}
     household_holds: list[dict[str, Any]] = []
 
@@ -2359,7 +2370,12 @@ def uk_local_target_surface(
             value = float(spec.value)
             is_households = contract_target_id == UK_CENSUS_HOUSEHOLDS_TARGET_ID
             is_tenure = contract_target_id.startswith("ons.tenure.")
-            if is_households or is_tenure:
+            # microcosm#1207: the gas-connected cells are census households
+            # times a meter share, so they share the grain's factor.
+            is_gas_connected = (
+                contract_target_id == UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID
+            )
+            if is_households or is_tenure or is_gas_connected:
                 from_period = spec.metadata.get("uprating_from_period")
                 to_period = spec.metadata.get("uprating_to_period")
                 grain = uprating_receipt.get("grains", {}).get(geography_level)
@@ -2382,7 +2398,11 @@ def uk_local_target_surface(
                 if applied:
                     value *= factor
                     applied_by_vintage = (
-                        household_uprated if is_households else tenure_uprated
+                        household_uprated
+                        if is_households
+                        else gas_connected_uprated
+                        if is_gas_connected
+                        else tenure_uprated
                     )
                     applied_by_vintage[str(from_period)] = (
                         applied_by_vintage.get(str(from_period), 0) + 1
@@ -2396,7 +2416,13 @@ def uk_local_target_surface(
                     reason = "hold_not_from_grain_census_vintage_or_wrong_period"
                 else:
                     reason = "census_household_uprating_not_applied"
-                hold_rows = household_holds if is_households else tenure_holds
+                hold_rows = (
+                    household_holds
+                    if is_households
+                    else gas_connected_holds
+                    if is_gas_connected
+                    else tenure_holds
+                )
                 hold_rows.append(
                     {
                         "target_name": spec.name,
@@ -2735,6 +2761,15 @@ def uk_local_target_surface(
             "Census tenure cells held to the calibration period take the "
             "corresponding Chronicle census-household grain factor so their "
             "published shares remain unchanged."
+        ),
+    }
+    uprating_receipt["gas_connected_cells"] = {
+        **cell_receipt(gas_connected_holds, gas_connected_uprated),
+        "adjudication": "microcosm#1207 (plan approved 2026-10-14)",
+        "reason": (
+            "Gas-connected households are census households times a DESNZ "
+            "meter share; held to the calibration period, they take the "
+            "census-household grain factor so the share is unchanged."
         ),
     }
     receipt["census_household_uprating"] = uprating_receipt

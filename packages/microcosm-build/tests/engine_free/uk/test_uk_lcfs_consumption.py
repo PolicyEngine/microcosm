@@ -1434,6 +1434,57 @@ def test_division_capture_compares_each_division_with_ons() -> None:
         12 * frame / (total["published_national"] - total["out_of_scope"])
     )
     assert capture["gated"] is False
+    assert "donor" not in food and "donor" not in total
+
+
+def test_division_capture_reads_each_division_against_its_donor() -> None:
+    """The frame over the donor it drew from, in all and per household (#1207)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_capture,
+    )
+
+    draws = pd.DataFrame(
+        {column: [1.0e3, 2.0e3] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    weights = np.array([1.0e7, 5.0e6])
+    donor = pd.DataFrame(
+        {column: [500.0, 1.5e3, 1.0e3] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+        | {"household_weight": [4.0e6, 6.0e6, 2.0e6]}
+    )
+
+    capture = division_capture(draws, weights=weights, period_value=2024, donor=donor)
+
+    frame = 1.0e3 * 1.0e7 + 2.0e3 * 5.0e6
+    donor_total = 500.0 * 4.0e6 + 1.5e3 * 6.0e6 + 1.0e3 * 2.0e6
+    food = capture["divisions"]["food_and_non_alcoholic_beverages_consumption"]
+    assert food["donor"] == pytest.approx(donor_total)
+    assert food["frame_over_donor"] == pytest.approx(frame / donor_total)
+    assert food["frame_over_donor_per_household"] == pytest.approx(
+        (frame / 1.5e7) / (donor_total / 1.2e7)
+    )
+    total = capture["total"]
+    assert total["donor"] == pytest.approx(12 * donor_total)
+    assert total["frame_over_donor_per_household"] == pytest.approx(
+        food["frame_over_donor_per_household"]
+    )
+
+
+def test_uncarried_spend_sits_beside_the_donors_other_fuels() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import uncarried_beside_donor
+
+    uncarried = {"resource": "r", "classes": [], "total": 2.0e9}
+    beside = uncarried_beside_donor(uncarried, {"other_fuels": 1.5e9})
+    assert beside["donor_other_fuels_at_diary_prices"] == 1.5e9
+    assert beside["donor_over_published"] == pytest.approx(0.75)
+    assert {key: beside[key] for key in uncarried} == uncarried
+    assert (
+        uncarried_beside_donor({**uncarried, "total": 0.0}, {"other_fuels": 1.0})[
+            "donor_over_published"
+        ]
+        is None
+    )
 
 
 def test_report_only_diagnostics_fail_closed_on_ambiguous_rows(monkeypatch) -> None:
