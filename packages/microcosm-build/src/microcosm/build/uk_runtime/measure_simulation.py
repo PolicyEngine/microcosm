@@ -187,10 +187,12 @@ def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
     ).to_numpy(dtype=float)
 
 
-#: The HMRC self-employment rows count the year's profit after losses brought
-#: forward, which policyengine-uk keeps apart in loss_relief, and band on total
-#: income with that profit (microcosm#1095). The engine's total_income adds the
-#: profit before the relief, so the band variable swaps the one for the other.
+#: HMRC's statistics count the year's profit after losses brought forward,
+#: which policyengine-uk keeps apart in loss_relief: the self-employment rows
+#: read that profit, and every row on HMRC's total income (its bands, its
+#: amounts, its regional filters) reads total income with that profit
+#: (microcosm#1095). The engine's total_income adds the profit before the
+#: relief, so the total-income measure swaps the one for the other.
 UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
 UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
 _LOSS_RELIEF_MEASURES = (

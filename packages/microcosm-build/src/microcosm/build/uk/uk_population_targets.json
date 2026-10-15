@@ -3575,7 +3575,8 @@
           "value_variable": "employment_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -3629,7 +3630,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/employment_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "employment_income",
@@ -3801,7 +3803,8 @@
           "value_variable": "dividend_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -3855,7 +3858,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/dividend_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "dividend_income",
@@ -3913,7 +3917,8 @@
           "value_variable": "property_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index.",
           "filters": [
             {
@@ -3967,7 +3972,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/property_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "property_income",
@@ -4025,7 +4031,8 @@
           "value_variable": "private_pension_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -4079,7 +4086,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/private_pension_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "private_pension_income",
@@ -4137,7 +4145,8 @@
           "value_variable": "state_pension",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
           "filters": [
             {
@@ -4191,7 +4200,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/state_pension_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "state_pension",
@@ -19796,7 +19806,8 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
           "filters": [
             {
@@ -19840,10 +19851,11 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/itl_total_income_income_band",
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
         "axiom": {
@@ -19883,7 +19895,8 @@
           "value_variable": "income_tax",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
         },
         "axiom": {
@@ -20058,7 +20071,8 @@
           "value_variable": "savings_interest_income",
           "from_entity": "person",
           "map_to": "household",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
           "filters": [
             {
@@ -20112,7 +20126,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "hmrc/savings_interest_income_count_income_band",
-          "groupby_variable": "total_income",
+          "groupby_variable": "total_income_after_loss_relief",
+          "band_filter_dimension": "total_income",
           "filters": [
             {
               "variable": "savings_interest_income",
@@ -20184,12 +20199,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
@@ -20260,12 +20275,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
@@ -20336,12 +20351,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
@@ -20412,12 +20427,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
@@ -20488,12 +20503,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
@@ -20564,12 +20579,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
@@ -20640,12 +20655,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
@@ -20716,12 +20731,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
@@ -20792,12 +20807,12 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
@@ -20863,7 +20878,7 @@
               "value": 0
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
@@ -20924,17 +20939,17 @@
           "metric_name": "hmrc/spi_region/total_income_12570_15000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -20990,17 +21005,17 @@
           "metric_name": "hmrc/spi_region/total_income_15000_20000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21056,17 +21071,17 @@
           "metric_name": "hmrc/spi_region/total_income_20000_30000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21122,17 +21137,17 @@
           "metric_name": "hmrc/spi_region/total_income_30000_40000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21188,17 +21203,17 @@
           "metric_name": "hmrc/spi_region/total_income_40000_50000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21254,17 +21269,17 @@
           "metric_name": "hmrc/spi_region/total_income_50000_70000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21320,17 +21335,17 @@
           "metric_name": "hmrc/spi_region/total_income_70000_100000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21386,17 +21401,17 @@
           "metric_name": "hmrc/spi_region/total_income_100000_150000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21452,17 +21467,17 @@
           "metric_name": "hmrc/spi_region/total_income_150000_200000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21513,12 +21528,12 @@
           "metric_name": "hmrc/spi_region/total_income_200000_plus",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
           ],
-          "value_variable": "total_income",
+          "value_variable": "total_income_after_loss_relief",
           "from_entity": "person",
           "map_to": "household",
           "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
@@ -21574,12 +21589,12 @@
           "metric_name": "hmrc/spi_region/income_tax_12570_15000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 12570
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 15000
             }
@@ -21640,12 +21655,12 @@
           "metric_name": "hmrc/spi_region/income_tax_15000_20000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 15000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 20000
             }
@@ -21706,12 +21721,12 @@
           "metric_name": "hmrc/spi_region/income_tax_20000_30000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 20000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 30000
             }
@@ -21772,12 +21787,12 @@
           "metric_name": "hmrc/spi_region/income_tax_30000_40000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 30000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 40000
             }
@@ -21838,12 +21853,12 @@
           "metric_name": "hmrc/spi_region/income_tax_40000_50000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 40000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 50000
             }
@@ -21904,12 +21919,12 @@
           "metric_name": "hmrc/spi_region/income_tax_50000_70000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 50000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 70000
             }
@@ -21970,12 +21985,12 @@
           "metric_name": "hmrc/spi_region/income_tax_70000_100000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 70000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 100000
             }
@@ -22036,12 +22051,12 @@
           "metric_name": "hmrc/spi_region/income_tax_100000_150000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 100000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 150000
             }
@@ -22102,12 +22117,12 @@
           "metric_name": "hmrc/spi_region/income_tax_150000_200000",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 150000
             },
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": "<",
               "value": 200000
             }
@@ -22163,7 +22178,7 @@
           "metric_name": "hmrc/spi_region/income_tax_200000_plus",
           "filters": [
             {
-              "variable": "total_income",
+              "variable": "total_income_after_loss_relief",
               "operator": ">=",
               "value": 200000
             }
