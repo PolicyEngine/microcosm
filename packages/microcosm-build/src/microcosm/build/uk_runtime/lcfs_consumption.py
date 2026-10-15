@@ -44,6 +44,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     EnergyPrices,
     NeedMargins,
     declared_household_kwh_ceilings,
+    declared_zero_kwh_cells_at_need_mean,
     impose_gas_connection,
     kwh_to_spend,
     need_margins_from_facts,
@@ -1863,6 +1864,7 @@ class LCFSEnergyPricing:
     connect_rule: str | None = None
     connect_salt: str | None = None
     connect_n_estimators: int | None = None
+    zero_kwh_cells_at_need_mean: Mapping[str, tuple[str, ...]] | None = None
 
 
 def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
@@ -1912,6 +1914,7 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             "integer seed."
         )
     ceilings = declared_household_kwh_ceilings(parameters)
+    held_cells = declared_zero_kwh_cells_at_need_mean(parameters)
     connect_rule = parameters.get("connect_rule")
     connect_salt = parameters.get("connect_salt")
     connect_trees = parameters.get("connect_n_estimators")
@@ -1939,6 +1942,7 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
         connect_rule=None if connect_rule is None else str(connect_rule),
         connect_salt=None if connect_rule is None else str(connect_salt),
         connect_n_estimators=None if connect_rule is None else int(connect_trees),
+        zero_kwh_cells_at_need_mean=held_cells,
         receipt={
             **prices_receipt,
             "need_margins": margins.receipt,
@@ -1946,6 +1950,9 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             "gas_connection": connection_receipt,
             "household_kwh_ceiling": ceilings,
             "connect_rule": connect_rule,
+            "zero_kwh_cells_at_need_mean": None
+            if held_cells is None
+            else {margin: list(names) for margin, names in held_cells.items()},
         },
     )
 
@@ -2158,6 +2165,7 @@ def rake_recipient_energy(
         gas_connected=connected,
         level=energy.level,
         ceilings=energy.ceilings,
+        zero_kwh_cells_at_need_mean=energy.zero_kwh_cells_at_need_mean,
     )
     receipt["gas_connection"] = {"rule": energy.gas_connected, **connection_receipt}
     receipt["gas_connected_share"] = float(
