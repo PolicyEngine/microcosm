@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     materialize_uk_ledger_targets,
 )
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -321,6 +322,7 @@ def _run_engine_blocks(
     local_grains: tuple[str, ...],
     on_block,
     engine_weight_scales: Mapping[str, float] | None = None,
+    identifier_universe=None,
 ) -> tuple[
     dict[str, list[pd.DataFrame]],
     list[Mapping[str, Any]],
@@ -348,6 +350,10 @@ def _run_engine_blocks(
             resolver_kwargs["engine_weight_scale"] = float(
                 engine_weight_scales[str(clone_index)]
             )
+        if identifier_universe is not None and clone_index is not None:
+            # A block's rows take the identifiers they have in the release,
+            # which numbers the whole frame (microcosm#1194).
+            resolver_kwargs["engine_identifier_universe"] = identifier_universe
         resolver = resolver_factory(**resolver_kwargs)
         resolution = resolve_target_measures(
             lambda block_frame=block_frame: CalibrationFrameAdapter(block_frame),
@@ -374,6 +380,7 @@ def _run_engine_blocks(
                     area_type,
                     period=period,
                     household_ids=block_household_ids,
+                    input_period=int(uk_time_period(block_frame)),
                 )
             )
         resolver_receipts.append(
@@ -558,6 +565,7 @@ def resolve_uk_full_measures(
         scratch_dir=scratch_dir,
         resolver_factory=resolver_factory,
         engine_weight_scales=representation.get("factor_by_block"),
+        identifier_universe=frame,
         local_grains=local_grains,
         on_block=collect,
     )
@@ -785,6 +793,7 @@ def resolve_uk_full_national_problem(
             scratch_dir=scratch_dir,
             resolver_factory=resolver_factory,
             engine_weight_scales=representation.get("factor_by_block"),
+            identifier_universe=frame,
             local_grains=local_grains,
             on_block=materialize,
         )

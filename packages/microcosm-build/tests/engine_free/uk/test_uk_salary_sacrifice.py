@@ -6,6 +6,8 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceOperationSpec
@@ -14,6 +16,7 @@ from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
+    SALSAC_MOVE_PAY_SHARE_CAP,
     SALSAC_OUTPUT,
     SALSAC_PRE_CONVERSION_PAY_COLUMN,
     SALSAC_RATE_CAP,
@@ -160,27 +163,105 @@ def test_qrf_predicts_only_for_people_not_asked_who_are_paid(
 
     result = impute_salary_sacrifice(frame)
 
-    # Then the paid person not asked is predicted for, the unpaid ones are
-    # zero, and an asked person keeps what they reported whatever their pay.
+    # Then the paid person not asked is predicted for and the unpaid ones are
+    # zero. The asked person without pay reported 20: a sacrifice comes out of
+    # pay, so it is limited to none (uk-data#518).
     assert result.frame.table("person")[SALSAC_OUTPUT].tolist() == [
         10.0,
-        20.0,
+        0.0,
         900.0,
         0.0,
         0.0,
     ]
     assert result.prediction_rows == 1
+    assert result.limited_to_pay_rows == 1
+    assert result.limited_to_pay_mass == 1.0
+    assert result.limited_to_pay_amount == 20.0
     assert result.not_asked_without_pay_rows == 2
     assert result.not_asked_without_pay_mass == 5.0
     qrf = result.evidence()["qrf"]
     assert qrf["not_asked_without_pay_rows"] == 2
     assert qrf["not_asked_without_pay_mass"] == 5.0
     assert "employment_income > 0" in qrf["target_population"]
-    # The headcount the conversion tops up starts from true users only.
-    assert result.pre_headcount == 3.0
+    assert qrf["limited_to_pay_rows"] == 1
+    assert qrf["limited_to_pay_amount"] == 20.0
+    assert "employment_income" in qrf["amount_limit"]
+    # The headcount the conversion tops up starts from true users only: the
+    # asked person without pay is no longer one of them.
+    assert result.pre_headcount == 2.0
 
 
-def test_conversion_moves_full_pension_zeros_source_and_records_cap(
+def test_qrf_trains_only_on_asked_respondents_with_pay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A respondent without pay shows nothing about what paid people sacrifice."""
+
+    _FakeQRF.training_frames = []
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 1, 1, 0],
+        salary_sacrifice_values=[10.0, 0.0, 30.0, 0.0],
+        employee_pension=[0.0] * 4,
+        employment_income=[30_000.0, 0.0, 20_000.0, 25_000.0],
+    )
+
+    result = impute_salary_sacrifice(frame)
+
+    assert _FakeQRF.training_frames[0].index.tolist() == [0, 2]
+    assert result.training_rows == 2
+
+
+def test_the_forest_needs_an_asked_respondent_with_pay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 0],
+        salary_sacrifice_values=[0.0, 0.0],
+        employee_pension=[0.0, 0.0],
+        employment_income=[0.0, 25_000.0],
+    )
+
+    with pytest.raises(ValueError, match="no eligible asked FRS rows with pay"):
+        impute_salary_sacrifice(frame)
+
+
+def test_every_amount_is_limited_to_the_pay_that_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reported and predicted amounts alike, on FRS and SPI-channel rows.
+
+    An SPI-channel row keeps its FRS twin's answer beside pay redrawn from the
+    SPI, so its reported amount can sit above its pay.
+    """
+
+    _FakeQRF.training_frames = []
+    _Fitted.value = 900.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 1, 0, 0, 1],
+        salary_sacrifice_values=[4_000.0, 4_000.0, 0.0, 0.0, 250.0],
+        employee_pension=[0.0] * 5,
+        employment_income=[30_000.0, 1_500.0, 500.0, 25_000.0, 250.0],
+        channels=["frs", "spi", "frs", "spi", "frs"],
+        weights=np.asarray([1.0, 2.0, 3.0, 4.0, 5.0]),
+    )
+
+    result = impute_salary_sacrifice(frame)
+    person = result.frame.table("person")
+
+    # The SPI-channel respondent's 4,000 against pay of 1,500 and the
+    # prediction of 900 against pay of 500 are limited; an amount equal to pay
+    # stays.
+    assert person[SALSAC_OUTPUT].tolist() == [4_000.0, 1_500.0, 500.0, 900.0, 250.0]
+    assert (person[SALSAC_OUTPUT] <= person["employment_income"]).all()
+    assert result.limited_to_pay_rows == 2
+    assert result.limited_to_pay_mass == 5.0
+    assert result.limited_to_pay_amount == 2_500.0 + 400.0
+
+
+def test_conversion_moves_a_contribution_within_half_the_pay_whole(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _Fitted.value = 0.0
@@ -222,6 +303,136 @@ def test_conversion_moves_full_pension_zeros_source_and_records_cap(
     assert evidence["target"] == SALSAC_STAGE_TARGET
     assert evidence["converted_rows"] == result.converted_rows
     assert evidence["pre_conversion_pay_column"] == SALSAC_PRE_CONVERSION_PAY_COLUMN
+    # No contribution here is above half the pay, so none is split.
+    assert evidence["move_pay_share_cap"] == SALSAC_MOVE_PAY_SHARE_CAP
+    assert evidence["pay_share_capped_rows"] == 0
+    assert evidence["retained_employee_amount"] == 0.0
+
+
+def test_conversion_moves_at_most_half_the_pay_and_keeps_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sacrifice never exceeds the pay that remains (uk-data#518).
+
+    The whole contribution used to move, and pay was floored at zero, which
+    left a converted record with a sacrifice and no pay.
+    """
+
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    n_donors = 100
+    pay = np.asarray([30_000.0, *([1_000.0] * n_donors)])
+    # Contributions from 100 to 1,500: above half the pay from 500 up, and
+    # above the whole pay from 1,000 up.
+    contributions = np.asarray([0.0, *np.linspace(100.0, 1_500.0, n_donors)])
+    frame = _frame(
+        asked=[1, *([0] * n_donors)],
+        salary_sacrifice_values=[0.0] * (n_donors + 1),
+        employee_pension=contributions,
+        employment_income=pay,
+        weights=[1.0, *([100_000.0] * n_donors)],
+    )
+
+    result = impute_salary_sacrifice(frame)
+    person = result.frame.table("person")
+    converted = (person[SALSAC_PRE_CONVERSION_PAY_COLUMN] > 0.0).to_numpy()
+
+    assert 0 < result.converted_rows < n_donors
+    moved = person.loc[converted, SALSAC_OUTPUT].to_numpy()
+    np.testing.assert_array_equal(
+        moved, np.minimum(contributions[converted], 0.5 * pay[converted])
+    )
+    # Pay falls by the amount moved, so pay plus sacrifice is the carrier and
+    # the sacrifice is within the pay that remains.
+    np.testing.assert_array_equal(
+        person.loc[converted, "employment_income"].to_numpy() + moved,
+        person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN].to_numpy(),
+    )
+    assert (person[SALSAC_OUTPUT] <= person["employment_income"]).all()
+    assert (person.loc[converted, "employment_income"] > 0.0).all()
+    # What does not move stays an employee contribution, so the two columns
+    # still add up to the contribution.
+    np.testing.assert_allclose(
+        person["employee_pension_contributions"].to_numpy()
+        + np.where(converted, person[SALSAC_OUTPUT].to_numpy(), 0.0),
+        contributions,
+    )
+    capped = converted & (contributions > 0.5 * pay)
+    assert capped.any() and (converted & ~capped).any()
+    assert result.pay_share_capped_rows == int(capped.sum())
+    assert result.moved_amount == pytest.approx(moved.sum())
+    assert result.retained_employee_amount == pytest.approx(
+        (contributions[capped] - 0.5 * pay[capped]).sum()
+    )
+
+
+_AMOUNTS = st.sampled_from(
+    [0.0, 0.01, 250.0, 499.99, 500.0, 1_000.0, 2_500.0, 40_000.0]
+)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.booleans(),  # asked
+            _AMOUNTS,  # reported salary sacrifice
+            _AMOUNTS,  # employee pension contribution
+            _AMOUNTS,  # pay
+            st.sampled_from(["frs", "spi"]),
+        ),
+        min_size=1,
+        max_size=12,
+    ),
+    predicted=_AMOUNTS,
+)
+def test_no_amount_exceeds_pay_and_nothing_is_lost(rows, predicted) -> None:
+    """Whatever is reported, predicted or converted, the sacrifice is within pay.
+
+    The invariants of uk-data#518's rule: a sacrifice is at most the pay that
+    remains and nil without pay; a converted record's pay and sacrifice add up
+    to its pay before; and a contribution is moved or kept, never dropped.
+    """
+
+    # One asked, paid FRS respondent always leads, so the forest has a row.
+    rows = [(True, 0.0, 0.0, 30_000.0, "frs"), *rows]
+    asked = [1 if row[0] else 0 for row in rows]
+    reported = np.asarray([row[1] if row[0] else 0.0 for row in rows])
+    contributions = np.asarray([row[2] for row in rows])
+    pay = np.asarray([row[3] for row in rows])
+    frame = _frame(
+        asked=asked,
+        salary_sacrifice_values=reported,
+        employee_pension=contributions,
+        employment_income=pay,
+        channels=[row[4] for row in rows],
+        weights=np.full(len(rows), 1_000_000.0),
+    )
+    original_qrf, original_value = salary_sacrifice.QRF, _Fitted.value
+    salary_sacrifice.QRF, _Fitted.value = _FakeQRF, predicted
+    try:
+        result = impute_salary_sacrifice(frame)
+    finally:
+        salary_sacrifice.QRF, _Fitted.value = original_qrf, original_value
+    person = result.frame.table("person")
+    sacrifice = person[SALSAC_OUTPUT].to_numpy()
+    pay_after = person["employment_income"].to_numpy()
+    carrier = person[SALSAC_PRE_CONVERSION_PAY_COLUMN].to_numpy()
+    converted = carrier > 0.0
+
+    assert (sacrifice >= 0.0).all() and (sacrifice <= pay_after).all()
+    assert (sacrifice[pay_after == 0.0] == 0.0).all()
+    np.testing.assert_array_equal(pay_after[~converted], pay[~converted])
+    np.testing.assert_array_equal(
+        pay_after[converted] + sacrifice[converted], carrier[converted]
+    )
+    np.testing.assert_array_equal(carrier[converted], pay[converted])
+    kept = person["employee_pension_contributions"].to_numpy()
+    np.testing.assert_array_equal(kept[~converted], contributions[~converted])
+    np.testing.assert_allclose(
+        kept[converted] + sacrifice[converted], contributions[converted]
+    )
+    assert (sacrifice[converted] <= SALSAC_MOVE_PAY_SHARE_CAP * pay[converted]).all()
 
 
 def test_anchor_is_self_consistent() -> None:
@@ -246,6 +457,7 @@ def test_anchor_is_self_consistent() -> None:
                 "seed",
                 "n_estimators",
                 "clamp_minimum",
+                "clamp_maximum",
                 "preserve_asked_rows",
                 "cache",
             )
@@ -257,6 +469,7 @@ def test_anchor_is_self_consistent() -> None:
                 "target",
                 "donor_pool",
                 "rate_cap",
+                "move_pay_share_cap",
                 "move",
                 "seed",
                 "salt",

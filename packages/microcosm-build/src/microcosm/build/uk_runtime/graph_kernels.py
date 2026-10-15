@@ -107,6 +107,7 @@ _STAGE_MODULES = {
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
+    "high_value_home_support": "high_value_home_support",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
@@ -477,6 +478,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
+    from .high_value_home_support import UKHighValueHomeSupportStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
@@ -683,6 +685,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]
+            ),
+            "high_value_home_support": UKHighValueHomeSupportStageTransform(
+                stage=stages["high_value_home_support"]
             ),
             "cgt_support_split": UKCGTSupportSplitStageTransform(
                 stage=stages["cgt_support_split"],
@@ -1113,6 +1118,7 @@ class UKExpandStageKernel(KernelBase):
         cells = _expand_cells(context)
         id_offset = None
         if self.stage in {
+            "high_value_home_support",
             "cgt_support_split",
             "cgt_incidence_clone",
             "cgt_residential_split",
@@ -1240,6 +1246,7 @@ def build_uk_registry(
         if stage in {
             "spi_support_channel",
             "spi_income_band_donors",
+            "high_value_home_support",
             "cgt_support_split",
             "cgt_incidence_clone",
             "cgt_incidence_anchor",

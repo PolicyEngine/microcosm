@@ -193,6 +193,58 @@ def test_relief_bands_relieve_each_slice_at_its_rate(tmp_path):
     assert len(resolver._counterfactuals) == 1
 
 
+def test_a_donors_relief_bands_follow_the_engines_extended_bands(tmp_path):
+    """policyengine-uk extends a Gift Aid donor's bands by the grossed-up gift
+    (ITA 2007 s.414(2)(b), pe-uk#2271). uk-data#533's first two examples with a
+    GBP 800 gift (GBP 1,000 gross): rest of the UK 654 basic and 292 higher,
+    Scotland 559.02 basic and 561.96 higher, and the classes still add up to
+    the rise in the engine's earned_income_tax."""
+
+    ids = np.arange(2, dtype=np.int64)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+                "age": [40, 40],
+                "employment_income": [48_000.0, 42_000.0],
+                "pension_contributions_via_salary_sacrifice": [4_000.0, 4_000.0],
+                "gift_aid": [800.0, 800.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": [1.0, 1.0],
+                "region": ["LONDON", "SCOTLAND"],
+                "council_tax": 0.0,
+                "rent": 0.0,
+                "tenure_type": "OWNED_OUTRIGHT",
+            }
+        ),
+        time_period="2025",
+        weight_kind=WeightKind.DESIGN,
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=None, frame=frame, scratch_dir=tmp_path, year=2025
+    )
+
+    relief = {
+        rate_class: resolver.counterfactual_delta(_band_binding(rate_class), 2025)[0]
+        for rate_class in UK_RATE_CLASSES
+    }
+
+    np.testing.assert_allclose(relief["basic"], [654.0, 559.02], atol=0.01)
+    np.testing.assert_allclose(relief["higher"], [292.0, 561.96], atol=0.01)
+    np.testing.assert_allclose(relief["additional"], [0.0, 0.0], atol=0.01)
+    earned, _ = resolver.counterfactual_delta(
+        _relief_binding("earned_income_tax"), 2025
+    )
+    np.testing.assert_allclose(sum(relief.values()), earned, atol=0.01)
+
+
 def test_relief_bands_refuse_when_they_leave_the_engines_earned_income_tax(
     tmp_path, monkeypatch
 ):

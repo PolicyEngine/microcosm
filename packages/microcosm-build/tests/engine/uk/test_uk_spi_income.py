@@ -31,7 +31,13 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     _bypass_reviewed_donor_identity(monkeypatch)
 
     result = impute_uk_spi_income_support(
-        support, donor_path, seed=9, n_estimators=3, donor_sample_size=None
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
     pd.testing.assert_series_equal(
@@ -63,7 +69,13 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         lambda year: (factors, {"from_period": 2022, "to_period": year}),
         raising=False,
     )
-    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
     result = impute_uk_spi_income_support(
         support,
@@ -95,29 +107,36 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
 ) -> None:
     """Dropping a recipient leaves every other SPI row's stage-1 draw unchanged.
 
-    The forest is queried with the legacy shape (every SPI-channel person) and
-    the rows outside the recipient domain are discarded afterwards, so the
-    draw stream each recipient consumes does not depend on who else is in it.
-    FRS rows are never redrawn.
+    The forest is queried on the drawn recipients alone and every draw is
+    keyed on the recipient's identity (its twin's id), so the draw a recipient
+    receives does not depend on who else is drawn or in what order
+    (microcosm#840). FRS rows are never redrawn.
     """
 
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
-    original_predict = _FakeFittedQRF.predict
+    original_draw = _FakeFittedQRF.predict_from_uniforms
 
-    def predict(self, predictors):
-        result = original_predict(self, predictors)
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        result = original_draw(
+            self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
+        )
         if "dividend_income" in result:
-            consumed = getattr(self, "consumed", 0)
-            result["dividend_income"] = consumed + np.arange(len(result), dtype=float)
-            self.consumed = consumed + len(result)
+            # A draw that reads its uniform: the identity-keyed quantile.
+            result["dividend_income"] = 100.0 * quantiles["dividend_income"]
         return result
 
-    monkeypatch.setattr(_FakeFittedQRF, "predict", predict)
+    monkeypatch.setattr(_FakeFittedQRF, "predict_from_uniforms", predict_from_uniforms)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     _bypass_reviewed_donor_identity(monkeypatch)
-    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
     person = support.person.copy()
     channel = support_channel_column("person")
@@ -132,10 +151,18 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
         reference.person.loc[others, "dividend_income"],
         candidate.person.loc[others, "dividend_income"],
     )
+    assert reference.person.loc[others, "dividend_income"].nunique() == len(others)
     base = person[channel].eq("frs")
     np.testing.assert_array_equal(
         candidate.person.loc[base, "dividend_income"],
         support.person.loc[base, "dividend_income"],
+    )
+    # Reversing the recipients' order changes no draw either.
+    reversed_support = replace(support, person=support.person.iloc[::-1].copy())
+    reordered = impute_uk_spi_income_support(reversed_support, donor_path, **options)
+    pd.testing.assert_series_equal(
+        reordered.person.loc[spi_rows, "dividend_income"],
+        reference.person.loc[spi_rows, "dividend_income"],
     )
 
 
@@ -144,8 +171,9 @@ def test_dependants_keep_their_twin_values_and_recipients_their_draws(
 ) -> None:
     """A dependant aged 16 to 19 is not a taxpayer the tape samples.
 
-    Neither forest draws for it, so it keeps every value of its FRS twin, and
-    both forests are still queried over the age domain, so every other
+    Neither forest draws for it, so it keeps every value of its FRS twin. The
+    stage-1 draw is keyed on each recipient's identity (microcosm#840) and the
+    stage-2 forest is still queried over the age domain, so every other
     recipient keeps the stage-1 and stage-2 draws it had (uk-data#504,
     microcosm#1095).
     """
@@ -154,20 +182,37 @@ def test_dependants_keep_their_twin_values_and_recipients_their_draws(
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
     original_predict = _FakeFittedQRF.predict
+    original_draw = _FakeFittedQRF.predict_from_uniforms
 
     def predict(self, predictors):
         result = original_predict(self, predictors)
-        for target in ("dividend_income", "universal_credit_reported"):
-            if target in result:
-                consumed = getattr(self, "consumed", 0)
-                result[target] = consumed + np.arange(len(result), dtype=float)
-                self.consumed = consumed + len(result)
+        if "universal_credit_reported" in result:
+            consumed = getattr(self, "consumed", 0)
+            result["universal_credit_reported"] = consumed + np.arange(
+                len(result), dtype=float
+            )
+            self.consumed = consumed + len(result)
+        return result
+
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        result = original_draw(
+            self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
+        )
+        if "dividend_income" in result:
+            result["dividend_income"] = 100.0 * quantiles["dividend_income"]
         return result
 
     monkeypatch.setattr(_FakeFittedQRF, "predict", predict)
+    monkeypatch.setattr(_FakeFittedQRF, "predict_from_uniforms", predict_from_uniforms)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     _bypass_reviewed_donor_identity(monkeypatch)
-    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
     person = support.person.copy()
     channel = support_channel_column("person")
@@ -212,7 +257,13 @@ def test_spi_income_refuses_a_frame_without_the_claimant_role(
     _write_donor(donor_path)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     _bypass_reviewed_donor_identity(monkeypatch)
-    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
     missing = replace(support, person=support.person.drop(columns="is_uc_claimant"))
     with pytest.raises(ValueError, match="is_uc_claimant"):
         impute_uk_spi_income_support(missing, donor_path, **options)
@@ -255,7 +306,9 @@ def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
+        state_pension_age=66,
         condition_on_state_pension_receipt=True,
+        allow_in_sample_reference=True,
     )
     np.testing.assert_array_equal(
         captured["recipient"], np.arange(result.spi_prediction_rows) % 2
@@ -286,13 +339,36 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
-    assert _FakeQRF.fit_weight_kinds == ["design", "importance"]
-    assert [record.weight_kind for record in result.fit_weight_records] == [
-        "design",
-        "importance",
+    assert _FakeQRF.fit_weight_kinds == ["design", "importance", "importance"]
+    assert [
+        (record.fit_name, record.weight_kind) for record in result.fit_weight_records
+    ] == [
+        ("uk_spi_2022_23_income", "design"),
+        ("uk_frs_reference_conditional", "importance"),
+        ("uk_frs_only_spi_fill", "importance"),
     ]
+    # The reference forest trains on the clone-0 FRS claimants and partners
+    # with taxable income: two of the fixture's four households are clone 0.
+    clone_zero = support.household.loc[
+        support.household["clone_index"] == 0, "household_id"
+    ]
+    assert (
+        result.reference_training_rows
+        == int(
+            (
+                (support.person[support_channel_column("person")] == "frs")
+                & support.person["person_household_id"].isin(clone_zero)
+            ).sum()
+        )
+        == 2
+    )
+    assert result.state_pension_age == 66
+    assert result.stage1_transport["draw"] == "twin_conditional_quantiles"
+    assert result.bridge_validation["main_source"]["weighted_agreement"] == 1.0
     assert result.reviewed_absent_stage2_outputs == (SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS)
     assert result.donor_rows == 4
     assert len(result.donor_sha256) == 64
@@ -434,6 +510,8 @@ def test_spi_stage2_does_not_require_frs_other_investment_income(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
     channel = support_channel_column("person")
@@ -461,6 +539,8 @@ def test_spi_weighted_bootstrap_does_not_apply_fact_twice(
         support,
         donor_path,
         donor_sample_size=8,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
     assert result.donor_rows == 8
@@ -497,6 +577,8 @@ def test_the_spi_channel_ships_no_structural_nan_on_the_frs_channel(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
     person = result.person
@@ -520,7 +602,9 @@ def test_spi_donor_age_boundary_and_frs_rows_keep_their_reports(
     support = _dead_support()
     person = support.person.copy()
     recipient = person.index[person[support_channel_column("person")].eq(channel)][0]
-    person.loc[recipient, "age"] = age
+    # A copy shares its twin's age (the fold-key cell), so the twin moves too.
+    lineage = person["person_source_id"] == person.loc[recipient, "person_source_id"]
+    person.loc[lineage, "age"] = age
     person.loc[recipient, "dividend_income"] = 987.0
     person.loc[recipient, "universal_credit_reported"] = 1234.0
     support = replace(support, person=person)
@@ -535,6 +619,8 @@ def test_spi_donor_age_boundary_and_frs_rows_keep_their_reports(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
 
     if age == 15 or channel == "frs":
@@ -677,3 +763,170 @@ def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
         "gov.economic_assumptions.indices.ons.household_interest_income"
     )
     assert savings["factor"] == pytest.approx(2.2692, abs=1e-4)
+
+
+def _zero_taxable_income(person: pd.DataFrame, rows) -> None:
+    person.loc[
+        rows,
+        [
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "state_pension_reported",
+            "savings_interest_income",
+            "tax_free_savings_income",
+            "dividend_income",
+            "property_income",
+            "miscellaneous_income",
+        ],
+    ] = 0.0
+    person.loc[rows, "employment_status"] = "UNEMPLOYED"
+
+
+def test_undrawn_twins_keep_their_values_and_are_receipted(
+    monkeypatch, tmp_path
+) -> None:
+    """A twin with no taxable income has no tape population: its copy is kept."""
+
+    support = _dead_support()
+    person = support.person.copy()
+    channel = support_channel_column("person")
+    twin = person.index[(person[channel] == "frs") & (person["person_id"] == 101)]
+    copy = person.index[
+        (person[channel] == "spi") & (person["person_source_id"] == 101)
+    ]
+    assert len(twin) == 1 and len(copy) == 1
+    _zero_taxable_income(person, twin.union(copy))
+    support = replace(support, person=person)
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    options = dict(
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
+
+    result = impute_uk_spi_income_support(support, donor_path, **options)
+
+    kept = [
+        column
+        for column in (
+            *SPI_INCOME_QRF_OUTPUT_COLUMNS,
+            *FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
+        )
+        if column in person.columns
+    ]
+    pd.testing.assert_series_equal(
+        result.person.loc[copy[0], kept], person.loc[copy[0], kept], check_names=False
+    )
+    others = person.index[(person[channel] == "spi") & (person["age"] >= 16)].drop(copy)
+    assert result.person.loc[others, "gift_aid"].eq(10.0).all()
+    # The stage flags the rows it drew, and only those, for the later stages
+    # that tell tape-concept rows from FRS-concept ones.
+    flag = result.person["person_is_spi_income_recipient"]
+    assert flag.dtype == bool
+    assert flag.loc[others].all()
+    assert not flag.loc[copy[0]]
+    assert not flag.loc[person[channel] == "frs"].any()
+    refresh = result.gainful_self_employment_refresh
+    if "uc_is_in_gainful_self_employment" in person.columns:
+        assert refresh["rows"] == len(others)
+        assert refresh["flagged_rows"] >= refresh["main_job_route_only_rows"]
+    else:
+        assert refresh is None
+    domain = result.recipient_domain
+    assert domain["undrawn_no_taxable_income_rows"] == 1
+    copy_household = person.loc[copy[0], "person_household_id"]
+    assert domain["undrawn_no_taxable_income_weight"] == float(
+        support.household.set_index("household_id").loc[
+            copy_household, "household_weight"
+        ]
+    )
+    assert domain["recipient_rows"] == len(others) == result.spi_prediction_rows
+    assert domain["unearned_income_floor_gbp"] == 1_000.0
+    assert "no tax record" in domain["income_rule"]
+    # The reference forest trains on the clone-0 FRS rows with taxable income
+    # only: two of the fixture's households are clone 0, and one twin is kept.
+    clone_zero = support.household.loc[
+        support.household["clone_index"] == 0, "household_id"
+    ]
+    reference_rows = (
+        (person[channel] == "frs")
+        & person["person_household_id"].isin(clone_zero)
+        & ~person.index.isin(twin)
+    )
+    assert result.reference_training_rows == int(reference_rows.sum()) == 1
+    # A reserved band carrier is drawn whatever its twin reports.
+    carrier = person.copy()
+    carrier["person_is_spi_income_band_carrier"] = False
+    carrier.loc[copy, "person_is_spi_income_band_carrier"] = True
+    drawn = impute_uk_spi_income_support(
+        replace(support, person=carrier), donor_path, **options
+    )
+    assert drawn.recipient_domain["undrawn_no_taxable_income_rows"] == 0
+    assert drawn.recipient_domain["carriers_drawn_without_taxable_income"] == 1
+    assert drawn.spi_prediction_rows == len(others) + 1
+
+
+def test_stage1_queries_only_drawn_recipients_with_the_bridge(
+    monkeypatch, tmp_path
+) -> None:
+    support = _dead_support()
+    person = support.person.copy()
+    channel = support_channel_column("person")
+    copy = person.index[
+        (person[channel] == "spi") & (person["person_source_id"] == 102)
+    ]
+    twin = person.index[(person[channel] == "frs") & (person["person_id"] == 102)]
+    _zero_taxable_income(person, twin.union(copy))
+    support = replace(support, person=person)
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    captured: dict[str, object] = {}
+    original_draw = _FakeFittedQRF.predict_from_uniforms
+
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        captured["columns"] = list(predictors.columns)
+        captured["rows"] = len(predictors)
+        captured["sign"] = sign_uniforms["gift_aid"].copy()
+        return original_draw(
+            self, predictors, quantiles=quantiles, sign_uniforms=sign_uniforms
+        )
+
+    monkeypatch.setattr(_FakeFittedQRF, "predict_from_uniforms", predict_from_uniforms)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    result = impute_uk_spi_income_support(
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    )
+    assert captured["rows"] == result.spi_prediction_rows == 3
+    assert {"has_pay", "has_trade", "at_or_over_spa", "main_source_pay", "age"} <= set(
+        captured["columns"]
+    )
+    # The no-analogue leaf's sign uniform is the identity-keyed one for the
+    # drawn recipients, in their order.
+    drawn_ids = result.person.loc[
+        (result.person[channel] == "spi")
+        & result.person["age"].ge(16)
+        & ~result.person.index.isin(copy),
+        "person_source_id",
+    ].to_numpy()
+    from microcosm.build.uk_runtime.spi_rank_transport import identity_uniforms
+
+    np.testing.assert_array_equal(
+        captured["sign"],
+        identity_uniforms(drawn_ids, target="gift_aid", part="sign", seed=9),
+    )
+    assert result.stage1_transport["identity_key"] == "person_source_id"
+    assert result.stage1_transport["recipients"] == 3
+    assert result.fit_weight_records[1].fit_name == "uk_frs_reference_conditional"

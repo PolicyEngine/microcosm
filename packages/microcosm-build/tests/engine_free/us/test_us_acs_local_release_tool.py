@@ -1087,6 +1087,27 @@ def test_consumer_export_refuses_a_pre_1021_staging_before_loading_it(
         )
 
 
+def _record_current_materialization(module, args, identity: dict) -> dict:
+    """Record what a current materialize stage leaves for the later stages.
+
+    The release tool refuses, before any solve, a checkpoint that predates a
+    requirement of this stack: the take-up assignment ``run_identity.json``
+    records (microcosm#1019) and the receipts the staging summary carries
+    (microcosm#1020 on). A test that drives ``do_calibrate`` or a later stage
+    on a stubbed checkpoint, to exercise some other refusal, records a current
+    materialization through this one helper so it still reaches the refusal
+    it tests; the sparse-CD and target-loss-weight tests load it from here.
+    ``module`` and ``args`` locate what a materialization records outside its
+    identity: the staging summary, and any checkpoint files.
+    """
+
+    identity["acs_local_take_up"] = {"seed": 0, "assigned_sha256": "a" * 64}
+    summary = module._staging_summary_path(args)
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    summary.write_text(json.dumps(_staging_work_disability_summary()))
+    return identity
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 

@@ -931,6 +931,7 @@ class TestUKCountryPackage:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -951,6 +952,11 @@ class TestUKCountryPackage:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -961,7 +967,6 @@ class TestUKCountryPackage:
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "national_staging_build_record.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -1020,8 +1025,9 @@ class TestUKCountryPackage:
         # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
-        # microcosm#1106 property_components after the regional uprating.
-        assert len(spec.sources.stages) == 40
+        # microcosm#1106 property_components after the regional uprating;
+        # microcosm#1240 high_value_home_support between them.
+        assert len(spec.sources.stages) == 41
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1062,6 +1068,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
@@ -1082,6 +1089,11 @@ class TestExistingPackagesGeneralize:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "regional_land_values.json",
+            "high_value_home_stock_facts.json",
+            "high_value_home_value_knots.json",
+            "high_value_home_stock.provenance.json",
+            "voa_council_tax_band_mix_lsoa.json",
+            "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -1092,7 +1104,6 @@ class TestExistingPackagesGeneralize:
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "national_staging_build_record.json",
-            "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
             "local_registry_parity_fixture_2025.json",
@@ -1143,8 +1154,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1279
-        )  # microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1283
+        )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1425,6 +1436,7 @@ class TestUKGatesManifest:
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1457,17 +1469,23 @@ class TestUKGatesManifest:
             "uk_target_fit",
             "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
             "uk_local_weight_ratio",
             "uk_local_weight_ess",
+            # microcosm#1240: the two report-only high-value homes gates.
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
         ]
         # PR #870 review: the four local fit/weight gates are release-blocking
-        # like the rest of the battery; nothing in the manifest is diagnostic.
-        diagnostic: set[str] = set()
+        # like the rest of the battery; the only diagnostic entries are the
+        # microcosm#1240 high-value homes benchmarks and support reports.
+        diagnostic: set[str] = {
+            "uk_high_value_homes_benchmarks",
+            "uk_high_value_homes_support",
+        }
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
         } == diagnostic
@@ -1538,6 +1556,7 @@ class TestUKGatesManifest:
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_high_value_home_support_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -1557,9 +1576,8 @@ class TestUKGatesManifest:
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:
         by_id = {gate.id: gate.gate for gate in manifest.gates}
-        # The two legacy names the bindings re-mint to the shared vocabulary.
+        # The legacy name the bindings re-mint to the shared vocabulary.
         assert by_id["uk_release_input_coverage"] == "release_input_coverage"
-        assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
         assert not any(name.startswith("uk_") for name in by_id.values())
 
     def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
@@ -1571,11 +1589,6 @@ class TestUKGatesManifest:
         )
         assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
-        assert params["uk_qrf_tail_concentration"]["top_k"] == 100
-        assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9994670564654868
-        )
-        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 104
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
@@ -1588,6 +1601,7 @@ class TestUKGatesManifest:
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
             "was_lisa_support_bounds.json",
+            "price_paid_property_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
@@ -1650,11 +1664,6 @@ class TestUKGatesManifest:
         assert (
             input_mass["reviewed_exclusions_resource"]
             == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
-        )
-        qrf = params["uk_qrf_tail_concentration"]
-        assert (
-            qrf["reviewed_exclusions_resource"]
-            == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
         )
         degenerate = params["uk_degenerate_release_surface"]
         assert (

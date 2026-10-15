@@ -44,6 +44,9 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
@@ -72,6 +75,7 @@ METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
 SOURCE_STATUS_PINNED_IN_LEDGER_FACTS = "pinned_in_ledger_facts"
 SOURCE_STATUS_SIGNED_DEFERRED = "signed_deferred"
+SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE = "pinned_in_derived_resource"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
 #: Review date for every source row below: each URL was fetched and its
@@ -102,6 +106,19 @@ def _ledger_fact_feed_pin() -> dict[str, str | int]:
 
 _LEDGER_FACT_FEED_PIN: dict[str, str | int] = _ledger_fact_feed_pin()
 
+
+def _derived_resource_pin() -> dict[str, str | int]:
+    """Identity of the committed high-value home stock resource (microcosm#1240)."""
+
+    derived = load_uk_high_value_home_stock_facts()
+    return {
+        "resource": "high_value_home_stock_facts.json",
+        "rows": len(derived.rows),
+        "rows_sha256": derived.rows_sha256,
+        "inputs_sha256": derived.inputs_sha256,
+    }
+
+
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
 _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
 _BHC_AHC_FENCE_ID = "ons_bhc_ahc_noncomparable"
@@ -109,6 +126,7 @@ _UC_GRAIN_FENCE_ID = "uc_unit_vs_household_grain"
 _POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
 _CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
 _COUNCIL_TAX_UNIVERSE_FENCE_ID = "voa_dwellings_vs_household_frame"
+_HIGH_VALUE_HOME_STOCK_FENCE_ID = "high_value_home_stock_derived_estimate"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -131,6 +149,7 @@ _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
     ("ons/equiv_", "equivalised_income"),
     ("tenure/", "tenure"),
     ("council_tax/", "council_tax"),
+    ("high_value_homes/", "high_value_homes"),
 )
 
 _FAMILIES: tuple[dict[str, Any], ...] = (
@@ -202,6 +221,22 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         ),
         "sources": ["ons_pipr_private_rents"],
         "adjudications": [],
+    },
+    {
+        "family": "high_value_homes",
+        "description": (
+            "Owner-occupied dwellings valued above £1m, £1.5m and £2m (April 2026 "
+            "prices) by constituency and local authority, England and Wales, "
+            "from HM Land Registry Price Paid Data uprated with the UK HPI and "
+            "placed through the NSPL and the committed atomic support "
+            "(microcosm#1240, fix 2). The counts are Microcosm's computation "
+            "from raw-only Chronicle registrations, carried in the committed "
+            "derived-facts resource; the frame measures the stored "
+            "main_residence_value of owner households at the dataset period "
+            "against thresholds deflated to the same price basis."
+        ),
+        "sources": ["hmlr_price_paid_derived_stock"],
+        "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
     },
     {
         "family": "council_tax",
@@ -456,6 +491,31 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "directly comparable — see the ons_bhc_ahc_noncomparable "
             "adjudication. MSOA-to-local-authority aggregation is signed "
             "deferred for this run; England and Wales only."
+        ),
+    },
+    {
+        "source_id": "hmlr_price_paid_derived_stock",
+        "publisher": "HM Land Registry (Price Paid Data, UK HPI) and ONS (NSPL); Microcosm derivation",
+        "product": (
+            "Dwellings valued above thresholds by constituency and local authority, "
+            "England and Wales: the latest non-bulk category A sale of every "
+            "dwelling sold since 1995, uprated by the local-authority and "
+            "property-type UK HPI to the frame's price basis, placed through the "
+            "NSPL and the committed atomic support, with the census owner-occupied "
+            "share and a VOA stock-coverage correction (microcosm#1240)."
+        ),
+        "url": "https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Price Paid August 2026 release; UK HPI July 2026; NSPL August 2026",
+        "status": SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "derived_resource_pin": None,  # filled by build_uk_local_target_census
+        "verified_on": "2026-10-13",
+        "notes": (
+            "Chronicle registers the three inputs raw-only (PolicyEngine/chronicle#343); "
+            "every count is Microcosm's computation and none is a Chronicle fact. "
+            "The feed supplies the census tenure shares, the OBR costing note's "
+            "non-owner-occupied share and the ONS HPSSA parity series."
         ),
     },
     {
@@ -765,6 +825,38 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "ruling 2026-09-15."
         ),
     },
+    {
+        "fence_id": _HIGH_VALUE_HOME_STOCK_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "The high-value homes family binds a Microcosm-derived estimate of "
+            "the owner-occupied dwelling stock above value thresholds, not a "
+            "publisher count. Each assumption needs an in-force adjudication: "
+            "the latest non-bulk category A sale values each dwelling sold since "
+            "1995; the UK HPI by local authority and property type moves it to "
+            "the calendar-2024 average (region, then nation, as fallbacks; the "
+            "Isles of Scilly take Cornwall's index); dwellings never sold since "
+            "1995 are assumed to share the sold stock's value distribution "
+            "within a local authority (the private-sector VOA stock over the "
+            "valued dwellings); the owner-occupied share is the census share of "
+            "the private stock, rescaled to the OBR costing note's national "
+            "control on dwellings over 2 million; registrations lag sales by "
+            "weeks to months; England and Wales only. The coverage correction "
+            "is the main sensitivity: it lifts the sold stock by a median "
+            "authority ratio of about 1.5, and with it the England "
+            "owner-occupied count over 2 million sits about a sixth above "
+            "the OBR-implied figure (the no-correction and no-control "
+            "variants are receipted in uk/high_value_home_stock.provenance.json)."
+        ),
+        "authority": (
+            "HM Land Registry Price Paid Data guidance; UK HPI methodology; "
+            "ONS NSPL user guide; VOA CTSOP1.1; OBR costing of the high value "
+            "council tax surcharge (April 2026) paragraph 1.13; "
+            "PolicyEngine/chronicle#343 boundary ruling; microcosm#1240 plan "
+            "rulings of 2026-10-13."
+        ),
+    },
 )
 
 _STATUS_DEFINITIONS: dict[str, str] = {
@@ -780,6 +872,13 @@ _STATUS_DEFINITIONS: dict[str, str] = {
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS: (
         "The official product's target facts are present in the sha-pinned "
         "Ledger consumer fact feed recorded on the source row."
+    ),
+    SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE: (
+        "The official product is registered raw-only in Chronicle (its bytes "
+        "are pinned by sha256 but parsed into no fact) and Microcosm's committed "
+        "derived-facts resource, built by the recorded tool from those pins, "
+        "carries the target values; derived_resource_pin records the resource "
+        "and its row digest."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "
@@ -913,6 +1012,11 @@ def build_uk_local_target_census() -> dict[str, Any]:
     families = [dict(row) for row in _FAMILIES]
     _require_unique_ids(families, key="family", label="family")
     sources = [dict(row) for row in _SOURCES]
+    for row in sources:
+        # The derived resource is read when the census is built, never at
+        # import, so loading the UK runtime does not depend on the file.
+        if row.get("status") == SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE:
+            row["derived_resource_pin"] = _derived_resource_pin()
     _require_unique_ids(sources, key="source_id", label="source")
     fences = [dict(row) for row in _BINDING_FENCES]
     _require_unique_ids(fences, key="fence_id", label="binding fence")

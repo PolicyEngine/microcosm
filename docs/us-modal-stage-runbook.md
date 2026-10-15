@@ -3,13 +3,15 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Three tools are registered
+digest and outputs listed with sha256 receipts. Four tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
 `tools/build_us_puf_support_base.py` (tool `us-puf-support-base`, stage
-`all`; see "Route A's base stage"), and `runner-smoke` (stage `smoke`), an
-inline script that proves the run path on any pushed commit (see
+`all`; see "Route A's base stage"), the ACS multispine staging builder,
+`tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
+stage `all`; see "ACS multispine staging"), and `runner-smoke` (stage
+`smoke`), an inline script that proves the run path on any pushed commit (see
 "Commands").
 
 Two files do the work:
@@ -22,6 +24,8 @@ Two files do the work:
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_plan_tool.py`
   and, for the base,
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`.
+  Staging tests are in
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
 
 Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes a
@@ -159,21 +163,25 @@ local wall times in this table understate Modal's wall and cost.
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
+| ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
 
 The prices are Modal's list prices for standard compute, read from
-modal.com/pricing on 22 September 2026 and unchanged on 29 September:
+[modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
+unchanged on 29 September and 13 October:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
 higher of the request and actual use (modal.com/docs/guide/resources). The
 heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
 costs about $9.70 at the request; CPU or memory used above the request
 bills above that. With `"nonpreemptible": true` every figure is three times
-higher: about $3.63 an hour for the heavy class. Only the base class sets
-a CPU limit (equal to its request); the others are request-only for CPU,
+higher: about $3.63 an hour for the heavy class. The base and acs-staging
+classes set CPU limits equal to their requests; the others are request-only
+for CPU,
 and every class is request-only for memory, so a stage that used more cores
 or more memory than its request would be billed for them. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
-image builds. The base class is sized in "Route A's base stage" below.
+image builds. The base class is sized in "Route A's base stage" below;
+the acs-staging class is sized in "ACS multispine staging".
 
 ## Commands
 
@@ -1020,6 +1028,250 @@ can also hold older checkpoints. The run's state already differs from its
 receipt by the checkpoints that were never copied, so a later stage of the
 same `run_id` would refuse either way; none is planned.
 
+## ACS multispine staging
+
+`us-acs-multispine-staging` runs the existing staging builder unchanged,
+through its public shim `tools/build_us_acs_multispine_base.py` and the
+legacy implementation's `_parse_args`. Its only stage is `all`. It writes
+`state/acs_multispine_staging.h5` and
+`state/acs_multispine_staging.summary.json`; the runner mirrors both files
+and `state/logs/` to the runs volume and hashes the complete state into its
+receipt. A later `us-acs-local-release` plan uses the verified files as its
+`staging_h5` and `staging_summary` inputs, after they are copied to the
+inputs volume's CAS. Use a new `run_id` for that release plan.
+
+**Inputs.** All five roles are required:
+
+| Plan role | Builder argument | File |
+| --- | --- | --- |
+| `base_h5` | `--base-h5` | Certified national release donor H5 |
+| `donor_release_manifest` | `--donor-release-manifest` | That donor's `release_manifest.json` |
+| `acs_household_zip` | through `--inputs-dir` | Census ACS 2024 1-year `csv_hus.zip` |
+| `acs_person_zip` | through `--inputs-dir` | Census ACS 2024 1-year `csv_pus.zip` |
+| `puma_ladder` | `--puma-ladder` | Validated `us_puma_ladder_2020.npz` |
+
+Choose the certified donor and its matching manifest before making the
+plan. The builder requires exactly one microdata artifact in the donor
+manifest and checks that its sha256 matches `--base-h5`; the staging
+summary then records the donor release identity. The manifest and the
+Modal receipt carry provenance, not a new certification decision.
+
+**Network audit and pins.** The reachable acquisition path in
+`acs_sources.fetch_acs_pums_sources` has two Census downloads:
+
+| Source URL | Required sha256 | Bytes |
+| --- | --- | --- |
+| `https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip` | `8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0` | 251,500,587 |
+| `https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip` | `afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894` | 602,847,146 |
+
+Both archives must be staged volume inputs; put them at
+`volume://cas/sha256/<digest>/<filename>` with the commands below. This
+tool refuses a Hub URI or a different archive digest. The uploaded basename
+may differ: the runner's links use the manifest's archive filenames.
+`packages/microcosm-build/src/microcosm/build/us_runtime/acs_2024_1yr_sources.json`
+is a registered `TreeFile`, pinned at
+`41701024bf2b6461cb264878243adb4c4b4d1b8ebcf4ae8953fb22872f0debd5`.
+The runner passes its checked path in the pinned clone as
+`--source-manifest`. A commit with a changed manifest refuses check mode.
+
+Each input still stages in its own `/work/inputs/<role>/` directory. The
+runner builds `/work/acs-pums/<digest>/<filename>` as links to the two
+verified archives, and passes `--inputs-dir /work/acs-pums`. It checks each
+archive's manifest size before linking. `fetch_acs_pums_sources` hashes
+those cached bytes again and returns them without calling its URL opener.
+`acs_pums` streams CSV members from the ZIP files; nothing extracts the
+archives into a second cache. The receipt records the link assembly under
+`runner.input_links` as well as the original verified inputs.
+
+The traced path through `acs_multispine`, `acs_local_hours`,
+`hours_worked`, `acs_transfer`, the PUMA ladder loader, the frame adapter
+and the QRF implementation has no other active network acquisition:
+
+- The hours fallback runs the generic source-stage executor with the
+  donor's supplied person tables and packaged `source_stages.json`
+  read-table/derive-hours operations; it does not fetch ASEC microdata.
+- The capital-gains transfer helper reads packaged SOCA distribution
+  shares (`capital_gain_distributions.py`); the PUMA ladder uses local
+  `np.load`.
+- The engine-default and null audits construct `PolicyEngineUSEngine`,
+  using the installed engine's local definitions and parameters. They do
+  not create a `Microsimulation` or acquire a default dataset.
+- Imported ASEC, education, ORG, SCF, SIPP and unemployment-weeks fetchers
+  are not called by this builder's path or package initialization.
+
+No `HomeSeed` is needed for this tool. The runner's image clone and
+dependency installation, branch proof and input preparation retain their
+existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
+credential-name environment values, and consumes the staged files.
+
+The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
+`--inputs-dir`, `--puma-ladder`, `--out-h5` and `--summary`. Plans may set
+only the builder's tuning flags: `--acs-share`, `--n-estimators`,
+`--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
+`--donor-channel`, `--hours-under15-policy`, `--max-households` and
+`--period`. Plan option names use underscores in place of hyphens. The
+check mode runs the pinned parser on these arguments. The example uses
+`us_hours_under15_zero_completion_v1`, the builder's sole accepted modeled
+completion policy for unresolved ACS hours below age 15. Omit
+`max_households` for a full build; it is the builder's deterministic cap
+for a smoke. Changing `period` does not change the pinned 2024 ACS source
+archives.
+
+**Resources.** Class `acs-staging` requests 16 cores with a 16-core limit,
+80 GiB of memory, and a 61,200-second (17-hour) timeout.
+
+- *CPU.* `full-staging-a3` in
+  `experiments/us-acs-local-hours-rebuild-20260922/run-resources-and-staging-excerpt.json`
+  measured 103,104.6 CPU-s over 7,218.1 s of wall, 14.3 cores on average.
+  The QRF forest uses `n_jobs=-1` when `POPULACE_FIT_N_JOBS` is unset, and
+  prediction sizes its pool from `os.cpu_count()` when
+  `POPULACE_FIT_PREDICT_WORKERS` is unset (`microcosm.fit.qrf`). Sixteen
+  cores accommodate the observed average with 1.7 cores of headroom; the
+  limit throttles use above sixteen. Neither the average nor the request
+  establishes the container's visible CPU count. The receipt records
+  `runner.os_cpu_count` and `cpu_affinity`.
+- *Memory.* The recorded peak is 42,370,498,560 bytes (39.5 GiB). Adding
+  the largest 24 GB (22.4 GiB) RSS excess observed on Modal for the release
+  tool's materialize stage gives 61.8 GiB; 80 GiB leaves 18.2 GiB over
+  that. This is an estimate transferred from another stage. Memory is a
+  request, so use above 80 GiB bills above the estimate.
+- *Time.* Applying the measured materialize slowdown range of 3.3 to 7.6
+  to 7,218.1 s gives 6.62 to 15.24 hours. No Modal staging build has
+  measured that range for this builder. The example budgets 57,600 s
+  (16 hours) for tool work. The class adds 1,800 s for input staging and
+  1,800 s of runner reserve: 61,200 s total. The runner stops the tool at
+  the plan budget or the class timeout less the reserve, whichever comes
+  first; staging time comes out of that latter deadline.
+- *Disk and mirroring.* The 40 GiB free-space admission floor is the
+  recorded local run's configured `disk_admission_bytes` (42,949,672,960 bytes).
+  The 12 GiB mirrored-state allowance covers the approximately 10.7 GB
+  H5 (10 GiB), summary and logs, with about 2 GiB of headroom. These are
+  planning allowances, not output limits. The check measures the runs
+  volume's write rate and refuses if 12 GiB would not mirror in the
+  reserve's 1,620 s after the stop and receipt allowances. Both output
+  files and logs are mirrored after clean exits and failures; the staging
+  builder has no registered checkpoint resume.
+
+Use `"nonpreemptible": true` for this long build. The resource request
+lists at $1.39392/hour preemptible, or $4.18176/hour non-preemptible,
+using [Modal's standard CPU and memory prices](https://modal.com/pricing)
+and its [threefold non-preemptible multiplier](https://modal.com/docs/guide/preemption),
+checked 13 October 2026. At the measured local wall that is $2.79 or
+$8.38. The slowdown range estimates $27.67 to $63.72 non-preemptible for
+tool work, plus $2.09 for a full 30-minute reserve. `validate` estimates
+$69.00 for the example's 16-hour budget plus reserve and $71.09 at the
+17-hour class timeout. Staging time, checks, image builds, volume storage,
+repeated attempts and memory used above the request can add cost; these
+figures are request-price estimates, not billed totals. A check at its
+30-minute timeout lists at about $0.08.
+
+**One build, from local files to a verified hand-off.**
+`docs/us-modal-stage-acs-multispine-staging-plan.json` is a template. Its
+all-zero donor H5 digest and all-one donor manifest digest are placeholders,
+not known artifact identities. The ACS archive pins and ladder digest are
+real pins. The template pins commit
+`74f5e61237423f745c0fee994a54cd164a6777f2` on `main`, which contains the
+existing builder; the runner code comes from this checkout. Select a
+reviewed donor and replace its placeholders by hashing actual files before
+running. The following commands generate a concrete plan and preserve the
+packaged archive requirements. Run the block in Bash; its fail-fast settings
+stop before uploads or hand-off if any verification fails. Skip the two
+one-time volume creation commands when the volumes already exist.
+
+```bash
+# Run from this checkout; choose actual local paths to the five inputs.
+set -euo pipefail
+B=/path/to/certified/national_donor.h5
+D=/path/to/certified/release_manifest.json
+H=/path/to/acs/csv_hus.zip
+P=/path/to/acs/csv_pus.zip
+L=/path/to/us_puma_ladder_2020.npz
+PLAN=acs-multispine-staging-plan.json
+
+# Hash streamed bytes into CAS refs; this does not copy the large files.
+python3 - "$B" "$D" "$H" "$P" "$L" "$PLAN" <<'PY'
+import hashlib
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+plan = json.loads(Path("docs/us-modal-stage-acs-multispine-staging-plan.json").read_text())
+plan["run_id"] = "acs-multispine-staging-" + datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%Sz")
+roles = ("base_h5", "donor_release_manifest", "acs_household_zip", "acs_person_zip", "puma_ladder")
+for role, filename in zip(roles, sys.argv[1:6], strict=True):
+    path = Path(filename)
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if role.startswith("acs_") and digest != plan["inputs"][role]["sha256"]:
+        raise SystemExit(f"REFUSED: {role} differs from the packaged ACS pin")
+    plan["inputs"][role] = {
+        "uri": f"volume://cas/sha256/{digest}/{path.name}",
+        "sha256": digest,
+    }
+Path(sys.argv[6]).write_text(json.dumps(plan, indent=2) + "\n")
+PY
+python3 tools/modal_us_stage_plan.py validate "$PLAN"
+
+# Once per Modal workspace; the app also creates these on first use.
+modal volume create microcosm-us-stage-inputs
+modal volume create microcosm-us-stage-runs
+# Verify every supplied file against the concrete plan and emit the uploads.
+python3 tools/modal_us_stage_plan.py upload-commands "$PLAN" \
+  "base_h5=$B" "donor_release_manifest=$D" "acs_household_zip=$H" \
+  "acs_person_zip=$P" "puma_ladder=$L" --shell > staging-inputs.sh
+bash staging-inputs.sh
+
+# Check: clone/branch proof, manifest pin, pinned _parse_args, every input,
+# disk admission, write probe, PYTHONHASHSEED, ledger and receipt state.
+MICROCOSM_MODAL_PLAN="$PLAN" modal run tools/modal_us_stage.py
+# Run: the plan requests non-preemptible placement and a 16-hour budget.
+MICROCOSM_MODAL_PLAN="$PLAN" modal run --detach tools/modal_us_stage.py --run
+
+# After completion, fetch the entire state (including logs) and receipts.
+R=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run_id"])' "$PLAN")
+mkdir -p modal-runs
+modal volume get microcosm-us-stage-runs "runs/$R" ./modal-runs/
+# Inspect the downloaded layout: --state-root must hold the H5, summary,
+# and logs/. Select the latest all-stage receipt; verification refuses failure.
+RECEIPT=$(python3 - "$R" <<'PY'
+import sys
+from pathlib import Path
+receipts = sorted((Path("modal-runs") / sys.argv[1] / "receipts").glob("all-*.json"))
+if not receipts:
+    raise SystemExit("No all-stage receipt was downloaded")
+print(receipts[-1])
+PY
+)
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+  --state-root "./modal-runs/$R/state" --strict
+
+# Only after verification: put the two outputs into the inputs volume CAS.
+S=./modal-runs/$R/state/acs_multispine_staging.h5
+J=./modal-runs/$R/state/acs_multispine_staging.summary.json
+python3 tools/modal_us_stage_plan.py digest "$S" "$J"
+# Upload to the same CAS destinations that digest printed.
+for OUTPUT in "$S" "$J"; do
+  SHA=$(python3 - "$OUTPUT" <<'PY'
+import hashlib
+import sys
+with open(sys.argv[1], "rb") as stream:
+    print(hashlib.file_digest(stream, "sha256").hexdigest())
+PY
+)
+  modal volume put microcosm-us-stage-inputs "$OUTPUT" \
+    "cas/sha256/$SHA/$(basename "$OUTPUT")"
+done
+# Put the printed {uri, sha256} refs in the later release plan's
+# staging_h5 and staging_summary roles, with a fresh release run_id.
+```
+
+`verify-receipt --strict` requires a completed receipt, checks both outputs
+and every log against their recorded bytes and sha256, and refuses extra
+state files. It does not accept a budget stop as a successful staging build.
+A receipt verifies artifact bytes; the later release's existing gates and
+certification still determine whether the release is accepted.
+
 ## Preemption and restarts
 
 Functions run on Modal's preemptible placement unless the plan sets
@@ -1135,10 +1387,6 @@ hold digests, sizes and paths, never file contents.
   bytes of the first two outer stages only. The local run left no output
   for the other 22, so whether Modal reproduces the Mac there is not known
   and cannot be checked against this reference.
-- **The staging stage (`tools/build_us_acs_multispine_base.py`)** is not
-  registered either. It takes a directory input (`--inputs-dir`, the ACS
-  PUMS archive cache), which the plan format does not support. Supporting it
-  would take an archive digest plus extraction.
 - **Work lost to preemption, and memory kills.** A preempted attempt's
   tool work is lost: the state is mirrored only when the tool exits, and
   materialize has no resume point inside its chunk loop. (The base resumes
