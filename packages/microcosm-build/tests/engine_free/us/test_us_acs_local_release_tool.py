@@ -612,6 +612,24 @@ def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
     assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
 
 
+def _record_current_materialization(module, args, identity: dict) -> dict:
+    """Record what a current materialize stage leaves for the later stages.
+
+    The release tool refuses, before any solve, a checkpoint that predates a
+    requirement of this stack: here the take-up assignment ``run_identity.json``
+    records (microcosm#1019). A test that drives ``do_calibrate`` or a later
+    stage on a stubbed checkpoint, to exercise some other refusal, records a
+    current materialization through this one helper so it still reaches the
+    refusal it tests; the sparse-CD and target-loss-weight tests load it from
+    here. ``module`` and ``args`` locate what a materialization records outside
+    its identity (the staging summary, checkpoint files) once a requirement
+    lives there.
+    """
+
+    identity["acs_local_take_up"] = {"seed": 0, "assigned_sha256": "a" * 64}
+    return identity
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 
