@@ -28,6 +28,10 @@ from microcosm.build.uk_runtime import (
     frs_take_up,
     spine_build,
 )
+from microcosm.build.uk_runtime.birth_month import (
+    UK_BIRTH_MONTH_COLUMN,
+    uk_months_since_last_birthday,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
     frs_council_tax_operation_parameters,
@@ -60,6 +64,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.spi_support import (
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    create_uk_spi_support_tables,
+    support_channel_column,
+    support_source_id_column,
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
 
@@ -1298,6 +1308,59 @@ def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
     stage = _write_fixture(tmp_path / "unasked")
     person = build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage).table("person")
     assert not person["is_blind"].any()
+
+
+def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
+    tmp_path: Path,
+) -> None:
+    """The spine stores ``months_since_last_birthday`` spread the engine's way
+    at each household's GROSS4, and an SPI support copy keeps its source
+    person's months (Vahid's review of microcosm#1271)."""
+
+    tables = _fixture_tables()
+    # Both adults are then men aged 40: one stratum holding households of
+    # weight 10 and 20. A person alone in a stratum sits mid-year whatever the
+    # weight, so without this the months could not tell the weights apart.
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    adult_2["SEX"] = 1
+    stage = _write_fixture(tmp_path, tables)
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    person = frame.table("person")
+
+    gross4 = {row["SERNUM"]: float(row["GROSS4"]) for row in tables["househol"]}
+    weights = person["person_household_id"].map(gross4).to_numpy(dtype=float)
+    assert not np.isnan(weights).any()
+    draw = {
+        "age": person["age"].to_numpy(),
+        "is_male": person["gender"].eq("MALE").to_numpy(),
+        "person_ids": person["person_id"].to_numpy(),
+    }
+    expected = uk_months_since_last_birthday(**draw, weights=weights)
+    equal_weights = uk_months_since_last_birthday(**draw, weights=np.ones(len(person)))
+
+    np.testing.assert_array_equal(person[UK_BIRTH_MONTH_COLUMN].to_numpy(), expected)
+    # The fixture can tell the FRS weights from equal weights, and no month is
+    # left at zero.
+    assert not np.array_equal(expected, equal_weights)
+    assert (expected > 0.0).all()
+
+    tables_with_weights = engine_tables(frame)
+    support = create_uk_spi_support_tables(
+        person=tables_with_weights["person"],
+        benunit=tables_with_weights["benunit"],
+        household=tables_with_weights["household"],
+        spi_household_count=None,
+    )
+    copies = support.person[
+        support.person[support_channel_column("person")]
+        == SPI_SYNTHETIC_SUPPORT_CHANNEL
+    ]
+    assert len(copies) == len(person)
+    source_months = person.set_index("person_id")[UK_BIRTH_MONTH_COLUMN]
+    np.testing.assert_array_equal(
+        copies[UK_BIRTH_MONTH_COLUMN].to_numpy(),
+        source_months.loc[copies[support_source_id_column("person")]].to_numpy(),
+    )
 
 
 def test_person_types_follow_the_adult_and_child_tables(tmp_path: Path) -> None:
