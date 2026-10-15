@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
 from typing import Final
 
 from pydantic import JsonValue
@@ -20,6 +22,13 @@ from microcosm.diagnostics.schema import CalibrationDiagnosticsV8
 JSON_SCHEMA_DRAFT_2020_12: Final = "https://json-schema.org/draft/2020-12/schema"
 CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID: Final = (
     "calibration_diagnostics.v8.schema.json"
+)
+#: The committed schema, relative to the ``microcosm.diagnostics`` package.
+CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_RESOURCE: Final = (
+    f"schemas/{CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID}"
+)
+_REGENERATE_COMMAND: Final = (
+    "uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py"
 )
 
 
@@ -226,9 +235,8 @@ CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE: Final = (
 
 _TITLE: Final = "Microcosm calibration diagnostics, schema 8"
 _COMMENT: Final = (
-    "Generated from microcosm.diagnostics.CalibrationDiagnosticsV8 by "
-    "microcosm.diagnostics.calibration_diagnostics_v8_json_schema(); "
-    "regenerate it rather than editing it."
+    "Generated from microcosm.diagnostics.CalibrationDiagnosticsV8. Do not "
+    f"edit it; regenerate it with `{_REGENERATE_COMMAND}`."
 )
 
 
@@ -279,3 +287,61 @@ def render_calibration_diagnostics_v8_json_schema() -> str:
         )
         + "\n"
     )
+
+
+def committed_calibration_diagnostics_v8_json_schema_path() -> Path:
+    """Return the committed schema file, shipped inside the package."""
+
+    return Path(
+        str(
+            files("microcosm.diagnostics").joinpath(
+                CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_RESOURCE
+            )
+        )
+    )
+
+
+def load_calibration_diagnostics_v8_json_schema(
+    path: str | Path | None = None,
+) -> dict[str, JsonValue]:
+    """Read the committed schema, or the schema file at ``path``."""
+
+    source = (
+        committed_calibration_diagnostics_v8_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    return json.loads(source.read_bytes())
+
+
+def write_calibration_diagnostics_v8_json_schema(
+    path: str | Path | None = None,
+) -> Path:
+    """Write freshly generated schema text to the committed file or ``path``."""
+
+    output = (
+        committed_calibration_diagnostics_v8_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(render_calibration_diagnostics_v8_json_schema().encode("utf-8"))
+    return output
+
+
+def assert_calibration_diagnostics_v8_json_schema_current(
+    path: str | Path | None = None,
+) -> None:
+    """Raise unless the file is byte-identical to freshly generated output."""
+
+    source = (
+        committed_calibration_diagnostics_v8_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    expected = render_calibration_diagnostics_v8_json_schema().encode("utf-8")
+    if source.read_bytes() != expected:
+        raise ValueError(
+            f"{source} differs from the schema the models generate; "
+            f"regenerate it with `{_REGENERATE_COMMAND}`."
+        )

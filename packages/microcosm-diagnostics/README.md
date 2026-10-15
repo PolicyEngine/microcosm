@@ -36,3 +36,14 @@ schema's description lists each of these rules
 (`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS`), and a test fails if a model
 validator is added without being listed. Complete validation still goes
 through `parse_calibration_diagnostics`.
+
+The generated schema is committed, and shipped in the wheel, at
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+
+`load_calibration_diagnostics_v8_json_schema()` reads it. After changing a
+schema-8 model, regenerate it with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`;
+`--check` reports a stale file without writing. A test fails while the
+committed file differs from freshly generated output, and the US, UK and
+transport build tests validate the diagnostics they write against it.
