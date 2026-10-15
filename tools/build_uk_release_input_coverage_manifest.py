@@ -863,6 +863,12 @@ def build_manifest(
                 stage_name="cgt_support_split",
                 candidate_source=candidate_source,
             ),
+            # The high-value home support copies whole households at equal weight
+            # (microcosm#1240), the CGT support split's mass semantics.
+            "high_value_home_support": _source_stage_family_coverage_contract(
+                stage_name="high_value_home_support",
+                candidate_source=candidate_source,
+            ),
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
                 candidate_source=candidate_source,
             ),

@@ -49,6 +49,9 @@ class FakeUKSimulation:
             ],
             "benunit_rent": [0.0, 10.0, 20.0],
             "council_tax_band": ["A", "H", "D"],
+            # microcosm#1240: stored home values at the dataset period; only the
+            # owner-occupied first household clears the deflated thresholds.
+            "main_residence_value": [2_500_000.0, 1_800_000.0, 0.0],
         }
 
     def calculate(self, variable, **_kwargs):
@@ -86,7 +89,7 @@ def test_metric_names_match_expected_constituency_surface() -> None:
     )
     assert "age/0_10" in names
     assert "age/70_80" in names
-    assert names[-6:] == (
+    assert names[-9:] == (
         "uc_hh_0_children",
         "uc_hh_1_child",
         "uc_hh_2_children",
@@ -94,6 +97,10 @@ def test_metric_names_match_expected_constituency_surface() -> None:
         # Appended last so incumbent metric positions never renumber.
         "households",
         "hmrc/higher_rate_taxpayers/count",
+        # microcosm#1240: the high-value homes family, after every earlier one.
+        "high_value_homes/over_1m",
+        "high_value_homes/over_1_5m",
+        "high_value_homes/over_2m",
     )
 
 
@@ -105,7 +112,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-11:] == (
+    assert names[-14:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -117,6 +124,9 @@ def test_metric_names_match_expected_la_surface() -> None:
         "council_tax/band_h",
         "council_tax/band_i",
         "hmrc/higher_rate_taxpayers/count",
+        "high_value_homes/over_1m",
+        "high_value_homes/over_1_5m",
+        "high_value_homes/over_2m",
     )
 
 
@@ -259,6 +269,8 @@ def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
                     True,
                 ],
                 "is_child": [0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                "main_residence_value": [0.0],
+                "tenure_type": ["RENT_PRIVATELY"],
             }
 
         def map_result(self, values, from_entity, to_entity):

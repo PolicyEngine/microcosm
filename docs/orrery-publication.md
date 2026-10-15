@@ -72,18 +72,17 @@ HF receipt snapshot. Pending jobs also resume when a subsequent local service
 starts. The retry command comes from the emitter package; Microcosm does not
 retain a second delivery implementation or a compatibility wrapper.
 
-## Deferred migration prerequisites
+## Emitter dependency
 
-This adapter is implemented and tested in a draft PR, not merged or activated.
-It depends on PolicyEngine/microcosm-emitter#4. The draft uses one exact root
-Git source pin in `packages/microcosm-build/pyproject.toml` and `uv.lock` for
-that PR's single `microcosm-emitter` distribution; no registry release was
-available when this draft was updated.
-Before merge, merge emitter #4, verify registry-owner configuration, publish
-one `microcosm-emitter` release containing those changes, replace the draft source
-override with that released version, regenerate `uv.lock`, update its
-approved worker-identity digest and rerun tests and wheel checks. Merely building
-a Microcosm wheel does not make its unpublished dependencies installable.
+`packages/microcosm-build` depends on one exact `microcosm-emitter` release
+from PyPI, which `uv.lock` records with its wheel and source-archive hashes.
+Microcosm has no Git source override for the emitter. Every merge to the
+emitter's `main` publishes a new version automatically. To adopt one, change the
+exact requirement, regenerate `uv.lock`, update `APPROVED_UV_LOCK_SHA256` in
+`microcosm.build.us_runtime.worker_identity` to the new lockfile digest and
+rerun the tests and wheel checks.
+
+## Migrating an existing workstation
 
 The emitter rejects unversioned databases without modification. Before switching
 an existing workstation, upgrade any old unversioned queue using the preceding

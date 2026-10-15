@@ -9,6 +9,9 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -283,6 +286,29 @@ _ONS_TERMINAL_BAND_RATIONALES = {
         "the incumbent six-year terminal band left ages 91+ unconstrained."
     ),
 }
+
+_ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year "
+    "15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the "
+    "band left the ages inside it free to drift. The three rows partition this "
+    "row's population and read the same ONS mid-year estimate by single year of "
+    "age, so they sum to it. No single current row has this definition, so the "
+    "frozen fixture's row is fixture-only on the current surface."
+)
+_ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three "
+    "rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 "
+    "sex band, bound so the fit holds the age mix inside the band. The incumbent "
+    "binds only the band, so this row has no fixture counterpart."
+)
+_ONS_15_19_BAND_ROWS = frozenset(
+    f"ons.population.{sex}_15_19" for sex in ("female", "male")
+)
+_ONS_15_19_BAND_SPLIT_ROWS = frozenset(
+    f"ons.population.{sex}_{ages}"
+    for sex in ("female", "male")
+    for ages in ("15", "16_17", "18_19")
+)
 
 _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
     "Ruled signed exclusion: the incumbent y-values for devolved private rent "
@@ -705,6 +731,24 @@ def _add_signed_rationale_notes(
             row["reason"] = _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE
         elif name in _ONS_TERMINAL_BAND_RATIONALES:
             row["reason"] = _ONS_TERMINAL_BAND_RATIONALES[name]
+        elif name in _ONS_15_19_BAND_ROWS and row.get("kind") == "fixture_only":
+            row["reason"] = _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
+        elif name in _ONS_15_19_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
+
+
+#: microcosm#1240: the high_value_homes family binds a Microcosm-derived
+#: estimate (HM Land Registry stock counts), not a published per-area fact,
+#: so the incumbent register has nothing to compare it with.
+_DERIVED_STOCK_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: the target is a Microcosm-derived estimate "
+    "of the owner-occupied dwelling stock above a value threshold "
+    "(uk/high_value_home_stock_facts.json, fence "
+    "high_value_home_stock_derived_estimate), compiled beside the Chronicle "
+    "feed; no publisher counts such dwellings by area, so the incumbent "
+    "registry carries no row to compare and the difference is the derived "
+    "target itself (microcosm#1240)."
+)
 
 
 def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
@@ -741,6 +785,8 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _LOCAL_FIXTURE_ONLY_RATIONALES[metric]
         elif kind == "ledger_only" and metric == "households":
             row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and metric.startswith("high_value_homes/"):
+            row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 
@@ -753,7 +799,7 @@ def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
         )
     if spec.surface == "local":
         return compile_uk_local_target_registry(
-            facts,
+            (*facts, *load_uk_high_value_home_stock_facts().rows),
             target_period=spec.target_period,
             crosswalk=_load_crosswalk(),
         )

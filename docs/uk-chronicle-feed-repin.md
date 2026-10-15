@@ -161,3 +161,13 @@ The comparison with the 2023 production surface is retired (microcosm#1257, Mar√
 2026-10-13). Two compile-parity receipts remain, both at the 2025 calibration period: the national
 one against the frozen incumbent registry, and the local one. Earlier entries above that name three
 receipts describe the state at their time.
+
+The `735820c` re-pin (microcosm#1240, PolicyEngine/chronicle#343 via #349, on top of `942a1fa`)
+brought the inputs for the High Value Council Tax Surcharge work: the OBR's April 2026 costing
+note (63 rows: properties in scope by surcharge band and the non-owner-occupied share) and the
+ONS house price statistics for small areas by 2024 constituency to the year ending March 2026
+(22,940 rows), plus three raw-only registrations that carry no facts (the HM Land Registry Price
+Paid yearly files, the UK HPI full file and the NSPL) and are read by
+`tools/build_uk_high_value_home_stock.py` against the registered sha256 pins (950,242 rows, up
+23,003). No existing package moved, so no compiled target changed; one vendor selection
+(`obr_hvcts_costing_facts.json`) pins the OBR note for the benchmarks gate.

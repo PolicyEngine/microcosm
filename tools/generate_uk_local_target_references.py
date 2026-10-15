@@ -17,6 +17,9 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     UK_UPRATING_APPLIERS,
     uk_small_cell_rule_is_signed,
@@ -82,6 +85,20 @@ def main() -> None:
         or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
     facts = list(_read_jsonl(args.ledger_facts))
+    derived_resources: list[dict[str, Any]] = []
+    if not args.no_derived_facts:
+        # microcosm#1240: the high-value homes family selects Microcosm-derived
+        # facts (HM Land Registry stock counts) carried in the committed resource.
+        derived = load_uk_high_value_home_stock_facts(args.derived_facts)
+        facts.extend(dict(row) for row in derived.rows)
+        derived_resources.append(
+            {
+                "resource": "high_value_home_stock_facts.json",
+                "rows": len(derived.rows),
+                "rows_sha256": derived.rows_sha256,
+                "inputs_sha256": derived.inputs_sha256,
+            }
+        )
     authored = author_area_target_references(contract, facts, config)
     # microcosm#1123 item 7: a second pass defers, by rule, the cells the
     # first pass found below the small-cell floor.
@@ -92,6 +109,7 @@ def main() -> None:
             area_signed_deferrals=(*config.area_signed_deferrals, *small_cells),
         )
         authored = author_area_target_references(contract, facts, config)
+    authored.membership_report["derived_fact_resources"] = derived_resources
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -183,6 +201,20 @@ def _parser() -> argparse.ArgumentParser:
         "--crosswalk", type=Path, default=UK_PACKAGE_ROOT / "local_area_crosswalk.json"
     )
     parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument(
+        "--derived-facts",
+        type=Path,
+        default=None,
+        help=(
+            "Microcosm-derived facts resource merged beside the feed (default: the "
+            "committed uk/high_value_home_stock_facts.json)."
+        ),
+    )
+    parser.add_argument(
+        "--no-derived-facts",
+        action="store_true",
+        help="Diagnostics only: author the surface from the Chronicle feed alone.",
+    )
     parser.add_argument(
         "--output", type=Path, default=UK_PACKAGE_ROOT / "local_target_references.json"
     )
