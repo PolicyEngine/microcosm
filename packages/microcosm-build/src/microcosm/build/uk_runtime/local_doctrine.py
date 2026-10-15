@@ -102,7 +102,10 @@ UK_LOCAL_TARGET_WEIGHT_RULE = "nation_grain_family_equal_sqrt_count"
 #: journeys one of seventeen nation and region families (about 1.5 %); a
 #: surface or a rule that dilutes either below its floor is refused before
 #: the solve runs. Families are the census families (local) and the register
-#: families (national), as the rule reads them. The values are her call.
+#: families (national), as the rule reads them. María's ruling of 2026-10-15:
+#: 2.5 % and 1.25 %, checked under the doctrine's row-metadata rules only (the
+#: ``uniform`` and ``grain_equal`` overrides carry no family and stay usable
+#: for experiments; a release candidate refuses them anyway).
 UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS: Mapping[str, float] = MappingProxyType(
     {
         "domestic_energy": 0.025,

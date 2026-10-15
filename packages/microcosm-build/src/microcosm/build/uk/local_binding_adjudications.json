@@ -50,6 +50,34 @@
       "adjudication": "microcosm#1240 plan approved by María on 2026-10-13",
       "approved_on": "2026-10-13",
       "expires_on": "2026-12-31"
+    },
+    "desnz_subnational_consumption_basis": {
+      "reason": "Accepted as the family's basis (microcosm#1207, plan approved 2026-10-14): the authority kWh cells bind DESNZ's split between authorities at the lcfs stage's Energy Trends level, one factor per fuel (desnz.energy_trends.gb_domestic_level); DESNZ's own level (meter years February to January for electricity, mid-May to mid-May and weather-corrected for gas) is not bound. Renew on the first dense build's receipts: the share of authority cells within 10% and 25% per fuel. Fence: uk_local_target_census.json#/binding_fences/desnz_subnational_consumption_basis.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "approved_on": "2026-10-15",
+      "expires_on": "2026-12-15"
+    },
+    "desnz_meters_for_households": {
+      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): gas meters over electricity meters stand for the share of an authority's households on the gas network, the ratio the lcfs stage already imposes by region; the census households carry the level through the census partition. Renew on R1: the gas-connected share stays within 0.5 points of DESNZ's. Fence: uk_local_target_census.json#/binding_fences/desnz_meters_for_households.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "approved_on": "2026-10-15",
+      "expires_on": "2026-12-15"
+    },
+    "desnz_regional_meter_share_in_stage": {
+      "reason": "Accepted (microcosm#1207, plan approved 2026-10-14): the authority cells constrain the quantity the stage set by region and add the split between authorities; the kWh cells sit on the level the stage raked to. Renew with the first dense build. Fence: uk_local_target_census.json#/binding_fences/desnz_regional_meter_share_in_stage.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "approved_on": "2026-10-15",
+      "expires_on": "2026-12-15"
+    },
+    "desnz_northern_ireland_interim_share": {
+      "reason": "Accepted as an interim (microcosm#1207, plan ruling of 2026-10-14): Great Britain's part of the Energy Trends UK level is its share of UK households (ONS LFS) until PolicyEngine/chronicle#356 brings Northern Ireland's domestic consumption; the interim puts Great Britain's gas level about 1.5% low. Lapses when the Northern Ireland facts land or on its expiry, whichever comes first. Fence: uk_local_target_census.json#/binding_fences/desnz_northern_ireland_interim_share.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "approved_on": "2026-10-15",
+      "expires_on": "2026-12-15"
     }
   }
 }

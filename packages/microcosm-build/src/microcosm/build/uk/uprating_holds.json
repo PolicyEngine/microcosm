@@ -309,6 +309,27 @@
       "approved_on": "2026-10-11",
       "status": "approved",
       "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "dft.bus_journeys.london",
+        "dft.bus_journeys.north_east",
+        "dft.bus_journeys.north_west",
+        "dft.bus_journeys.yorkshire_and_the_humber",
+        "dft.bus_journeys.east_midlands",
+        "dft.bus_journeys.west_midlands",
+        "dft.bus_journeys.east_of_england",
+        "dft.bus_journeys.south_east",
+        "dft.bus_journeys.south_west"
+      ],
+      "reason": "DfT BUS01a local bus passenger journeys for FY2024-25, the latest outturn (DfT's closing-year label fy2025). The binding measures the frame's NTS trips at the boardings per trip the lcfs stage priced from the same FY2024-25 boardings, so both sides are FY2024-25 on purpose; journeys are volumes with no published index (microcosm#1207).",
+      "tracking": "microcosm#1207",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-15",
+      "status": "approved",
+      "expires_on": "2026-12-15"
     }
   ]
 }
