@@ -38,11 +38,18 @@ committed Axiom input surface, and the export contract's formula-owned list
 with the bound variables, and source citations with the code and JSON nodes
 they identify.
 
+The line guard catches drift-prone citations that an author (human or model)
+would plausibly write in NZ spec prose. It is not a defence against deliberate
+obfuscation, such as spelling out line numbers or splitting them across keys.
+
 Recognized line citations (for any extension, or known checkout filenames
 such as LICENSE and .gitignore):
 
 - The filename may be plain, backtick-wrapped, single/double/curly-quoted,
-  inline Markdown link text (including backticks), or a reference link.
+  an inline Markdown link's destination or text (including backticks), an
+  image link, or reference-link text. A link attributes its locator to the
+  destination (without query or fragment) and every filename in its label;
+  all must be pinned foreign files for an exemption.
 - Forward: file:12, file:L12, file：L12 (full-width colon), file#L12,
   file @ L12, file L12, file, L12, file (L12), file [L12], file line 12,
   file lines L12-L20, file l.12, file ll.12-20, and file at/on line 12.
@@ -52,12 +59,61 @@ such as LICENSE and .gitignore):
 - Numbers may form comma lists or ranges with hyphen, en dash, em dash,
   or "to", with optional spaces and an L on either endpoint.
 
-Bare numbers in prose, unknown extensionless names, spelled-out numbers,
-HTML/entity-encoded markup and arbitrary Markdown rendering are out of scope:
-the guard scans parsed resource strings for explicit file/line locators.
+In-scope examples:
+    file:12
+    file:L12
+    file：L12
+    file#L12
+    file @ L12
+    file L12
+    file, L12
+    file (L12)
+    file [L12]
+    file line 12
+    file lines L12-L20
+    file l.12
+    file ll.12-20
+    file at line 12
+    file on line 12
+    line 12 in file
+    lines 12-20 of file
+    ll.12-20 in file
+    L12-L20 of file
+    file:12,14-20
+    file lines 12–20
+    file lines 12—20
+    file lines 12 to 20
+    `file` lines 12-20
+    'file' lines 12-20
+    "file" lines 12-20
+    ‘file’ lines 12-20
+    “file” lines 12-20
+    file: `L12`
+    file: 'line 12'
+    [file](file) lines 12-20
+    [`file`](file) L12
+    [file][source] lines 12-20
+    [the source](file) lines 12-20
+    lines 12-20 of [the source](file)
+    [upstream.rs](file) L12
+    [the source](file#L12)
+    [the source](file:L12)
+    [file:L12](upstream.rs)
+    [the source](file?raw=1) L12
+    ![x](file) L5
+    LICENSE:12
+    .gitignore:12
+
+Out of scope: bare prose numbers ("line 12" without a file), unknown
+extensionless names ("unknown_source:12"), spelled-out numbers ("file line
+twelve"), locators split across keys or values ({"file": "line", "n": 12}),
+HTML/entity-encoded markup ("file&#58;12"), percent-encoded filenames,
+escaped/nested Markdown labels, link titles, and arbitrary Markdown rendering
+or reference-link destination lookup. The guard scans parsed resource strings
+for explicit file/line locators.
 Lowercase l12 is ambiguous with a Python identifier; use uppercase L12 or an
 explicit line/l./ll. label. Symbols (including backticks), heading anchors,
-JSON Pointers and keyed selectors without a line locator remain valid.
+JSON Pointers and keyed selectors remain opaque, including locator-like tokens.
 Versioned symbols such as takeup.assign@1 also remain valid.
 """
 
@@ -529,8 +585,7 @@ def _line_citation_patterns(source: str) -> tuple[re.Pattern[str], ...]:
     """Share the documented locator grammar with extensionless filenames."""
 
     quotes = r"[`'\"‘’“”]*"
-    # Keep a link's destination attached to its label, so a repeated filename
-    # in [file](file) does not produce a second, possibly different citation.
+    # Keep wrappers attached to their filename or complete Markdown link.
     wrapped = (
         rf"\[?{quotes}{source}{quotes}"
         r"(?:\](?:\((?:[^()\n]|\([^()\n]*\))*\)|\[[^\]\n]*\])?)?"
@@ -551,17 +606,75 @@ def _line_citation_patterns(source: str) -> tuple[re.Pattern[str], ...]:
 
 #: Keep every locator spelling from #1141, now for any file extension.
 _LINE_CITATIONS = _line_citation_patterns(_SOURCE_FILE)
+_MARKDOWN_LINK = re.compile(
+    r"(?P<link>!?\[(?P<label>[^\]\n]*)\]"
+    r"\((?P<destination>(?:[^()\n]|\([^()\n]*\))*)\))"
+)
+_MARKDOWN_LINE_CITATIONS = _line_citation_patterns(_MARKDOWN_LINK.pattern)
 _COMMIT_PIN = re.compile(r"[0-9a-f]{7,40}")
+
+
+def _mask_json_pointer_citations(text: str) -> str:
+    # Share the pointer parser's spans; fragment tokens are data, never prose.
+    # Retain the file so an independent locator outside a link still cites it.
+    return _JSON_POINTER_CITATION.sub(
+        lambda match: match["file"] + "#" + " " * len(match["pointer"]), text
+    )
+
+
+def _markdown_link_files(match: re.Match[str]) -> frozenset[str]:
+    """Attribute a link to its destination and every filename in its label."""
+
+    destination = re.split(r"[?#]", match["destination"], maxsplit=1)[0].strip("<>")
+    files = {
+        str(PurePosixPath(named["file"]))
+        for pattern in (re.compile(_SOURCE_FILE), _extensionless_file_pattern())
+        for named in pattern.finditer(match["label"])
+    }
+    if re.fullmatch(_SOURCE_FILE, destination) or _extensionless_file_pattern().fullmatch(
+        destination
+    ):
+        files.add(str(PurePosixPath(destination)))
+    for pattern in (*_LINE_CITATIONS, *_extensionless_line_patterns()):
+        for located in pattern.finditer(destination):
+            files.add(str(PurePosixPath(located["file"])))
+    return frozenset(files)
+
+
+def _source_line_citation_groups(value: object) -> Iterator[tuple[frozenset[str], str]]:
+    """Keep all files sharing a link's locator together for the pin check."""
+
+    patterns = (*_LINE_CITATIONS, *_extensionless_line_patterns())
+    for text in _nested_strings(value):
+        prose = _mask_json_pointer_citations(text)
+        located_links = {
+            match.span("link")
+            for pattern in _MARKDOWN_LINE_CITATIONS
+            for match in pattern.finditer(prose)
+        }
+        for link in _MARKDOWN_LINK.finditer(prose):
+            path, separator, fragment = link["destination"].partition("#")
+            target = path.split("?", 1)[0] + separator + fragment.split("?", 1)[0]
+            if link.span("link") in located_links or any(
+                pattern.search(target) or pattern.search(link["label"])
+                for pattern in patterns
+            ):
+                if files := _markdown_link_files(link):
+                    yield files, text
+        # Links have already been attributed as units; do not scan their parts.
+        prose = _MARKDOWN_LINK.sub(lambda match: " " * len(match[0]), prose)
+        for pattern in patterns:
+            for match in pattern.finditer(prose):
+                yield frozenset({str(PurePosixPath(match["file"]))}), text
 
 
 def source_line_citations(value: object) -> list[tuple[str, str]]:
     """Each (file path, string) citing a line, including nested mapping keys."""
 
     return [
-        (str(PurePosixPath(match["file"])), text)
-        for text in _nested_strings(value)
-        for pattern in (*_LINE_CITATIONS, *_extensionless_line_patterns())
-        for match in pattern.finditer(text)
+        (name, text)
+        for files, text in _source_line_citation_groups(value)
+        for name in sorted(files)
     ]
 
 
@@ -579,7 +692,7 @@ def _repository_files() -> frozenset[str]:
 
 
 @cache
-def _extensionless_line_patterns() -> tuple[re.Pattern[str], ...]:
+def _extensionless_file_pattern() -> re.Pattern[str]:
     # Bare words in prose are not file names. Recognize extensionless names
     # only when the checkout actually contains such a file (also .gitignore).
     names = {
@@ -589,7 +702,12 @@ def _extensionless_line_patterns() -> tuple[re.Pattern[str], ...]:
     }
     alternatives = "|".join(re.escape(name) for name in sorted(names))
     source = rf"(?P<file>[A-Za-z0-9_./-]*(?:{alternatives}))(?![A-Za-z0-9_.-])"
-    return _line_citation_patterns(source)
+    return re.compile(source if names else r"(?P<file>(?!))")
+
+
+@cache
+def _extensionless_line_patterns() -> tuple[re.Pattern[str], ...]:
+    return _line_citation_patterns(_extensionless_file_pattern().pattern)
 
 
 def _repository_source(path: str) -> bool:
@@ -641,8 +759,13 @@ def unpinned_line_citations(document: object) -> list[tuple[str, str]]:
     pinned = commit_pinned_sources(document)
     return [
         (name, text)
-        for name, text in source_line_citations(document)
-        if _repository_source(name) or not any(_pin_covers(name, pin) for pin in pinned)
+        for files, text in _source_line_citation_groups(document)
+        if not all(
+            not _repository_source(name)
+            and any(_pin_covers(name, pin) for pin in pinned)
+            for name in files
+        )
+        for name in sorted(files)
     ]
 
 
@@ -2023,6 +2146,132 @@ def citation_checkout(tmp_path, monkeypatch):
 
 
 class TestSourceCitations:
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    def test_every_documented_in_scope_spelling_is_refused(self, as_key: bool) -> None:
+        assert __doc__ is not None
+        examples = __doc__.split("In-scope examples:\n", 1)[1].split("\n\n", 1)[0]
+        spellings = [line.strip() for line in examples.splitlines()]
+        assert spellings
+        for spelling in spellings:
+            citation = spelling.replace("file", "concepts.py")
+            assert unpinned_line_citations(_plant(citation, 3, as_key)), citation
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        ("citation", "files", "exempt"),
+        [
+            ("[the source](concepts.py) lines 889-928", {"concepts.py"}, False),
+            ("lines 889-928 of [the source](concepts.py)", {"concepts.py"}, False),
+            (
+                "[upstream.rs](concepts.py) lines 889-928",
+                {"upstream.rs", "concepts.py"},
+                False,
+            ),
+            (
+                "lines 889-928 of [upstream.rs](concepts.py)",
+                {"upstream.rs", "concepts.py"},
+                False,
+            ),
+            ("[upstream.rs](upstream.rs) lines 889-928", {"upstream.rs"}, True),
+            ("[the source](concepts.py#L12)", {"concepts.py"}, False),
+            ("[the source](concepts.py:L12)", {"concepts.py"}, False),
+            ("[upstream.rs](concepts.py#L12)", {"upstream.rs", "concepts.py"}, False),
+            ("[the source](concepts.py#heading) L12", {"concepts.py"}, False),
+            ("[the source](concepts.py?raw=1) L12", {"concepts.py"}, False),
+            ("[the source](concepts.py?raw=1#L12)", {"concepts.py"}, False),
+            ("![x](concepts.py) L5", {"concepts.py"}, False),
+            (
+                "[concepts.py:L12](upstream.rs)",
+                {"concepts.py", "upstream.rs"},
+                False,
+            ),
+            (
+                "[upstream.rs lines 12-20](concepts.py)",
+                {"concepts.py", "upstream.rs"},
+                False,
+            ),
+            (
+                "[concepts.py and upstream.rs](other.rs) L12",
+                {"concepts.py", "upstream.rs", "other.rs"},
+                False,
+            ),
+            (
+                "[upstream.rs](other.rs) L12",
+                {"upstream.rs", "other.rs"},
+                False,
+            ),
+        ],
+    )
+    def test_markdown_link_lines_are_attributed_to_every_named_file(
+        self, citation: str, files: set[str], exempt: bool, as_key: bool
+    ) -> None:
+        document = {
+            "source": {"path": "upstream.rs", "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in files
+        }
+        assert (unpinned_line_citations(document) == []) is exempt
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        label=st.sampled_from(("concepts.py", "the source", "upstream.rs")),
+        destination=st.sampled_from(("concepts.py", "upstream.rs", "other.rs")),
+        reverse=st.booleans(),
+        depth=st.integers(0, 4),
+        as_key=st.booleans(),
+    )
+    def test_markdown_link_exemption_requires_every_file_to_be_pinned_and_foreign(
+        self, label: str, destination: str, reverse: bool, depth: int, as_key: bool
+    ) -> None:
+        link = f"[{label}]({destination})"
+        citation = f"lines 12-20 of {link}" if reverse else f"{link} lines 12-20"
+        # Even an explicit pin for the local file cannot exempt it.
+        document = {
+            "pins": [
+                {"path": file, "commit": "abcdef0"}
+                for file in ("concepts.py", "upstream.rs")
+            ],
+            "notes": _plant(citation, depth, as_key),
+        }
+        attributed = {destination} | ({label} if label != "the source" else set())
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in attributed
+        }
+        assert (unpinned_line_citations(document) == []) is (
+            attributed <= {"upstream.rs"}
+        )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("selector", [False, True], ids=["pointer", "selector"])
+    @pytest.mark.parametrize("token", ["concepts.py:L12", "concepts.py#L12"])
+    def test_json_pointer_and_selector_fragments_are_opaque_to_line_scanning(
+        self, citation_checkout, token: str, selector: bool, as_key: bool
+    ) -> None:
+        record = {"input": token, "value": "stable record"}
+        citation_checkout("records.json", {"entries": [record], token: record})
+        pointer = f"/entries[input={token}]" if selector else f"/{token}"
+        citation = f"records.json#{pointer}"
+        document = _plant(citation, 3, as_key)
+        assert json_pointer_citations(document) == [("records.json", pointer)]
+        assert resolve_json_pointer("records.json", pointer) == record
+        assert source_line_citations(document) == []
+        assert unpinned_line_citations(document) == []
+        # Masking must leave independent prose visible and retain the input text.
+        prose = f"{citation}; concepts.py:L99"
+        assert unpinned_line_citations(_plant(prose, 3, as_key)) == [
+            ("concepts.py", prose)
+        ]
+        # A stable destination fragment cannot hide a locator outside its link.
+        for linked in (f"[the source]({citation}) L99", f"L99 in [the source]({citation})"):
+            assert source_line_citations(_plant(linked, 3, as_key)) == [
+                ("records.json", linked)
+            ]
+            assert unpinned_line_citations(_plant(linked, 3, as_key)) == [
+                ("records.json", linked)
+            ]
+
     @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
     @pytest.mark.parametrize("source", ["concepts.py", "LICENSE"])
     @pytest.mark.parametrize(
