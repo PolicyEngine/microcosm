@@ -138,7 +138,7 @@
       "enforcement": "review_required_before_binding",
       "fence_id": "desnz_subnational_consumption_basis",
       "fenced_fact_count": null,
-      "rule": "DESNZ's sub-national consumption is not the Energy Trends level the lcfs stage rakes every household's kWh to: it allocates meter readings to a February-to-January year (electricity, as reported) or a mid-May-to-mid-May year (gas, weather-corrected), and its Great Britain totals sit above Energy Trends' Great Britain part. The family binds DESNZ's split between authorities, not its level: one factor per fuel puts the cells on the stage's level (desnz.energy_trends.gb_domestic_level), and the cells keep the fact's own year (a matched-period hold). Binding needs an adjudication that the split is the target and the basis gap is not."
+      "rule": "DESNZ's sub-national consumption is not the Energy Trends level the lcfs stage rakes every household's kWh to: it reads electricity from 31 January to 30 January on non-half-hourly meters and over the calendar year on half-hourly meters (as reported), and gas from mid-May to mid-May (weather-corrected), and its Great Britain totals sit above Energy Trends' Great Britain part. The family binds DESNZ's split between authorities, not its level: one factor per fuel puts the cells on the stage's level (desnz.energy_trends.gb_domestic_level), and the cells keep the fact's own year (a matched-period hold). Binding needs an adjudication that the split is the target and the basis gap is not."
     },
     {
       "authority": "DESNZ sub-national gas consumption statistics methodology (meter classification); microcosm#890 F (the stage's published connection share); microcosm#1207 plan of 2026-10-14.",
@@ -1042,7 +1042,7 @@
         "source_commit": "735820cf76684aae1dfee4cffb48224d59bb7aab",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "The pinned feed record set desnz.subnational.electricity.cy2024 supplies the 350 Great Britain authorities on the NSPL of the 2025 publication (publication_2025_nspl): the roster's boundaries, with Barnsley and Sheffield under their April 2025 codes through the crosswalk's aliases. Domestic meters are read from February to January, as reported. Each cell binds the authority's consumption times one Great Britain factor (desnz.energy_trends.gb_domestic_level), so the cells keep DESNZ's split at the stage's level. Northern Ireland is outside the publication.",
+      "notes": "The pinned feed record set desnz.subnational.electricity.cy2024 supplies the 350 Great Britain authorities on the NSPL of the 2025 publication (publication_2025_nspl): the roster's boundaries, with Barnsley and Sheffield under their April 2025 codes through the crosswalk's aliases. Non-half-hourly meters are read from 31 January to 30 January and half-hourly meters over the calendar year; both are counted, as reported. Each cell binds the authority's consumption times one Great Britain factor (desnz.energy_trends.gb_domestic_level), so the cells keep DESNZ's split at the stage's level. Northern Ireland is outside the publication.",
       "product": "Subnational electricity consumption statistics, Great Britain, 2005 to 2024: domestic consumption (kWh) and meter counts by local authority (microcosm#1207).",
       "publisher": "Department for Energy Security and Net Zero",
       "source_id": "desnz_subnational_electricity_la",
