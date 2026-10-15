@@ -54,11 +54,12 @@ ASEC donor records the date qualified status was granted. The proxy therefore
 runs long, and can clear the five-year bar early, for anyone who adjusted
 status after arriving: a person who arrived in 2014 and obtained qualified
 status in 2023 gets 10 modeled years in 2024 but has one qualifying year
-(policyengine-us#9658). That affects SNAP, Medicaid, CHIP and the state TANF
-tests that read the bar. In policyengine-us 2.2.1 the clock is read by the
-Medicaid immigration-status test (CHIP follows it, because CHIP excludes
-Medicaid-eligible children) and by Washington TANF and RCA; the federal SNAP
-status test reads the status alone. The receipt's
+(policyengine-us#9658). That matters for the policyengine-us 2.2.1 tests
+that read the clock: the Medicaid immigration-status test (CHIP follows it,
+because CHIP excludes Medicaid-eligible children) and Washington TANF and
+RCA. Under the statute the SNAP five-year bar also runs from entry with
+qualified status, but the pinned engine's federal SNAP status test reads
+the status, not this clock, so any SNAP effect is indirect. The receipt's
 ``adjustment_lag_sensitivity`` block reports the size of the affected group
 under each lag in :data:`ADJUSTMENT_LAG_YEARS` (one to ten, 15 and 20 years):
 the ACS weight assigned a status the bar applies to
@@ -296,8 +297,12 @@ _ENTRY_CLOCK = {
         "status, so for a person who adjusted status after arriving the "
         "proxy runs long and can clear the bar early (arrival in 2014, "
         "status in 2023: 10 modeled years in 2024, one qualifying year; "
-        "policyengine-us#9658). That affects SNAP, Medicaid, CHIP and the "
-        "state TANF tests that read the bar. adjustment_lag_sensitivity "
+        "policyengine-us#9658). That affects the policyengine-us 2.2.1 "
+        "tests that read the clock: Medicaid (CHIP follows it) and "
+        "Washington TANF and RCA. Under the statute the SNAP five-year "
+        "bar also runs from entry with qualified status, but the pinned "
+        "engine's federal SNAP status test reads the status, not this "
+        "clock, so any SNAP effect is indirect. adjustment_lag_sensitivity "
         "reports the size of the affected group under each lag; the "
         "real-data check is microcosm#1093."
     ),
