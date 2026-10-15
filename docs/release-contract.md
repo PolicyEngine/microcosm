@@ -485,14 +485,14 @@ The 10-09 report's "retire now" items, checked against GitHub and main on
 | Graph-native drafts #893, #935, #945, #949, #950 | Closed 10-09 |
 | #1011, #995, #996, #999, #1002 | Closed 10-15 under cos d1161; branches kept |
 | Orrery: #1148 | Closed 10-12; #1144 and #1151 merged |
-| #1083 (US process telemetry) | Open (PavelMakarchuk). The emitter now samples the build's process-tree CPU and memory, sends heartbeats and records runtime identity for the fiscal-refresh tool. Its failure classes exist in `run_outcome` but the US tool does not use them yet, and its `work` counters exist nowhere; both belong with microcosm#933 |
-| #1082 (US staging always on) | Open (PavelMakarchuk). Belongs in microcosm#933 as staging version 3 for the fiscal-refresh tool |
+| #1083 (US process telemetry) | Open (PavelMakarchuk). The emitter now samples the build's process-tree CPU and memory, sends heartbeats and records runtime identity for the fiscal-refresh tool. Its failure classes exist in `run_outcome` but the US tool does not use them yet, and its `work` counters exist nowhere; both belong with microcosm#933. Noted on the PR for its author |
+| #1082 (US staging always on) | Open (PavelMakarchuk). Belongs in microcosm#933 as staging version 3 for the fiscal-refresh tool. Noted on the PR for its author |
 | #822, #824, #826 (Axiom and Belgium drafts) | Closed by this milestone; BE re-enters through the transport composer after BE-1 |
 | #642 (US legislative-district layer) | Closed by this milestone; district products come from the one US population (M5) or #922 |
 | #378 (Build K epic) | Closes when this document merges |
-| #873 (typed model artifacts) | Kept open: microcosm-dynamics still pins `microcosm-frame` and `microcosm-graph` to its head, 3ff92b0ae, which is not on main. The dynamics work repins or lands it first |
+| #873 (typed model artifacts) | Kept open: microcosm-dynamics still pins `microcosm-frame` and `microcosm-graph` to its head, 3ff92b0ae, which is not on main. The dynamics work repins or lands it first, then closes it |
 | `tools/build_uk_rowwise_dataset.py` | Kept. The report's premise does not hold: the graph driver accepts `--candidate-clone-counts` only with `--dry-run`, docs/uk-full-build-graph.md keeps the row-wise driver, and UK-3 (dense or local-k) is undecided |
-| `format_uk_release_id`, `apply_uk_release_identity` | Deleted by this milestone: no caller outside their own tests and the `uk_runtime` re-export |
+| `format_uk_release_id`, `apply_uk_release_identity` | Deleted by this milestone, with `UKReleaseIdentity`, which is built on `format_uk_release_id` and is equally unused: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | Owned by a separate task (task_d2b70813) |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; a separate task |
 | cos d816 | Ruled 10-09 (per-country Core pins, microcosm#1143) |
