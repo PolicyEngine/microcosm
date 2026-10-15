@@ -49,6 +49,7 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
         "spi_support_channel",
         "spi_income_band_donors",
+        "high_value_home_support",
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_incidence_anchor",
@@ -78,6 +79,9 @@ _STRUCTURAL_MASS = {
     # exactly, and person mass moves with the composition of the copied
     # households, as it does for the support channel.
     "spi_income_band_donors": "declared",
+    # The high-value home support copies whole households at equal weight
+    # (microcosm#1240), so person mass is conserved like the CGT support split.
+    "high_value_home_support": "conserve",
     "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
     # The residential split divides each liable household into arms that are
@@ -89,6 +93,7 @@ _STRUCTURAL_MASS = {
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
     "spi_income_band_donors": "importance",
+    "high_value_home_support": "importance",
     "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
     "cgt_residential_split": "importance",
@@ -255,14 +260,16 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # Engine-free: the landlords' profit and finance costs, the inputs that
-    # split the two income concepts (the SPI recipient rule and the household
-    # reference person's sub-letting rent) and the rental property values the
-    # coherence receipt reads (microcosm#1106).
+    # split the two income concepts (the income stage's recipient flag, the
+    # channel and the household reference person's sub-letting rent), the
+    # landlords' ages the FRS-concept finance-cost draw conditions on, and the
+    # rental property values the coherence receipt reads (microcosm#1106,
+    # microcosm#840).
     "property_components": frozenset(
         {
             ("person", "age"),
             ("person", "is_household_head"),
-            ("person", "is_uc_claimant"),
+            ("person", "person_is_spi_income_recipient"),
             ("person", "person_support_channel"),
             ("person", "property_income"),
             ("person", "property_finance_costs"),
@@ -378,7 +385,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
-    # The support split copies whole households, so its surface is open.
+    # The support splits copy whole households, so their surfaces are open.
+    "high_value_home_support": None,
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
     # The residential split copies whole households into arms, so its
@@ -933,6 +941,11 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     # The support split writes only its lineage cells: copies carry every
     # other column of their source household unchanged (microcosm#1045).
+    "high_value_home_support": (
+        _Cell("household", "household_is_high_value_support_copy", "bool"),
+        _Cell("household", "high_value_support_copies", "int64"),
+        _Cell("household", "high_value_support_copy_index", "int64"),
+    ),
     "cgt_support_split": (
         _Cell("household", "household_is_cgt_support_copy", "bool"),
         _Cell("household", "cgt_support_copies", "int64"),
@@ -1052,6 +1065,8 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",
+    # The rows stage 1 drew, read by property_components (microcosm#840).
+    "person_is_spi_income_recipient",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

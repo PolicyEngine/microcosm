@@ -36,7 +36,6 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _expired_exclusion_failure,
     _premature_exclusion_failure,
@@ -44,7 +43,6 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
-    uk_qrf_tail_concentration_gate,
 )
 
 __all__ = [
@@ -57,7 +55,6 @@ __all__ = [
     "UK_REVIEWED_EXPORT_EXCLUSIONS",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
-    "UKQRFTailConcentrationPolicy",
     "UKZeroWeightStratumDeclaration",
     "uk_default_degenerate_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
@@ -65,7 +62,6 @@ __all__ = [
     "uk_export_candidate_columns",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
-    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_weight_ess_gate",
@@ -292,6 +288,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.statutory_paternity_pay",
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
@@ -302,6 +299,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
     "person.person_is_spi_income_band_carrier",
+    "person.person_is_spi_income_recipient",
     # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
     # enhanced-FRS incumbent never carried is allow-listed rather than
     # dropped, so the release candidate ships the spine's own surface. The
@@ -355,6 +353,15 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.srp_regular_code5",
     "benunit.benunit_clone_index",
     "person.person_clone_index",
+    # microcosm#1194: the build identifiers the release keeps beside the
+    # renumbered ones (national_frame.UK_BUILD_IDENTIFIER_COLUMNS). The
+    # lineage columns above describe them.
+    "benunit.benunit_build_id",
+    "household.household_build_id",
+    "person.person_build_id",
+    # The months since each person's last birthday, stored by the root stage
+    # so the engine reads one date of birth everywhere (microcosm#1095).
+    "person.months_since_last_birthday",
     "household.itl1_code",
     "household.itl2_code",
     "household.itl3_code",

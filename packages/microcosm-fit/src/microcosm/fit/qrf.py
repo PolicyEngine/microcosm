@@ -51,7 +51,7 @@ import copy
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
@@ -265,6 +265,77 @@ def _interp_rows(
     return values_lo + weight * (values_hi - values_lo)
 
 
+def _locate_rows(
+    values: np.ndarray,
+    placement: np.ndarray,
+    grid: np.ndarray,
+    predictions: np.ndarray,
+) -> np.ndarray:
+    """Per-row inverse of :func:`_interp_rows`: the quantile each value sits at.
+
+    ``_interp_rows`` reads a row's draw off the piecewise-linear curve through
+    its grid predictions; this locates a value on that same curve and returns
+    the quantile there. A value strictly between two knots is located by the
+    inverse of the linear blend, so ``_interp_rows`` at the result gives the
+    value back exactly. Where the curve is flat the conditional holds an atom:
+    every quantile across the stretch draws the same value, so the position is
+    placed inside the stretch by ``placement`` (one uniform per row) and a
+    value equal to an atom spreads uniformly over the atom's probability mass.
+    A value below the first knot is placed in ``[0, grid[0])`` and one above
+    the last knot in ``[grid[-1], 1)``, again by ``placement``; the result
+    always lies in ``[0, 1)``.
+
+    Args:
+        values: One observed value per row, shape ``(m,)``.
+        placement: One uniform in ``[0, 1)`` per row, shape ``(m,)``.
+        grid: Ascending quantile knots the forest was queried at, shape
+            ``(g,)``.
+        predictions: Predicted values, shape ``(m, g)``, non-decreasing along
+            each row (quantiles of one conditional), row-aligned with
+            ``values`` and column-aligned with ``grid``.
+
+    Returns:
+        One quantile per row, shape ``(m,)``.
+
+    Raises:
+        ValueError: If a prediction row decreases along the grid, which no
+            quantile curve does; locating a value on it would be ambiguous.
+    """
+    values = np.asarray(values, dtype=np.float64)
+    placement = np.asarray(placement, dtype=np.float64)
+    m, g = predictions.shape
+    if (np.diff(predictions, axis=1) < 0.0).any():
+        raise ValueError("grid predictions must be non-decreasing along each row.")
+    out = np.empty(m, dtype=np.float64)
+    if m == 0:
+        return out
+    below = (predictions < values[:, None]).sum(axis=1)
+    at_or_below = (predictions <= values[:, None]).sum(axis=1)
+    # Knots equal to the value form a flat stretch from ``below`` to
+    # ``at_or_below - 1``; place the row inside it.
+    flat = at_or_below > below
+    if flat.any():
+        low = np.clip(below[flat], 0, g - 1)
+        high = np.clip(at_or_below[flat] - 1, 0, g - 1)
+        out[flat] = grid[low] + placement[flat] * (grid[high] - grid[low])
+    strict = ~flat
+    interior = strict & (below > 0) & (below < g)
+    if interior.any():
+        rows = np.flatnonzero(interior)
+        upper = below[interior]
+        lower_knot = predictions[rows, upper - 1]
+        upper_knot = predictions[rows, upper]
+        weight = (values[interior] - lower_knot) / (upper_knot - lower_knot)
+        out[interior] = grid[upper - 1] + weight * (grid[upper] - grid[upper - 1])
+    under = strict & (below == 0)
+    if under.any():
+        out[under] = placement[under] * grid[0]
+    over = strict & (below == g)
+    if over.any():
+        out[over] = grid[-1] + placement[over] * (1.0 - grid[-1])
+    return np.clip(out, 0.0, np.nextafter(1.0, 0.0))
+
+
 _SERIALIZED_FOREST_N_JOBS = 1
 
 
@@ -340,12 +411,84 @@ class _Forest:
         """
         features = frame.loc[:, list(self.columns)].to_numpy(dtype=np.float64)
         quantiles = np.asarray(quantiles, dtype=np.float64)
-        grid = _QUANTILE_GRID
         n = len(features)
         out = np.empty(n, dtype=np.float64)
         if n == 0:
             return out
 
+        def _read(start: int, stop: int, predictions: np.ndarray) -> None:
+            # Disjoint output slices: each row is written by exactly one worker,
+            # so the shared ``out`` needs no lock.
+            out[start:stop] = _interp_rows(
+                quantiles[start:stop], _QUANTILE_GRID, predictions
+            )
+
+        self._grid_predictions(features, _read)
+        return out
+
+    def quantile_positions(
+        self,
+        frame: pd.DataFrame,
+        values: np.ndarray,
+        placement: np.ndarray,
+    ) -> np.ndarray:
+        """The quantile at which each row's value sits on its conditional.
+
+        The inverse of :meth:`draw`: the forest is queried on the same grid,
+        and each row's value is located on the piecewise-linear curve
+        :meth:`draw` reads (:func:`_locate_rows`). ``placement`` gives one
+        uniform per row that places the value inside a flat stretch of the
+        curve (a conditional atom) or beyond its ends, so a value shared by
+        many leaf samples covers the atom's probability mass uniformly rather
+        than collapsing onto one quantile. :meth:`draw` at the returned
+        quantile reproduces the value exactly where the curve is strictly
+        increasing, and the atom's value across a flat stretch.
+
+        Args:
+            frame: Feature rows (must carry the fitted columns).
+            values: One observed value per row, positionally aligned.
+            placement: One uniform in ``[0, 1)`` per row, positionally aligned.
+
+        Returns:
+            One quantile in ``[0, 1)`` per row, positionally aligned with
+            ``frame``.
+        """
+        features = frame.loc[:, list(self.columns)].to_numpy(dtype=np.float64)
+        values = np.asarray(values, dtype=np.float64)
+        placement = np.asarray(placement, dtype=np.float64)
+        n = len(features)
+        if values.shape != (n,) or placement.shape != (n,):
+            raise ValueError("values and placement must have one entry per row.")
+        out = np.empty(n, dtype=np.float64)
+        if n == 0:
+            return out
+
+        def _locate(start: int, stop: int, predictions: np.ndarray) -> None:
+            out[start:stop] = _locate_rows(
+                values[start:stop], placement[start:stop], _QUANTILE_GRID, predictions
+            )
+
+        self._grid_predictions(features, _locate)
+        return out
+
+    def _grid_predictions(
+        self,
+        features: np.ndarray,
+        consume: Callable[[int, int, np.ndarray], None],
+    ) -> None:
+        """Predict the quantile grid per row in bounded, parallel chunks.
+
+        ``consume(start, stop, predictions)`` receives each chunk's
+        ``(stop - start) x len(grid)`` prediction matrix; the chunks are
+        disjoint row ranges, so a consumer writing its own slice of an output
+        needs no lock. Chunk boundaries never change a row's predictions (the
+        forest predict is pure per row), so the parallel pass is bit-identical
+        to a serial one; the tests pin that exact equality.
+        """
+        grid = _QUANTILE_GRID
+        n = len(features)
+        if n == 0:
+            return
         workers = _predict_workers()
         # Bound the (rows x grid) matrix per chunk (memory) while cutting enough
         # chunks to balance across workers. Boundaries are draw-invariant, so
@@ -353,33 +496,30 @@ class _Forest:
         chunk = max(1, min(_PREDICT_CHUNK_ROWS, -(-n // (4 * workers))))
         bounds = [(start, min(start + chunk, n)) for start in range(0, n, chunk)]
 
-        def _draw_chunk(bound: tuple[int, int]) -> None:
+        def _predict_chunk(bound: tuple[int, int]) -> None:
             start, stop = bound
             predictions = np.asarray(
                 self.model.predict(features[start:stop], quantiles=list(grid))
             ).reshape(stop - start, len(grid))
-            # Disjoint output slices: each row is written by exactly one worker,
-            # so the shared ``out`` needs no lock.
-            out[start:stop] = _interp_rows(quantiles[start:stop], grid, predictions)
+            consume(start, stop, predictions)
 
         if workers <= 1 or len(bounds) <= 1:
             for bound in bounds:
-                _draw_chunk(bound)
-            return out
+                _predict_chunk(bound)
+            return
 
         # Force the forest's own ``apply`` to run serially inside each worker:
         # the outer pool already saturates the cores, so leaving it at the fit's
         # ``n_jobs=-1`` would fan a thread pool under every worker and thrash.
-        # This synchronous draw owns the model, so the swap-and-restore is safe.
+        # This synchronous pass owns the model, so the swap-and-restore is safe.
         saved_n_jobs = self.model.n_jobs
         self.model.n_jobs = 1
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                for _ in pool.map(_draw_chunk, bounds):
+                for _ in pool.map(_predict_chunk, bounds):
                     pass
         finally:
             self.model.n_jobs = saved_n_jobs
-        return out
 
 
 #: Fine symmetric quantile grid used to read per-row draws. The interior is an
@@ -985,6 +1125,31 @@ def _max_samples_leaf_kind(value: int | float | None) -> str:
     return "invalid"
 
 
+def _validate_uniform_mapping(
+    name: str,
+    supplied: object,
+    targets: Sequence[str],
+    n: int,
+) -> dict[str, np.ndarray]:
+    """Check one per-target uniform mapping: exact targets, shape, ``[0, 1)``."""
+    if not isinstance(supplied, Mapping) or set(supplied) != set(targets):
+        raise ValueError(f"{name} must contain exactly the fitted targets.")
+    arrays: dict[str, np.ndarray] = {}
+    for target in targets:
+        raw = np.asarray(supplied[target])
+        if raw.dtype.kind not in "iuf":
+            raise ValueError(
+                f"{name}[{target!r}] uniforms must be real numeric arrays."
+            )
+        values = np.asarray(raw, dtype=np.float64)
+        if values.shape != (n,):
+            raise ValueError(f"{name}[{target!r}] must have shape ({n},).")
+        if not np.isfinite(values).all() or ((values < 0) | (values >= 1)).any():
+            raise ValueError(f"{name}[{target!r}] uniforms must be in [0, 1).")
+        arrays[target] = values
+    return arrays
+
+
 def _gate_draw_with_rng(
     gate: HistGradientBoostingClassifier,
     features: pd.DataFrame,
@@ -1559,6 +1724,25 @@ class RegimeGatedQRF:
         return gate
 
 
+@dataclass(frozen=True)
+class ConditionalUniforms:
+    """The uniforms at which a fitted model's draw reproduces observed targets.
+
+    ``quantiles`` and ``sign_uniforms`` have the shape
+    :meth:`FittedRegimeGatedQRF.predict_from_uniforms` takes, one array per
+    target aligned to the scored rows. ``degenerate`` names the targets whose
+    training support was all zero, so no conditional exists and both arrays
+    are the caller's placement uniforms; ``ungated`` names the targets fitted
+    without a sign gate (one sign in training), whose sign uniform is the
+    placement uniform while the quantile is located on the single forest.
+    """
+
+    quantiles: dict[str, np.ndarray]
+    sign_uniforms: dict[str, np.ndarray]
+    degenerate: tuple[str, ...]
+    ungated: tuple[str, ...]
+
+
 class FittedRegimeGatedQRF:
     """A fitted :class:`RegimeGatedQRF`, ready to draw.
 
@@ -1612,6 +1796,27 @@ class FittedRegimeGatedQRF:
     def regimes(self) -> dict[str, str]:
         """The detected :class:`Regime` label per target."""
         return {name: model.regime for name, model in self._target_models.items()}
+
+    def sign_classes(self, target: str) -> tuple[int, ...]:
+        """The sign classes of ``target``, ascending.
+
+        The gate's classes for a gated regime, the single sign for an ungated
+        one and ``(0,)`` for a degenerate-zero target. Two fitted models read a
+        sign uniform the same way only when their class tuples match, so a
+        caller that draws one model at uniforms located on another checks them.
+        """
+        if target not in self._target_models:
+            raise ValueError(f"unknown target {target!r}.")
+        model = self._target_models[target]
+        if model is _RELEASED:
+            raise ValueError(f"target {target!r} has been released.")
+        if model.gate is not None:
+            return tuple(int(value) for value in np.asarray(model.gate.classes_))
+        return {
+            Regime.POSITIVE_ONLY: (1,),
+            Regime.NEGATIVE_ONLY: (-1,),
+            Regime.DEGENERATE_ZERO: (0,),
+        }[model.regime]
 
     def predict(
         self,
@@ -1670,31 +1875,13 @@ class FittedRegimeGatedQRF:
         legacy :meth:`predict` stream and its consumption order are unchanged.
         """
         features = self._predictor_frame(frame_or_df)
-        arrays = {}
-        for name, supplied in (
-            ("quantiles", quantiles),
-            ("sign_uniforms", sign_uniforms),
-        ):
-            if not isinstance(supplied, Mapping) or set(supplied) != set(self.targets):
-                raise ValueError(f"{name} must contain exactly the fitted targets.")
-            arrays[name] = {}
-            for target in self.targets:
-                raw = np.asarray(supplied[target])
-                if raw.dtype.kind not in "iuf":
-                    raise ValueError(
-                        f"{name}[{target!r}] uniforms must be real numeric arrays."
-                    )
-                values = np.asarray(raw, dtype=np.float64)
-                if values.shape != (len(features),):
-                    raise ValueError(
-                        f"{name}[{target!r}] must have shape ({len(features)},)."
-                    )
-                if (
-                    not np.isfinite(values).all()
-                    or ((values < 0) | (values >= 1)).any()
-                ):
-                    raise ValueError(f"{name}[{target!r}] uniforms must be in [0, 1).")
-                arrays[name][target] = values
+        arrays = {
+            name: _validate_uniform_mapping(name, supplied, self.targets, len(features))
+            for name, supplied in (
+                ("quantiles", quantiles),
+                ("sign_uniforms", sign_uniforms),
+            )
+        }
         out = pd.DataFrame(index=features.index)
         if features.empty:
             return out.reindex(columns=self.targets).astype(np.float64)
@@ -1709,6 +1896,140 @@ class FittedRegimeGatedQRF:
             out[target] = drawn
             augmented[target] = drawn
         return out
+
+    def conditional_uniforms(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        *,
+        sign_placement: Mapping[str, np.ndarray],
+        quantile_placement: Mapping[str, np.ndarray],
+    ) -> ConditionalUniforms:
+        """Locate observed targets on this model's conditional, as uniforms.
+
+        The Rosenblatt transform of each row's observed target vector under
+        the fitted conditional: for every target in chain order, with the
+        row's predictors and its *observed* earlier targets as features, the
+        observed value is placed on the gate's cumulative class probabilities
+        (the sign uniform) and, within its sign, on that sign's magnitude
+        forest (the quantile; :meth:`_Forest.quantile_positions`). Feeding the
+        result to :meth:`predict_from_uniforms` on this model draws each row's
+        observed vector back; feeding it to another model fitted with the same
+        predictors and targets draws each row at the same standing among its
+        peers under that model's conditional, which transports the row from
+        one population to another while keeping its relative position.
+
+        Where the observed value gives no position, a class with the gate's
+        probability mass or a flat stretch of a forest's conditional, the
+        placement inside it is the caller's uniform per row and target
+        (``sign_placement`` for the class, ``quantile_placement`` for the
+        magnitude), so the result is reproducible and row-order invariant;
+        pairing them with stable identities keeps a row's uniforms fixed
+        whoever else is scored. Both mappings have the shape
+        :meth:`predict_from_uniforms` requires. No model RNG is consumed and
+        the fitted forests remain reusable.
+
+        Raises:
+            ValueError: If the input lacks a predictor or observed target
+                column, carries non-finite targets, or places a row in a sign
+                class the fitted gate never saw (the input disagrees with the
+                training regime: a nonzero value on a degenerate-zero target,
+                a negative value on a target fitted positive-only, and so on).
+            RuntimeError: If a target's forests were released.
+        """
+        features = self._predictor_frame(frame_or_df)
+        table = (
+            frame_or_df.table(self.entity)
+            if isinstance(frame_or_df, Frame)
+            else frame_or_df
+        )
+        missing = [target for target in self.targets if target not in table.columns]
+        if missing:
+            raise ValueError(
+                "conditional_uniforms input is missing observed target column(s) "
+                f"{missing}."
+            )
+        observed = table.loc[:, self.targets].to_numpy(dtype=np.float64)
+        if not np.isfinite(observed).all():
+            raise ValueError("conditional_uniforms observed targets must be finite.")
+        n = len(features)
+        signs = _validate_uniform_mapping(
+            "sign_placement", sign_placement, self.targets, n
+        )
+        quants = _validate_uniform_mapping(
+            "quantile_placement", quantile_placement, self.targets, n
+        )
+        quantiles: dict[str, np.ndarray] = {}
+        sign_uniforms: dict[str, np.ndarray] = {}
+        degenerate: list[str] = []
+        ungated: list[str] = []
+        top = np.nextafter(1.0, 0.0)
+        augmented = features.copy()
+        for position, target in enumerate(self.targets):
+            model = self._target_models[target]
+            if model is _RELEASED:
+                raise RuntimeError(
+                    "This target's fitted forests were released; refit to locate "
+                    "observed values."
+                )
+            y = observed[:, position]
+            labels = np.zeros(n, dtype=int)
+            labels[y > self._zero_atol] = 1
+            labels[y < -self._zero_atol] = -1
+            sign = signs[target]
+            quantile = quants[target].copy()
+            if model.regime == Regime.DEGENERATE_ZERO:
+                if (labels != 0).any():
+                    raise ValueError(
+                        f"Target {target!r} is degenerate zero in training but the "
+                        "input carries nonzero values."
+                    )
+                degenerate.append(target)
+            elif model.regime in (Regime.POSITIVE_ONLY, Regime.NEGATIVE_ONLY):
+                expected = 1 if model.regime == Regime.POSITIVE_ONLY else -1
+                if (labels != expected).any():
+                    raise ValueError(
+                        f"Target {target!r} has regime {model.regime!r} in training "
+                        "but the input carries values of another sign."
+                    )
+                forest = model.positive if expected == 1 else model.negative
+                quantile = forest.quantile_positions(augmented, y, quantile)
+                ungated.append(target)
+            else:
+                classes = np.asarray(model.gate.classes_)
+                index = np.searchsorted(classes, labels)
+                index = np.clip(index, 0, len(classes) - 1)
+                unknown = sorted(set(labels[classes[index] != labels].tolist()))
+                if unknown:
+                    raise ValueError(
+                        f"Target {target!r}: observed sign class(es) {unknown} are "
+                        f"absent from the fitted gate's classes {classes.tolist()}."
+                    )
+                x = augmented.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
+                proba = np.asarray(model.gate.predict_proba(x))
+                rows = np.arange(n)
+                mass = proba[rows, index]
+                before = np.cumsum(proba, axis=1)[rows, index] - mass
+                sign = np.minimum(before + sign * mass, top)
+                for code, forest in ((1, model.positive), (-1, model.negative)):
+                    mask = labels == code
+                    if not mask.any():
+                        continue
+                    if forest is None:
+                        raise ValueError(
+                            f"Target {target!r} fitted no forest for sign {code}."
+                        )
+                    quantile[mask] = forest.quantile_positions(
+                        augmented.loc[mask], y[mask], quantile[mask]
+                    )
+            quantiles[target] = np.asarray(quantile, dtype=np.float64)
+            sign_uniforms[target] = np.asarray(sign, dtype=np.float64)
+            augmented[target] = y
+        return ConditionalUniforms(
+            quantiles=quantiles,
+            sign_uniforms=sign_uniforms,
+            degenerate=tuple(degenerate),
+            ungated=tuple(ungated),
+        )
 
     def predict_positive_from_uniforms(
         self,

@@ -27,8 +27,10 @@ from microcosm.build.uk_runtime.income_tax_rate_classes import (
     relief_by_rate_class,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    UK_BUILD_IDENTIFIER_COLUMNS,
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     load_uk_national_frame,
+    uk_release_identifier_tables,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
@@ -83,22 +85,28 @@ _CGT_DATED_MEASURE = re.compile(
 #: (microcosm#1014). Derived from these engine variables at the measure year.
 _CGT_TAXABLE_INCOME = "cgt_taxable_income"
 _CGT_TAXABLE_INCOME_COMPONENTS = (
-    "adjusted_net_income",
+    "net_income",
     "allowances",
-    "gift_aid",
     "personal_pension_contributions",
     "pension_contributions_relief",
 )
 _CGT_TAXABLE_INCOME_DEFINITION = (
-    "max(0, adjusted_net_income - max(0, allowances - gift_aid - "
+    "max(0, net_income - max(0, allowances - "
     "min(personal_pension_contributions, pension_contributions_relief))), as "
     "policyengine-uk's capital_gains_tax computes the taxable income it stacks "
-    "gains on"
+    "gains on; from 2.128.0 Gift Aid extends the basic rate band instead of "
+    "reducing allowances (pe-uk#2271)"
 )
 
 
 def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
-    """The engine CGT formula's taxable income from its component arrays."""
+    """The engine CGT formula's taxable income from its component arrays.
+
+    policyengine-uk 2.128.0 and later stack gains on net income less the
+    allowances, with relief-at-source pension contributions taken off the
+    allowances; Gift Aid extends the basic rate band instead (pe-uk#2271), so
+    it moves where the band ends, not the income the band is measured on.
+    """
 
     values = {
         name: np.asarray(parts[name], dtype=float)
@@ -108,10 +116,8 @@ def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
         values["personal_pension_contributions"],
         values["pension_contributions_relief"],
     )
-    allowances = np.maximum(
-        0.0, values["allowances"] - values["gift_aid"] - band_extension
-    )
-    return np.maximum(0.0, values["adjusted_net_income"] - allowances)
+    allowances = np.maximum(0.0, values["allowances"] - band_extension)
+    return np.maximum(0.0, values["net_income"] - allowances)
 
 
 #: Every binding key that names a measured variable: a dated CGT measure in
@@ -364,8 +370,41 @@ ENGINE_WEIGHT_SCALE_REASON = (
 )
 
 
+def _release_identifier_tables(
+    tables: Mapping[str, pd.DataFrame], universe: Any | None
+) -> dict[str, pd.DataFrame] | None:
+    """The engine tables on the release's identifiers, or None if they already are.
+
+    The build identifiers the release keeps beside them are not engine inputs
+    and do not go to the scratch file.
+    """
+
+    whole = (
+        None
+        if universe is None
+        else {entity: universe.table(entity) for entity in UK_BUILD_IDENTIFIER_COLUMNS}
+    )
+    released = uk_release_identifier_tables(
+        {entity: tables[entity] for entity in UK_BUILD_IDENTIFIER_COLUMNS},
+        universe=whole,
+    )
+    result = {}
+    changed = False
+    for entity, carrier in UK_BUILD_IDENTIFIER_COLUMNS.items():
+        if carrier in tables[entity].columns:
+            # Already on release identifiers (a loaded release): leave it.
+            return None
+        table = released[entity].drop(columns=[carrier])
+        changed = changed or not table.equals(tables[entity])
+        result[entity] = table
+    return result if changed else None
+
+
 def _engine_scratch_frame(
-    frame: Any, *, engine_weight_scale: float | None = None
+    frame: Any,
+    *,
+    engine_weight_scale: float | None = None,
+    identifier_universe: Any | None = None,
 ) -> tuple[Any, tuple[str, ...]]:
     """The frame a scratch-mode engine loads, and the columns it leaves behind.
 
@@ -391,7 +430,16 @@ def _engine_scratch_frame(
     the pool's and the formula is exact for identical clone copies. The
     scaling is declared on the engine frame's mass log.
 
-    A frame carrying none of those columns and no scale is returned as is.
+    The identifiers leave as the release's too (microcosm#1194,
+    ``national_frame.uk_release_identifier_tables``): policyengine-uk stores
+    them as 32-bit integers and keys a person's birth month on ``person_id``,
+    so a solve measured on other identifiers fits a deal of birth dates the
+    released file does not have. ``identifier_universe`` is the whole frame
+    when this one is a per-clone block of it, so a block's rows take the
+    identifiers they have in the release. The resolver's own frame keeps the
+    build identifiers.
+
+    A frame that needs none of this is returned as is.
     """
 
     trimmed: dict[str, pd.DataFrame] = {}
@@ -405,7 +453,22 @@ def _engine_scratch_frame(
     scale = None if engine_weight_scale is None else float(engine_weight_scale)
     if scale is not None and not (np.isfinite(scale) and scale > 0.0):
         raise ValueError("engine weight scale must be a positive finite factor.")
-    if not trimmed and kept is household and (scale is None or scale == 1.0):
+    renumbered = _release_identifier_tables(
+        {
+            **{
+                entity: trimmed.get(entity, frame.table(entity))
+                for entity in UK_BUILD_IDENTIFIER_COLUMNS
+            },
+            "household": kept,
+        },
+        identifier_universe,
+    )
+    if (
+        not trimmed
+        and kept is household
+        and renumbered is None
+        and (scale is None or scale == 1.0)
+    ):
         return frame, ()
     dropped = tuple(
         column
@@ -416,6 +479,8 @@ def _engine_scratch_frame(
     tables = {name: frame.table(name) for name in frame.entities}
     tables.update(trimmed)
     tables["household"] = kept
+    if renumbered is not None:
+        tables.update(renumbered)
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
     mass_log = frame.mass_log
     if scale is not None and scale != 1.0:
@@ -460,6 +525,7 @@ class UKMeasureResolver:
         frame: Any,
         microsimulation_factory: Any | None = None,
         engine_weight_scale: float | None = None,
+        engine_identifier_universe: Any | None = None,
     ):
         self.year = int(year)
         self._engine_weight_scale = (
@@ -477,7 +543,9 @@ class UKMeasureResolver:
             scratch_dir.mkdir(parents=True, exist_ok=True)
             source_path = scratch_dir / "simulation-input.h5"
             engine_frame, dropped = _engine_scratch_frame(
-                frame, engine_weight_scale=self._engine_weight_scale
+                frame,
+                engine_weight_scale=self._engine_weight_scale,
+                identifier_universe=engine_identifier_universe,
             )
             write_uk_national_frame(engine_frame, source_path)
             mode = "scratch_frame_export"
@@ -486,6 +554,11 @@ class UKMeasureResolver:
                 raise ValueError(
                     "engine weight scaling needs scratch-mode resolution; a direct "
                     "H5 source carries its own weights."
+                )
+            if engine_identifier_universe is not None:
+                raise ValueError(
+                    "an identifier universe needs scratch-mode resolution; a direct "
+                    "H5 source carries its own identifiers."
                 )
             dropped = ()
             source_path = Path(simulation_source)
@@ -745,6 +818,15 @@ class UKMeasureResolver:
         scottish, _ = compute_uk_measure_input(
             self.frame, self.simulation, "person", flag, self.year
         )
+        # A donor's grossed-up Gift Aid extends their bands; returning the
+        # sacrifice to pay does not change the gift.
+        gross_gift, _ = compute_uk_measure_input(
+            self.frame,
+            self.simulation,
+            "person",
+            str(UK_RATE_CLASS_ALLOCATION["gift_aid_extends_bands"]),
+            self.year,
+        )
         # The simulation's own parameters at the measurement year are its
         # fiscal-year values, so the Scottish bands are the ones in force from
         # 6 April, as the engine taxes them.
@@ -760,9 +842,11 @@ class UKMeasureResolver:
             counterfactual_income=np.asarray(counterfactual_income, dtype=float),
             scottish=np.asarray(scottish, dtype=bool),
             schedules=schedules,
+            gross_gift=np.asarray(gross_gift, dtype=float),
         )
         # The allocation re-implements the engine's earned_income_tax, the
-        # schedule applied to earned taxable income. Its classes must add up
+        # schedule applied to earned taxable income with a donor's bands
+        # extended by their gift. Its classes must add up
         # to that variable's rise, or the schedule has moved away from the
         # brackets read here.
         engine_variable = UK_RATE_CLASS_ENGINE_VARIABLE

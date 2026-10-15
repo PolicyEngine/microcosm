@@ -19,12 +19,120 @@ broken check:
   (``modal_area``);
 - every scenario names exactly one method-card row and a tier from
   {entitlement, calibration}, and changes exactly one knob from the centre
-  (``scenario_errors``).
+  (``scenario_errors``);
+- no resource cites a line of a repository file, and foreign-file line
+  citations require a same-resource commit pin (``unpinned_line_citations``);
+- JSON citations refuse index steps into arrays consisting of mappings.
+  Instead, ``file.json#/entries[input=target]`` selects exactly one record.
+  A selector extends an RFC 6901 token naming an array; ordinary pointer
+  steps may follow it, e.g. ``/entries[input=target]/state_binding/columns/0``.
+  Comma-separated terms are a conjunction, e.g. ``[input=target,module=nz]``.
+  Fields are identifiers and values are nonempty strings; brackets, commas,
+  equals signs and whitespace are reserved. Parse the selector before
+  decoding RFC 6901 ``~0`` (tilde) and ``~1`` (slash) escapes. No match or
+  multiple matches is an error. Indexes into scalar arrays remain valid.
 
 Differential checks compare two records of one fact: the loader's target
 references with a direct parse, the rules bindings' module digests with the
 committed Axiom input surface, and the export contract's formula-owned list
-with the bound variables.
+with the bound variables, and source citations with the code and JSON nodes
+they identify.
+
+The line guard catches drift-prone citations that an author (human or model)
+would plausibly write in NZ spec prose. It is not a defence against deliberate
+obfuscation, such as spelling out line numbers or splitting them across keys.
+
+Recognized line citations (for any extension, or known checkout filenames
+such as LICENSE and .gitignore):
+
+- The filename may be plain, backtick-wrapped, single/double/curly-quoted,
+  an inline Markdown link's destination or text (including backticks), an
+  image link, or reference-link text. A link attributes its locator to the
+  destination (without query or fragment) and every filename in its label;
+  all must be pinned foreign files for an exemption.
+- Forward: file:12, file:L12, file：L12 (full-width colon), file#L12,
+  file @ L12, file L12, file, L12, file (L12), file [L12], file line 12,
+  file lines L12-L20, file l.12, file ll.12-20, and file at/on line 12.
+  Locators may themselves be quoted or backtick-wrapped.
+- Reverse: line 12 in file, lines 12-20 of file, ll.12-20 in file,
+  and L12-L20 of/in file. Words ignore case; the L prefix is uppercase.
+- Numbers may form comma lists or ranges with hyphen, en dash, em dash,
+  or "to", with optional spaces and an L on either endpoint.
+- HTTP(S) URLs may be bare or Markdown destinations, inside parentheses,
+  quotes, angle brackets or HTML hrefs, or in Markdown reference definitions.
+  GitHub blob/raw/tree/blame/<ref>/path and raw.githubusercontent.com URLs
+  accept #L12, #L12-L20, #L12-20 and #L12C3-L20C9 fragments (also lowercase
+  l/c). Query strings before fragments and percent-encoded URL paths work.
+  Trailing punctuation and symbols, including Unicode dashes and ellipses,
+  cannot hide a complete line fragment. Ununderstood fragments stay scannable.
+  PolicyEngine/microcosm URLs at any ref, including commit permalinks, name
+  local files. Foreign URLs require a same-resource {path, commit} pin for
+  the exact repository-relative path; basename matching is prose-only.
+  Paths normalize leading ./; a trailing slash names a directory, not a file.
+
+In-scope examples:
+    file:12
+    file:L12
+    file：L12
+    file#L12
+    file @ L12
+    file L12
+    file, L12
+    file (L12)
+    file [L12]
+    file line 12
+    file lines L12-L20
+    file l.12
+    file ll.12-20
+    file at line 12
+    file on line 12
+    line 12 in file
+    lines 12-20 of file
+    ll.12-20 in file
+    L12-L20 of file
+    file:12,14-20
+    file lines 12–20
+    file lines 12—20
+    file lines 12 to 20
+    `file` lines 12-20
+    'file' lines 12-20
+    "file" lines 12-20
+    ‘file’ lines 12-20
+    “file” lines 12-20
+    file: `L12`
+    file: 'line 12'
+    [file](file) lines 12-20
+    [`file`](file) L12
+    [file][source] lines 12-20
+    [the source](file) lines 12-20
+    lines 12-20 of [the source](file)
+    [upstream.rs](file) L12
+    [the source](file#L12)
+    [the source](file:L12)
+    [file:L12](upstream.rs)
+    [the source](file?raw=1) L12
+    ![x](file) L5
+    LICENSE:12
+    .gitignore:12
+    [the source](https://github.com/PolicyEngine/microcosm/blob/main/file#L12)
+    https://github.com/PolicyEngine/microcosm/raw/main/file#L12-L20
+    https://raw.githubusercontent.com/PolicyEngine/microcosm/main/file#L12C3-L20C9
+    <https://github.com/PolicyEngine/microcosm/blame/main/file?plain=1#l5>
+    https://github.com/PolicyEngine/microcosm/tree/main/file#L5-10: see the field.
+
+Out of scope: bare prose numbers ("line 12" without a file), unknown
+extensionless names ("unknown_source:12"), spelled-out numbers ("file line
+twelve"), locators split across keys or values ({"file": "line", "n": 12}),
+HTML/entity-encoded markup ("file&#58;12"), encoded locator syntax (#%4C5 or
+#L%35), repeatedly encoded URL paths, Unicode lookalike locator letters,
+zero-width characters inserted into locators,
+escaped/nested Markdown labels, link titles, and arbitrary Markdown rendering
+or reference-link destination lookup. The guard scans parsed resource strings
+for explicit file/line locators.
+In plain prose, lowercase l12 is ambiguous with a Python identifier; use
+uppercase L12 or an explicit line/l./ll. label. Symbols, heading anchors,
+JSON Pointers and keyed selectors remain opaque, including locator-like tokens.
+Versioned symbols such as takeup.assign@1 also remain valid.
 """
 
 from __future__ import annotations
@@ -32,11 +140,19 @@ from __future__ import annotations
 import copy
 import dataclasses
 import hashlib
+import importlib
+import inspect
 import json
 import math
 import re
+import subprocess
+import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from functools import cache
+from pathlib import PurePosixPath
+from types import SimpleNamespace
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import pytest
 from hypothesis import assume, given, settings
@@ -49,6 +165,8 @@ from microcosm.build.ledger_targets import (
     reference_fact_selectors,
 )
 from microcosm.build.spec_engine import load_yaml12
+from microcosm.frame import concepts as frame_concepts
+from microcosm.frame.input_closure import INPUT_CLOSURE_FORMAT
 from test_support.paths import paths_for
 
 _BUILD = paths_for("microcosm-build")
@@ -97,10 +215,27 @@ def _nested_keys(value: object) -> Iterator[str]:
             yield from _nested_keys(child)
 
 
+def _nested_strings(value: object) -> Iterator[str]:
+    """Every string in a payload, mapping keys included, at any depth."""
+
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            yield str(key)
+            yield from _nested_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _nested_strings(child)
+    elif isinstance(value, str):
+        yield value
+
+
 def _package_payloads() -> dict[str, object]:
     payloads: dict[str, object] = {}
     for path in sorted(NZ_ROOT.rglob("*")):
-        if not path.is_file():
+        if not path.is_file() or not (
+            path.suffix == ".json"
+            or (path.parent == NZ_ROOT / "spec" and path.suffix == ".yaml")
+        ):
             continue
         name = path.relative_to(NZ_ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
@@ -457,6 +592,476 @@ def scenario_errors(document: Mapping[str, Any]) -> list[str]:
         ):
             errors.append(f"{label}: {knob!r} needs a positive number")
     return errors
+
+
+#: A file citation, with any extension, optionally qualified by directories.
+_SOURCE_FILE = (
+    r"(?P<file>[A-Za-z0-9_./-]*[A-Za-z0-9_-]\.[A-Za-z0-9][A-Za-z0-9_-]*)"
+    r"(?![A-Za-z0-9_.-])"
+)
+
+
+def _line_citation_patterns(source: str) -> tuple[re.Pattern[str], ...]:
+    """Share the documented locator grammar with extensionless filenames."""
+
+    quotes = r"[`'\"‘’“”]*"
+    # Keep wrappers attached to their filename or complete Markdown link.
+    wrapped = (
+        rf"\[?{quotes}{source}{quotes}"
+        r"(?:\](?:\((?:[^()\n]|\([^()\n]*\))*\)|\[[^\]\n]*\])?)?"
+    )
+    number = r"L?\s*\d+(?!\w)"
+    span = rf"{number}(?:\s*(?:[-–—]|(?i:to))\s*{number})?"
+    numbers = rf"{span}(?:\s*,\s*{span})*"
+    label = r"(?i:lines?\b\s+|ll?\.\s*)"
+    forward = (
+        wrapped
+        + rf"(?:\s*[:：]\s*{quotes}(?:{label})?|\s*@\s*{quotes}(?:{label}|(?=L))|"
+        rf"\s*#(?=L)|\s*,?\s*[\[(]?\s*"
+        rf"(?:(?i:at|on)\s+)?{quotes}(?:{label}|(?=L))){quotes}{numbers}"
+    )
+    reverse = rf"\b(?:{label}|(?=L)){quotes}{numbers}{quotes}\s+(?i:of|in)\s+" + wrapped
+    # Lowercase URL fragments must also survive raw fallback scanning. Keep
+    # bare l12 and file:l12 ambiguous with symbols, as in the prose grammar.
+    lower_fragment = wrapped + r"\s*#l\d+(?:[Cc]\d+)?(?!\w)"
+    return (re.compile(forward), re.compile(reverse), re.compile(lower_fragment))
+
+
+#: Keep every locator spelling from #1141, now for any file extension.
+_LINE_CITATIONS = _line_citation_patterns(_SOURCE_FILE)
+_MARKDOWN_LINK = re.compile(
+    r"(?P<link>!?\[(?P<label>[^\]\n]*)\]"
+    r"\((?P<destination>(?:[^()\n]|\([^()\n]*\))*)\))"
+)
+_MARKDOWN_LINE_CITATIONS = _line_citation_patterns(_MARKDOWN_LINK.pattern)
+_SOURCE_URL = re.compile(r"(?P<url>(?i:https?)://[^\s<>\[\]()`\"'‘’“”]+)")
+_URL_LINE_CITATIONS = _line_citation_patterns(r"[<(]?" + _SOURCE_URL.pattern + r"[>)]?")
+_URL_LINE_FRAGMENT = re.compile(r"[Ll]\d+(?:[Cc]\d+)?(?:-[Ll]?\d+(?:[Cc]\d+)?)?")
+_COMMIT_PIN = re.compile(r"[0-9a-f]{7,40}")
+
+
+@dataclasses.dataclass(frozen=True)
+class _CitationFile:
+    path: str
+    # URLs declare repository identity; plain filenames use checkout lookup.
+    repository: bool | None = None
+
+
+def _citation_destination(destination: str) -> tuple[_CitationFile, bool] | None:
+    """Parse a path or HTTP(S) file URL and retain its repository identity."""
+
+    def complete(match: re.Match[str] | None, text: str) -> bool:
+        return match is not None and all(
+            unicodedata.category(char)[0] in {"P", "S"} for char in text[match.end() :]
+        )
+
+    destination = destination.strip().removeprefix("<").removesuffix(">")
+    path, separator, fragment = destination.partition("#")
+    path = path.split("?", 1)[0]
+    repository = None
+    if re.match(r"(?i:https?)://", destination):
+        try:
+            url = urlsplit(destination)
+        except ValueError:
+            return None
+        if not url.hostname:
+            return None
+        path, fragment = unquote(url.path).lstrip("/"), url.fragment
+        file_prefix = re.match(r".*[^/.]\.[A-Za-z0-9][A-Za-z0-9_-]*", path)
+        if not path.endswith("/") and complete(file_prefix, path):
+            path = file_prefix[0]
+        repository = False
+        parts = path.split("/")
+        if url.hostname.lower() == "github.com":
+            if len(parts) < 5 or parts[2] not in {"blob", "raw", "tree", "blame"}:
+                return None
+            repository = "/".join(parts[:2]).lower() == "policyengine/microcosm"
+            path = "/".join(parts[4:])
+        elif url.hostname.lower() == "raw.githubusercontent.com":
+            if len(parts) < 4:
+                return None
+            repository = "/".join(parts[:2]).lower() == "policyengine/microcosm"
+            path = "/".join(parts[3:])
+        if repository:
+            # A branch may contain slashes. Prefer the longest known checkout
+            # suffix, while keeping files absent from this ref local as well.
+            path = max(
+                (
+                    tracked
+                    for tracked in _repository_files()
+                    if path == tracked or path.endswith("/" + tracked)
+                ),
+                key=len,
+                default=path,
+            )
+    if (
+        re.fullmatch(_SOURCE_FILE, path)
+        or _extensionless_file_pattern().fullmatch(path)
+        # Decoded URL names may contain spaces, brackets or Unicode. Falling
+        # back to ASCII prose matching would lose their repository identity.
+        or (
+            repository is not None
+            and re.search(r"[^/.]\.[A-Za-z0-9][A-Za-z0-9_-]*$", path)
+        )
+    ):
+        # Take the longest complete line/column span. Surrounding punctuation
+        # is prose, including Unicode punctuation and ASCII symbol characters.
+        # A heading such as L12_symbol still has a non-punctuation suffix.
+        located = complete(_URL_LINE_FRAGMENT.match(fragment), fragment)
+        if (
+            not located
+            and fragment.strip()
+            and not (
+                complete(re.match(r"[\w.-]+", fragment), fragment)
+                or fragment.startswith("/")
+            )
+        ):
+            # Do not mask a fragment we could not understand. Raw scanning
+            # can still catch a locator in a malformed URL or pasted query.
+            return None
+        return _CitationFile(str(PurePosixPath(path)), repository), located
+    if repository is None and not separator:
+        for pattern in (*_LINE_CITATIONS, *_extensionless_line_patterns()):
+            if located := pattern.fullmatch(path):
+                return _CitationFile(str(PurePosixPath(located["file"]))), True
+    return None
+
+
+def _mask_json_pointer_citations(text: str) -> str:
+    # Share the pointer parser's spans; fragment tokens are data, never prose.
+    # Retain the file so an independent locator outside a link still cites it.
+    return _JSON_POINTER_CITATION.sub(
+        lambda match: match["file"] + "#" + " " * len(match["pointer"]), text
+    )
+
+
+def _markdown_link_files(
+    match: re.Match[str], destination: _CitationFile
+) -> frozenset[_CitationFile]:
+    """Attribute a link to its destination and every filename in its label."""
+
+    files = {
+        _CitationFile(str(PurePosixPath(named["file"])))
+        for pattern in (re.compile(_SOURCE_FILE), _extensionless_file_pattern())
+        for named in pattern.finditer(match["label"])
+    }
+    files.add(destination)
+    return frozenset(files)
+
+
+def _source_line_citation_groups(
+    value: object,
+) -> Iterator[tuple[frozenset[_CitationFile], str]]:
+    """Keep all files sharing a link's locator together for the pin check."""
+
+    patterns = (*_LINE_CITATIONS, *_extensionless_line_patterns())
+    for text in _nested_strings(value):
+        prose = _mask_json_pointer_citations(text)
+        located_links = {
+            match.span("link")
+            for pattern in _MARKDOWN_LINE_CITATIONS
+            for match in pattern.finditer(prose)
+        }
+        parsed_links = set()
+        for link in _MARKDOWN_LINK.finditer(prose):
+            destination = _citation_destination(link["destination"])
+            if destination is None:
+                continue
+            file, located = destination
+            parsed_links.add(link.span())
+            if (
+                located
+                or link.span("link") in located_links
+                or any(pattern.search(link["label"]) for pattern in patterns)
+            ):
+                yield _markdown_link_files(link, file), text
+        # Unparseable destinations must leave the full link available to scan.
+        prose = _MARKDOWN_LINK.sub(
+            lambda match, spans=parsed_links: (
+                " " * len(match[0]) if match.span() in spans else match[0]
+            ),
+            prose,
+        )
+        located_urls = {
+            match.span("url")
+            for pattern in _URL_LINE_CITATIONS
+            for match in pattern.finditer(prose)
+        }
+        parsed_urls = set()
+        for url in _SOURCE_URL.finditer(prose):
+            destination = _citation_destination(url[0])
+            if destination is None:
+                continue
+            file, located = destination
+            parsed_urls.add(url.span())
+            if located or url.span() in located_urls:
+                yield frozenset({file}), text
+        prose = _SOURCE_URL.sub(
+            lambda match, spans=parsed_urls: (
+                " " * len(match[0]) if match.span() in spans else match[0]
+            ),
+            prose,
+        )
+        for pattern in patterns:
+            for match in pattern.finditer(prose):
+                yield (
+                    frozenset({_CitationFile(str(PurePosixPath(match["file"])))}),
+                    text,
+                )
+
+
+def source_line_citations(value: object) -> list[tuple[str, str]]:
+    """Each (file path, string) citing a line, including nested mapping keys."""
+
+    return [
+        (name, text)
+        for files, text in _source_line_citation_groups(value)
+        for name in sorted({file.path for file in files})
+    ]
+
+
+@cache
+def _repository_files() -> frozenset[str]:
+    """Tracked and newly added checkout files, without traversing environments."""
+
+    result = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=_BUILD.repository,
+        check=True,
+        capture_output=True,
+    )
+    return frozenset(result.stdout.decode().split("\0")) - {""}
+
+
+@cache
+def _extensionless_file_pattern() -> re.Pattern[str]:
+    # Bare words in prose are not file names. Recognize extensionless names
+    # only when the checkout actually contains such a file (also .gitignore).
+    names = {
+        PurePosixPath(path).name
+        for path in _repository_files()
+        if not PurePosixPath(path).suffix
+    }
+    alternatives = "|".join(re.escape(name) for name in sorted(names))
+    source = rf"(?P<file>[A-Za-z0-9_./-]*(?:{alternatives}))(?![A-Za-z0-9_.-])"
+    return re.compile(source if names else r"(?P<file>(?!))")
+
+
+@cache
+def _extensionless_line_patterns() -> tuple[re.Pattern[str], ...]:
+    return _line_citation_patterns(_extensionless_file_pattern().pattern)
+
+
+def _repository_source(path: str) -> bool:
+    root = _BUILD.repository.resolve()
+    candidate = (root / path).resolve()
+    if (
+        candidate.is_relative_to(root)
+        and candidate.relative_to(root).as_posix() in _repository_files()
+    ):
+        return True
+    name = str(PurePosixPath(path))
+    return any(
+        tracked == name or tracked.endswith("/" + name)
+        for tracked in _repository_files()
+    )
+
+
+def commit_pinned_sources(value: object) -> set[str]:
+    """Paths named by same-mapping lowercase 7–40-hex commit pins."""
+
+    pinned: set[str] = set()
+    if isinstance(value, Mapping):
+        path, commit = value.get("path"), value.get("commit")
+        if (
+            isinstance(path, str)
+            and re.fullmatch(r"[A-Za-z0-9_./-]+", path)
+            and not path.endswith("/")
+            and PurePosixPath(path).name not in {"", ".", ".."}
+            and isinstance(commit, str)
+            and _COMMIT_PIN.fullmatch(commit)
+        ):
+            pinned.add(str(PurePosixPath(path)))
+        for child in value.values():
+            pinned |= commit_pinned_sources(child)
+    elif isinstance(value, list):
+        for child in value:
+            pinned |= commit_pinned_sources(child)
+    return pinned
+
+
+def _pin_covers(cited: str, pinned: str) -> bool:
+    # The existing ops resource cites bare run.py but pins its complete path.
+    # Qualified citations cannot borrow a pin from another directory's file.
+    return cited == pinned or ("/" not in cited and PurePosixPath(pinned).name == cited)
+
+
+def unpinned_line_citations(document: object) -> list[tuple[str, str]]:
+    """Refuse all local-file lines and foreign-file lines without a file pin."""
+
+    pinned = commit_pinned_sources(document)
+    return [
+        (name, text)
+        for files, text in _source_line_citation_groups(document)
+        if not all(
+            not (
+                file.repository
+                if file.repository is not None
+                else _repository_source(file.path)
+            )
+            and any(
+                file.path == pin
+                if file.repository is not None
+                else _pin_covers(file.path, pin)
+                for pin in pinned
+            )
+            for file in files
+        )
+        for name in sorted({file.path for file in files})
+    ]
+
+
+# Retain #1141's public guard spelling while widening its scope to all files.
+unpinned_python_line_citations = unpinned_line_citations
+
+
+_DOTTED_MICROCOSM_SYMBOL = re.compile(
+    r"(?<![A-Za-z0-9_./-])microcosm(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
+)
+_JSON_POINTER_CITATION = re.compile(_SOURCE_FILE + r"#(?P<pointer>(?:/[^\s;()\"']*)+)")
+_JSON_RECORD_SELECTOR = re.compile(r"(?P<key>[^\[\]]+)\[(?P<terms>[^\[\]]+)\]")
+_JSON_SELECTOR_TERM = re.compile(
+    r"(?P<field>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^\[\],=\s]+)"
+)
+
+
+def resolve_dotted_symbol(dotted: str) -> object:
+    """Import the longest module prefix, then resolve its attributes."""
+
+    parts = dotted.split(".")
+    for cut in range(len(parts), 0, -1):
+        name = ".".join(parts[:cut])
+        try:
+            target: object = importlib.import_module(name)
+        except ModuleNotFoundError as error:
+            if error.name is None or not (
+                name == error.name or name.startswith(error.name + ".")
+            ):
+                raise
+            continue
+        if cut == 1:
+            raise ModuleNotFoundError(dotted, name=dotted)
+        for attribute in parts[cut:]:
+            target = getattr(target, attribute)
+        return target
+    raise ModuleNotFoundError(dotted, name=dotted)
+
+
+def dotted_symbol_citations(value: object) -> set[str]:
+    """Find Python symbols, distinguishing the existing serialized format ID."""
+
+    if isinstance(value, Mapping):
+        return {
+            dotted
+            for key, child in value.items()
+            for nested in (
+                [str(key)]
+                if key == "format" and child == INPUT_CLOSURE_FORMAT
+                else [str(key), child]
+            )
+            for dotted in dotted_symbol_citations(nested)
+        }
+    if isinstance(value, list):
+        return {dotted for child in value for dotted in dotted_symbol_citations(child)}
+    if isinstance(value, str):
+        return set(_DOTTED_MICROCOSM_SYMBOL.findall(value))
+    return set()
+
+
+def json_pointer_citations(value: object) -> list[tuple[str, str]]:
+    """Find and validate every citation, including nested mapping keys."""
+
+    citations = [
+        (match["file"], match["pointer"].rstrip(","))
+        for text in _nested_strings(value)
+        for match in _JSON_POINTER_CITATION.finditer(text)
+    ]
+    for citation in citations:
+        resolve_json_pointer(*citation)
+    return citations
+
+
+def resolve_json_pointer(file: str, pointer: str) -> object:
+    """Resolve a pointer with exactly-one keyed selectors; refuse record indexes."""
+
+    relative = str(PurePosixPath(file))
+    candidates = {
+        (_BUILD.repository / candidate).resolve()
+        for candidate in _repository_files()
+        if candidate == relative or candidate.endswith("/" + relative)
+    }
+    if len(candidates) != 1:
+        raise ValueError(f"JSON citation needs one checkout file: {file}: {candidates}")
+    (path,) = candidates
+    if not path.is_relative_to(_BUILD.repository.resolve()) or not path.is_file():
+        raise ValueError(f"JSON citation leaves checkout or names no file: {file}")
+    if pointer and not pointer.startswith("/"):
+        raise ValueError(f"Invalid JSON pointer: {pointer}")
+    content = path.read_text(encoding="utf-8")
+    selected: object = (
+        load_yaml12(content, source=relative)
+        if path.suffix in {".yaml", ".yml"}
+        else json.loads(content)
+    )
+    for token in pointer.split("/")[1:]:
+        if re.search(r"~(?![01])", token):
+            raise ValueError(f"Invalid JSON pointer escape: {pointer}")
+        selector: dict[str, str] | None = None
+        key = token
+        if "[" in token or "]" in token:
+            match = _JSON_RECORD_SELECTOR.fullmatch(token)
+            if match is None:
+                raise ValueError(f"Invalid JSON record selector: {token}")
+            key = match["key"]
+            selector = {}
+            for term in match["terms"].split(","):
+                pair = _JSON_SELECTOR_TERM.fullmatch(term)
+                if pair is None or pair["field"] in selector:
+                    raise ValueError(f"Invalid JSON record selector: {token}")
+                selector[pair["field"]] = (
+                    pair["value"].replace("~1", "/").replace("~0", "~")
+                )
+        key = key.replace("~1", "/").replace("~0", "~")
+        if isinstance(selected, list):
+            if not re.fullmatch(r"0|[1-9][0-9]*", key):
+                raise ValueError(f"Invalid JSON array index: {key}")
+            if all(isinstance(record, Mapping) for record in selected):
+                raise ValueError(
+                    f"JSON citation indexes a record array: {file}#{pointer}"
+                )
+            selected = selected[int(key)]
+        elif isinstance(selected, Mapping):
+            selected = selected[key]
+        else:
+            raise TypeError(f"JSON pointer traverses a scalar: {file}#{pointer}")
+        if selector is not None:
+            if not isinstance(selected, list) or not all(
+                isinstance(record, Mapping) for record in selected
+            ):
+                raise ValueError(
+                    f"JSON record selector needs an array of mappings: {token}"
+                )
+            matches = [
+                record
+                for record in selected
+                if all(record.get(field) == value for field, value in selector.items())
+            ]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"JSON selector needs one matching record, found {len(matches)}: {token}"
+                )
+            selected = matches[0]
+    return selected
 
 
 # ---------------------------------------------------------------------------
@@ -1579,6 +2184,1469 @@ class TestScenarios:
         document = _load("scenarios.json")
         expected = SCENARIO_BREAKERS[branch](document, data)
         assert expected in scenario_errors(document)
+
+
+# ---------------------------------------------------------------------------
+# Source citations
+# ---------------------------------------------------------------------------
+
+
+_SOURCE_STEM = st.from_regex(r"[a-z_][a-z0-9_]{0,15}", fullmatch=True)
+_SOURCE_EXTENSION = st.from_regex(r"[A-Za-z0-9][A-Za-z0-9_]{0,7}", fullmatch=True)
+_SOURCE_DIRECTORY = st.sampled_from(
+    (
+        "",
+        "packages/microcosm-frame/src/microcosm/frame/",
+        "microcosm/graph/",
+        "nz-lane/emtr_reproduction/",
+    )
+)
+#: Line-locator spellings: {file} is the cited source, {a} and {b} lines.
+_LINE_LOCATORS = (
+    "{file}:{a}",
+    "{file}:{a}-{b}",
+    "{file}:{a},{b}",
+    "{file}#L{a}",
+    "{file}#L{a}-L{b}",
+    "{file} L{a}",
+    "{file} line {a}",
+    "{file} lines {a}-{b}",
+    "{file}, lines {a}-{b}",
+    "{file} (lines {a}-{b})",
+    "Lines {a}-{b} of {file}",
+    "line {a} in {file}",
+    "{file}:L{a}",
+    "{file}：L{a}-L{b}",
+    "{file} @ L{a}",
+    "{file}, L{a}-L{b}",
+    "{file} (L{a}-L{b})",
+    "{file} [L{a}-L{b}]",
+    "{file} lines L{a}-L{b}",
+    "{file} ll.{a}-{b}",
+    "{file} at line {a}",
+    "{file} on lines {a}-{b}",
+    "lines L{a}-L{b} of {file}",
+    "L{a}-L{b} in {file}",
+    "ll.{a}-{b} in {file}",
+    "lines {a}, {b} in {file}",
+)
+_FILE_WRAPPERS = (
+    "{file}",
+    "`{file}`",
+    "'{file}'",
+    '"{file}"',
+    "‘{file}’",
+    "“{file}”",
+    "[{file}](source)",
+    "[`{file}`](source)",
+    "[{file}][source]",
+)
+_LINE_LOCATOR_SPELLINGS = st.builds(
+    lambda locator, wrapper, dash: locator.replace("-", dash).replace(
+        "{file}", wrapper
+    ),
+    st.sampled_from(_LINE_LOCATORS),
+    st.sampled_from(_FILE_WRAPPERS),
+    st.sampled_from(("-", "–", "—", " to ")),
+)
+#: Symbol-citation spellings, which carry no line number.
+_SYMBOL_LOCATORS = (
+    "{file} {symbol}",
+    '{file} _pointer("{symbol}")',
+    '{file}, the "# --- Relationships" block',
+    "{file}: {symbol}",
+    "{symbol} in {file} at main",
+)
+#: Prose around a citation. It has no digit, so it can neither extend a
+#: planted line number nor plant a citation of its own.
+_PROSE = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ,;()'\"-_",
+    max_size=40,
+)
+_BRANCH_NAMES = (
+    "main",
+    "HEAD",
+    "launch/ga-path-execution-gate",
+    "ba6e7d",
+    "BA6E7D6",
+    "",
+)
+_SOURCE_URL_FORMS = (
+    "https://github.com/{repository}/blob/{ref}/{path}",
+    "http://github.com/{repository}/raw/{ref}/{path}",
+    "https://raw.githubusercontent.com/{repository}/{ref}/{path}",
+)
+
+
+def _plant(text: str, depth: int, as_key: bool) -> object:
+    planted: object = {text: "cited"} if as_key else text
+    for level in range(depth):
+        planted = {"level": level, "note": [planted]}
+    return planted
+
+
+@pytest.fixture
+def citation_checkout(tmp_path, monkeypatch):
+    """An isolated file lookup; each write replaces that scratch JSON payload."""
+
+    files: set[str] = set()
+
+    def write(file: str, payload: object) -> None:
+        path = tmp_path / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        files.add(file)
+        monkeypatch.setattr(__name__ + "._BUILD", SimpleNamespace(repository=tmp_path))
+        monkeypatch.setattr(__name__ + "._repository_files", lambda: files)
+
+    return write
+
+
+class TestSourceCitations:
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    def test_every_documented_in_scope_spelling_is_refused(self, as_key: bool) -> None:
+        assert __doc__ is not None
+        examples = __doc__.split("In-scope examples:\n", 1)[1].split("\n\n", 1)[0]
+        spellings = [line.strip() for line in examples.splitlines()]
+        assert spellings
+        for spelling in spellings:
+            citation = spelling.replace("file", "concepts.py")
+            assert unpinned_line_citations(_plant(citation, 3, as_key)), citation
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        ("citation", "files", "exempt"),
+        [
+            ("[the source](concepts.py) lines 889-928", {"concepts.py"}, False),
+            ("lines 889-928 of [the source](concepts.py)", {"concepts.py"}, False),
+            (
+                "[upstream.rs](concepts.py) lines 889-928",
+                {"upstream.rs", "concepts.py"},
+                False,
+            ),
+            (
+                "lines 889-928 of [upstream.rs](concepts.py)",
+                {"upstream.rs", "concepts.py"},
+                False,
+            ),
+            ("[upstream.rs](upstream.rs) lines 889-928", {"upstream.rs"}, True),
+            ("[the source](concepts.py#L12)", {"concepts.py"}, False),
+            ("[the source](concepts.py:L12)", {"concepts.py"}, False),
+            ("[upstream.rs](concepts.py#L12)", {"upstream.rs", "concepts.py"}, False),
+            ("[the source](concepts.py#heading) L12", {"concepts.py"}, False),
+            ("[the source](concepts.py?raw=1) L12", {"concepts.py"}, False),
+            ("[the source](concepts.py?raw=1#L12)", {"concepts.py"}, False),
+            ("![x](concepts.py) L5", {"concepts.py"}, False),
+            (
+                "[concepts.py:L12](upstream.rs)",
+                {"concepts.py", "upstream.rs"},
+                False,
+            ),
+            (
+                "[upstream.rs lines 12-20](concepts.py)",
+                {"concepts.py", "upstream.rs"},
+                False,
+            ),
+            (
+                "[concepts.py and upstream.rs](other.rs) L12",
+                {"concepts.py", "upstream.rs", "other.rs"},
+                False,
+            ),
+            (
+                "[upstream.rs](other.rs) L12",
+                {"upstream.rs", "other.rs"},
+                False,
+            ),
+        ],
+    )
+    def test_markdown_link_lines_are_attributed_to_every_named_file(
+        self, citation: str, files: set[str], exempt: bool, as_key: bool
+    ) -> None:
+        document = {
+            "source": {"path": "upstream.rs", "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in files
+        }
+        assert (unpinned_line_citations(document) == []) is exempt
+
+    @pytest.mark.parametrize("url_form", [None, *_SOURCE_URL_FORMS])
+    @settings(max_examples=200, deadline=None)
+    @given(
+        label=st.sampled_from(("concepts.py", "the source", "upstream.rs")),
+        destination=st.sampled_from(("concepts.py", "upstream.rs", "other.rs")),
+        reverse=st.booleans(),
+        depth=st.integers(0, 4),
+        as_key=st.booleans(),
+        fragment=st.sampled_from(("", "#L12", "#L12-L20", "#L12C3-L20C9")),
+        query=st.sampled_from(("", "?raw=1")),
+    )
+    def test_markdown_link_exemption_requires_every_file_to_be_pinned_and_foreign(
+        self,
+        url_form: str | None,
+        label: str,
+        destination: str,
+        reverse: bool,
+        depth: int,
+        as_key: bool,
+        fragment: str,
+        query: str,
+    ) -> None:
+        path = destination
+        if url_form is not None:
+            if destination == "concepts.py":
+                path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+            destination = url_form.format(
+                repository="PolicyEngine/microcosm"
+                if destination == "concepts.py"
+                else "Other/repository",
+                ref="a" * 40,
+                path=path,
+            )
+        link = f"[{label}]({destination}{query}{fragment})"
+        citation = f"lines 12-20 of {link}" if reverse else f"{link} lines 12-20"
+        # Even an explicit pin for the local file cannot exempt it.
+        document = {
+            "pins": [
+                {"path": file, "commit": "abcdef0"}
+                for file in ("concepts.py", path, "upstream.rs")
+                if file != "other.rs"
+            ],
+            "notes": _plant(citation, depth, as_key),
+        }
+        attributed = {path} | ({label} if label != "the source" else set())
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in attributed
+        }
+        assert (unpinned_line_citations(document) == []) is (
+            attributed <= {"upstream.rs"}
+        )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    @pytest.mark.parametrize("ref", ["main", "feature/citations", "a" * 40])
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            "[the source]({url}#L889-L928)",
+            "[upstream.rs]({url}#L889-L928)",
+            "{url}#L889-L928",
+            "[x]({url}) lines 889-928",
+            "lines 889-928 of [x]({url})",
+            "[upstream.rs]({url}) lines 889-928",
+            "lines 889-928 of [upstream.rs]({url})",
+            "{url} lines 889-928",
+            "lines 889-928 of {url}",
+            "[the source]({url}#L12)",
+            "{url}#L12",
+            "[the source]({url}#L12C3-L20C9)",
+            "{url}#L12C3-L20C9",
+        ],
+    )
+    def test_this_repository_url_lines_are_never_exempt(
+        self, url_form: str, ref: str, spelling: str, as_key: bool
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = url_form.format(repository="PolicyEngine/microcosm", ref=ref, path=path)
+        citation = spelling.format(url=url)
+        document = {
+            "pins": [
+                {"path": file, "commit": "abcdef0"} for file in (path, "upstream.rs")
+            ],
+            "notes": _plant(citation, 3, as_key),
+        }
+        expected = {path} | ({"upstream.rs"} if "[upstream.rs]" in citation else set())
+        assert set(source_line_citations(document)) == {
+            (file, citation) for file in expected
+        }
+        assert set(unpinned_line_citations(document)) == {
+            (file, citation) for file in expected
+        }
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    @pytest.mark.parametrize("pin", [None, "concepts.py", "other.rs"])
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    def test_foreign_url_lines_require_the_same_resource_file_pin(
+        self, url_form: str, pin: str | None, bare: bool, as_key: bool
+    ) -> None:
+        # A foreign file remains foreign even when its name exists locally.
+        url = url_form.format(
+            repository="Other/repository", ref="a" * 40, path="concepts.py"
+        )
+        citation = f"{url}#L12" if bare else f"[the source]({url}#L12)"
+        document = {"notes": _plant(citation, 3, as_key)}
+        if pin is not None:
+            document["source"] = {"path": pin, "commit": "abcdef0"}
+        assert source_line_citations(document) == [("concepts.py", citation)]
+        assert unpinned_line_citations(document) == (
+            [] if pin == "concepts.py" else [("concepts.py", citation)]
+        )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    @pytest.mark.parametrize(
+        ("path", "pin"),
+        [("upstream.rs", "src/upstream.rs"), ("src/upstream.rs", "upstream.rs")],
+    )
+    def test_url_files_cannot_borrow_a_different_directory_pin(
+        self, url_form: str, path: str, pin: str, bare: bool, as_key: bool
+    ) -> None:
+        url = url_form.format(repository="Other/repository", ref="main", path=path)
+        citation = f"{url}#L12" if bare else f"[the source]({url}#L12)"
+        document = {
+            "source": {"path": pin, "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert source_line_citations(document) == [(path, citation)]
+        assert unpinned_line_citations(document) == [(path, citation)]
+        document["source"]["path"] = path
+        assert unpinned_line_citations(document) == []
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "punctuation",
+        list("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+        + [
+            "…",
+            "—",
+            "–",
+            "‐",
+            "‑",
+            "‒",
+            "―",
+            "。",
+            "！",
+            "？",
+            "：",
+            "；",
+            "’",
+            "”",
+            "»",
+            "】",
+        ],
+    )
+    def test_url_line_fragments_survive_trailing_punctuation(
+        self, punctuation: str, as_key: bool
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        citation = (
+            f"See https://github.com/PolicyEngine/microcosm/blob/main/{path}"
+            f"#L12{punctuation} this defines the field."
+        )
+        assert unpinned_line_citations(_plant(citation, 3, as_key)) == [
+            (path, citation)
+        ]
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        url_form=st.sampled_from(_SOURCE_URL_FORMS),
+        stem=_SOURCE_STEM,
+        extension=_SOURCE_EXTENSION,
+        directory=_SOURCE_DIRECTORY,
+        ref=st.sampled_from(("main", "feature/citations", "a" * 40)),
+        query=st.sampled_from(("", "?plain=1")),
+        fragment=st.sampled_from(
+            ("L5", "L5-L10", "L5-10", "l5", "l5-l10", "L5C2-L10C3")
+        ),
+        punctuation=st.text(
+            st.characters(categories=("P", "S")), min_size=1, max_size=8
+        ),
+        suffix=st.one_of(st.just(""), _PROSE.map(lambda text: " " + text)),
+        depth=st.integers(0, 4),
+        as_key=st.booleans(),
+    )
+    def test_local_url_line_fragments_are_refused_with_any_punctuation(
+        self,
+        url_form: str,
+        stem: str,
+        extension: str,
+        directory: str,
+        ref: str,
+        query: str,
+        fragment: str,
+        punctuation: str,
+        suffix: str,
+        depth: int,
+        as_key: bool,
+    ) -> None:
+        path = f"{directory}{stem}.{extension}"
+        url = url_form.format(repository="PolicyEngine/microcosm", ref=ref, path=path)
+        citation = f"{url}{query}#{fragment}{punctuation}{suffix}"
+        document = {
+            "source": {"path": path, "commit": "abcdef0"},
+            "notes": _plant(citation, depth, as_key),
+        }
+        assert unpinned_line_citations(document), citation
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            "({url}#L5)",
+            "'{url}#L5'",
+            '"{url}#L5"',
+            "‘{url}#L5’",
+            "“{url}#L5”",
+            "<{url}#L5>",
+            "[x][1]\n\n[1]: {url}#L5",
+            '<a href="{url}#L5">source</a>',
+            "{url}?plain=1#L5",
+            "[source]({url}?plain=1#L5)",
+            "{url}#L5-10",
+            "[source]({url}#L5-10)",
+            "{url}#l5",
+            "[source]({url}#l5)",
+            "{url}#l5-l10",
+            "{url}#l5c2-l10c3",
+        ],
+    )
+    def test_authored_url_wrappers_and_fragment_spellings_are_refused(
+        self, spelling: str, as_key: bool
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = f"https://github.com/PolicyEngine/microcosm/blob/main/{path}"
+        citation = spelling.format(url=url)
+        assert unpinned_line_citations(_plant(citation, 3, as_key)) == [
+            (path, citation)
+        ]
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("route", ["blob", "raw", "tree", "blame"])
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    @pytest.mark.parametrize("encoded", [False, True], ids=["plain", "percent-encoded"])
+    def test_url_paths_keep_repository_identity_at_any_commit(
+        self, route: str, bare: bool, encoded: bool, as_key: bool
+    ) -> None:
+        # Use an absent file so checkout suffix lookup cannot supply identity.
+        path = "retired/source.rs"
+        url_path = "retired%2Fsource%2Ers" if encoded else path
+        url = f"https://github.com/PolicyEngine/microcosm/{route}/{'a' * 40}/{url_path}#L5"
+        citation = url if bare else f"[source]({url})"
+        document = {
+            "source": {"path": path, "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert unpinned_line_citations(document) == [(path, citation)]
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    @pytest.mark.parametrize(
+        "fragment",
+        ["L12?plain=1", "L12:see-field", "l12!explanation", "l12—explanation"],
+    )
+    def test_ununderstood_url_fragments_remain_available_to_raw_scanning(
+        self, fragment: str, bare: bool, as_key: bool
+    ) -> None:
+        url = f"https://github.com/PolicyEngine/microcosm/blob/main/concepts.py#{fragment}"
+        citation = url if bare else f"[source]({url})"
+        assert unpinned_line_citations(_plant(citation, 3, as_key))
+
+    @pytest.mark.parametrize(
+        "host_path",
+        [
+            "example.org/src/upstream.rs",
+            "gitlab.com/Other/repository/-/blob/main/src/upstream.rs",
+        ],
+    )
+    def test_other_hosts_accept_short_ranges_but_require_an_exact_pin(
+        self, host_path: str
+    ) -> None:
+        path = host_path.split("/", 1)[1]
+        citation = f"https://{host_path}#L5-10"
+        document = {"source": {"path": path, "commit": "abcdef0"}, "note": citation}
+        assert source_line_citations(document) == [(path, citation)]
+        assert unpinned_line_citations(document) == []
+        document["source"]["path"] = "upstream.rs"
+        assert unpinned_line_citations(document) == [(path, citation)]
+
+    @pytest.mark.parametrize(
+        "pin", ["./src/upstream.rs", "src/upstream.rs/", "./src/upstream.rs/"]
+    )
+    def test_url_pins_normalize_dot_prefixes_but_refuse_directories(
+        self, pin: str
+    ) -> None:
+        citation = "https://github.com/Other/repository/blob/main/src/upstream.rs#L5"
+        document = {"source": {"path": pin, "commit": "abcdef0"}, "note": citation}
+        assert unpinned_line_citations(document) == (
+            [("src/upstream.rs", citation)] if pin.endswith("/") else []
+        )
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("bare", [False, True], ids=["link", "bare"])
+    @pytest.mark.parametrize(
+        "repository", ["PolicyEngine/microcosm", "Other/repository"]
+    )
+    @pytest.mark.parametrize(
+        ("encoded", "decoded", "wrong_pin"),
+        [
+            ("weird%20upstream.rs", "weird upstream.rs", "20upstream.rs"),
+            ("weird%5Bupstream.rs", "weird[upstream.rs", "5Bupstream.rs"),
+            ("%E2%9C%93upstream.rs", "✓upstream.rs", "93upstream.rs"),
+        ],
+    )
+    def test_encoded_url_filenames_cannot_borrow_a_prose_suffix_pin(
+        self,
+        encoded: str,
+        decoded: str,
+        wrong_pin: str,
+        repository: str,
+        bare: bool,
+        as_key: bool,
+    ) -> None:
+        url = f"https://github.com/{repository}/blob/main/{encoded}#L5"
+        citation = url if bare else f"[source]({url})"
+        document = {
+            "source": {"path": wrong_pin, "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert source_line_citations(document) == [(decoded, citation)]
+        assert unpinned_line_citations(document) == [(decoded, citation)]
+
+    @pytest.mark.parametrize("punctuation", list(".,;!?:") + ["…", "—"])
+    def test_bare_url_file_punctuation_keeps_independent_lines_visible(
+        self, punctuation: str
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = f"https://github.com/PolicyEngine/microcosm/blob/main/{path}{punctuation}"
+        assert source_line_citations(url) == []
+        for source in (url, f"({url})", f"<{url}>"):
+            for citation in (f"{source} L99", f"L99 in {source}"):
+                assert unpinned_line_citations(citation) == [(path, citation)]
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "citation",
+        [
+            "[the source](not a path concepts.py#L12)",
+            "[the source](https://[broken concepts.py#L12)",
+        ],
+    )
+    def test_unparseable_link_destinations_cannot_hide_line_citations(
+        self, citation: str, as_key: bool
+    ) -> None:
+        assert ("concepts.py", citation) in unpinned_line_citations(
+            _plant(citation, 3, as_key)
+        )
+
+    @pytest.mark.parametrize("url_form", _SOURCE_URL_FORMS)
+    def test_repository_urls_keep_identity_for_files_absent_from_the_checkout(
+        self, url_form: str
+    ) -> None:
+        path = "retired/source.rs"
+        url = url_form.format(
+            repository="policyengine/MICROCOSM", ref="a" * 40, path=path
+        )
+        citation = f"[the source]({url}#L12)"
+        document = {"source": {"path": path, "commit": "abcdef0"}, "note": citation}
+        assert unpinned_line_citations(document) == [(path, citation)]
+
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            "heading12",
+            "L12_symbol",
+            "/key/concepts.py:L12",
+            "heading!",
+            "heading:",
+            "heading…",
+            "heading—",
+        ],
+    )
+    def test_url_stable_fragments_keep_independent_line_locators_visible(
+        self, fragment: str
+    ) -> None:
+        path = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        url = f"https://github.com/PolicyEngine/microcosm/blob/main/{path}?raw=1#{fragment}"
+        for source in (
+            url,
+            f"[the source]({url})",
+            f"({url})",
+            f"<{url}>",
+            f"‘{url}’",
+            f"“{url}”",
+        ):
+            assert source_line_citations(source) == []
+            for citation in (f"{source} L99", f"L99 in {source}"):
+                assert unpinned_line_citations(citation) == [(path, citation)]
+
+    @pytest.mark.parametrize("scheme", ["http", "https"])
+    def test_other_http_file_urls_use_the_existing_foreign_pin_rule(
+        self, scheme: str
+    ) -> None:
+        path = "src/upstream.rs"
+        url = f"{scheme}://example.org/{path}?raw=1#L12C3-L20C9"
+        for citation in (url, f"[the source]({url})"):
+            document = {"source": {"path": path, "commit": "abcdef0"}, "note": citation}
+            assert source_line_citations(document) == [(path, citation)]
+            assert unpinned_line_citations(document) == []
+            assert unpinned_line_citations(citation) == [(path, citation)]
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("selector", [False, True], ids=["pointer", "selector"])
+    @pytest.mark.parametrize("token", ["concepts.py:L12", "concepts.py#L12"])
+    def test_json_pointer_and_selector_fragments_are_opaque_to_line_scanning(
+        self, citation_checkout, token: str, selector: bool, as_key: bool
+    ) -> None:
+        record = {"input": token, "value": "stable record"}
+        citation_checkout("records.json", {"entries": [record], token: record})
+        pointer = f"/entries[input={token}]" if selector else f"/{token}"
+        citation = f"records.json#{pointer}"
+        document = _plant(citation, 3, as_key)
+        assert json_pointer_citations(document) == [("records.json", pointer)]
+        assert resolve_json_pointer("records.json", pointer) == record
+        assert source_line_citations(document) == []
+        assert unpinned_line_citations(document) == []
+        # Masking must leave independent prose visible and retain the input text.
+        prose = f"{citation}; concepts.py:L99"
+        assert unpinned_line_citations(_plant(prose, 3, as_key)) == [
+            ("concepts.py", prose)
+        ]
+        # A stable destination fragment cannot hide a locator outside its link.
+        for linked in (
+            f"[the source]({citation}) L99",
+            f"L99 in [the source]({citation})",
+        ):
+            assert source_line_citations(_plant(linked, 3, as_key)) == [
+                ("records.json", linked)
+            ]
+            assert unpinned_line_citations(_plant(linked, 3, as_key)) == [
+                ("records.json", linked)
+            ]
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize("source", ["concepts.py", "LICENSE"])
+    @pytest.mark.parametrize(
+        "spelling",
+        [
+            pytest.param("`{file}` lines 889-928", id="backtick-forward"),
+            pytest.param("lines 889-928 of `{file}`", id="backtick-reverse"),
+            pytest.param("{file}, L889-L928", id="l-comma"),
+            pytest.param("{file} (L889-L928)", id="l-parentheses"),
+            pytest.param("line 12 in `{file}`", id="line-in-backticks"),
+            pytest.param("{file}:L12", id="l-colon"),
+            pytest.param("{file} @ L12", id="l-at"),
+            pytest.param("{file}#L12-L20", id="l-fragment"),
+            pytest.param("{file} lines 12–20", id="en-dash-forward"),
+            pytest.param("{file} ll. 12-20", id="ll-forward"),
+            pytest.param("see {file}, line 12", id="see-comma-line"),
+            pytest.param("{file}：12", id="fullwidth-colon"),
+            pytest.param("{file}：L12–L20", id="fullwidth-l-range"),
+            pytest.param("'{file}' lines 12-20", id="single-quote-forward"),
+            pytest.param("lines 12-20 of '{file}'", id="single-quote-reverse"),
+            pytest.param('"{file}" lines 12-20', id="double-quote-forward"),
+            pytest.param('lines 12-20 of "{file}"', id="double-quote-reverse"),
+            pytest.param("‘{file}’ lines 12-20", id="curly-single-forward"),
+            pytest.param("lines 12-20 of ‘{file}’", id="curly-single-reverse"),
+            pytest.param("“{file}” lines 12-20", id="curly-double-forward"),
+            pytest.param("lines 12-20 of “{file}”", id="curly-double-reverse"),
+            pytest.param("[{file}]({file}) lines 12-20", id="link-forward"),
+            pytest.param("lines 12-20 of [{file}]({file})", id="link-reverse"),
+            pytest.param("[`{file}`]({file}) L12", id="code-link-forward"),
+            pytest.param("L12 in [`{file}`]({file})", id="code-link-reverse"),
+            pytest.param(
+                "[{file}](docs/source(v1)) lines 12-20", id="link-parentheses"
+            ),
+            pytest.param("[{file}][source] lines 12-20", id="reference-link"),
+            pytest.param("{file}, L12", id="l-single"),
+            pytest.param("{file} [L12-L20]", id="l-brackets"),
+            pytest.param("L12-L20 in {file}", id="l-reverse"),
+            pytest.param("lines L12–L20 of `{file}`", id="l-en-dash-reverse"),
+            pytest.param("{file} lines L12-L20", id="l-labelled"),
+            pytest.param("{file} lines 12—20", id="em-dash-forward"),
+            pytest.param("lines 12—20 of {file}", id="em-dash-reverse"),
+            pytest.param("lines 12–20 in {file}", id="en-dash-reverse"),
+            pytest.param("lines 12, 14-20 of {file}", id="reverse-list"),
+            pytest.param("ll.12–20 in {file}", id="ll-reverse"),
+            pytest.param("{file} l.12", id="l-abbreviation"),
+            pytest.param("{file} at line 12", id="at-line"),
+            pytest.param("{file} on lines 12 to 20", id="on-lines-to"),
+            pytest.param("lines 12 to 20 of {file}", id="reverse-to"),
+            pytest.param("{file}, L12–L20", id="l-en-dash-forward"),
+            pytest.param("LINES 12-20 OF `{file}`", id="uppercase-reverse"),
+            pytest.param("`{file}`: `L12`", id="quoted-locator"),
+            pytest.param("{file} `L12`", id="quoted-bare-locator"),
+            pytest.param("{file} `lines 12-20`", id="quoted-labelled-locator"),
+            pytest.param("{file}: lines 12-20", id="colon-labelled"),
+            pytest.param("lines `12–20` in `{file}`", id="quoted-reverse-numbers"),
+        ],
+    )
+    def test_formatted_line_citation_is_refused_at_depth(
+        self, spelling: str, source: str, as_key: bool
+    ) -> None:
+        citation = spelling.format(file=source)
+        # A local file cannot borrow an exemption from a same-document pin.
+        document = {
+            "source": {"path": source, "commit": "abcdef0"},
+            "notes": _plant(citation, 3, as_key),
+        }
+        assert source_line_citations(document) == [(source, citation)]
+        assert unpinned_line_citations(document) == [(source, citation)]
+
+    @pytest.mark.parametrize(
+        ("pointer", "records", "message"),
+        [
+            ("/entries[input=absent]", [{"input": "target"}], "one matching record"),
+            ("/entries[unknown=target]", [{"input": "target"}], "one matching record"),
+            ("/entries[input=target]", [{"other": "target"}], "one matching record"),
+            (
+                "/entries[input=target]",
+                [{"input": "target"}, {"input": "target"}],
+                "one matching record",
+            ),
+            ("/entries[]", [{"input": "target"}], "selector"),
+            ("/entries[input]", [{"input": "target"}], "selector"),
+            ("/entries[=target]", [{"input": "target"}], "selector"),
+            ("/entries[input=]", [{"input": "target"}], "selector"),
+            ("/entries[input=target", [{"input": "target"}], "selector"),
+            ("/entries[input=target]]", [{"input": "target"}], "selector"),
+            ("/entries[[input=target]]", [{"input": "target"}], "selector"),
+            ("/entries[input=target]junk", [{"input": "target"}], "selector"),
+            ("/entries[input=target,]", [{"input": "target"}], "selector"),
+            ("/entries[input=target,input=target]", [{"input": "target"}], "selector"),
+            ("/entries/0", [{"input": "target"}], "record array"),
+            ("/entries/0/input", [{"input": "target"}], "record array"),
+        ],
+    )
+    def test_invalid_record_selectors_and_record_array_indexes_are_refused(
+        self, citation_checkout, pointer: str, records: list, message: str
+    ) -> None:
+        citation_checkout("records.json", {"entries": records})
+        with pytest.raises(ValueError, match=message):
+            resolve_json_pointer("records.json", pointer)
+        with pytest.raises(ValueError, match=message):
+            json_pointer_citations(_plant(f"records.json#{pointer}", 2, True))
+
+    def test_keyed_selector_extends_json_pointers_and_supports_conjunctions(
+        self, citation_checkout
+    ) -> None:
+        target = {"input": "target", "module": "nz/core~v1", "values": [7, 42]}
+        citation_checkout(
+            "records.json",
+            {"entries": [{"input": "target", "module": "other"}, target]},
+        )
+        pointer = "/entries[input=target,module=nz~1core~0v1]/values/1"
+        assert resolve_json_pointer("records.json", pointer) == 42
+        assert json_pointer_citations(f"records.json#{pointer}; following prose") == [
+            ("records.json", pointer)
+        ]
+        assert json_pointer_citations(f"records.json#{pointer}, following prose") == [
+            ("records.json", pointer)
+        ]
+
+    @pytest.mark.parametrize(
+        "entries", [{"input": "target"}, ["target"], [{"input": "target"}, 1]]
+    )
+    def test_record_selector_requires_an_array_of_mappings(
+        self, citation_checkout, entries: object
+    ) -> None:
+        citation_checkout("records.json", {"entries": entries})
+        pointer = "/entries[input=target]"
+        with pytest.raises(ValueError, match="array of mappings"):
+            resolve_json_pointer("records.json", pointer)
+        with pytest.raises(ValueError, match="array of mappings"):
+            json_pointer_citations(f"records.json#{pointer}")
+
+    def test_scalar_array_indexes_still_check_bounds(self, citation_checkout) -> None:
+        citation_checkout("records.json", {"values": [7, 42]})
+        assert resolve_json_pointer("records.json", "/values/1") == 42
+        with pytest.raises(IndexError):
+            resolve_json_pointer("records.json", "/values/2")
+
+    def test_keyed_selector_is_independent_of_record_position(
+        self, citation_checkout
+    ) -> None:
+        @settings(max_examples=100, deadline=None)
+        @given(keys=st.lists(_SOURCE_STEM, unique=True, max_size=25), data=st.data())
+        def check(keys: list[str], data) -> None:
+            position = data.draw(st.integers(0, len(keys)))
+            records = [{"input": f"other_{key}", "value": key} for key in keys]
+            target = {"input": "target", "value": {"answer": 42}}
+            records.insert(position, target)
+            citation_checkout("records.json", {"entries": records})
+            pointer = "/entries[input=target]"
+            assert resolve_json_pointer("records.json", pointer) == target
+            assert resolve_json_pointer("records.json", pointer + "/value/answer") == 42
+            assert json_pointer_citations(f"records.json#{pointer}") == [
+                ("records.json", pointer)
+            ]
+            with pytest.raises(ValueError, match="record array"):
+                resolve_json_pointer("records.json", f"/entries/{position}")
+            with pytest.raises(ValueError, match="record array"):
+                json_pointer_citations(f"records.json#/entries/{position}")
+
+        check()
+
+    @pytest.mark.parametrize(
+        "disclosure", ["sharing_home", "non_beneficiary", "market_income"]
+    )
+    def test_keyed_citations_survive_a_record_inserted_before_the_target(
+        self, citation_checkout, disclosure: str
+    ) -> None:
+        reporting = _load("reporting_classifiers.json")
+        if disclosure == "market_income":
+            file = "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json"
+            original = json.loads(
+                (_BUILD.repository / file).read_text(encoding="utf-8")
+            )
+            array, field = "bindings", "canonical_input"
+            expected_key = "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            evidence = reporting["disclosures"][1]["evidence"]
+        else:
+            file, array, field = "axiom_input_closure.json", "entries", "input"
+            original = _load(file)
+            if disclosure == "sharing_home":
+                expected_key = (
+                    "nz_super_shares_residence_with_person_at_least_adult_age"
+                )
+                evidence = reporting["disclosures"][0]["evidence"]
+            else:
+                expected_key = "accommodation_supplement_non_beneficiary"
+                evidence = reporting["as_non_beneficiary_audit"]["evidence"]
+        (expected,) = [row for row in original[array] if row[field] == expected_key]
+        original[array].insert(0, {field: "dummy_record"})
+        citation_checkout(file, original)
+        (citation,) = json_pointer_citations(evidence)
+        assert resolve_json_pointer(*citation) == expected
+
+    def test_local_file_pins_cannot_hide_absolute_or_parent_path_aliases(self) -> None:
+        relative = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
+        aliases = [
+            str(_BUILD.repository / relative),
+            f"../{_BUILD.repository.name}/{relative}",
+            "packages/microcosm-frame/src/microcosm/frame/../frame/concepts.py",
+        ]
+        for source in aliases:
+            citation = f"{source}:889-928"
+            assert unpinned_line_citations(
+                {
+                    "source": {"path": source, "commit": "abcdef0"},
+                    "note": citation,
+                }
+            ) == [(source, citation)]
+
+    @pytest.mark.parametrize("source", ["LICENSE", ".gitignore", "Dockerfile"])
+    def test_extensionless_repository_files_are_also_refused(self, source: str) -> None:
+        citation = f"{source}:1-3"
+        assert unpinned_line_citations(
+            {
+                "source": {"path": source, "commit": "abcdef0"},
+                "note": citation,
+            }
+        ) == [(source, citation)]
+
+    def test_the_input_closure_format_identifier_is_not_a_python_symbol(self) -> None:
+        assert dotted_symbol_citations({"format": INPUT_CLOSURE_FORMAT}) == set()
+        assert dotted_symbol_citations({"note": INPUT_CLOSURE_FORMAT}) == {
+            INPUT_CLOSURE_FORMAT
+        }
+
+    def test_nested_dotted_attributes_resolve_after_the_module_prefix(self) -> None:
+        assert (
+            resolve_dotted_symbol("microcosm.frame.concepts.TransportRule.CARRY")
+            is frame_concepts.TransportRule.CARRY
+        )
+
+    def test_json_pointer_keys_use_rfc6901_slash_escaping(self) -> None:
+        selected = resolve_json_pointer(
+            "reporting_classifiers.json",
+            "/parameter_provenance/~1income_decile~1entity",
+        )
+        assert selected["item"] == "A1"
+
+    def test_create_and_donor_reader_citations_still_describe_unit_inputs(self) -> None:
+        from microcosm.build.transport.population_kernels import TransportCreateKernel
+        from microcosm.frame.transport import read_populace_us_donor
+        from microcosm.graph.decl import StructuralDelta
+
+        rule = _load("benefit_unit_rule.json")
+        reporting = _load("reporting_classifiers.json")
+        for document in [rule, reporting["tie_key_evidence"]]:
+            named = dotted_symbol_citations(document)
+            assert (
+                "microcosm.build.transport.population_kernels.TransportCreateKernel"
+                in named
+            )
+        assert (
+            "microcosm.frame.transport.read_populace_us_donor"
+            in dotted_symbol_citations(reporting)
+        )
+        assert TransportCreateKernel.capabilities.structural is StructuralDelta.CREATE
+        # Differential source evidence: CREATE reads the verified concept donor,
+        # then builds family units using the declared benefit-unit rule.
+        create_source = inspect.getsource(TransportCreateKernel)
+        assert create_source.index("read_populace_us_donor(") < create_source.index(
+            "build_benefit_units("
+        )
+        assert "tables, dropped = split_for_transport(donor.tables)" in create_source
+        assert "BenefitUnitRule.from_spec(" in create_source
+        assert 'tables["person"], tables["household"], rule' in create_source
+        donor_source = inspect.getsource(read_populace_us_donor)
+        assert "tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)" in donor_source
+        assert 'tables["person"][name] = values' in donor_source
+        assert 'tables["household"]["reference_person_id"]' in donor_source
+        assert 'tables["household"][SOURCE_HOUSEHOLD_ID_COLUMN]' in donor_source
+
+    def test_financial_independence_citations_still_bind_carried_usual_hours(
+        self,
+    ) -> None:
+        from microcosm.frame.adapters.policyengine_us_concepts import (
+            POLICYENGINE_US_CONCEPT_MAPPING,
+        )
+        from microcosm.frame.concept_mapping import Identity
+
+        rule = _load("benefit_unit_rule.json")["dependent_child"][
+            "financial_independence"
+        ]
+        hours = frame_concepts.concept(rule["hours_concept"])
+        assert hours.id == "fact:person.usual_weekly_hours"
+        assert "across all jobs and self-employment" in hours.definition
+        assert "in the weeks the person worked" in hours.definition
+        assert "reference year" in hours.definition
+        assert hours.transport is frame_concepts.TransportRule.CARRY
+        (binding,) = [
+            binding
+            for binding in POLICYENGINE_US_CONCEPT_MAPPING.bindings
+            if binding.engine_input == rule["donor_variable"]
+        ]
+        assert binding.engine_entity == "person"
+        assert binding.concepts == (hours.id,)
+        assert isinstance(binding.transform, Identity)
+        assert binding.relation is frame_concepts.AlignmentRelation.EXACT
+        evidence = rule["concept_evidence"]
+        assert 'concept("fact:person.usual_weekly_hours")' in evidence
+        assert (
+            "docs/concept-coverage/policyengine-us.md#inputs-each-concept-feeds"
+            in evidence
+        )
+        assert (
+            "microcosm.frame.adapters.policyengine_us_concepts.POLICYENGINE_US_CONCEPT_MAPPING"
+            in evidence
+        )
+        assert "microcosm.frame.transport.read_populace_us_donor" in evidence
+        coverage = _BUILD.repository / "docs/concept-coverage/policyengine-us.md"
+        source = coverage.read_text(encoding="utf-8")
+        assert "## Inputs each concept feeds" in source
+        (row,) = [
+            row for row in source.splitlines() if row.startswith(f"| `{hours.id}` |")
+        ]
+        assert f"`{rule['donor_variable']}`" in row
+
+    def test_reporting_disclosure_cites_the_sharing_home_default_record(self) -> None:
+        disclosure = _load("reporting_classifiers.json")["disclosures"][0]
+        (citation,) = json_pointer_citations(disclosure["evidence"])
+        record = resolve_json_pointer(*citation)
+        assert (
+            record["input"]
+            == "nz_super_shares_residence_with_person_at_least_adult_age"
+        )
+        assert record["class"] == "defaulted"
+        assert record["value"] is False
+        assert "overstates NZS for singles who share a home" in record["reason"]
+        assert "overstated for single people who share a home" in disclosure["note"]
+
+    def test_reporting_non_beneficiary_audit_cites_its_exact_state_binding(
+        self,
+    ) -> None:
+        document = _load("reporting_classifiers.json")
+        (citation,) = json_pointer_citations(
+            document["as_non_beneficiary_audit"]["evidence"]
+        )
+        record = resolve_json_pointer(*citation)
+        assert record["input"] == "accommodation_supplement_non_beneficiary"
+        assert record["class"] == "encoded"
+        binding = record["state_binding"]
+        assert binding["test"] == "any_true"
+        assert binding["group_rule"] == "any_member"
+        assert binding["negate"] is True
+        assert binding["columns"] == [
+            "person.receives_jobseeker_support",
+            "person.receives_sole_parent_support",
+            "person.receives_supported_living_payment",
+            "person.receives_nz_super",
+        ]
+        assert "person.receives_veterans_pension" not in binding["columns"]
+        assert (
+            "must be extended"
+            in document["as_non_beneficiary_audit"]["veterans_pension"]
+        )
+
+    def test_reporting_market_income_disclosure_cites_the_mapping_it_describes(
+        self,
+    ) -> None:
+        document = _load("reporting_classifiers.json")
+        disclosure = document["disclosures"][1]
+        (citation,) = json_pointer_citations(disclosure["evidence"])
+        binding = resolve_json_pointer(*citation)
+        assert (
+            binding["engine_input"] == "accommodation_supplement_relevant_weekly_income"
+        )
+        assert binding["engine_entity"] == "Family"
+        assert binding["group_rule"] == "sum_over_members"
+        market = {
+            row["column"]
+            for row in document["income_decile"]["components"]
+            if row["kind"] == "market"
+        }
+        assert set(binding["concepts"]) == {
+            f"fact:person.{column}" for column in market
+        }
+        assert binding["transform"] == {"kind": "scaled_sum", "factor": 1 / 52}
+        assert "annual gross income" in binding["note"]
+        rental = frame_concepts.concept("fact:person.rental_income")
+        pension = frame_concepts.concept("fact:person.private_pension_income")
+        assert callable(frame_concepts._amount)
+        assert "net of expenses" in rental.definition
+        assert "before tax" not in rental.definition.lower()
+        assert "before tax" not in pension.definition.lower()
+        assert '_amount("rental_income")' in disclosure["evidence"]
+        assert '_amount("private_pension_income")' in disclosure["evidence"]
+
+    def test_no_resource_cites_a_repository_line_or_unpinned_foreign_line(self) -> None:
+        offenders = {
+            name: hits
+            for name, payload in _package_payloads().items()
+            if (hits := unpinned_line_citations(payload))
+        }
+        assert offenders == {}
+
+    def test_the_foreign_line_citations_are_scanned_and_covered_by_their_pins(
+        self,
+    ) -> None:
+        bridge = _load("as_rate_bridge.json")
+        assert {name for name, _ in source_line_citations(bridge)} == {"run.py"}
+        assert commit_pinned_sources(bridge) == {
+            "nz-lane/emtr_reproduction/run.py",
+            "conformance/executable/nz-treasury-incomeexplorer/requests.json",
+        }
+        assert bridge["source"]["commit"] == "ba6e7d6e4f488fdb2762dfb9d91c90f3238b719c"
+        assert unpinned_line_citations(bridge) == []
+        # The prose-only plan_citation names no file, so it remains out of scope.
+        assert source_line_citations(bridge["source"]["plan_citation"]) == []
+        closure = _load("axiom_input_closure.json")
+        expected = {
+            "src/rulespec.rs",
+            "src/dense.rs",
+            "src/formula.rs",
+            "python-ext/src/lib.rs",
+        }
+        assert {name for name, _ in source_line_citations(closure)} == expected
+        assert commit_pinned_sources(closure) == expected
+        assert unpinned_line_citations(closure) == []
+        for pin in closure["engine_source_pins"]["pins"]:
+            assert pin["commit"] == closure["input_surface"]["engine"]["commit"]
+            assert re.fullmatch(r"[0-9a-f]{40}", pin["commit"])
+        # Each exemption is required: removing that file's pin exposes a citation.
+        for name in expected:
+            unpinned = copy.deepcopy(closure)
+            unpinned["engine_source_pins"]["pins"] = [
+                pin
+                for pin in unpinned["engine_source_pins"]["pins"]
+                if pin["path"] != name
+            ]
+            assert name in {path for path, _ in unpinned_line_citations(unpinned)}
+
+    @pytest.mark.parametrize(
+        "replaced",
+        [
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919",
+            "a lone co-resident parent is always parent 1 (the pointer "
+            "definition, concepts.py lines 892-901; the pointer checks ...)",
+            "(microcosm.graph.executor._structural_columns, executor.py lines 636-643)",
+            "(_validate_population_declaration, executor.py lines 1550-1573)",
+            "the conformance harness uses 365/7 weeks (ops main run.py:168)",
+            "concepts.py:889-928",
+            "executor.py:638-645",
+            "executor.py:1549-1554",
+            "transport/population_kernels.py:208-232",
+            "concepts.py:900-907",
+            "concepts.py:1069-1083",
+            "adapters/policyengine_us_concepts.py:352-362",
+            "transport.py:843-849",
+            "docs/concept-coverage/policyengine-us.md:31",
+            "packages/microcosm-build/src/microcosm/build/transport/population_kernels.py:209-228",
+            "packages/microcosm-frame/src/microcosm/frame/transport.py:843-856",
+            "axiom_input_closure.json:1045-1052",
+            "axiom_input_closure.json:1183-1204",
+            "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json:670-688",
+            "concepts.py:990-1000,1040-1051",
+        ],
+    )
+    def test_the_line_citations_the_package_carried_are_refused(
+        self, replaced: str
+    ) -> None:
+        assert unpinned_line_citations({"rule": replaced})
+
+    @pytest.mark.parametrize("locator", _LINE_LOCATORS)
+    @pytest.mark.parametrize(
+        "extension", ["py", "json", "yaml", "rs", "md", "toml", "csv", "ts", "h5"]
+    )
+    def test_every_locator_spelling_covers_every_file_extension(
+        self, locator: str, extension: str
+    ) -> None:
+        citation = locator.format(file=f"source.{extension}", a=12, b=34)
+        assert source_line_citations(citation) == [(f"source.{extension}", citation)]
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        stem=_SOURCE_STEM,
+        extension=_SOURCE_EXTENSION,
+        directory=_SOURCE_DIRECTORY,
+        locator=_LINE_LOCATOR_SPELLINGS,
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        prefix=_PROSE,
+        suffix=_PROSE,
+        depth=st.integers(0, 3),
+        as_key=st.booleans(),
+    )
+    def test_an_unpinned_line_citation_is_refused_at_any_depth(
+        self,
+        stem: str,
+        extension: str,
+        directory: str,
+        locator: str,
+        a: int,
+        b: int,
+        prefix: str,
+        suffix: str,
+        depth: int,
+        as_key: bool,
+    ) -> None:
+        source = f"{directory}{stem}.{extension}"
+        citation = locator.format(file=source, a=a, b=b)
+        text = f"{prefix} {citation} {suffix}"
+        assert (source, text) in unpinned_line_citations(_plant(text, depth, as_key))
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_SOURCE_STEM,
+        extension=_SOURCE_EXTENSION,
+        locator=_LINE_LOCATOR_SPELLINGS,
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        depth=st.integers(0, 3),
+        as_key=st.booleans(),
+        commit=_HEX40_TEXT,
+        length=st.integers(7, 40),
+        bare_name=st.booleans(),
+    )
+    def test_a_foreign_file_pin_at_a_commit_covers_its_line_citation(
+        self,
+        stem: str,
+        extension: str,
+        locator: str,
+        a: int,
+        b: int,
+        depth: int,
+        as_key: bool,
+        commit: str,
+        length: int,
+        bare_name: bool,
+    ) -> None:
+        source = f"foreign_citation_fixture_{stem}.{extension}"
+        path = f"another-repository/src/{source}"
+        citation = locator.format(file=source if bare_name else path, a=a, b=b)
+        document = {
+            "source": {
+                "repository": "Other/repository",
+                "path": path,
+                "commit": commit[:length],
+            },
+            "notes": [_plant(citation, depth, as_key)],
+        }
+        assert source_line_citations(document)
+        assert unpinned_line_citations(document) == []
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_SOURCE_STEM,
+        other=_SOURCE_STEM,
+        extension=_SOURCE_EXTENSION,
+        locator=_LINE_LOCATOR_SPELLINGS,
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        commit=_HEX40_TEXT,
+        branch=st.sampled_from(_BRANCH_NAMES),
+        pin_other_file=st.booleans(),
+    )
+    def test_another_file_or_invalid_commit_does_not_cover_a_citation(
+        self,
+        stem: str,
+        other: str,
+        extension: str,
+        locator: str,
+        a: int,
+        b: int,
+        commit: str,
+        branch: str,
+        pin_other_file: bool,
+    ) -> None:
+        source = f"foreign_citation_fixture_{stem}.{extension}"
+        if pin_other_file:
+            assume(other != stem)
+            pin = {
+                "path": f"foreign_citation_fixture_{other}.{extension}",
+                "commit": commit,
+            }
+        else:
+            pin = {"path": source, "commit": branch}
+        citation = locator.format(file=source, a=a, b=b)
+        assert (source, citation) in unpinned_line_citations(
+            {"source": pin, "note": citation}
+        )
+
+    def test_a_different_directory_does_not_pin_the_same_basename(self) -> None:
+        citation = "other/src/foreign_citation_fixture.rs:12-34"
+        assert unpinned_line_citations(
+            {
+                "source": {
+                    "path": "first/src/foreign_citation_fixture.rs",
+                    "commit": "abcdef0",
+                },
+                "note": citation,
+            }
+        ) == [("other/src/foreign_citation_fixture.rs", citation)]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "concepts.py",
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py",
+            "axiom_input_closure.json",
+            "docs/concept-coverage/policyengine-us.md",
+        ],
+    )
+    def test_a_pin_never_exempts_a_repository_file(self, source: str) -> None:
+        citation = f"{source}:12-34"
+        assert unpinned_line_citations(
+            {
+                "source": {"path": source, "commit": "abcdef0"},
+                "note": citation,
+            }
+        ) == [(source, citation)]
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_SOURCE_STEM,
+        extension=_SOURCE_EXTENSION,
+        directory=_SOURCE_DIRECTORY,
+        locator=st.sampled_from(_SYMBOL_LOCATORS),
+        wrapper=st.sampled_from(_FILE_WRAPPERS),
+        symbol=_SOURCE_STEM,
+        prefix=_PROSE,
+        suffix=_PROSE,
+    )
+    def test_a_symbol_citation_is_not_a_line_citation(
+        self,
+        stem: str,
+        extension: str,
+        directory: str,
+        locator: str,
+        wrapper: str,
+        symbol: str,
+        prefix: str,
+        suffix: str,
+    ) -> None:
+        source = wrapper.format(file=f"{directory}{stem}.{extension}")
+        citation = locator.format(file=source, symbol=symbol)
+        assert source_line_citations({"rule": f"{prefix} {citation} {suffix}"}) == []
+
+    @pytest.mark.parametrize("as_key", [False, True], ids=["value", "key"])
+    @pytest.mark.parametrize(
+        "citation",
+        [
+            "`microcosm.graph.executor._structural_columns`",
+            "takeup.assign@1",
+            "`takeup.assign` @ 1",
+            "`concepts.py`: `_pointer`",
+            "concepts.py: L12_symbol",
+            "concepts.py: l12",
+            "concepts.py: line12",
+            "docs/method.md#heading12",
+            "records.json#/entries/12",
+            "records.json#/entries[input=L12,module=nz~1core~0v1]/values/0",
+            "records.json#/entries[input=line12]",
+        ],
+    )
+    def test_symbols_and_stable_records_are_not_line_citations(
+        self, citation: str, as_key: bool
+    ) -> None:
+        assert source_line_citations(_plant(citation, 3, as_key)) == []
+        assert unpinned_line_citations(_plant(citation, 3, as_key)) == []
+
+    def test_a_json_pointer_citation_is_not_a_line_citation(
+        self, citation_checkout
+    ) -> None:
+        @settings(max_examples=200, deadline=None)
+        @given(
+            stem=_SOURCE_STEM,
+            key=_SOURCE_STEM,
+            index=st.integers(0, 9999),
+            depth=st.integers(0, 3),
+            as_key=st.booleans(),
+        )
+        def check(stem: str, key: str, index: int, depth: int, as_key: bool) -> None:
+            citation_checkout(
+                f"{stem}.json", {"entries": {key: list(range(index + 1))}}
+            )
+            pointer = f"/entries/{key}/{index}"
+            citation = f"{stem}.json#{pointer}"
+            assert source_line_citations(_plant(citation, depth, as_key)) == []
+            assert json_pointer_citations(_plant(citation, depth, as_key)) == [
+                (f"{stem}.json", pointer)
+            ]
+            assert resolve_json_pointer(f"{stem}.json", pointer) == index
+
+        check()
+
+    def test_every_json_pointer_citation_in_the_package_resolves(self) -> None:
+        citations = {
+            citation
+            for payload in _package_payloads().values()
+            for citation in json_pointer_citations(payload)
+        }
+        assert {
+            (
+                "axiom_input_closure.json",
+                "/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
+            ),
+            (
+                "axiom_input_closure.json",
+                "/entries[input=accommodation_supplement_non_beneficiary]",
+            ),
+            (
+                "packages/microcosm-frame/src/microcosm/frame/adapters/axiom_concept_mappings/nz.json",
+                "/bindings[canonical_input=nz:statutes~1social_security~1accommodation_supplement~1core#input.accommodation_supplement_relevant_weekly_income]",
+            ),
+        } <= citations
+        for file, pointer in sorted(citations):
+            resolve_json_pointer(file, pointer)
+
+    @pytest.mark.parametrize(
+        ("file", "pointer", "error"),
+        [
+            ("axiom_input_closure.json", "/entries/no_such_record", ValueError),
+            ("axiom_input_closure.json", "/no_such_key", KeyError),
+            ("no_such_citation_file.json", "/entries", ValueError),
+            ("axiom_input_closure.json", "/entries/01", ValueError),
+            ("axiom_input_closure.json", "/entries/999999", ValueError),
+            ("axiom_input_closure.json", "/bad~2escape", ValueError),
+        ],
+    )
+    def test_a_missing_or_invalid_json_pointer_raises(
+        self, file: str, pointer: str, error: type[Exception]
+    ) -> None:
+        with pytest.raises(error):
+            resolve_json_pointer(file, pointer)
+
+    def test_executor_symbols_still_make_unit_ids_and_memberships_structural(
+        self,
+    ) -> None:
+        from microcosm.graph import executor
+
+        schema = SimpleNamespace(
+            entities=("person", "family"),
+            person_entity="person",
+            group_entities=("family",),
+            entity_id_column=lambda entity: f"{entity}_id",
+            membership_column=lambda entity: f"person_{entity}_id",
+        )
+        frame = SimpleNamespace(schema=schema)
+        assert executor._structural_columns(frame, "family") == ["family_id"]
+        assert executor._structural_columns(frame, "person") == [
+            "person_id",
+            "person_family_id",
+        ]
+        for entity, column in [("family", "family_id"), ("person", "person_family_id")]:
+            node = SimpleNamespace(
+                id="citation-fixture",
+                weights=None,
+                structural=executor.StructuralDelta.NONE,
+                outputs=[SimpleNamespace(entity=entity, column=column)],
+            )
+            with pytest.raises(
+                executor.NodeRejected, match="cannot own structural column"
+            ):
+                executor._validate_population_declaration(
+                    node, SimpleNamespace(frame=frame)
+                )
+
+    def test_benefit_unit_rule_cites_the_relationship_pointers_by_symbol(
+        self,
+    ) -> None:
+        rule = _load("benefit_unit_rule.json")
+        source = inspect.getsource(frame_concepts)
+        block = source.split("# --- Relationships", 1)[1].split("# --- ", 1)[0]
+        block_pointers = re.findall(r'_pointer\(\s*"(\w+)"', block)
+        assert block_pointers == [
+            "partner_person_id",
+            "parent_1_person_id",
+            "parent_2_person_id",
+            "reference_person_id",
+        ]
+        pointers = rule["pointer_concepts"]
+        named = [
+            pointers["partner"],
+            *pointers["parents"],
+            pointers["household_reference_person"],
+        ]
+        assert named == block_pointers
+        assert pointers["citation"] == (
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py, the "
+            f'"# --- Relationships" block: _pointer("{block_pointers[0]}") '
+            f'through _pointer("{block_pointers[-1]}")'
+        )
+        cited = {
+            name
+            for text in _nested_strings(rule)
+            for name in re.findall(r'_pointer\("(\w+)"\)', text)
+        }
+        assert cited == {
+            "partner_person_id",
+            "parent_1_person_id",
+            "reference_person_id",
+        }
+        (child,) = [
+            row for row in rule["composition"] if row["member"] == "dependent_child"
+        ]
+        assert 'concepts.py _pointer("parent_1_person_id")' in child["rule"]
+        parent_1 = frame_concepts.concept("fact:person.parent_1_person_id")
+        assert "always parent 1" in parent_1.definition
+        assert callable(frame_concepts._check_pointers)
+
+    def test_every_dotted_microcosm_symbol_in_the_package_resolves(self) -> None:
+        named = {
+            dotted
+            for payload in _package_payloads().values()
+            for dotted in dotted_symbol_citations(payload)
+        }
+        assert {
+            "microcosm.graph.executor._structural_columns",
+            "microcosm.graph.executor._validate_population_declaration",
+        } <= named
+        unresolved = []
+        for dotted in sorted(named):
+            try:
+                resolve_dotted_symbol(dotted)
+            except (ImportError, AttributeError) as error:
+                unresolved.append(f"{dotted}: {error}")
+        assert unresolved == []
+
+    @pytest.mark.parametrize(
+        ("dotted", "error"),
+        [
+            ("microcosm.graph.executor._no_such_symbol", AttributeError),
+            ("microcosm.no_such_shard.module.symbol", ModuleNotFoundError),
+        ],
+    )
+    def test_an_unresolvable_dotted_symbol_raises(
+        self, dotted: str, error: type[Exception]
+    ) -> None:
+        with pytest.raises(error):
+            resolve_dotted_symbol(dotted)
 
 
 # ---------------------------------------------------------------------------
