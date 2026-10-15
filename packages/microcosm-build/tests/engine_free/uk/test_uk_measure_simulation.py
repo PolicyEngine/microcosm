@@ -795,10 +795,12 @@ def test_packaged_exclusions_load():
         assert entry["tracking"] == a16_issues[name], name
     for name in _A16_CONCEPT_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
-        assert entry["approved_on"] == "2026-09-22", name
-        assert entry["expires_on"] == "2026-10-22", name
+        # Ruling R3 of 2026-09-22, renewed on 2026-10-16 to 2027-01-08.
+        assert entry["approved_on"] == "2026-10-16", name
+        assert entry["expires_on"] == "2027-01-08", name
         assert entry["tracking"] == a16_issues[name], name
         assert "microcosm#1006" in entry["adjudication"], name
+        assert "renewed on 2026-10-16" in entry["adjudication"], name
         assert "D.41" in entry["reason"] and "diagnostic" in entry["reason"], name
         # The fitting anchor the row hands over to: the SPI Table 3.7 interest
         # rows, uprated (PolicyEngine/chronicle#280 lane).
