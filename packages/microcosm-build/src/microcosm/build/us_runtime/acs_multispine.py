@@ -37,6 +37,10 @@ from microcosm.build.us_runtime.acs_local_income import (
     require_acs_local_income_donor,
     without_acs_local_other_income,
 )
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    require_acs_receipt_anchor_sources,
+    with_acs_local_snap_receipt_anchor,
+)
 from microcosm.build.us_runtime.acs_local_spm_units import (
     split_acs_adult_nonrelative_spm_units,
 )
@@ -102,6 +106,7 @@ def build_optional_acs_multispine(
     work_disability_inputs: bool = False,
     income_transfer: bool = False,
     split_adult_nonrelative_spm_units: bool = False,
+    native_receipt_anchors: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -138,6 +143,13 @@ def build_optional_acs_multispine(
     before any mapping or transfer; its receipt is
     ``provenance["acs_local_spm_units"]``. The default keeps the loader's one
     SPM unit per ACS household, which the pool lane still uses.
+    ``native_receipt_anchors`` (the ACS local lane, microcosm#1022) replaces
+    the transferred ``receives_snap`` with native household ``FS`` on every
+    ACS SPM unit after the shared transfer, whose plan is unchanged, and
+    before pooling, so no donor row reaches it; its receipt (with the ``PAP``
+    public-assistance counts it records against ``receives_tanf``) is
+    ``provenance["acs_local_receipt_anchors"]``. The source is checked before
+    any fit.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -156,6 +168,10 @@ def build_optional_acs_multispine(
         chunksize=chunksize,
     )
     loader_provenance = _json_ready_mapping(loader_metadata)
+    if native_receipt_anchors:
+        # Local lane only (microcosm#1022): refuse a source whose FS or PAP
+        # the post-transfer anchor cannot read before any fit runs.
+        require_acs_receipt_anchor_sources(raw_acs)
     spm_units = None
     if split_adult_nonrelative_spm_units:
         # Local lane only (microcosm#1023): the loader is shared with the pool
@@ -304,6 +320,15 @@ def build_optional_acs_multispine(
     fit_provenance = _json_ready_sequence(fit_records)
     transferred_frame = transferred.frame
     del transferred
+    receipt_anchors = None
+    if native_receipt_anchors:
+        # Local lane only (microcosm#1022): after the shared transfer, so the
+        # declared plan still fits receives_snap and the receipt can count
+        # what the measured FS overrides; before pooling, so the frame holds
+        # ACS rows only and the donor's ASEC receipt is never touched.
+        transferred_frame, receipt_anchors = with_acs_local_snap_receipt_anchor(
+            transferred_frame
+        )
 
     pool_options: dict[str, Any] = {"acs_share": acs_share}
     if puma_ladder is not None:
@@ -351,6 +376,8 @@ def build_optional_acs_multispine(
         provenance["acs_local_income_transfer"] = _json_ready_mapping(income_receipt)
     if spm_units is not None:
         provenance["acs_local_spm_units"] = _json_ready_mapping(spm_units)
+    if receipt_anchors is not None:
+        provenance["acs_local_receipt_anchors"] = _json_ready_mapping(receipt_anchors)
     if work_disability is not None:
         provenance["acs_local_work_disability"] = _json_ready_mapping(
             record_acs_local_work_disability_transfer(
