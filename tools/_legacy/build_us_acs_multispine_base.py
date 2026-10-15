@@ -40,6 +40,11 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     require_acs_local_immigration_donor,
     with_acs_local_immigration_inputs,
 )
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    acs_local_income_transfer_signal_gate,
+    require_acs_local_income_donor,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_DISABILITY_ITEMS,
     ACS_LOCAL_DISABILITY_COLUMNS,
@@ -259,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
     _require_immigration_donor(base, period=args.period)
+    _require_income_donor(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
@@ -288,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         hours_under15_policy=args.hours_under15_policy,
         work_disability_inputs=True,
+        income_transfer=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -320,6 +327,10 @@ def main(argv: list[str] | None = None) -> int:
     # microcosm#1021: the ACS rows' is_disabled/is_blind/weeks_worked were
     # mapped natively before the transfer; gate them on the pooled frame.
     work_disability = _require_local_work_disability(result)
+    gc.collect()
+    # microcosm#1022: the ACS rows' SNAP-relevant income leaves came from the
+    # separate ASEC-channel pass; gate them before the input-null audit.
+    income = _require_local_income_transfer(result)
     gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
@@ -362,6 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     summary.update(immigration)
     summary.update(work_disability)
+    summary.update(income)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -485,6 +497,52 @@ def _require_local_work_disability(result: AcsMultispineResult) -> dict[str, obj
     return {
         "acs_local_work_disability": receipt,
         "acs_local_work_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_income_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor the income pass can't use."""
+
+    try:
+        require_acs_local_income_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot seed the ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): {exc}"
+        ) from exc
+
+
+def _require_local_income_transfer(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local income transfer; return the summary entries.
+
+    ``build_optional_acs_multispine(income_transfer=True)`` runs the separate
+    ASEC-channel pass and records its receipt in its provenance. The gate must
+    pass before the staging H5 is written, and the release tool refuses a
+    staging summary without both entries (``acs_local_income_transfer`` and
+    ``acs_local_income_transfer_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_income_transfer")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no local income transfer receipt "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); the ACS rows' child support, "
+            "workers' compensation, disability benefits and retirement "
+            "distributions would be default-filled zeros."
+        )
+    gate = acs_local_income_transfer_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging income transfer gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_income_transfer": receipt,
+        "acs_local_income_transfer_gate": {
             "name": gate.name,
             "passed": gate.passed,
             "failures": list(gate.failures),

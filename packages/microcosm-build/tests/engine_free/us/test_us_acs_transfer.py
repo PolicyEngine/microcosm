@@ -2978,3 +2978,290 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 
     with pytest.raises(ValueError, match=missing_column):
         acs_adult_care_qualifying_rows(person)
+
+
+# ---------------------------------------------------------------------------
+# Opt-in person predictor extensions (microcosm#1056 review): the shared
+# execution contract, and the shared transfer's draws, are unchanged unless a
+# caller opts in; the ACS local income pass is the only caller that does.
+# ---------------------------------------------------------------------------
+
+#: The execution contract's SHA-256 before person predictor extensions
+#: existed. Every caller that passes none (the shared plan, the pool lane,
+#: banked checkpoints and the spec projection) must keep these.
+_DEFAULT_CONTRACT_SHA256 = (
+    "5f6f6a972769f087808bb71b07e7c5fb2cdfa811f127357554f9174bc6da9bd2"
+)
+_DECLARED_PLAN_CONTRACT_SHA256 = (
+    "75b2e2facb30713fc0e2fb896eee90ae1485757444b070614f8404a33107bacf"
+)
+_PREGNANCY_CONTRACT_SHA256 = (
+    "a23b1a7a0db28def92a4312262b94f406f5c5e89666b8b4bffb80460d327e623"
+)
+_EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
+_EXTENSION_FAMILIES = {
+    "person": {
+        "dividends": ("qualified_dividend_income",),
+        "medicaid": ("takes_up_medicaid_if_eligible",),
+    }
+}
+
+
+def _interest_extension(**overrides):
+    fields = {
+        "feature": _EXTENSION_FEATURE,
+        "donor_components": ("taxable_interest_income",),
+        "recipient_source": "taxable_interest_income",
+        "families": ("dividends",),
+    }
+    fields.update(overrides)
+    return acs_transfer_module.AcsPersonPredictorExtension(**fields)
+
+
+def _extension_transfer(target_families=None, **kwargs) -> AcsTransferResult:
+    return transfer_acs_inputs(
+        _recipient_frame(),
+        _donor_frame(),
+        target_families=target_families or _EXTENSION_FAMILIES,
+        donor_spine="asec_puf_test",
+        seed=17,
+        n_estimators=5,
+        **kwargs,
+    )
+
+
+def _assert_same_transfer(left: AcsTransferResult, right: AcsTransferResult) -> None:
+    for entity in left.frame.entities:
+        pd.testing.assert_frame_equal(
+            left.frame.table(entity), right.frame.table(entity)
+        )
+    assert left.imputed_inputs == right.imputed_inputs
+    assert left.fit_records == right.fit_records
+    assert left.resolved_donor_channel == right.resolved_donor_channel
+
+
+def test_default_execution_contract_identity_is_pinned() -> None:
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    default = identity()
+    assert default["sha256"] == _DEFAULT_CONTRACT_SHA256
+    assert "person_predictor_extensions" not in default
+    assert (
+        identity(targets=[], derive_schedule_d=False)["sha256"]
+        == _DEFAULT_CONTRACT_SHA256
+    )
+    declared = [
+        target
+        for families in declared_acs_transfer_target_families().values()
+        for targets in families.values()
+        for target in targets
+    ]
+    assert identity(targets=declared)["sha256"] == _DECLARED_PLAN_CONTRACT_SHA256
+    assert (
+        identity(targets=("is_pregnant",), derive_schedule_d=False)["sha256"]
+        == _PREGNANCY_CONTRACT_SHA256
+    )
+    for empty in (None, (), []):
+        assert identity(person_predictor_extensions=empty) == default
+        assert identity(
+            targets=declared, person_predictor_extensions=empty
+        ) == identity(targets=declared)
+
+
+def test_person_predictor_extension_binds_the_contract_only_when_used() -> None:
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    bound = identity(person_predictor_extensions=(_interest_extension(),))
+    assert bound["sha256"] != _DEFAULT_CONTRACT_SHA256
+    assert bound["person_predictor_extensions"] == [
+        {
+            "feature": _EXTENSION_FEATURE,
+            "donor_components": ["taxable_interest_income"],
+            "recipient_source": "taxable_interest_income",
+            "families": ["dividends"],
+            "replaces": None,
+        }
+    ]
+    rest = {
+        key: value
+        for key, value in bound.items()
+        if key not in {"person_predictor_extensions", "sha256"}
+    }
+    assert rest == {key: value for key, value in identity().items() if key != "sha256"}
+
+
+def test_transfer_without_an_extension_is_byte_identical() -> None:
+    """Omitted, ``None`` and ``()`` all run the exact shared transfer."""
+
+    baseline = _extension_transfer()
+    for empty in (None, ()):
+        _assert_same_transfer(
+            baseline, _extension_transfer(person_predictor_extensions=empty)
+        )
+
+
+def test_an_extension_changes_only_the_family_it_names() -> None:
+    baseline = _extension_transfer()
+    extended = _extension_transfer(person_predictor_extensions=(_interest_extension(),))
+    before = {entry.column: entry for entry in baseline.imputed_inputs}
+    after = {entry.column: entry for entry in extended.imputed_inputs}
+
+    # The family the extension does not name keeps its predictors, seeds,
+    # patterns and draws exactly.
+    assert (
+        after["takes_up_medicaid_if_eligible"]
+        == before["takes_up_medicaid_if_eligible"]
+    )
+    pd.testing.assert_series_equal(
+        extended.frame.table("person")["takes_up_medicaid_if_eligible"],
+        baseline.frame.table("person")["takes_up_medicaid_if_eligible"],
+    )
+    # The named family is fit with the feature, after the shared predictors.
+    dividends = after["qualified_dividend_income"]
+    assert dividends.predictors[-1] == _EXTENSION_FEATURE
+    assert _EXTENSION_FEATURE not in before["qualified_dividend_income"].predictors
+    assert all(
+        _EXTENSION_FEATURE in pattern.observed_optional_predictors
+        for pattern in dividends.patterns
+    )
+    assert {pattern.seed for pattern in dividends.patterns}.isdisjoint(
+        pattern.seed for pattern in before["qualified_dividend_income"].patterns
+    )
+    # Model-only: the feature never becomes a frame column.
+    assert _EXTENSION_FEATURE not in extended.frame.table("person")
+
+
+def test_a_stand_in_extension_takes_the_replaced_predictors_place() -> None:
+    investment = "__acs_transfer_interest_dividend_rental_income"
+    extension = _interest_extension(replaces=investment)
+    extended = _extension_transfer(person_predictor_extensions=(extension,))
+    (dividends,) = [
+        entry
+        for entry in extended.imputed_inputs
+        if entry.column == "qualified_dividend_income"
+    ]
+    predictors = list(dividends.predictors)
+    assert investment not in predictors
+    assert (
+        predictors.index("__acs_transfer_self_employment_income")
+        < predictors.index(_EXTENSION_FEATURE)
+        < predictors.index("__acs_transfer_is_household_head")
+    )
+
+
+def test_a_bound_default_contract_refuses_an_unbound_extension() -> None:
+    targets = ["qualified_dividend_income", "takes_up_medicaid_if_eligible"]
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    default = identity(targets=targets)
+    with pytest.raises(ValueError, match="differs from its bound input"):
+        _extension_transfer(
+            execution_contract=default,
+            person_predictor_extensions=(_interest_extension(),),
+        )
+    _assert_same_transfer(
+        _extension_transfer(), _extension_transfer(execution_contract=default)
+    )
+    bound = identity(
+        targets=targets, person_predictor_extensions=(_interest_extension(),)
+    )
+    _extension_transfer(
+        execution_contract=bound,
+        person_predictor_extensions=(_interest_extension(),),
+    )
+
+
+_MORTGAGE_FAMILIES = {
+    **_EXTENSION_FAMILIES,
+    "tax_unit": {"mortgage": ("first_home_mortgage_balance",)},
+}
+
+
+@pytest.mark.parametrize(
+    ("overrides", "target_families", "expected"),
+    [
+        (
+            {"donor_components": ("taxable_interest_income", "veterans_benefits")},
+            None,
+            r"needs donor component\(s\) \['veterans_benefits'\], which the donor",
+        ),
+        (
+            {"recipient_source": "acs_fixture_total"},
+            None,
+            "needs recipient source column 'acs_fixture_total', which the recipient",
+        ),
+        (
+            {"families": ("mortgage",)},
+            _MORTGAGE_FAMILIES,
+            "names family 'mortgage' on group entity 'tax_unit'",
+        ),
+        ({"families": ("unknown",)}, None, "not a requested person family"),
+        (
+            {"feature": "__acs_transfer_retirement_income"},
+            None,
+            "clashes with a shared transfer predictor",
+        ),
+        (
+            {"feature": "__acs_transfer_group_head_count"},
+            None,
+            "clashes with a shared transfer predictor",
+        ),
+        ({"feature": "interest_total"}, None, "must be a model-only name"),
+        (
+            {"replaces": "__acs_transfer_is_household_head"},
+            None,
+            "may replace only a shared combined predictor",
+        ),
+        (
+            {"recipient_source": "qualified_dividend_income"},
+            None,
+            "a target of family 'dividends'",
+        ),
+        ({"donor_components": ()}, None, "distinct donor component column names"),
+        ({"families": ("dividends", "dividends")}, None, "distinct family names"),
+    ],
+    ids=[
+        "missing-donor-component",
+        "missing-recipient-source",
+        "group-entity",
+        "unknown-family",
+        "clash-shared-optional",
+        "clash-group-name",
+        "not-model-only",
+        "replace-non-combined",
+        "source-is-a-target",
+        "no-components",
+        "duplicate-family",
+    ],
+)
+def test_person_predictor_extension_refusals(
+    overrides, target_families, expected
+) -> None:
+    with pytest.raises(ValueError, match=expected):
+        _extension_transfer(
+            target_families=target_families,
+            person_predictor_extensions=(_interest_extension(**overrides),),
+        )
+
+
+def test_person_predictor_extension_refuses_clashing_pairs_and_non_extensions() -> None:
+    with pytest.raises(ValueError, match="clashes with a shared transfer predictor"):
+        _extension_transfer(
+            person_predictor_extensions=(
+                _interest_extension(),
+                _interest_extension(families=("medicaid",)),
+            )
+        )
+    investment = "__acs_transfer_interest_dividend_rental_income"
+    with pytest.raises(ValueError, match="replacing the same shared predictor"):
+        _extension_transfer(
+            person_predictor_extensions=(
+                _interest_extension(replaces=investment),
+                _interest_extension(
+                    feature="__acs_transfer_fixture_second", replaces=investment
+                ),
+            )
+        )
+    with pytest.raises(TypeError, match="sequence of AcsPersonPredictorExtension"):
+        _extension_transfer(person_predictor_extensions=_interest_extension())
+    with pytest.raises(TypeError, match="only AcsPersonPredictorExtension"):
+        _extension_transfer(
+            person_predictor_extensions=({"feature": _EXTENSION_FEATURE},)
+        )

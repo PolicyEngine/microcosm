@@ -14,6 +14,9 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.acs_local_income import (
+    acs_local_income_transfer_target_families,
+)
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import (
     ASEC_PUF_DONOR_SPINE,
@@ -53,12 +56,19 @@ _RAW_HOURS_RANGES = {
 
 
 def acs_local_transfer_target_families() -> TargetFamilies:
-    """Add the qualified hours leaf only to the local builder's explicit plan."""
+    """The local builder's explicit coverage plan: the shared declaration plus
+    the local-only passes, the qualified hours leaf and the ASEC income
+    families (microcosm#1022). The shared declaration itself is unchanged."""
     plan = {
         entity: dict(families)
         for entity, families in declared_acs_transfer_target_families().items()
     }
     plan["person"]["source_operator_hours_worked"] = (_USUAL_HOURS,)
+    for entity, families in acs_local_income_transfer_target_families().items():
+        overlap = set(plan.setdefault(entity, {})) & set(families)
+        if overlap:  # pragma: no cover - module-owned family names
+            raise ValueError(f"Local transfer families collide: {sorted(overlap)}.")
+        plan[entity].update(families)
     return plan
 
 
