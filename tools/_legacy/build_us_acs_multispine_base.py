@@ -66,6 +66,7 @@ from microcosm.build.us_runtime.puma_ladder import (
 from microcosm.build.us_runtime.spm_independence_role import (
     us_declared_dataset_source_inputs,
 )
+from microcosm.build.us_runtime.spm_measurement_gate import engine_scopes_spm_universe
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import (
     Frame,
@@ -262,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.max_households is not None:
         source = replace(source, max_households=args.max_households)
+    drop_group_quarters_children = _drop_acs_group_quarters_children()
 
     result = build_optional_acs_multispine(
         base,
@@ -279,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         max_targets_per_fit=args.max_targets_per_fit,
         puma_ladder=puma_ladder,
         geography_seed=args.geography_seed,
+        drop_group_quarters_children=drop_group_quarters_children,
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
@@ -402,6 +405,25 @@ def _require_donor_spm_independence_role(base: Frame) -> None:
     failure = _spm_role_column_failure(person[NATIVE_SPM_ROLE])
     if failure is not None:
         raise SystemExit(f"Dense ASEC-by-PUF donor {NATIVE_SPM_ROLE} {failure}")
+
+
+def _drop_acs_group_quarters_children(engine_variables=None) -> bool:
+    """Whether to drop the ACS group-quarters children (microcosm#1263, d1484).
+
+    A group-quarters child under 15 can have no classified SPM adult. An
+    engine that does not scope SPM by measurement universe measures every
+    unit, so it refuses every SPM measurement on a population that keeps one;
+    the release's SPM measurement gate refuses to package such a population.
+    Drop them exactly while the installed engine (the release's built-with
+    engine) does not scope: once it does, they stay, declared outside the
+    universe, as the source rules.
+    """
+
+    if engine_variables is None:
+        from microcosm.data import stored_inputs
+
+        engine_variables = stored_inputs.installed_us_engine().variables
+    return not engine_scopes_spm_universe(engine_variables)
 
 
 def _require_pooled_spm_independence_role(
@@ -918,7 +940,49 @@ def _reviewed_limitations(
     spm_role = result.provenance.get("spm_independence_role")
     if isinstance(spm_role, dict):
         limitations.append(_spm_role_limitation(spm_role))
+    dropped = result.provenance.get("acs_group_quarters_children")
+    if isinstance(dropped, dict):
+        limitations.append(_group_quarters_children_limitation(dropped))
     return limitations
+
+
+def _group_quarters_children_limitation(
+    receipt: dict[str, object],
+) -> dict[str, object]:
+    """Disclose the interim drop of ACS group-quarters children (d1484)."""
+
+    return {
+        "id": "acs_group_quarters_children_outside_spm_universe",
+        "status": "reviewed_interim_exclusion",
+        "affected_spine": ACS_2024_1YR_SPINE,
+        "rule": receipt.get("rule"),
+        "authority": receipt.get("authority"),
+        "decision": receipt.get("decision"),
+        "reason": (
+            "A group-quarters person under 15 is a one-person SPM unit with no "
+            "classified adult under any role, and the built-with engine measures "
+            "every SPM unit, so one such unit refuses every SPM measurement on "
+            "the release. The source places ACS group quarters outside the SPM "
+            "universe."
+        ),
+        "treatment": (
+            "Remove these records from the staged population before the "
+            "transfer. They leave every fiscal total as well as SPM "
+            "measurement; calibration to the PUMA-ladder population marginals "
+            "re-spreads their weight. Every other group-quarters record stays."
+        ),
+        "flip_condition": receipt.get("flip_condition"),
+        "counts": {
+            key: receipt.get(key)
+            for key in (
+                "group_quarters_households",
+                "households_dropped",
+                "persons_dropped",
+                "household_weight_share_dropped",
+            )
+        },
+        "calibration_blocker": False,
+    }
 
 
 def _spm_role_limitation(receipt: dict[str, object]) -> dict[str, object]:
@@ -942,9 +1006,11 @@ def _spm_role_limitation(receipt: dict[str, object]) -> dict[str, object]:
             "Derive the role from RELSHIPP on the household partition; never "
             "default it. The ASEC rule's unrelated-subfamily branch has no ACS "
             "counterpart, and a household unit cannot see a teen who would head "
-            "a separate Census SPM unit. Group-quarters persons under 15 remain "
-            "one-person units with no classified adult under any role; the "
-            "source places group quarters outside the ACS SPM universe."
+            "a separate Census SPM unit. Group-quarters persons under 15 have "
+            "no classified adult under any role; the source places group "
+            "quarters outside the ACS SPM universe. When the staging drops "
+            "them, the acs_group_quarters_children_outside_spm_universe "
+            "limitation records it."
         ),
         "counts": {
             key: receipt.get(key)

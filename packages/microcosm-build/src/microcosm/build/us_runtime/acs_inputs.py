@@ -29,10 +29,13 @@ __all__ = [
     "ACS_SPM_ROLE_PARTITION",
     "ACS_SPM_ROLE_RULE",
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_GROUP_QUARTERS_CHILD_RULE",
+    "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
     "AcsSpmRoleResult",
     "map_acs_native_inputs",
     "with_acs_spm_independence_role",
+    "without_acs_group_quarters_children",
 ]
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
@@ -469,6 +472,127 @@ def with_acs_spm_independence_role(frame: Frame) -> AcsSpmRoleResult:
         metadata=frame.metadata,
     )
     return AcsSpmRoleResult(derived, provenance)
+
+
+#: The ACS records the interim drop removes (microcosm#1263, decision d1484).
+ACS_GROUP_QUARTERS_CHILD_RULE = (
+    "TYPEHUGQ in {2, 3} (a group-quarters record, the record's only person) "
+    "AND age < 15"
+)
+#: Census SEHSD-WP2020-09 pp. 6-7 limits the ACS SPM sample to housing units;
+#: ``spm_universe_source`` declares ACS group quarters OUTSIDE on that basis.
+_GROUP_QUARTERS_CHILDREN_AUTHORITY = (
+    "Census SEHSD-WP2020-09 pp. 6-7: the ACS SPM universe is people in housing "
+    "units; ACS group quarters are outside it "
+    "(microcosm.build.us_runtime.spm_universe_source)"
+)
+
+
+@dataclass(frozen=True)
+class AcsGroupQuartersChildrenResult:
+    """An ACS frame without its group-quarters children, plus the receipt."""
+
+    frame: Frame
+    provenance: Mapping[str, Any]
+
+
+def without_acs_group_quarters_children(frame: Frame) -> AcsGroupQuartersChildrenResult:
+    """Remove the ACS group-quarters records whose only person is under 15.
+
+    An interim (microcosm#1263, decision d1484), not a source rule. No role
+    can give such a person a classified adult under spm-calculator's rule
+    (``age >= 18 OR (age >= 15 AND role)``), and an engine that does not scope
+    SPM by measurement universe refuses every SPM measurement on a population
+    containing one. The source places ACS group quarters outside the SPM
+    universe, so the end state is to keep these records and exclude them from
+    SPM measurement alone. Until the engine can, the staging builder removes
+    them from the population. That also removes them from every fiscal total,
+    which the receipt and the staging's reviewed limitation disclose. The
+    builder stops calling this once the certified engine scopes SPM by
+    universe.
+
+    Refuses when ``TYPEHUGQ``, ``age`` or a membership column is missing or
+    unreadable, or when a group-quarters record holds other than one person.
+    Housing units are never touched, whatever their ages.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS group-quarters children require the US schema.")
+    person = frame.table("person")
+    household = frame.table("household")
+    for table, columns, label in (
+        (person, ("age", "person_household_id"), "person"),
+        (household, ("household_id", "TYPEHUGQ"), "household"),
+    ):
+        missing = [column for column in columns if column not in table]
+        if missing:
+            raise ValueError(
+                f"ACS group-quarters children require {label} column(s): {missing}."
+            )
+    kind = pd.Series(
+        pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(),
+        index=household["household_id"].to_numpy(),
+    )
+    if not kind.isin((1, 2, 3)).all():
+        raise ValueError(
+            "ACS group-quarters children require TYPEHUGQ in {1, 2, 3} for every "
+            "household."
+        )
+    household_id = person["person_household_id"].to_numpy()
+    person_kind = pd.Series(household_id).map(kind).to_numpy(dtype=np.float64)
+    if np.isnan(person_kind).any():
+        raise ValueError(
+            "ACS group-quarters children found persons in no declared household."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(age).all():
+        raise ValueError(
+            "ACS group-quarters children require an observed age for every person."
+        )
+    group_quarters = np.isin(person_kind, _ACS_GROUP_QUARTERS_TYPEHUGQ)
+    persons_per_household = pd.Series(household_id).map(
+        pd.Series(household_id).value_counts()
+    )
+    crowded = group_quarters & (persons_per_household.to_numpy() != 1)
+    if crowded.any():
+        raise ValueError(
+            "ACS group-quarters children found "
+            f"{int(crowded.sum())} person(s) in group-quarters records of more "
+            "than one person; a group-quarters record is its only person's."
+        )
+    child = group_quarters & (age < 15)
+    weights = frame.weights_for("household")
+    household_weight = pd.Series(
+        np.asarray(weights.values, dtype=np.float64),
+        index=household["household_id"].to_numpy(),
+    )
+    dropped_weight = float(household_weight.loc[np.unique(household_id[child])].sum())
+    total_weight = float(household_weight.sum())
+    provenance = {
+        "rule": ACS_GROUP_QUARTERS_CHILD_RULE,
+        "authority": _GROUP_QUARTERS_CHILDREN_AUTHORITY,
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": (
+            "Keep these records, declared OUTSIDE the SPM universe, in the first "
+            "release certified against an engine that scopes SPM measurement by "
+            "spm_unit_spm_universe_status "
+            "(microcosm.build.us_runtime.spm_measurement_gate."
+            "engine_scopes_spm_universe)."
+        ),
+        "households_before": int(len(household)),
+        "persons_before": int(len(person)),
+        "group_quarters_households": int(group_quarters.sum()),
+        "households_dropped": int(child.sum()),
+        "persons_dropped": int(child.sum()),
+        "household_weight_dropped": dropped_weight,
+        "household_weight_share_dropped": (
+            dropped_weight / total_weight if total_weight else 0.0
+        ),
+    }
+    if not child.any():
+        return AcsGroupQuartersChildrenResult(frame, provenance)
+    return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
 
 
 def _refuse_units(offending: pd.Index, problem: str) -> None:

@@ -256,6 +256,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             fit_records=(FitWeightRecord("acs_transfer:person:benefits", "design"),),
             provenance={
                 "enabled": True,
+                "acs_group_quarters_children": {
+                    "rule": "invented rule",
+                    "authority": "invented authority",
+                    "decision": "microcosm#1263 (d1484)",
+                    "status": "interim",
+                    "flip_condition": "invented flip condition",
+                    "group_quarters_households": 1,
+                    "households_dropped": 0,
+                    "persons_dropped": 0,
+                    "household_weight_share_dropped": 0.0,
+                },
                 "deferred_inputs": ["block_geoid", "tract_geoid"],
                 "geography_ladder": {
                     "applied": True,
@@ -341,6 +352,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         fake_fetch,
     )
     monkeypatch.setattr(builder, "build_optional_acs_multispine", fake_build)
+    # The engine-free lane has no policyengine-us to ask whether it scopes SPM
+    # by universe; the decision itself is tested below.
+    monkeypatch.setattr(builder, "_drop_acs_group_quarters_children", lambda: True)
     monkeypatch.setattr(
         builder,
         "load_us_puma_ladder",
@@ -404,6 +418,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert actual_source.max_households == 7
     assert build_options.pop("puma_ladder") is puma_ladder
     assert callable(build_options.pop("hours_donor_factory"))
+    assert build_options.pop("drop_group_quarters_children") is True
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
@@ -428,6 +443,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "native_acs_source_universe_blanks",
         "sub_puma_geographic_precision",
         "acs_spm_independence_role_household_partition",
+        "acs_group_quarters_children_outside_spm_universe",
     ]
     assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
         "block_geoid",
@@ -1079,6 +1095,58 @@ def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
     ]
     assert geography["assignment_seed"] == 29
     assert all(item["calibration_blocker"] is False for item in limitations)
+
+
+@pytest.mark.parametrize(
+    ("declares_universe", "drop"),
+    [(False, True), (True, False)],
+)
+def test_group_quarters_children_drop_exactly_while_the_engine_does_not_scope(
+    declares_universe, drop
+) -> None:
+    """d1484's flip condition, in code: the staging drops them under an engine
+    that measures every SPM unit, and keeps them under one that scopes SPM by
+    measurement universe."""
+
+    builder = _load_builder_module()
+    variables = {"age", "spm_unit_spm_threshold"}
+    if declares_universe:
+        variables.add("spm_unit_spm_universe_status")
+
+    assert builder._drop_acs_group_quarters_children(variables) is drop
+
+
+def test_the_drop_is_disclosed_as_a_reviewed_interim_limitation() -> None:
+    builder = _load_builder_module()
+    receipt = {
+        "rule": "TYPEHUGQ in {2, 3} AND age < 15",
+        "authority": "Census SEHSD-WP2020-09 pp. 6-7",
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": "keep them once the engine scopes",
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+        "household_weight_dropped": 123.0,
+    }
+
+    limitation = builder._group_quarters_children_limitation(receipt)
+
+    assert limitation["id"] == "acs_group_quarters_children_outside_spm_universe"
+    assert limitation["status"] == "reviewed_interim_exclusion"
+    assert limitation["affected_spine"] == "acs_2024_1yr"
+    assert limitation["decision"] == "microcosm#1263 (d1484)"
+    assert limitation["flip_condition"] == receipt["flip_condition"]
+    assert limitation["counts"] == {
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+    }
+    assert "fiscal total" in limitation["treatment"]
+    assert limitation["calibration_blocker"] is False
+    json.dumps(limitation, allow_nan=False)
 
 
 def test_donor_release_identity_verifies_sha_and_pins_provenance(

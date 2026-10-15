@@ -112,8 +112,37 @@ public files and records aggregate counts only
   The derivation counts these units in its receipt instead of refusing the
   spine, because they are not a housing-unit defect. An engine that does not
   scope SPM by universe still measures them, so the release gate below refuses
-  any release that keeps them under such an engine. How they leave SPM
-  measurement is recorded on microcosm#1263.
+  any release that keeps them under such an engine. Until the engine scopes,
+  the staging removes them; see "The interim drop" below.
+
+## The interim drop of group-quarters children
+
+Max ruled on 2026-10-15 (decision d1484, microcosm#1263) that the one-person
+ACS group-quarters records of children under 15 leave the ACS local population
+for now. The end state keeps them, declared outside the SPM universe, once the
+engine scopes SPM by that declaration (policyengine-us#9462).
+
+- **The rule.** `acs_inputs.without_acs_group_quarters_children` removes every
+  ACS household with `TYPEHUGQ` in {2, 3} whose only person is under 15,
+  pruning that person's units and weight with it. It refuses a frame without
+  `TYPEHUGQ`, an off-domain `TYPEHUGQ`, a missing or non-finite age, and a
+  group-quarters record of more than one person. It never touches a housing
+  unit.
+- **Where it runs.** `build_optional_acs_multispine` applies it right after
+  mapping the native ACS inputs, before the under-15 hours completion and the
+  role derivation, so every later receipt covers exactly the staged rows.
+- **When it runs.** The staging builder drops these records exactly while the
+  installed policyengine-us does not define `spm_unit_spm_universe_status`
+  (`_drop_acs_group_quarters_children`). That is the ruling's flip condition,
+  in code.
+- **The cost.** The records leave every fiscal total, not only SPM
+  measurement: 1,946 households and persons in the 2024 PUMS, about 0.005% of
+  the ACS spine's weight. Calibration to the PUMA-ladder population marginals
+  re-spreads their weight. Every other group-quarters record stays.
+- **The disclosure.** The receipt rides the staging provenance as
+  `acs_group_quarters_children`, and the summary's `reviewed_limitations`
+  carries `acs_group_quarters_children_outside_spm_universe` with its counts,
+  authority and flip condition.
 
 ## Where it runs, and where it does not
 

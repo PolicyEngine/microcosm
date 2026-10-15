@@ -25,6 +25,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime.acs_inputs import (
     map_acs_native_inputs,
     with_acs_spm_independence_role,
+    without_acs_group_quarters_children,
 )
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
@@ -71,6 +72,8 @@ class AcsMultispineResult:
     values accepted by strict ``json.dumps(..., allow_nan=False)``.
     ``provenance["spm_independence_role"]`` is the ACS role receipt, or
     ``None`` when the base carries no role for the ACS spine to match.
+    ``provenance["acs_group_quarters_children"]`` is the interim drop's
+    receipt, or ``None`` when the caller kept those records.
     """
 
     frame: Frame
@@ -99,6 +102,7 @@ def build_optional_acs_multispine(
     expected_congressional_district_vintage: str | None = (
         CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
     ),
+    drop_group_quarters_children: bool = False,
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -132,6 +136,17 @@ def build_optional_acs_multispine(
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
+    # Interim (microcosm#1263, d1484): a group-quarters child under 15 can
+    # have no classified SPM adult, and an engine that measures every unit
+    # refuses the whole population's SPM measurement for one. The caller
+    # decides from its engine; the drop runs before the hours completion and
+    # the role derivation, so each receipt covers exactly the staged rows.
+    group_quarters_children_provenance = None
+    if drop_group_quarters_children:
+        dropped = without_acs_group_quarters_children(mapped_frame)
+        mapped_frame = dropped.frame
+        group_quarters_children_provenance = _json_ready_mapping(dropped.provenance)
+        del dropped
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -242,6 +257,7 @@ def build_optional_acs_multispine(
         "loader": loader_provenance,
         "native_inputs": native_provenance,
         "spm_independence_role": spm_role_provenance,
+        "acs_group_quarters_children": group_quarters_children_provenance,
         "imputed_inputs": imputed_provenance,
         "deferred_inputs": deferred_provenance,
         "adult_care_recipient_gate": _json_ready(adult_care_gate)

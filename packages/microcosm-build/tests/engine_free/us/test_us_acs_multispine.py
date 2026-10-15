@@ -203,6 +203,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
             }
         },
         "spm_independence_role": None,
+        "acs_group_quarters_children": None,
         "imputed_inputs": [
             {
                 "column": "taxable_interest_income",
@@ -330,6 +331,119 @@ def test__given_a_role_bearing_base__then_the_acs_spine_derives_the_role(
     assert NATIVE_SPM_ROLE not in {
         item["column"] for item in result.provenance["imputed_inputs"]
     }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def _raw_acs_frame_with_group_quarters_child() -> Frame:
+    """The family above plus a one-person group-quarters record of a child."""
+
+    family = _raw_acs_frame()
+    person = pd.concat(
+        [
+            family.table("person"),
+            pd.DataFrame(
+                {
+                    "person_id": [12],
+                    "person_household_id": [12],
+                    "person_tax_unit_id": [12],
+                    "person_spm_unit_id": [12],
+                    "person_family_id": [12],
+                    "person_marital_unit_id": [12],
+                    "AGEP": [10],
+                    "SEX": [2],
+                    "RELSHIPP": [37],
+                    "ADJINC": [1_100_000],
+                    "WAGP": [0.0],
+                    "SEMP": [0.0],
+                    "SSP": [0.0],
+                    "SSIP": [0.0],
+                    "RETP": [0.0],
+                    "INTP": [0.0],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    household = pd.concat(
+        [
+            family.table("household").assign(TYPEHUGQ=[1]),
+            pd.DataFrame(
+                {
+                    "household_id": [12],
+                    "state_fips": [6],
+                    "puma": ["0600100"],
+                    "ADJHSG": [1_000_000],
+                    "TEN": [np.nan],
+                    "RNTP": [np.nan],
+                    "GRNTP": [np.nan],
+                    "TAXAMT": [np.nan],
+                    "TYPEHUGQ": [3],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": household,
+            "tax_unit": pd.DataFrame({"tax_unit_id": [10, 12]}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [10, 12]}),
+            "family": pd.DataFrame({"family_id": [10, 12]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10, 12]}),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.asarray([50.0, 5.0]), WeightKind.DESIGN)},
+        pd.Series("acs_2024_1yr", index=person.index, dtype=object),
+    )
+
+
+@pytest.mark.parametrize("drop", [False, True])
+def test__given_the_interim_drop__then_group_quarters_children_leave_first(
+    monkeypatch, tmp_path, drop
+) -> None:
+    """microcosm#1263, d1484: with the drop, the group-quarters child never
+    reaches the role derivation or the transfer, and the role receipt covers
+    exactly the staged rows; without it, the receipt counts the child."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            _raw_acs_frame_with_group_quarters_child(),
+            {},
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+        drop_group_quarters_children=drop,
+    )
+
+    person = result.frame.table("person")
+    acs_persons = int(person[spine_column("person")].eq("acs_2024_1yr").sum())
+    receipt = result.provenance["spm_independence_role"]
+    dropped = result.provenance["acs_group_quarters_children"]
+    if drop:
+        assert acs_persons == 2
+        assert receipt["persons"] == 2
+        assert receipt["group_quarters_units_without_classified_adult"] == 0
+        assert dropped["households_dropped"] == 1
+        assert dropped["persons_dropped"] == 1
+        assert dropped["status"] == "interim"
+    else:
+        assert acs_persons == 3
+        assert receipt["persons"] == 3
+        assert receipt["group_quarters_units_without_classified_adult"] == 1
+        assert dropped is None
     json.dumps(result.provenance, allow_nan=False)
 
 
