@@ -16,6 +16,7 @@ from microcosm.build.gate_battery import gate_signing_key_env
 from microcosm.build.uk_runtime import release_certification
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -155,7 +156,7 @@ def test_compose_green_certification(green_certification_inputs):
         declared
     )
     assert certification["spec"]["certification_excluded_gate_ids"] == sorted(
-        UK_LOCAL_GATE_SCOPE
+        set(UK_LOCAL_GATE_SCOPE) | set(UK_LOCAL_DIAGNOSTIC_GATE_SCOPE)
     )
     assert certification["spec"]["shared_gate_ids"] == sorted(UK_SHARED_GATE_IDS)
     assert certification["doctrine"]["overrides"] == {
@@ -230,7 +231,7 @@ def test_compose_refuses_tampered_part_signature(green_certification_inputs):
 def test_compose_refuses_entry_id_gap(green_certification_inputs):
     cut_path = green_certification_inputs["release_cut_report_path"]
     payload = json.loads(cut_path.read_text(encoding="utf-8"))
-    payload["gates"].pop("uk_qrf_tail_concentration")
+    payload["gates"].pop("uk_input_mass_parity")
     cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(UKReleaseCertificationError, match="entry ids"):
         compose_uk_release_certification(**green_certification_inputs)
@@ -556,6 +557,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         set(UK_SPINE_GATE_SCOPE)
         | set(UK_CALIBRATION_GATE_SCOPE)
         | set(UK_LOCAL_GATE_SCOPE)
+        | set(UK_LOCAL_DIAGNOSTIC_GATE_SCOPE)
     ) - set(UK_NATIONAL_GATE_SCOPE)
     on_disk = json.loads(report_path.read_text(encoding="utf-8"))
     assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]

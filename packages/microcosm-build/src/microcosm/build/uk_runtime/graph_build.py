@@ -85,6 +85,13 @@ class UKFullBuildConfig:
     geography_assignment: str = "atomic"
     #: FRS release vintage folded into every geography identity key.
     source_vintage: str = field(default_factory=lambda: load_uk_frs_release().vintage)
+    #: ``price_paid`` reads each owner clone's home value off its assigned
+    #: constituency's uprated Land Registry sale distribution and its band off
+    #: its LSOA's VOA mix (microcosm#1240); ``none`` keeps the spine's values
+    #: and bands on every clone (measurement builds only; a release candidate
+    #: refuses it). Unset, the mode follows the geography assignment:
+    #: ``price_paid`` on the atomic assignment, ``none`` on the legacy one.
+    property_localisation: str | None = None
 
     def __post_init__(self) -> None:
         from .graph_population import GEOGRAPHY_ASSIGNMENTS
@@ -93,6 +100,25 @@ class UKFullBuildConfig:
         if self.geography_assignment not in GEOGRAPHY_ASSIGNMENTS:
             raise ValueError(
                 f"Geography assignment must be one of {GEOGRAPHY_ASSIGNMENTS}."
+            )
+        from .graph_population import PROPERTY_LOCALISATION_MODES
+
+        if self.property_localisation is None:
+            object.__setattr__(
+                self,
+                "property_localisation",
+                "price_paid" if self.geography_assignment == "atomic" else "none",
+            )
+        if self.property_localisation not in PROPERTY_LOCALISATION_MODES:
+            raise ValueError(
+                f"Property localisation must be one of {PROPERTY_LOCALISATION_MODES}."
+            )
+        if (
+            self.property_localisation != "none"
+            and self.geography_assignment != "atomic"
+        ):
+            raise ValueError(
+                "Property localisation needs the atomic geography assignment."
             )
         if not isinstance(self.source_vintage, str) or not self.source_vintage:
             raise ValueError("The FRS source vintage must be a non-empty string.")
@@ -209,6 +235,7 @@ def uk_full_graph(
         geography_assignment=config.geography_assignment,
         atomic_geography_definition=atomic_geography_definition,
         source_vintage=config.source_vintage,
+        property_localisation_mode=config.property_localisation,
     )
     graph = append_uk_target_nodes(
         graph,
@@ -236,7 +263,9 @@ def uk_full_graph(
                 structural=StructuralDelta.FILTER,
                 base="uk.full.expand",
                 inputs=population_slices(cells),
-                artifact_inputs=uk_pool_validation_inputs(config.geography_assignment),
+                artifact_inputs=uk_pool_validation_inputs(
+                    config.geography_assignment, config.property_localisation
+                ),
                 description="Checkpoint the complete geographic pool and selected-target problem.",
             ),
         ),

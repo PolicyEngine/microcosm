@@ -182,7 +182,10 @@ def uk_local_size_doctrine() -> dict[str, object]:
     }
 
 
-_ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
+_ALLOWED_SCALE_RULES = (
+    "default_target_loss_scales",
+    "default_target_loss_scales_with_family_floors",
+)
 _ALLOWED_TARGET_WEIGHT_RULES = UK_LOCAL_TARGET_WEIGHT_RULES
 _OVERRIDABLE_FIELDS = frozenset({"target_weight_rule"})
 
@@ -192,7 +195,8 @@ class UKLocalSolveDoctrine:
     """The declared, reviewed bounds of the uniform UK local solve operator.
 
     ``scale_rule`` and ``target_weight_rule`` are closed vocabularies: the
-    only admissible scale rule is the canonical target-defined default, and
+    admissible scale rules are the canonical target-defined default and that
+    default with the reviewed per-family floors (microcosm#1240), and
     the admissible target weightings are ``uniform``, ``grain_equal`` and the
     row-metadata rules of :data:`UK_LOCAL_ROW_METADATA_RULES`, of which
     ``nation_grain_family_equal_sqrt_count`` is the reviewed default and the
@@ -203,7 +207,9 @@ class UKLocalSolveDoctrine:
 
     target_loss_cap: float = UK_LOCAL_TARGET_LOSS_CAP
     max_weight_ratio: float | None = UK_LOCAL_MAX_WEIGHT_RATIO
-    scale_rule: str = "default_target_loss_scales"
+    #: microcosm#1240 review: the default rule with the family floors of
+    #: ``target_weights.UK_LOCAL_LOSS_SCALE_FLOORS``.
+    scale_rule: str = "default_target_loss_scales_with_family_floors"
     target_weight_rule: str = UK_LOCAL_TARGET_WEIGHT_RULE
 
     def __post_init__(self) -> None:

@@ -139,6 +139,11 @@ def _raw_tape(rows: int = 240, *, seed: int = 0) -> pd.DataFrame:
                 "PAY": pay,
                 "DIVIDENDS": pay * 0.05,
                 "INCBBS": pay * 0.01,
+                # Annex A bridge codes: pay is every record's main source, no
+                # trade pages, below State Pension age; composites carry none.
+                "MAINSRCE": -1.0 if composite else 1.0,
+                "SEINC_NUM": -1.0 if composite else 0.0,
+                "SPA": -1.0 if composite else 0.0,
             }
         )
         row["TEI"] = row["PAY"]

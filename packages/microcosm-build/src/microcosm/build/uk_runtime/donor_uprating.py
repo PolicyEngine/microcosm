@@ -356,9 +356,12 @@ def _engine_index_audit(
 ) -> dict[str, Any]:
     """Record the engine's own index ratio beside the applied outturn factor.
 
-    The engine's ``*_spending_litre_proxy`` indices are not applied (they
-    reproduce its 2023 pump-price parameters, which disagree with DESNZ);
-    the ratio is recorded so the divergence stays visible in the evidence.
+    The engine's ``*_spending_litre_proxy`` indices are not applied. Up to
+    policyengine-uk 2.126.10 they reproduced its 2023 pump-price parameters,
+    which disagreed with DESNZ; 2.126.11 re-based them on DESNZ pump prices
+    (PolicyEngine/policyengine-uk#2186), and they still differ from the
+    outturn applied here. The ratio is recorded so the divergence stays
+    visible in the evidence.
     """
 
     before = reader(path, from_period)

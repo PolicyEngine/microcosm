@@ -31,6 +31,18 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_LANDLORD_CARRIER_COLUMN,
     uc_gainful_self_employment,
 )
+from microcosm.build.uk_runtime.spi_rank_transport import (
+    SPI_STAGE1_ANALOGUE_COLUMNS,
+    SPI_TRANSPORT_FIT_NAME,
+    SPI_TRANSPORT_FOLDS,
+    SPI_TRANSPORT_KEY_COLUMN,
+    SPI_TRANSPORT_SEED_OFFSET,
+    analogue_targets,
+    assert_analogue_map_covers,
+    cell_fold_ids,
+    cross_fit_transport,
+    observed_analogues,
+)
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -85,6 +97,78 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: The column persists the FRS adult-file role from
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
+#: Person flag the stage writes: True exactly for the rows stage 1 drew from
+#: the tape (claimants and partners aged 16 and over with taxable income under
+#: the recipient income rule, and the reserved band carriers), False for the
+#: undrawn copies, the channel's dependants and every FRS row. A later stage
+#: that tells tape-concept rows from FRS-concept ones reads it instead of
+#: re-deriving the recipient rule (property_components; microcosm#840).
+SPI_INCOME_RECIPIENT_COLUMN = "person_is_spi_income_recipient"
+#: The tape's bridge codes (SPI 2022-23 Public Use Tape documentation, Annex
+#: A): MAINSRCE "main source indicator", SEINC_NUM "indicator for
+#: self-employed cases (those submitting pages in their tax return for income
+#: from trades or partnerships)" and SPA "State Pension age indicator".
+#: Composite records (-1) carry none and derive theirs from their leaves.
+SPI_MAINSRCE_CODES: Mapping[int, str] = {
+    -1: "composite",
+    1: "pay",
+    2: "pension",
+    3: "trade",
+    4: "trade",
+    5: "other",
+    6: "other",
+}
+SPI_MAINSRCE_CODE_LABELS: Mapping[int, str] = {
+    -1: "not classified (composite record)",
+    1: "main source pay",
+    2: "main source occupational pension",
+    3: "main source sole trader",
+    4: "main source partnership",
+    5: "main source other",
+    6: "claims case",
+}
+SPI_INDICATOR_CODES = (-1, 0, 1)
+#: The bridge predictors (microcosm#840): four facts about a record's income
+#: that the tape and the FRS twin each carry, so a recipient draws from the
+#: tape records that share them. main_source and has_pay come from the same
+#: leaf formulas on both sides. has_trade and at_or_over_spa take the tape's
+#: published indicator codes (SEINC_NUM, self-employment pages filed; SPA, at
+#: State Pension age), the leaf formulas serving only a composite record
+#: without codes, and on the twin its trade leaf or self-employed status and
+#: its age against State Pension age. The published MAINSRCE code validates
+#: the leaf-defined main source, and the receipt reports the indicator codes
+#: against the leaves both ways.
+SPI_MAIN_SOURCE_LEVELS = ("pay", "pension", "trade", "other")
+SPI_BRIDGE_PREDICTOR_COLUMNS = ("main_source", "has_pay", "has_trade", "at_or_over_spa")
+SPI_STAGE1_CATEGORICAL_PREDICTORS = ("gender", "region", "main_source")
+SPI_STAGE1_PREDICTOR_COLUMNS = (
+    "age",
+    "gender",
+    "region",
+    *SPI_BRIDGE_PREDICTOR_COLUMNS,
+)
+#: The leaf-defined main source must translate the published MAINSRCE code
+#: on at least this weighted share of the classified tape records. The stage
+#: evidence's bridge_validation measured 0.969 on the full 2022-23 tape with
+#: this stage's preparation (pay 0.983, occupational pension 0.987, sole
+#: trader 0.851, partnership 0.744, other 0.916; composites 0.002).
+SPI_MAIN_SOURCE_MINIMUM_AGREEMENT = 0.95
+#: The no-record rule (microcosm#840): the tape holds people with an income
+#: tax record, so a twin with no taxable income has no population on it to
+#: condition on and its copy keeps the twin's values. Unearned income counts
+#: only above this floor, the order of the savings, dividend and property
+#: allowances: a declared modelling boundary like the under-16 one.
+SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP = 1_000.0
+SPI_RECIPIENT_INCOME_RULE = (
+    "drawn when the twin reports pay, a trade (self-employment income or a "
+    "self-employed main job) or a pension, or more than the floor of taxable "
+    "interest (savings interest less the tax-free part), dividends, property "
+    "and miscellaneous income together, and always for a reserved band "
+    "carrier; otherwise the twin has no tax record for the tape to condition "
+    "on and the copy keeps the twin's values at stage 1 and stage 2; a twin "
+    "whose only record is the State Pension is drawn, against a tape that "
+    "mostly holds taxpayers, which can lift its pension leaves"
+)
 SPI_DONOR_INCOME_YEAR = 2022
 #: The donor rebase moves each SPI component from the tape's year to the
 #: frame's survey year. Those years are history, so a component moves by the
@@ -235,6 +319,9 @@ SPI_DONOR_REQUIRED_COLUMNS = (
     "TEI",
     "TII",
     "TI",
+    "MAINSRCE",
+    "SEINC_NUM",
+    "SPA",
 )
 SPI_INCOME_SOURCE_COLUMNS = {
     # Keep the PolicyEngine input on the pinned enhanced-FRS precedent. The
@@ -568,6 +655,11 @@ class UKSPIIncomeImputationResult:
     donor_property_finance_costs: Mapping[str, object] | None = None
     state_pension_age_guard: tuple[Mapping[str, object], ...] = ()
     recipient_domain: Mapping[str, object] | None = None
+    stage1_transport: Mapping[str, object] | None = None
+    bridge_validation: Mapping[str, object] | None = None
+    reference_training_rows: int = 0
+    state_pension_age: int | None = None
+    gainful_self_employment_refresh: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -673,6 +765,8 @@ def impute_uk_spi_income_support(
     band_donor_resample: Mapping[str, object] | None = None,
     donor_age_model: SPIDonorAgeModel | None = None,
     state_pension_age_guard: UKSPIStatePensionAgeGuard | None = None,
+    state_pension_age: int | None = None,
+    allow_in_sample_reference: bool = False,
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -683,7 +777,9 @@ def impute_uk_spi_income_support(
     every synthetic adult on the forest draw. ``donor_age_model`` draws donor
     ages by ONS single-year shares, State Pension age aware, and
     ``state_pension_age_guard`` zeroes pension-age reports below State Pension
-    age with receipts (microcosm#1069).
+    age with receipts (microcosm#1069). ``state_pension_age`` is the boundary
+    the bridge predictor ``at_or_over_spa`` reads on the twin; it defaults to
+    the donor age model's and is required without one (microcosm#840).
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -776,19 +872,47 @@ def impute_uk_spi_income_support(
     # uk-data#504, so each recipient keeps the draw it has always had; the
     # rows of dependants aged 16 to 19 are then discarded.
     spi_age_domain = spi_channel_people & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE)
-    spi_people = spi_age_domain & person[SPI_RECIPIENT_ROLE_COLUMN]
-    if not spi_people.any():
+    role_domain = spi_age_domain & person[SPI_RECIPIENT_ROLE_COLUMN]
+    if not role_domain.any():
         raise ValueError("SPI support has no recipients in the donor age domain.")
+    if state_pension_age is None and donor_age_model is not None:
+        state_pension_age = donor_age_model.state_pension_age
+    if state_pension_age is None:
+        raise ValueError(
+            "SPI stage-1 bridge predictors need State Pension age: pass "
+            "state_pension_age or a donor age model."
+        )
+    person_weights = _person_household_weights(person, household)
+    # The no-record rule (microcosm#840): a twin with no taxable income has no
+    # tax record for the tape to condition on, so its copy keeps the twin's
+    # values; a reserved band carrier is always drawn, since its leaves come
+    # from the band pools after the forest draw.
+    taxable = _taxable_income_mask(person.loc[role_domain])
+    carrier = (
+        person.loc[role_domain, SPI_INCOME_BAND_CARRIER_COLUMN].astype(bool).to_numpy()
+        if SPI_INCOME_BAND_CARRIER_COLUMN in person.columns
+        else np.zeros(int(role_domain.sum()), dtype=bool)
+    )
+    spi_people = role_domain.copy()
+    spi_people.loc[role_domain] = taxable | carrier
+    undrawn = role_domain & ~spi_people
+    if not spi_people.any():
+        raise ValueError("SPI support has no recipients with taxable income.")
     recipient_domain = {
         "minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
         "role_column": SPI_RECIPIENT_ROLE_COLUMN,
         "recipient_rows": int(spi_people.sum()),
-        "dependant_rows_kept_on_twin_values": int((spi_age_domain & ~spi_people).sum()),
-        "dependant_weight_kept_on_twin_values": float(
-            _person_household_weights(person, household)
-            .loc[spi_age_domain & ~spi_people]
-            .sum()
+        "dependant_rows_kept_on_twin_values": int(
+            (spi_age_domain & ~role_domain).sum()
         ),
+        "dependant_weight_kept_on_twin_values": float(
+            person_weights.loc[spi_age_domain & ~role_domain].sum()
+        ),
+        "income_rule": SPI_RECIPIENT_INCOME_RULE,
+        "unearned_income_floor_gbp": SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP,
+        "undrawn_no_taxable_income_rows": int(undrawn.sum()),
+        "undrawn_no_taxable_income_weight": float(person_weights.loc[undrawn].sum()),
+        "carriers_drawn_without_taxable_income": int((carrier & ~taxable).sum()),
     }
     base_people = person[person_channel] == BASE_FRS_SUPPORT_CHANNEL
     if not base_people.any():
@@ -801,13 +925,47 @@ def impute_uk_spi_income_support(
         )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
 
-    recipient_predictors = _stage1_query_predictors(
-        person.loc[spi_channel_people],
-        household,
+    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
+    if "clone_index" in household:
+        base_household &= household["clone_index"] == 0
+    training_household_ids = set(household.loc[base_household, "household_id"])
+    training_people = base_people & person["person_household_id"].isin(
+        training_household_ids
     )
-    donor_predictors, encoded_recipient = _encode_predictor_pair(
-        donor[["age", "gender", "region"]],
-        recipient_predictors,
+    if not training_people.any():
+        raise ValueError("FRS-only stage has no canonical base training rows.")
+    # The reference forest's population mirrors the draw's: FRS claimants and
+    # partners aged 16 and over with taxable income under the same rule.
+    reference_people = (
+        training_people
+        & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE)
+        & person[SPI_RECIPIENT_ROLE_COLUMN]
+    )
+    reference_people.loc[reference_people] = _taxable_income_mask(
+        person.loc[reference_people]
+    )
+    if not reference_people.any():
+        raise ValueError(
+            "SPI reference forest has no FRS training rows with taxable income."
+        )
+
+    recipient_predictors = _stage1_query_predictors(
+        person.loc[spi_people],
+        household,
+        state_pension_age=state_pension_age,
+    )
+    reference_predictors = _stage1_query_predictors(
+        person.loc[reference_people],
+        household,
+        state_pension_age=state_pension_age,
+    )
+    donor_predictors, encoded_reference, encoded_recipient = _encode_predictor_frames(
+        (
+            donor[list(SPI_STAGE1_PREDICTOR_COLUMNS)],
+            reference_predictors,
+            recipient_predictors,
+        ),
+        categorical=SPI_STAGE1_CATEGORICAL_PREDICTORS,
     )
     donor_frame = _person_fit_frame(
         predictors=donor_predictors,
@@ -822,20 +980,83 @@ def impute_uk_spi_income_support(
         list(SPI_INCOME_QRF_OUTPUT_COLUMNS),
         weights="design",
     )
-    stage1_draws = stage1.predict(encoded_recipient)
+    # The twin-conditional transport (microcosm#840): reference forests on
+    # the FRS rows, with the stage-1 predictors and chain order, locate each
+    # twin's observed leaves; the stage-1 forest draws at those uniforms. The
+    # forests are cross-fitted by predictor cell, so the forest that locates
+    # a copy never saw its twin (module docstring). The reference seed derives
+    # from the stage seed like stage 2's and the band resample's; changing the
+    # offset edits the derivation convention.
+    assert_analogue_map_covers(SPI_INCOME_QRF_OUTPUT_COLUMNS)
+    reference_weights = person_weights.loc[reference_people]
+    reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
+    reference_weight_kind: dict[str, str] = {}
+
+    def fit_reference(encoded: pd.DataFrame, observed: pd.DataFrame):
+        frame = _person_fit_frame(
+            predictors=encoded,
+            targets=observed,
+            weights=reference_weights.loc[encoded.index].to_numpy(dtype=np.float64),
+            weight_kind=WeightKind.IMPORTANCE,
+        )
+        fitted = qrf_cls(
+            n_estimators=n_estimators, seed=seed + SPI_TRANSPORT_SEED_OFFSET
+        ).fit(frame, list(encoded.columns), reference_targets, weights="importance")
+        reference_weight_kind.setdefault("kind", fitted.weight_kind)
+        return fitted
+
+    training_folds, used_folds = cell_fold_ids(
+        reference_predictors, folds=SPI_TRANSPORT_FOLDS, seed=seed
+    )
+    if SPI_TRANSPORT_KEY_COLUMN not in person.columns:
+        raise ValueError(
+            f"SPI stage-1 identity uniforms need {SPI_TRANSPORT_KEY_COLUMN!r} on "
+            "the person table (the support lineage column the manifest declares)."
+        )
+    identity_column = SPI_TRANSPORT_KEY_COLUMN
+    transport = cross_fit_transport(
+        fit_reference,
+        training_predictors=reference_predictors,
+        encoded_training=encoded_reference,
+        training_observed=observed_analogues(person.loc[reference_people]),
+        training_folds=training_folds,
+        training_identities=person.loc[reference_people, identity_column].to_numpy(),
+        used=used_folds,
+        recipient_predictors=recipient_predictors,
+        encoded_recipients=encoded_recipient,
+        observed=observed_analogues(person.loc[spi_people]),
+        identities=person.loc[spi_people, identity_column].to_numpy(),
+        groups=recipient_predictors["main_source"].to_numpy(),
+        seed=seed,
+        folds=SPI_TRANSPORT_FOLDS,
+        allow_in_sample=allow_in_sample_reference,
+        outputs=SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    )
+    # The tape forest reads a located sign uniform as the reference's gate
+    # wrote it only when both gates order the same classes (microcosm#840): a
+    # full build refuses a mismatch; a sampled rung or a synthetic fixture,
+    # whose tiny training support can drop a sign, records it in the receipt.
+    sign_class_mismatches = _sign_class_mismatches(transport.receipt, stage1)
+    if sign_class_mismatches and not allow_in_sample_reference:
+        raise ValueError(
+            "SPI stage-1 targets whose FRS reference sign classes differ from the "
+            f"tape forest's, so a located sign uniform would change meaning: "
+            f"{sign_class_mismatches}."
+        )
+    transport.receipt["sign_class_mismatches"] = sign_class_mismatches
+    stage1_draws = stage1.predict_from_uniforms(
+        encoded_recipient,
+        quantiles=transport.quantiles,
+        sign_uniforms=transport.sign_uniforms,
+    )
     _validate_predictions(
         stage1_draws,
         expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
         label="SPI stage-1",
     )
-    # Hold the existing RNG stream fixed: query the legacy shape (every
-    # SPI-channel person), then discard the draws outside the recipient domain
-    # (children, and dependants aged 16 to 19: uk-data#504) before any
-    # assignment, so each recipient keeps the draw it has always had.
     # FRS-channel rows keep their own reported incomes, dividends included
-    # (uk-data#498, microcosm#1095).
-    recipient_positions = spi_people.loc[spi_channel_people].to_numpy(dtype=bool)
-    stage1_draws = stage1_draws.iloc[np.flatnonzero(recipient_positions)].copy()
+    # (uk-data#498, microcosm#1095); dependants aged 16 to 19 and undrawn
+    # copies keep their twin's values (uk-data#504, microcosm#840).
     income_uprating = None
     uprating_factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
     if rebase_income_to_build_period:
@@ -894,15 +1115,6 @@ def impute_uk_spi_income_support(
         dtype=np.float64, copy=True
     )
     stage2_outputs, reviewed_absent = _stage2_outputs(person)
-    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
-    if "clone_index" in household:
-        base_household &= household["clone_index"] == 0
-    training_household_ids = set(household.loc[base_household, "household_id"])
-    training_people = (person[person_channel] == BASE_FRS_SUPPORT_CHANNEL) & person[
-        "person_household_id"
-    ].isin(training_household_ids)
-    if not training_people.any():
-        raise ValueError("FRS-only stage has no canonical base training rows.")
     if (
         state_pension_age_guard is not None
         and state_pension_age_guard.base_channel_columns
@@ -1010,12 +1222,20 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
-    person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
+    person, gainful_self_employment = _refresh_uc_gainful_self_employment(
+        person, spi_people=spi_people
+    )
     person = _refresh_landlord_carrier(person, spi_people=spi_people)
+    # The flag is the stage's last new column, where the graph's typed cells
+    # place it (the legacy oracle and the graph must agree on column order).
+    person[SPI_INCOME_RECIPIENT_COLUMN] = (
+        spi_people.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    )
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
             FitWeightRecord(SPI_DONOR_FIT_NAME, stage1.weight_kind),
+            FitWeightRecord(SPI_TRANSPORT_FIT_NAME, reference_weight_kind["kind"]),
             FitWeightRecord(FRS_ONLY_FIT_NAME, stage2.weight_kind),
         ),
         donor_path=donor_path,
@@ -1040,6 +1260,11 @@ def impute_uk_spi_income_support(
         donor_property_finance_costs=donor_full.attrs.get("property_finance_costs"),
         state_pension_age_guard=tuple(guard_receipts),
         recipient_domain=recipient_domain,
+        stage1_transport=transport.receipt,
+        bridge_validation=donor_full.attrs.get("bridge"),
+        reference_training_rows=int(reference_people.sum()),
+        state_pension_age=int(state_pension_age),
+        gainful_self_employment_refresh=gainful_self_employment,
     )
 
 
@@ -1511,6 +1736,30 @@ def _prepare_spi_donor(
     # The published age band travels with the record so band pools can match
     # a carrier's age band; composites (-1) have none and never age-match.
     donor["agerange"] = age_codes.to_numpy(dtype=np.int64)
+    # The bridge predictors (microcosm#840): main_source and has_pay from the
+    # leaves, as on the twin; has_trade and at_or_over_spa from the published
+    # indicator codes, the leaves serving a composite record without codes;
+    # the receipt validates the leaf-defined main source against MAINSRCE and
+    # reports the indicator codes against the leaves both ways.
+    _validate_spi_bridge_codes(numeric)
+    seinc = numeric["SEINC_NUM"].astype(int).to_numpy()
+    spa = numeric["SPA"].astype(int).to_numpy()
+    donor["main_source"] = _main_source(
+        donor["employment_income"].to_numpy(dtype=np.float64),
+        (
+            donor["private_pension_income"]
+            + donor[SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
+        ).to_numpy(dtype=np.float64),
+        donor["self_employment_income"].to_numpy(dtype=np.float64),
+    )
+    donor["has_pay"] = donor["employment_income"].gt(0.0).to_numpy(dtype=np.float64)
+    donor["has_trade"] = np.where(
+        seinc == -1, donor["self_employment_income"].to_numpy() > 0.0, seinc == 1
+    ).astype(np.float64)
+    donor["at_or_over_spa"] = np.where(
+        spa == -1, numeric["SRP"].to_numpy(dtype=np.float64) > 0.0, spa == 1
+    ).astype(np.float64)
+    donor.attrs["bridge"] = _spi_bridge_receipt(numeric, donor)
     donor.attrs["age_draw"] = {
         "method": (
             SPI_DONOR_AGE_DRAW_METHOD
@@ -1842,35 +2091,258 @@ def _person_predictors(
 def _stage1_query_predictors(
     person: pd.DataFrame,
     household: pd.DataFrame,
+    *,
+    state_pension_age: int,
 ) -> pd.DataFrame:
-    """Stage-1 query predictors: age at the middle of the year of age."""
+    """Stage-1 query predictors: age at the middle of the year of age, and the
+    bridge predictors derived from the row's own (the twin's) leaves."""
 
     predictors = _person_predictors(person, household, income_predictors=())
     predictors["age"] = np.floor(predictors["age"].to_numpy(dtype=np.float64)) + 0.5
-    return predictors
+    bridge = _person_bridge(person, state_pension_age=state_pension_age)
+    for column in SPI_BRIDGE_PREDICTOR_COLUMNS:
+        predictors[column] = bridge[column].to_numpy()
+    return predictors[list(SPI_STAGE1_PREDICTOR_COLUMNS)]
+
+
+def _main_source(pay: np.ndarray, pension: np.ndarray, trade: np.ndarray) -> np.ndarray:
+    """The largest of pay, pension and trade; ``other`` when none is positive."""
+
+    stacked = np.vstack([pay, pension, trade])
+    labels = np.asarray(SPI_MAIN_SOURCE_LEVELS[:3], dtype=object)[
+        stacked.argmax(axis=0)
+    ]
+    return np.where(
+        stacked.max(axis=0) > 0.0, labels, SPI_MAIN_SOURCE_LEVELS[3]
+    ).astype(object)
+
+
+_BRIDGE_PERSON_COLUMNS = (
+    "age",
+    "employment_income",
+    "self_employment_income",
+    "private_pension_income",
+    "state_pension_reported",
+    "employment_status",
+)
+_UNEARNED_INCOME_COLUMNS = (
+    "savings_interest_income",
+    "tax_free_savings_income",
+    "dividend_income",
+    "property_income",
+    "miscellaneous_income",
+)
+
+
+def _person_bridge(person: pd.DataFrame, *, state_pension_age: int) -> pd.DataFrame:
+    """The bridge predictors of FRS persons, from their own leaves.
+
+    The formulas mirror the tape's in :func:`_prepare_spi_donor`: the main
+    source is the largest of pay, pension (private plus State Pension) and
+    trade; ``has_pay`` is pay above zero; ``has_trade`` is self-employment
+    income above zero or a self-employed main job, the twin's analogue of the
+    tape's self-employment pages; ``at_or_over_spa`` reads the engine's State
+    Pension age at the build instant.
+    """
+
+    _require_columns(person, _BRIDGE_PERSON_COLUMNS, label="SPI bridge predictors")
+    numeric = person[list(_BRIDGE_PERSON_COLUMNS[:-1])]
+    _require_finite_numeric(numeric, label="SPI bridge predictors")
+    pay = numeric["employment_income"].to_numpy(dtype=np.float64)
+    pension = (
+        numeric["private_pension_income"] + numeric["state_pension_reported"]
+    ).to_numpy(dtype=np.float64)
+    trade = numeric["self_employment_income"].to_numpy(dtype=np.float64)
+    status = person["employment_status"].astype(str)
+    bridge = pd.DataFrame(index=person.index)
+    bridge["main_source"] = _main_source(pay, pension, trade)
+    bridge["has_pay"] = (pay > 0.0).astype(np.float64)
+    bridge["has_trade"] = (
+        (trade > 0.0) | status.isin(SELF_EMPLOYED_STATUSES).to_numpy()
+    ).astype(np.float64)
+    bridge["at_or_over_spa"] = (
+        numeric["age"].to_numpy(dtype=np.float64) >= float(state_pension_age)
+    ).astype(np.float64)
+    return bridge
+
+
+def _taxable_income_mask(person: pd.DataFrame) -> np.ndarray:
+    """Rows whose twin reports taxable income under the no-record rule."""
+
+    _require_columns(
+        person,
+        (*_BRIDGE_PERSON_COLUMNS, *_UNEARNED_INCOME_COLUMNS),
+        label="SPI recipient income rule",
+    )
+    numeric = person[[*_BRIDGE_PERSON_COLUMNS[1:-1], *_UNEARNED_INCOME_COLUMNS]]
+    _require_finite_numeric(numeric, label="SPI recipient income rule")
+    values = {column: numeric[column].to_numpy(dtype=np.float64) for column in numeric}
+    status = person["employment_status"].astype(str)
+    earned = (
+        (values["employment_income"] > 0.0)
+        | (values["self_employment_income"] > 0.0)
+        | status.isin(SELF_EMPLOYED_STATUSES).to_numpy()
+        | (values["private_pension_income"] + values["state_pension_reported"] > 0.0)
+    )
+    unearned = (
+        np.maximum(
+            values["savings_interest_income"] - values["tax_free_savings_income"], 0.0
+        )
+        + values["dividend_income"]
+        + values["property_income"]
+        + values["miscellaneous_income"]
+    )
+    return earned | (unearned > SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP)
+
+
+def _validate_spi_bridge_codes(numeric: pd.DataFrame) -> None:
+    """Refuse a tape whose bridge codes are not the documented ones, by code."""
+
+    for column, allowed in (
+        ("MAINSRCE", set(SPI_MAINSRCE_CODES)),
+        ("SEINC_NUM", set(SPI_INDICATOR_CODES)),
+        ("SPA", set(SPI_INDICATOR_CODES)),
+    ):
+        values = numeric[column].to_numpy(dtype=np.float64)
+        if (values != np.round(values)).any():
+            raise ValueError(f"SPI 2022-23 {column} must hold integer codes.")
+        unknown = sorted(set(values.astype(int).tolist()) - allowed)
+        if unknown:
+            raise ValueError(
+                f"SPI 2022-23 {column} has undocumented code(s): {unknown}."
+            )
+
+
+def _spi_bridge_receipt(numeric: pd.DataFrame, donor: pd.DataFrame) -> dict[str, Any]:
+    """Validate the leaf-defined bridge against the published codes.
+
+    Weighted shares over the whole tape; the leaf-defined main source must
+    agree with the published MAINSRCE code on at least
+    :data:`SPI_MAIN_SOURCE_MINIMUM_AGREEMENT` of the classified weight.
+    """
+
+    fact = numeric["FACT"].to_numpy(dtype=np.float64)
+    codes = numeric["MAINSRCE"].astype(int).to_numpy()
+    published = np.asarray(
+        [SPI_MAINSRCE_CODES[int(code)] for code in codes], dtype=object
+    )
+    classified = codes != -1
+    derived = donor["main_source"].to_numpy()
+    agree = (derived == published) & classified
+
+    def share(mask: np.ndarray, within: np.ndarray) -> float | None:
+        denominator = float(fact[within].sum())
+        if denominator <= 0.0:
+            return None
+        return float(fact[mask & within].sum() / denominator)
+
+    by_code = {}
+    for code in sorted(set(codes.tolist())):
+        rows = codes == code
+        by_code[SPI_MAINSRCE_CODE_LABELS[int(code)]] = {
+            "code": int(code),
+            "weighted_share": share(rows, np.ones(len(codes), dtype=bool)),
+            "agreement": share(agree, rows) if code != -1 else None,
+        }
+    overall = share(agree, classified)
+    pay = numeric["PAY"].to_numpy(dtype=np.float64) > 0.0
+    profits = numeric["PROFITS"].to_numpy(dtype=np.float64) > 0.0
+    seinc = numeric["SEINC_NUM"].astype(int).to_numpy() == 1
+    srp = numeric["SRP"].to_numpy(dtype=np.float64) > 0.0
+    spa = numeric["SPA"].astype(int).to_numpy() == 1
+    receipt = {
+        "predictors": list(SPI_BRIDGE_PREDICTOR_COLUMNS),
+        "main_source": {
+            "definition": (
+                "largest of employment_income, private_pension_income + "
+                "hmrc_spi_state_pension_income and self_employment_income; "
+                "other when none is positive"
+            ),
+            "validation_column": "MAINSRCE",
+            "minimum_agreement": SPI_MAIN_SOURCE_MINIMUM_AGREEMENT,
+            "weighted_agreement": overall,
+            "by_published_code": by_code,
+        },
+        "has_pay": {
+            "definition": "employment_income > 0",
+            "pay_share_among_main_source_pay": share(pay, codes == 1),
+        },
+        "has_trade": {
+            "definition": "SEINC_NUM = 1; composites self_employment_income > 0",
+            "seinc_num_share_among_positive_profits": share(
+                seinc, profits & classified
+            ),
+            "positive_profits_share_among_seinc_num": share(
+                profits, seinc & classified
+            ),
+        },
+        "at_or_over_spa": {
+            "definition": "SPA = 1; composites SRP > 0",
+            "srp_share_among_spa": share(srp, spa),
+            "spa_share_among_srp": share(spa, srp & classified),
+        },
+        "composite_weighted_share": share(~classified, np.ones(len(codes), dtype=bool)),
+    }
+    if overall is not None and overall < SPI_MAIN_SOURCE_MINIMUM_AGREEMENT:
+        raise ValueError(
+            "the leaf-defined main source no longer translates the published "
+            f"MAINSRCE code: weighted agreement {overall:.4f} is below "
+            f"{SPI_MAIN_SOURCE_MINIMUM_AGREEMENT}."
+        )
+    return receipt
+
+
+def _sign_class_mismatches(
+    receipt: Mapping[str, Any], tape: Any
+) -> dict[str, dict[str, list[int]]]:
+    """Located targets whose reference sign classes differ from the tape's."""
+
+    mismatches: dict[str, dict[str, list[int]]] = {}
+    for target in analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS):
+        reference_classes = receipt["targets"][target].get("reference_classes")
+        if reference_classes is None:
+            continue
+        tape_classes = [int(value) for value in tape.sign_classes(target)]
+        if list(reference_classes) != tape_classes:
+            mismatches[target] = {
+                "reference": [int(value) for value in reference_classes],
+                "tape": tape_classes,
+            }
+    return mismatches
+
+
+def _encode_predictor_frames(
+    frames: Sequence[pd.DataFrame],
+    *,
+    categorical: Sequence[str],
+) -> tuple[pd.DataFrame, ...]:
+    """One-hot the categorical predictors identically across several frames."""
+
+    lengths = [len(frame) for frame in frames]
+    combined = pd.concat(
+        [frame.reset_index(drop=True) for frame in frames], ignore_index=True
+    )
+    present = [column for column in categorical if column in combined.columns]
+    encoded = pd.get_dummies(combined, columns=present, drop_first=False, dtype=float)
+    encoded = encoded.reindex(sorted(encoded.columns), axis=1)
+    out = []
+    start = 0
+    for frame, length in zip(frames, lengths, strict=True):
+        part = encoded.iloc[start : start + length].copy()
+        part.index = frame.index
+        _require_finite_numeric(part, label="encoded QRF predictors")
+        out.append(part)
+        start += length
+    return tuple(out)
 
 
 def _encode_predictor_pair(
     train: pd.DataFrame,
     target: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    combined = pd.concat(
-        [train.reset_index(drop=True), target.reset_index(drop=True)],
-        ignore_index=True,
+    train_encoded, target_encoded = _encode_predictor_frames(
+        (train, target), categorical=("gender", "region")
     )
-    encoded = pd.get_dummies(
-        combined,
-        columns=["gender", "region"],
-        drop_first=False,
-        dtype=float,
-    )
-    encoded = encoded.reindex(sorted(encoded.columns), axis=1)
-    train_encoded = encoded.iloc[: len(train)].copy()
-    train_encoded.index = train.index
-    target_encoded = encoded.iloc[len(train) :].copy()
-    target_encoded.index = target.index
-    _require_finite_numeric(train_encoded, label="encoded QRF training predictors")
-    _require_finite_numeric(target_encoded, label="encoded QRF target predictors")
     return train_encoded, target_encoded
 
 
@@ -2140,32 +2612,49 @@ def _refresh_uc_start_up_period(
 
 def _refresh_uc_gainful_self_employment(
     person: pd.DataFrame, *, spi_people: pd.Series
-) -> pd.DataFrame:
-    """Derive a redrawn row's UC gainful self-employment from its drawn incomes.
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Derive a drawn row's UC gainful self-employment from the root's rule.
 
-    A redrawn row keeps the donor's employment status but takes new imputed
-    pay and profit, and the draw does not read the status (uk-data#529,
-    microcosm#840): on such a row the status says nothing about the drawn
-    trade. So the row takes the earnings route of the root's rule alone, a
-    profit above zero and above its pay (uk-data#525, ADM H4034). The main-job
-    route returns when the SPI draw follows employment status.
+    A drawn row keeps its twin's employment status and takes pay and profit
+    drawn at the twin's rank given that status (``has_trade`` conditions the
+    draw; microcosm#840), so the root's rule applies whole: a self-employed
+    main job whatever its profit, or a side trade whose profit is above zero
+    and above the row's pay (uk-data#525, ADM H4034). An undrawn copy keeps
+    its twin's flag with its twin's incomes. The receipt counts the rows each
+    route flags.
     """
 
     if "uc_is_in_gainful_self_employment" not in person.columns:
-        return person
+        return person, None
     rows = person.loc[spi_people]
+    main_job = rows["employment_status"].astype(str).isin(SELF_EMPLOYED_STATUSES)
+    main_job = main_job.to_numpy(dtype=bool)
+    profit = pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0)
+    pay = pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0)
+    earnings_route = uc_gainful_self_employment(
+        np.zeros(len(rows), dtype=bool), profit, pay
+    )
+    flagged = uc_gainful_self_employment(main_job, profit, pay)
     _assign_spi_values(
         person,
         spi_people,
         "uc_is_in_gainful_self_employment",
-        uc_gainful_self_employment(
-            np.zeros(len(rows), dtype=bool),
-            pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
-            pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
-        ),
+        flagged,
         default=False,
     )
-    return person
+    receipt = {
+        "rule": (
+            "self-employed main job (FT_SELF_EMPLOYED or PT_SELF_EMPLOYED) whatever "
+            "its profit, or a profit above zero and above pay; undrawn copies keep "
+            "their twin's flag"
+        ),
+        "rows": int(len(rows)),
+        "flagged_rows": int(flagged.sum()),
+        "main_job_route_rows": int(main_job.sum()),
+        "earnings_route_rows": int(earnings_route.sum()),
+        "main_job_route_only_rows": int((flagged & ~earnings_route).sum()),
+    }
+    return person, receipt
 
 
 def _refresh_landlord_carrier(
@@ -2222,6 +2711,7 @@ __all__ = [
     "SPI_DONOR_UKDS_STUDY",
     "SPI_DONOR_VINTAGE",
     "SPI_DONOR_REQUIRED_COLUMNS",
+    "SPI_INCOME_RECIPIENT_COLUMN",
     "SPI_INCOME_SOURCE_COLUMNS",
     "SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS",
     "SPI_DONOR_DOCUMENTATION_URL",
@@ -2242,6 +2732,16 @@ __all__ = [
     "SPI_SOURCE_TI_FORMULA",
     "SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS",
     "SPI_TI_IDENTITY_ABS_TOLERANCE_GBP",
+    "SPI_BRIDGE_PREDICTOR_COLUMNS",
+    "SPI_INDICATOR_CODES",
+    "SPI_MAINSRCE_CODES",
+    "SPI_MAIN_SOURCE_LEVELS",
+    "SPI_MAIN_SOURCE_MINIMUM_AGREEMENT",
+    "SPI_RECIPIENT_INCOME_RULE",
+    "SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP",
+    "SPI_STAGE1_ANALOGUE_COLUMNS",
+    "SPI_STAGE1_CATEGORICAL_PREDICTORS",
+    "SPI_STAGE1_PREDICTOR_COLUMNS",
     "UKSPIIncomeImputationResult",
     "VerifiedSPIDonorIdentity",
     "assert_frs_hmrc_auxiliary_crosswalk_available",

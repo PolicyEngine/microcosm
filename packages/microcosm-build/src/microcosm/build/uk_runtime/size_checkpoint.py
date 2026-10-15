@@ -133,6 +133,17 @@ def uk_size_checkpoint_identity(
                 for system, source in ATOMIC_SUPPORT_SOURCES.items()
             },
         }
+    # microcosm#1240: a localised run also binds the two property resources.
+    mode = getattr(args, "property_localisation", "none")
+    if mode == "price_paid":
+        from .property_localisation import BAND_MIX_SOURCE, QUANTILES_SOURCE
+
+        identity["property_localisation"] = {
+            "mode": mode,
+            "resource_pins": {
+                name: dict(pins[name]) for name in (QUANTILES_SOURCE, BAND_MIX_SOURCE)
+            },
+        }
     return identity
 
 
