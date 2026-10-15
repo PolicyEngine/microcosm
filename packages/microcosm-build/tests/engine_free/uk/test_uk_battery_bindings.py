@@ -211,7 +211,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="enum_domain", passed=True
             ),
-            parameter_keys=frozenset({"columns"}),
+            parameter_keys=UK_GATE_REGISTRY["enum_domain"].parameter_keys,
         ),
     }
 
@@ -974,8 +974,8 @@ class TestBatteryRegressions:
         # three evidence-backed local arms are named gaps below.
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
-        # amount.
-        assert len(passed) == 20
+        # amount, and the release-frame council-tax band check (#1278).
+        assert len(passed) == 21
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -1669,17 +1669,18 @@ class TestPreflightBindings:
         # microcosm#1240 adds 2,679 high-value homes cells (575 constituencies
         # and 318 authorities in England and Wales, three thresholds), six of
         # them deferred by the two micro-authorities' support floor.
-        assert result.details["candidate_targets"] == 24_477
+        assert result.details["candidate_targets"] == 24_269
         assert result.details["reference_targets"] == 26_065
-        # Only the 1,582 signed area deferrals and absences remain (2,100
+        # Only the 1,796 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
-        # adds the three higher rate taxpayer gaps); the 1,011 household rows
-        # are ordinary Chronicle-compiled references. The small-cell rules
-        # are unsigned, so they defer nothing yet: signing them moves these
-        # counts with the regenerated references.
+        # adds the three higher rate taxpayer gaps; microcosm#1240 the six
+        # high-value homes cells above; microcosm#1278 signs the two
+        # small-cell rules, which defer 16 council-tax band cells and 192
+        # higher-rate cells); the 1,011 household rows are ordinary
+        # Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_588
+        assert len(exclusions) == 1_796
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -2064,6 +2065,138 @@ class TestEnumDomainResolution:
             _evaluate_enum_domain(
                 EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
                 {"columns": ["student_loan_plan"]},
+            )
+
+
+def test_the_area_support_flag_reads_the_declared_floors() -> None:
+    from microcosm.build.uk_runtime.battery_bindings import (
+        uk_area_support_below_floor,
+        uk_area_support_floors,
+    )
+
+    entry = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = uk_area_support_floors()
+    assert floors == {key: entry.parameters[key] for key in floors}
+    support = pd.DataFrame(
+        {
+            "geography_level": ["local_authority", "local_authority"],
+            "area_code": ["A", "B"],
+            "nonzero_households": [floors["minimum_rows"], floors["minimum_rows"] - 1],
+            "effective_sample_size": [floors["minimum_effective_sample_size"]] * 2,
+            "nonzero_source_households": [floors["minimum_distinct_sources"]] * 2,
+        }
+    )
+    assert uk_area_support_below_floor(support).tolist() == [False, True]
+
+
+class TestCouncilTaxBandDomain:
+    """Each household's band must be one its nation uses (microcosm#1278)."""
+
+    _REGIONS = ["NORTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND"]
+
+    @staticmethod
+    def _parameters() -> dict:
+        entry = next(
+            entry
+            for entry in load_country_spec("uk").gates.gates
+            if entry.id == "uk_council_tax_band_domain"
+        )
+        return dict(entry.parameters)
+
+    def _context(self, bands, regions=None) -> EvidenceContext:
+        person, benunit, household = _tables(n=4)
+        household["region"] = regions or self._REGIONS
+        household["council_tax_band"] = bands
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "council_tax_band"
+                return tuple("ABCDEFGHI")
+
+        return EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()})
+
+    def test_the_declaration_is_the_shared_constant(self) -> None:
+        from microcosm.build.uk_runtime.council_tax_constants import (
+            UK_COUNCIL_TAX_BANDS_BY_NATION,
+        )
+
+        parameters = self._parameters()
+        assert parameters["partition_column"] == "region"
+        assert {
+            nation: tuple(bands)
+            for nation, bands in parameters["domains_by_nation"].items()
+        } == dict(UK_COUNCIL_TAX_BANDS_BY_NATION)
+
+    def test_the_release_frame_instance_declares_the_same_check(self) -> None:
+        # The spine entry stops at the transferred boundary; the terminal one
+        # checks the frame the release ships, after any later step that writes
+        # the band (microcosm#1278 review). The release cut owns it.
+        from microcosm.build.uk_runtime.calibration_run import (
+            UK_NATIONAL_GATE_SCOPE,
+            UK_SPINE_GATE_SCOPE,
+        )
+
+        entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+        spine = entries["uk_council_tax_band_domain"]
+        terminal = entries["uk_council_tax_band_domain_terminal"]
+        assert (spine.gate, spine.phase) == ("enum_domain", "transferred")
+        assert (terminal.gate, terminal.phase) == ("enum_domain", "terminal")
+        assert terminal.criticality == "release_blocking"
+        assert dict(terminal.parameters) == dict(spine.parameters)
+        assert spine.id in UK_SPINE_GATE_SCOPE
+        assert terminal.id in UK_NATIONAL_GATE_SCOPE
+
+    def test_each_nation_holds_its_own_bands(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        result = _evaluate_enum_domain(
+            self._context(["H", "I", "H", "D"]), self._parameters()
+        )
+        assert result.passed, result.failures
+
+    @pytest.mark.parametrize(
+        ("bands", "invalid"),
+        [
+            (["I", "I", "H", "D"], ["I@ENGLAND"]),
+            (["H", "I", "I", "D"], ["I@SCOTLAND"]),
+            (["H", "I", "H", "A"], ["A@NORTHERN_IRELAND"]),
+        ],
+    )
+    def test_a_band_its_nation_does_not_use_fails(self, bands, invalid) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        result = _evaluate_enum_domain(self._context(bands), self._parameters())
+        assert not result.passed
+        assert result.details["invalid_examples"] == {"council_tax_band": invalid}
+
+    def test_a_declaration_other_than_the_constant_is_refused(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        parameters = self._parameters()
+        parameters["domains_by_nation"] = {
+            **parameters["domains_by_nation"],
+            "ENGLAND": list("ABCDEFGHI"),
+        }
+        with pytest.raises(ValueError, match="must equal the shared constant"):
+            _evaluate_enum_domain(self._context(["H", "I", "H", "D"]), parameters)
+
+    def test_a_region_without_a_nation_is_refused(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        with pytest.raises(ValueError, match="regions with no nation"):
+            _evaluate_enum_domain(
+                self._context(
+                    ["H", "I", "H", "D"],
+                    regions=["UNKNOWN", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
+                ),
+                self._parameters(),
             )
 
 

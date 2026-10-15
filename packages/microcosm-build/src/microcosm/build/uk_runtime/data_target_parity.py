@@ -366,14 +366,14 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_private_rent_pipr",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "Microcosm ons.rent.private_rent is declared, but the pinned feed has only 2026-06 PIPR facts: 314 crosswalk E&W rows are after the 2025 target period, four English LAs are absent, 32 Scottish LAs have BRMA-only facts, and 11 NI LAs are absent.",
+        "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (the PIPR September 2026 edition in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts (microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
     },
     {
         "concern_id": "cross_grain_private_rent_scotland_brma",
         "status": "routed",
         "classification": "cross_grain_grain_gap",
         "reason": "CrossGrainBridge cannot express an overlapping BRMA-to-LA geography translation and no signed crosswalk is available.",
-        "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs.",
+        "evidence": "Pinned feed has PIPR's 18 Scottish statistical_scope BRMA rows for every month of 2025 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs (microcosm#1090).",
         "fence": _fence(
             "PIPR publishes Scottish rent levels at BRMA grain.",
             "Preserve source geography without allocating BRMA averages over local authorities.",
@@ -402,7 +402,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "cross_grain_council_tax_stock_england_region",
         "status": "ported_national",
         "classification": "cross_grain_rule",
-        "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
+        "reason": "The English council-tax taxbase rows (MHCLG CTB, microcosm#929) fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > nation > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's composed control rather than to a single England row (microcosm#905).",
         "evidence": "mhclg.council_tax_stock.band_* references mhclg.council_tax_stock.band_*@E12000001..E12000009, each composed from its authorities' MHCLG taxbase rows (microcosm#929); UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
     },
     {
@@ -643,7 +643,13 @@ def _local_contract_covers(target_id: str, levels: tuple[str, ...]) -> tuple[str
         covers.add(_source("local_uc"))
     elif target_id.startswith(("ons.equiv_", "ons.tenure.", "ons.rent.")):
         covers.add(_source("local_la_extras"))
-    elif target_id.startswith("voa.council_tax_stock.by_area."):
+    elif target_id.startswith(
+        (
+            "mhclg.council_tax_stock.by_area.",
+            "welshgov.council_tax_stock.by_area.",
+            "scotgov.council_tax_stock.by_area.",
+        )
+    ):
         covers.add(_source("la_council_tax"))
     return tuple(sorted(covers))
 

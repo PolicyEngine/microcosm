@@ -10,6 +10,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.holdout import summarize_rotations
+from microcosm.build.uk_runtime.ledger_targets import (
+    load_uk_local_target_reference_membership,
+)
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
@@ -238,10 +241,14 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
         )
 
 
-def test_the_frozen_count_is_the_1123_compiled_local_reference_count() -> None:
+def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
     # microcosm#1123's surface regeneration on the 942a1fa feed:
-    # register_completeness.compiled_local_reference_count 20,885 -> 21,804.
-    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 21_804
+    # register_completeness.compiled_local_reference_count 20,885 -> 21,804;
+    # microcosm#1240 adds the high-value homes cells, and microcosm#1278's
+    # signed small-cell rules defer 208 cells.
+    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 24_269
+    membership = load_uk_local_target_reference_membership()
+    assert membership["active_reference_count"] == 24_269
 
 
 def test_a_graph_target_selection_scores_its_local_rows(tmp_path) -> None:

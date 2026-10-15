@@ -47,6 +47,7 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_below_floor,
     area_support_gate,
     column_implication_gate,
     enum_domain_gate,
@@ -691,6 +692,46 @@ def _engine_enum_domain(engine: Any, column: str) -> Any:
     )
 
 
+def _nation_partitioned_domains(
+    column: str, parameters: Mapping[str, Any]
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared domains by nation, refused unless they are the code's.
+
+    A nation-partitioned gate names its row partition (the household's
+    ``region``, whose nation the region tier fixes) and repeats the domains in
+    ``gates.json`` so the declaration is reviewable; the declaration must equal
+    the shared constant the stages draw from.
+    """
+
+    from microcosm.build.uk_runtime.council_tax_constants import (
+        UK_COUNCIL_TAX_BANDS_BY_NATION,
+    )
+
+    declared_keys = {"partition_column", "domains_by_nation"} & set(parameters)
+    if not declared_keys:
+        return None
+    if declared_keys != {"partition_column", "domains_by_nation"}:
+        raise ValueError(
+            "A nation-partitioned enum_domain gate declares both "
+            "partition_column and domains_by_nation."
+        )
+    if parameters["partition_column"] != "region":
+        raise ValueError(
+            "enum_domain gates partition by nation through the household region."
+        )
+    code = {"council_tax_band": UK_COUNCIL_TAX_BANDS_BY_NATION}.get(column)
+    declared = {
+        str(nation): tuple(str(member) for member in members)
+        for nation, members in dict(parameters["domains_by_nation"]).items()
+    }
+    if code is None or declared != dict(code):
+        raise ValueError(
+            f"{column} domains by nation must equal the shared constant "
+            f"{dict(code) if code is not None else None}, got {declared}."
+        )
+    return declared
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -703,16 +744,34 @@ def _evaluate_enum_domain(
         domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
-    matches = [
-        context.frame.table(entity)[column]
+    tables = [
+        context.frame.table(entity)
         for entity in context.frame.entities
         if column in context.frame.table(entity).columns
     ]
-    if len(matches) != 1:
+    if len(tables) != 1:
         raise ValueError(
-            f"{column} must occur on exactly one frame entity; found {len(matches)}."
+            f"{column} must occur on exactly one frame entity; found {len(tables)}."
         )
-    return enum_domain_gate({column: matches[0]}, {column: domain})
+    (table,) = tables
+    by_nation = _nation_partitioned_domains(column, parameters)
+    if by_nation is None:
+        return enum_domain_gate({column: table[column]}, {column: domain})
+
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    if "region" not in table.columns:
+        raise ValueError(f"{column} is partitioned by region, which its table lacks.")
+    nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
+    if nations.isna().any():
+        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
+        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
+    return enum_domain_gate(
+        {column: table[column]},
+        {column: domain},
+        partitions={column: nations},
+        partition_domains={column: by_nation},
+    )
 
 
 def _evaluate_support(
@@ -1272,6 +1331,34 @@ def _evaluate_area_support(
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+
+
+def uk_area_support_floors() -> dict[str, float | int]:
+    """The local support floors the ``uk_local_area_support`` gate declares."""
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = (
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = entry.parameters
+    return {
+        "minimum_rows": int(floors["minimum_rows"]),
+        "minimum_effective_sample_size": float(floors["minimum_effective_sample_size"]),
+        "minimum_distinct_sources": int(floors["minimum_distinct_sources"]),
+    }
+
+
+def uk_area_support_below_floor(area_support: pd.DataFrame) -> pd.Series:
+    """``support_below_floor`` for each area, under the declared local floors.
+
+    The flag a consumer reads and the gate that blocks a release apply one rule
+    (microcosm#1278). A reviewed exclusion does not clear the flag.
+    """
+
+    return area_support_below_floor(area_support, **uk_area_support_floors())
 
 
 def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
@@ -2049,7 +2136,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "enum_domain": UKGateBinding(
         name="enum_domain",
         evaluator=_evaluate_enum_domain,
-        parameter_keys=frozenset({"columns"}),
+        parameter_keys=frozenset({"columns", "partition_column", "domains_by_nation"}),
     ),
     "support": UKGateBinding(
         name="support",

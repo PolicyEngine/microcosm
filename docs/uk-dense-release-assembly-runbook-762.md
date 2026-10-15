@@ -110,7 +110,9 @@ uv run --no-sync python tools/score_uk_local_candidate.py ... --output-json <can
 The scorer's `--registry-json` is the candidate's target selection,
 `<candidate-dir>/microcosm_uk_2024_25_local.target_selection.json` (the
 manifest's `outputs.target_registry`); it scores that selection's local rows,
-which must be the 21,804 compiled local references of the #1123 surface and
+which must be the 24,269 compiled local references of the #1123 surface
+with #1240's high-value homes cells, less the 208 cells #1278's signed
+small-cell rules defer, and
 must all appear in the candidate's diagnostics, so scoring needs the full rung.
 
 The pre-flight checks the manifest and the signed gate report for everything

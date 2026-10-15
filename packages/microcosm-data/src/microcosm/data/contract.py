@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "214b09ea87bc37ac832c73e59fc04ff507b1f45db132906aeb75210480f4b598"
+    "4f9c71b596600d03494f4cc38cbb85f50e10d71325d2cb7f81a5e6a949ec5760"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9b597286621f1c0e4eb4e4f0c197bb4c38afa663ae456205483a082a6aac73fa"
+    "e3d97e488a821501801df23242acfbc3565dd7a39386aae387808caf116e188d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "91d8d1a660a3823a95d2d13935f1af9a6927d8d647c9a24dc8c0511c104fcd3d"
+    "5d7f7401162a0bd53abf41995047b35bf31d20a4ed6251c5332b762060f43864"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -447,8 +447,10 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
@@ -538,8 +540,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
     "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
         "terminal",
@@ -795,6 +799,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_brma_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_council_tax_band_domain",
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_support_split_mass",
@@ -860,6 +865,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
             "uk_target_surface",
@@ -870,10 +876,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "075efba197b35648b64dae294d41ced01d49c4853f7ef7756ee335247ddce479"
+            "a52d74be5d8a8af05cb37b6d3643038de8d8491761a79d7bdbea1048aaee710d"
         ),
         "policy_sha256": (
-            "65113710ee51bdc832b5de3d58b3f20b62cccfc7bbe51948368a9137aba452dc"
+            "e258e8712b7ada5796f7e7e446698a5ddabc6c793f7633093d07bd5d3197631b"
         ),
     },
     "calibration_seam": {
@@ -886,10 +892,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "d8e43e2da482d28f8ed8e25115de6767390453f4d7a5f534c321dd236554acaa"
+            "7ea070e3efe5a36dfa246b175bb2de81e37fb52dd8b5a337249ebc02160112d4"
         ),
         "policy_sha256": (
-            "9780a4a64e7a68dbe58e9b882c83be137c06cfde0ca6df13d527d2f6b8be8250"
+            "cc7a00cc21ebba070f6b0e48e5198ebe673d05305eeb7b247b16610be8927010"
         ),
     },
 }
@@ -4816,6 +4822,56 @@ def _check_local_area_checksum_ledger(
             )
 
 
+_AREA_SUPPORT_BLOCK_KEYS = frozenset({"gate", "floors", "below_floor"})
+
+
+def _check_area_support_block(
+    block: object, limitations: object, failures: list[str]
+) -> None:
+    """The areas below a local release's support floor: codes only (microcosm#1278).
+
+    Each listed area must carry its reviewed ``area_support_exclusion``
+    limitation, because the support gate blocks release otherwise.
+    """
+    if not isinstance(block, Mapping):
+        failures.append("release_manifest.json 'area_support' must be an object.")
+        return
+    extra = sorted(set(block) - _AREA_SUPPORT_BLOCK_KEYS)
+    if extra:
+        failures.append(
+            "release_manifest.json 'area_support' holds area codes and the floors "
+            f"only; it carries {extra}."
+        )
+    below = block.get("below_floor")
+    if not isinstance(below, Mapping) or not all(
+        isinstance(level, str)
+        and isinstance(codes, list)
+        and all(isinstance(code, str) and code for code in codes)
+        for level, codes in below.items()
+    ):
+        failures.append(
+            "release_manifest.json 'area_support.below_floor' must map each "
+            "geography level to a list of area codes."
+        )
+        return
+    excused = {
+        str(item.get("id"))
+        for item in (limitations if isinstance(limitations, list) else [])
+        if isinstance(item, Mapping)
+    }
+    unexcused = sorted(
+        f"{level}/{code}"
+        for level, codes in below.items()
+        for code in codes
+        if f"area_support_exclusion:{level}/{code}" not in excused
+    )
+    if unexcused:
+        failures.append(
+            "release_manifest.json lists areas below the support floor without "
+            f"a reviewed area_support_exclusion limitation: {unexcused}."
+        )
+
+
 def _check_local_area_release_manifest(
     manifest: Mapping,
     release_id: str,
@@ -4870,6 +4926,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must carry a 'reviewed_limitations' list "
             "(explicitly empty if none) for a non-default local-area release."
         )
+    if manifest.get("area_support") is not None:
+        _check_area_support_block(manifest["area_support"], limitations, failures)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, Mapping) or not artifacts:
         failures.append(

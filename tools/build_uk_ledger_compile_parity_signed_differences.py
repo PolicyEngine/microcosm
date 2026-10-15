@@ -751,6 +751,35 @@ _DERIVED_STOCK_LEDGER_ONLY_RATIONALE = (
 )
 
 
+def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
+    """(target id, area id) -> the signed rationale of each small-cell deferral.
+
+    A cell the incumbent carries but a signed small-cell rule defers is
+    fixture-only here; its rationale is the one its deferral was signed with,
+    which names the rule (microcosm#1278).
+    """
+
+    def committed(resource: str) -> dict:
+        return json.loads(
+            importlib_resources.files(UK_PACKAGE)
+            .joinpath(resource)
+            .read_text(encoding="utf-8")
+        )
+
+    rule_ids = {
+        str(rule["rule_id"])
+        for rule in committed("local_small_cell_rule.json")["rules"]
+    }
+    return {
+        (str(deferral["target_id"]), str(area)): str(deferral["rationale"])
+        for deferral in committed("local_target_reference_membership.json")[
+            "signed_deferrals"
+        ]
+        if deferral["reason_id"] in rule_ids
+        for area in deferral["area_ids"]
+    }
+
+
 def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
     """Replace generic classifier reasons with the ruled per-family rationales.
 
@@ -761,13 +790,16 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
     """
 
     metric_by_target_id = _local_metric_by_target_id()
+    small_cells = _small_cell_deferral_rationales()
     for row in report.get("differences", ()):
         if not isinstance(row, dict):
             continue
-        prefix = str(row.get("name", "")).split("@", 1)[0]
+        prefix, _, area = str(row.get("name", "")).partition("@")
         metric = metric_by_target_id.get(prefix, prefix)
         kind = str(row.get("kind", ""))
-        if metric in _DEVOLVED_RENT_METRICS:
+        if kind == "fixture_only" and (prefix, area) in small_cells:
+            row["reason"] = small_cells[(prefix, area)]
+        elif metric in _DEVOLVED_RENT_METRICS:
             row["reason"] = _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE
         elif kind == "calibration_drift" and metric in _COUNCIL_TAX_BAND_METRICS:
             row["reason"] = _COUNCIL_TAX_BAND_DRIFT_RATIONALE
