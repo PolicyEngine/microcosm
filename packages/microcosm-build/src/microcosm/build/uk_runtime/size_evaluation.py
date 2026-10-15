@@ -18,6 +18,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_fit_by_family,
     uk_weight_summary,
 )
+from microcosm.build.uk_runtime.national_frame import UK_BUILD_IDENTIFIER_COLUMNS
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
 __all__ = [
@@ -222,11 +223,17 @@ def load_run(path: str | Path, *, label: str, skip_h5: bool = False) -> RowwiseR
     h5_path = _find_h5(run_path, manifest)
     weights = None
     if not skip_h5 and h5_path is not None:
+        # The source-household arithmetic below is on the build's identifiers,
+        # which a release keeps beside its renumbered ones (microcosm#1194).
+        with pd.HDFStore(h5_path, mode="r") as store:
+            stored = store.select("household", stop=0).columns
+        carrier = UK_BUILD_IDENTIFIER_COLUMNS["household"]
+        identifier = carrier if carrier in stored else "household_id"
         weights = pd.read_hdf(
             h5_path,
             "household",
-            columns=["household_id", "household_weight", "clone_index"],
-        )
+            columns=[identifier, "household_weight", "clone_index"],
+        ).rename(columns={identifier: "household_id"})
     uk_diagnostics = _mapping(calibration.get("uk_diagnostics"))
     holdout_value = uk_diagnostics.get("rotated_holdout")
     holdout = dict(holdout_value) if isinstance(holdout_value, Mapping) else None
@@ -290,9 +297,16 @@ def run_acceptance(
             }
         )
 
+    # A sized release candidate at the size doctrine may be releasable
+    # (microcosm#1124, 2026-10-13); every other sized run stays a candidate.
+    size_release_candidate = bool(
+        _mapping(manifest.get("parameters")).get("release_candidate")
+    )
     add(
         "releasable_false",
-        manifest.get("releasable") is False if is_size else None,
+        manifest.get("releasable") is False
+        if is_size and not size_release_candidate
+        else None,
         manifest.get("releasable"),
         False,
     )

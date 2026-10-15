@@ -469,13 +469,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "75ec46b57d350ba65aad808e09ab4c90d02d86f50a4fdf2ce10e5058d220e52b"
+    "5243864991eac2990b92dbe9027322e8ff437f97a13fe1e7ba575bf701964aa2"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "eef1dd46db8f32c5c1bd7ae508475b72b0987df3ba4a68d273a7f86631371f76"
+    "f31c1320dcf30f488b27a96a19915eaa70639a6d6e69eb7fa709212b46ccc89b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fb8b643927d6fddb046234488ad140d7505c4bf6d46fae5280d461d3eedea246"
+    "d170880bc64d48add012ccac0c3d2bb2bede4b19e97bd526354e5e08bccc65db"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -511,10 +511,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight"),
-    "uk_ledger_compile_parity_production_2023": (
-        "ledger_compile_parity",
-        "preflight",
-    ),
     "uk_ledger_compile_parity_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -623,7 +619,6 @@ _UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
 _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
     {
         "uk_release_family_build_stages",
-        "uk_ledger_compile_parity_production_2023",
         "uk_ledger_compile_parity_incumbent_2025",
         "uk_ledger_compile_parity_local_incumbent_2025",
         "uk_target_surface_local_default_2025",
@@ -678,7 +673,7 @@ _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
+    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
 )
 
 
@@ -900,7 +895,6 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
-            "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
             "uk_uc_capital_coherence",
             "uk_uc_deduction_combination_enum_domain",
@@ -919,10 +913,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "d9257e187f8afaca9e64a58c2ad48bf0e68762322f93b18f778f99f5d76f5476"
+            "5bdabd730cf1073624b109f2a51caa340129d647520a6a7e7461e44f99a0cd28"
         ),
         "policy_sha256": (
-            "56fb5272f0cb23c290de5274331abf2bf434f4f480c9417a007ee2f5122edf5d"
+            "4890cb7d519165f0e4d32905b75a498d28ed10d2442cf00d36ec89ee762dcb7b"
         ),
     },
     "calibration_seam": {
@@ -935,10 +929,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "6e55a4c1c28d0e0edeaf84ed0ca98b748cce697ef5bd471737ce7cccaee93083"
+            "437b1c298d730afb7f56d05bdd6d659df143fc0c7f376c606004aea6c79ab9e9"
         ),
         "policy_sha256": (
-            "d5bbcf2a3b07984691b77e89d3ca5d7967221e90fb4b8c7e4ad0ac94a76aeb3b"
+            "5e6260d9495ab5b29f1f08908bfef5c002004df35a031c49d1b98e16667c0b0f"
         ),
     },
 }

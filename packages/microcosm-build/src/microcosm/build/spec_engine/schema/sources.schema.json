@@ -7056,6 +7056,11 @@
       "logged_dropna_row_count": {
        "type": "boolean"
       },
+      "unmapped_codes": {
+       "enum": [
+        "refuse"
+       ]
+      },
       "margins": {
        "type": "array",
        "items": {
@@ -7083,6 +7088,14 @@
       },
       "range": {
        "type": "string"
+      },
+      "rate_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 2,
+       "maxItems": 2
       },
       "reduced_rate_share": {
        "type": "number"
@@ -7213,11 +7226,18 @@
       "clamp_minimum": {
        "type": "number"
       },
+      "clamp_maximum": {
+       "type": "string"
+      },
       "preserve_asked_rows": {
        "type": "boolean"
       },
       "cache": {
        "type": "boolean"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
       }
      }
     },
@@ -7714,6 +7734,136 @@
       },
       "recipient_role_column": {
        "type": "string"
+      },
+      "bridge_predictors": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "tape",
+         "twin",
+         "validation"
+        ],
+        "properties": {
+         "tape": {
+          "type": "string"
+         },
+         "twin": {
+          "type": "string"
+         },
+         "validation": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "recipient_income_rule": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "drawn",
+        "undrawn",
+        "unearned_income_floor_gbp"
+       ],
+       "properties": {
+        "drawn": {
+         "type": "string"
+        },
+        "undrawn": {
+         "type": "string"
+        },
+        "unearned_income_floor_gbp": {
+         "type": "number"
+        }
+       }
+      },
+      "draw": {
+       "type": "string"
+      },
+      "reference_model": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "population",
+        "predictors",
+        "targets",
+        "analogue_columns",
+        "weight",
+        "weight_mapping",
+        "fit_weight_kind",
+        "seed",
+        "method",
+        "receipt"
+       ],
+       "properties": {
+        "population": {
+         "type": "string"
+        },
+        "predictors": {
+         "type": "string"
+        },
+        "targets": {
+         "type": "string"
+        },
+        "analogue_columns": {
+         "type": "object",
+         "additionalProperties": {
+          "type": [
+           "string",
+           "null"
+          ]
+         }
+        },
+        "weight": {
+         "type": "string"
+        },
+        "weight_mapping": {
+         "type": "string"
+        },
+        "fit_weight_kind": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        },
+        "n_estimators": {
+         "type": "integer"
+        },
+        "folds": {
+         "type": "integer"
+        },
+        "fold_key": {
+         "type": "string"
+        },
+        "method": {
+         "type": "string"
+        },
+        "receipt": {
+         "type": "string"
+        }
+       }
+      },
+      "identity_uniforms": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "key",
+        "salt",
+        "seed"
+       ],
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "salt": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        }
+       }
       },
       "rebase_income_to_build_period": {
        "type": "boolean"
@@ -9227,6 +9377,9 @@
       "rate_cap": {
        "type": "number"
       },
+      "move_pay_share_cap": {
+       "type": "number"
+      },
       "move": {
        "type": "string"
       },
@@ -9745,6 +9898,19 @@
         "identity_uniform_order"
        ]
       },
+      "connect_rule": {
+       "enum": [
+        "gas_payer_probability_order"
+       ]
+      },
+      "connect_salt": {
+       "type": "string",
+       "minLength": 1
+      },
+      "connect_n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
       "seed": {
        "type": "integer",
        "minimum": 0
@@ -9771,6 +9937,24 @@
        "enum": [
         "actual_temperature"
        ]
+      },
+      "household_kwh_ceiling": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "electricity",
+        "gas"
+       ],
+       "properties": {
+        "electricity": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "gas": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        }
+       }
       }
      },
      "if": {
@@ -11496,12 +11680,59 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "codes",
+      "rule",
+      "seed",
+      "salt",
+      "n_estimators"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_prepayment_meter"
+      },
+      "output": {
+       "type": "string"
+      },
+      "codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "rule": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "parents",
+      "maximum_total",
       "uncarried"
      ],
      "properties": {
       "kind": {
        "const": "recompose_from_remainder"
+      },
+      "maximum_total": {
+       "enum": [
+        "donor_support"
+       ]
       },
       "parents": {
        "type": "object",

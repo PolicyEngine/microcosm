@@ -361,11 +361,13 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     import pandas as pd
 
     from microcosm.build.uk_runtime.national_frame import (
+        UK_BUILD_IDENTIFIER_COLUMNS,
         UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         uk_national_frame,
         uk_release_export_frame,
     )
     from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
         UK_REVIEWED_EXPORT_EXCLUSIONS,
         uk_export_candidate_columns,
     )
@@ -402,12 +404,19 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     }
     exported = uk_release_export_frame(frame)
     # microcosm#1106: the WAS total leaves; its engine components stay.
+    # microcosm#1194: the build identifiers stay beside the renumbered ones,
+    # as reviewed extras of the export surface.
+    carriers = {
+        f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+    }
     assert uk_export_candidate_columns(exported) == {
         "person.age",
         "household.region",
         "household.main_residence_value",
         "household.household_weight",
+        *carriers,
     }
+    assert carriers <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
@@ -759,9 +768,16 @@ def test_concentrated_qrf_output_fails_by_name() -> None:
 def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
+        "household.atomic_area_basis",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
     }
+    basis = register["household.atomic_area_basis"]
+    assert basis.approved_by == "juaristi22"
+    assert basis.approved_on == "2026-10-13"
+    assert basis.expires_on == "2027-04-13"
+    # Constant by construction only on the local line's K-clone pool.
+    assert basis.release_lines == ("local",)
     record = register["household.source_year"]
     assert record.adjudication == "microcosm#630"
     assert record.approved_by == "juaristi22"

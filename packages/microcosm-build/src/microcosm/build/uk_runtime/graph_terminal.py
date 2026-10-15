@@ -46,8 +46,9 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
-from . import geography_ladder, national_frame
+from . import geography_ladder, national_frame, weight_year
 from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
+from .dataset_size import UK_SIZE_L2_PARAM_KEYS
 from .geography_ladder import (
     UK_EXPORT_AREA_CODE_COLUMNS,
     export_area_code_columns,
@@ -59,6 +60,8 @@ from .national_frame import (
     _read_uk_national_tables,
     _write_uk_single_year_tables,
     uk_household_weight_kind,
+    uk_identifier_range_failures,
+    uk_release_identifier_tables,
     uk_time_period,
     validate_uk_national_frame,
 )
@@ -67,6 +70,7 @@ from .rowwise_dataset import (
     ladder_clone_index_column,
     load_uk_rowwise_dataset,
 )
+from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 EXPORT_DESCRIPTOR_TYPE = ArtifactType("microcosm.uk.full-export-descriptor", 1)
 EXPORT_READBACK_TYPE = ArtifactType("microcosm.uk.full-export-readback", 1)
@@ -100,7 +104,9 @@ def _ladder_tables(frame: Frame) -> dict[str, pd.DataFrame]:
         dropped = [c for c in columns if c in renamed[entity]]
         if dropped:
             renamed[entity] = renamed[entity].drop(columns=dropped)
-    return renamed
+    # The identifiers leave inside the range policyengine-uk stores, with the
+    # build identifiers beside them (microcosm#1194).
+    return uk_release_identifier_tables(renamed)
 
 
 def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
@@ -194,11 +200,17 @@ def _content_descriptor(
 
 
 def describe_uk_export(
-    frame: Frame, *, bindings: Mapping[str, object]
+    frame: Frame, *, bindings: Mapping[str, object], solve_year: int
 ) -> dict[str, object]:
-    """Validate and describe the maintained H5 layout without serializing it."""
+    """Validate and describe the maintained H5 layout without serializing it.
+
+    ``solve_year`` is the year the weights were solved at. The artifact
+    carries them at the dataset's year (``uk_runtime.weight_year``,
+    microcosm#796 A19); the geography gate reads the solved weights.
+    """
     validate_uk_national_frame(frame)
-    ladder = _ladder_tables(frame)
+    release = uk_dataset_year_frame(frame, solve_year=solve_year)
+    ladder = _ladder_tables(release)
     gate = uk_geography_ladder_gate(
         ladder["household"], frame.weights_for("household").values
     )
@@ -207,15 +219,26 @@ def describe_uk_export(
             "UK export geography integrity failed: " + "; ".join(gate.failures)
         )
     tables = {**ladder, "household": export_area_code_columns(ladder["household"])}
+    dataset_year = int(uk_time_period(release))
     return {
         "schema_version": 1,
         "kind": "uk_full_build_export",
         **_content_descriptor(
             tables,
-            time_period=uk_time_period(frame),
-            weight_kind=uk_household_weight_kind(frame),
-            mass_log=frame.mass_log,
+            time_period=uk_time_period(release),
+            weight_kind=uk_household_weight_kind(release),
+            mass_log=release.mass_log,
         ),
+        # The year the weights were solved at, the year the file carries them
+        # at, and the engine's own factor between the two. The division itself
+        # is inside the content identity, as the last record of the mass log.
+        "weight_year": {
+            "solve_year": int(solve_year),
+            "dataset_year": dataset_year,
+            "engine_projection_factor": uk_weight_projection_factor(
+                dataset_year, int(solve_year)
+            ),
+        },
         "bindings": dict(bindings),
         "geography_integrity": {"passed": gate.passed, "failures": list(gate.failures)},
         "area_codes": _area_codes_block(tables["household"]),
@@ -246,6 +269,10 @@ def materialize_uk_export(
 ) -> dict[str, object]:
     """Perform only the declared serialization, recreating files on cache hits."""
     _check_descriptor(descriptor)
+    # The weights leave at the dataset's year, as the descriptor declared.
+    frame = uk_dataset_year_frame(
+        frame, solve_year=int(descriptor["weight_year"]["solve_year"])
+    )
     tables = _tables(frame)
     current = _content_descriptor(
         tables,
@@ -290,6 +317,7 @@ def validate_uk_export(
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
     failures.extend(_area_code_failures(payload["household"], descriptor))
+    failures.extend(uk_identifier_range_failures(payload))
     if file_artifact(path) != dataset:
         raise ValueError("UK exported file changed during graph readback validation.")
     return {
@@ -311,7 +339,9 @@ class UKExportPrepareKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], national_frame, geography_ladder)
+        return source_hash(
+            sys.modules[__name__], national_frame, geography_ladder, weight_year
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         for value in context.artifacts.values():
@@ -325,7 +355,11 @@ class UKExportPrepareKernel(KernelBase):
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
         }
-        descriptor = describe_uk_export(context_frame(context), bindings=bindings)
+        descriptor = describe_uk_export(
+            context_frame(context),
+            bindings=bindings,
+            solve_year=int(context.params["solve_year"]),
+        )
         return KernelResult(artifacts={"export_descriptor": canonical_json(descriptor)})
 
 
@@ -413,6 +447,7 @@ def add_uk_export_preparation(
     *,
     population: str,
     bindings: Mapping[str, object],
+    solve_year: int,
     artifact_inputs: tuple[ArtifactInput, ...] = (),
 ) -> Graph:
     node = Node(
@@ -420,7 +455,10 @@ def add_uk_export_preparation(
         kernel=UKExportPrepareKernel.ref,
         population=population,
         inputs=population_slices(population_columns(graph, population)),
-        params={"bindings": canonical_json(dict(bindings)).decode()},
+        params={
+            "bindings": canonical_json(dict(bindings)).decode(),
+            "solve_year": int(solve_year),
+        },
         artifact_inputs=artifact_inputs,
         artifact_outputs=(ArtifactOutput("export_descriptor", EXPORT_DESCRIPTOR_TYPE),),
         description="Validate and describe exact H5 values, schema, weights and geographic lineage.",
@@ -639,6 +677,14 @@ def _source_gate_evidence(context: KernelContext, engine):
             for period, registry in surface[
                 "uk_ledger_compiled_local_registries"
             ].items()
+        },
+        "uk_ledger_compile_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            int(period): tuple(rows)
+            for period, rows in surface["uk_ledger_compile_local_unsupported"].items()
         },
         "exclusions_evaluated_on": date.fromisoformat(
             str(context.params["review_date"])
@@ -1082,7 +1128,14 @@ class UKFullHoldoutKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from ..country_spec import load_country_spec
-        from . import dataset_size, graph_targets, local_rowwise
+        from . import (
+            dataset_size,
+            graph_targets,
+            local_doctrine,
+            local_rowwise,
+            national_doctrine,
+            target_weights,
+        )
 
         return hashlib.sha256(
             canonical_json(
@@ -1092,6 +1145,9 @@ class UKFullHoldoutKernel(KernelBase):
                         graph_targets,
                         local_rowwise,
                         dataset_size,
+                        local_doctrine,
+                        national_doctrine,
+                        target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
@@ -1144,6 +1200,12 @@ class UKFullHoldoutKernel(KernelBase):
                 selection_seed=context.params.get("selection_seed"),
                 selection_pi_hi=float(context.params["selection_pi_hi"]),
                 baseline_pi_floor=float(context.params["baseline_pi_floor"]),
+                selection_initial_lambda=context.params.get("selection_initial_lambda"),
+                **{
+                    key: context.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in context.params
+                },
             )
         report = {
             **report,
@@ -1186,6 +1248,21 @@ def uk_full_holdout_node(
             "selection_pi_hi": 1.0 if size is None else size.params["pi_hi"],
             "baseline_pi_floor": (
                 0.0 if size is None else size.params["baseline_pi_floor"]
+            ),
+            # microcosm#1124: each fold's budget search starts where the main
+            # search started, so five folds do not each search from zero.
+            "selection_initial_lambda": (
+                None if size is None else size.params.get("initial_lambda")
+            ),
+            # microcosm#1124: the size stages' L2 penalties, present only when on.
+            **(
+                {}
+                if size is None
+                else {
+                    key: size.params[key]
+                    for key in UK_SIZE_L2_PARAM_KEYS
+                    if key in size.params
+                }
             ),
         },
         artifact_inputs=(
@@ -1356,6 +1433,7 @@ def rowwise_candidate_manifest_from_graph(
         local_vintage_census,
         release_verdict,
         rowwise_parameters,
+        size_doctrine_drift,
     )
 
     nodes = final_manifest.nodes
@@ -1441,6 +1519,7 @@ def rowwise_candidate_manifest_from_graph(
     representation = dict(bindings.get("measure_resolution", {})).get(
         "engine_population_representation"
     )
+    size_drift = size_doctrine_drift(args)
     releasable, release_posture = release_verdict(
         sample_fraction=args.sample_fraction,
         engine_blocks=args.engine_blocks,
@@ -1669,6 +1748,15 @@ def rowwise_candidate_manifest_from_graph(
                     }
                 }
             ),
+            **(
+                {}
+                if "target_loss_weight_receipt" not in bindings
+                else {
+                    "target_loss_weight_receipt": dict(
+                        bindings["target_loss_weight_receipt"]
+                    )
+                }
+            ),
             "measure_resolution": dict(bindings.get("measure_resolution", {})),
             "cross_grain": dict(bindings.get("cross_geography", {})),
             "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
@@ -1736,13 +1824,18 @@ def rowwise_candidate_manifest_from_graph(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": bool(releasable and args.dataset_households is None),
+        # microcosm#1124 (2026-10-13): a sized build is releasable only at the
+        # local size doctrine; no matched-size certification is required.
+        "releasable": bool(releasable and not size_drift),
         "release_posture": {
             **release_posture,
             **(
                 {}
                 if args.dataset_households is None
-                else {"size_certification_present": False}
+                else {
+                    "size_certification_present": False,
+                    "size_doctrine": not size_drift,
+                }
             ),
         },
         "census_household_uprating": dict(

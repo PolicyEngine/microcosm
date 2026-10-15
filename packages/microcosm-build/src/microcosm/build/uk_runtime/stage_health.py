@@ -236,7 +236,8 @@ def _support_clip_gate(
                         f"{stage}: {column!r} clip range starts at {lower}, below "
                         f"the donor floor {level}."
                     )
-        details["donor_floor_rows_raised"] = int(floor.get("rows_raised", 0))
+        # Banded in the receipt (receipt_counts.extreme_count): passed through.
+        details["donor_floor_rows_raised"] = floor.get("rows_raised", 0)
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -261,7 +262,10 @@ def _energy_rake_gate(
     where the stage declares the published gas-connected share, every region
     with a published share must sit within ``maximum_connected_share_deviation``
     of it after the imposition (a region the draw could not fill records a
-    shortfall instead). The residual check then holds the maximum absolute
+    shortfall instead; with a declared ``connect_rule`` the walk connects
+    households there, the receipt must name the declared rule and salt, and a
+    shortfall stands only where the region ran out of households to connect).
+    The residual check then holds the maximum absolute
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
     IPF's cross-margin residual. That residual must be converged, not
@@ -287,6 +291,7 @@ def _energy_rake_gate(
         GAS_CONNECTED_PUBLISHED_METER_SHARE,
         GAS_KWH,
         PRICE_DOMESTIC_ENERGY_KIND,
+        declared_household_kwh_ceilings,
         need_margins_from_facts,
         pricing_operation,
         published_energy_level,
@@ -407,6 +412,50 @@ def _energy_rake_gate(
             )
         factors[fuel] = float(factor)
         details["level_factor"][fuel] = float(factor)
+    ceilings = declared_household_kwh_ceilings(declared)
+    if ceilings is not None:
+        # No household above its fuel's domestic ceiling, and the cap kept the
+        # levelled total (microcosm#1164).
+        ceiling_block = receipt.get("ceiling")
+        if not isinstance(ceiling_block, Mapping):
+            failures.append(
+                f"{stage}: the stage declares household kWh ceilings but the "
+                "energy_rake receipt carries no ceiling block."
+            )
+            ceiling_block = {}
+        details["ceiling"] = {}
+        for fuel, ceiling in ceilings.items():
+            entry = ceiling_block.get(fuel)
+            if not isinstance(entry, Mapping):
+                if ceiling_block:
+                    failures.append(f"{stage}: ceiling block lacks {fuel}.")
+                continue
+            if not _close(entry.get("ceiling_kwh"), ceiling, 1e-12):
+                failures.append(
+                    f"{stage}: {fuel} was capped at {entry.get('ceiling_kwh')!r}, "
+                    f"not the declared {ceiling}."
+                )
+            if entry.get("feasible") is False:
+                failures.append(
+                    f"{stage}: no household was left below the {fuel} ceiling to "
+                    "take what the capped households gave up."
+                )
+            if entry.get("households_above_after") != 0:
+                failures.append(
+                    f"{stage}: {fuel} leaves households above the declared "
+                    f"ceiling of {ceiling} kWh."
+                )
+            if not _close(entry.get("frame_kwh_after"), float(level[fuel]), 1e-6):
+                failures.append(
+                    f"{stage}: {fuel} total after the cap is "
+                    f"{entry.get('frame_kwh_after')!r}, not the published "
+                    f"{float(level[fuel])}."
+                )
+            details["ceiling"][fuel] = {
+                "ceiling_kwh": ceiling,
+                "households_capped": entry.get("households_capped"),
+                "capped_share_of_total": entry.get("capped_share_of_total"),
+            }
     for margin in expected_margins:
         if margin not in declared_margins:
             failures.append(f"{stage}: margin {margin!r} was not raked.")
@@ -537,6 +586,29 @@ def _energy_rake_gate(
                         f"{stage}: {region} gas-connected share {float(after):.4f} is "
                         f"not the published {target:.4f} (tolerance {share_tolerance})."
                     )
+                # With a declared connect_rule the walk fills a region below
+                # its share (microcosm#1164); a shortfall is waived only where
+                # the region ran out of households to connect.
+                if (
+                    declared.get("connect_rule") is not None
+                    and float(shortfall) > 0
+                    and entry.get("candidates_exhausted") is not True
+                ):
+                    failures.append(
+                        f"{stage}: {region} keeps a gas-connection shortfall of "
+                        f"{float(shortfall):.4f} with households left to connect."
+                    )
+            if declared.get("connect_rule") is not None and (
+                connection.get("connect_rule") != declared.get("connect_rule")
+                or connection.get("connect_salt") != declared.get("connect_salt")
+            ):
+                failures.append(
+                    f"{stage}: gas connection ran connect rule "
+                    f"{connection.get('connect_rule')!r} with salt "
+                    f"{connection.get('connect_salt')!r}, not the declared "
+                    f"{declared.get('connect_rule')!r} and "
+                    f"{declared.get('connect_salt')!r}."
+                )
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -2810,12 +2882,14 @@ def _recomposed_totals_gate(
 
     Checks on the ``recomposed_totals`` receipt (microcosm#1113): each total
     the stage declares keeps its own draw less the declared drawn parts and
-    adds the declared levelled parts back; no remainder is negative and no
+    adds the declared levelled parts back, held to the declared
+    ``maximum_total`` (microcosm#1164); no remainder is negative and no
     household's total is below its components; to
     ``maximum_relative_deviation``, the weighted remainder equals the drawn
     total less the drawn parts plus the floored mass, and the weighted total
-    the remainder plus the components; and the uncarried ONS spend is
-    recomputed from the vendored rows through the stage's own declaration.
+    the remainder plus the components less the mass held at the maximum; and
+    the uncarried ONS spend is recomputed from the vendored rows through the
+    stage's own declaration.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -2870,6 +2944,16 @@ def _recomposed_totals_gate(
             failures.append(
                 f"{stage}: {below!r} households have {parent} below its components."
             )
+        if entry.get("maximum_total") != declared.get("maximum_total"):
+            failures.append(
+                f"{stage}: {parent} is held to {entry.get('maximum_total')!r}, not "
+                f"the declared maximum_total {declared.get('maximum_total')!r}."
+            )
+        held = entry.get("rows_held_at_maximum")
+        if isinstance(held, bool) or not isinstance(held, int) or held < 0:
+            failures.append(
+                f"{stage}: {parent} records {held!r} rows held at the maximum."
+            )
 
         def number(key: str, parent: str = parent, entry=entry) -> float:
             return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
@@ -2886,11 +2970,16 @@ def _recomposed_totals_gate(
                 f"drawn parts plus the floored mass ({split})."
             )
         total = number("weighted_total")
-        parts = remainder + number("weighted_components")
+        held_mass = number("weighted_held_mass")
+        if held_mass < 0:
+            failures.append(
+                f"{stage}: {parent} records a negative held mass ({held_mass})."
+            )
+        parts = remainder + number("weighted_components") - held_mass
         if abs(total - parts) > tolerance * max(1.0, abs(total)):
             failures.append(
                 f"{stage}: {parent} weighted total {total} is not its remainder plus "
-                f"components {parts}."
+                f"components less the mass held at the maximum ({parts})."
             )
     uncarried = uncarried_spend(declared)
     observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")

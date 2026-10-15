@@ -960,9 +960,7 @@ class TestUKCountryPackage:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
@@ -1093,9 +1091,7 @@ class TestExistingPackagesGeneralize:
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
-            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
-            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
@@ -1147,8 +1143,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1279
-        )  # microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1283
+        )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1402,7 +1398,6 @@ class TestUKGatesManifest:
         assert [gate.id for gate in manifest.gates] == [
             "uk_release_input_coverage_manifest_current",
             "uk_release_family_build_stages",
-            "uk_ledger_compile_parity_production_2023",
             "uk_ledger_compile_parity_incumbent_2025",
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
@@ -1487,9 +1482,10 @@ class TestUKGatesManifest:
     ) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
 
-        assert (
-            params["uk_ledger_compile_parity_production_2023"]["target_period"] == 2023
-        )
+        # The comparison with the 2023 production surface is retired (María's
+        # ruling of 2026-10-13): no build reads a 2023 target, and all but 11
+        # of its 149 rows were signed differences.
+        assert "uk_ledger_compile_parity_production_2023" not in params
         assert (
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
         )
@@ -1606,7 +1602,8 @@ class TestUKGatesManifest:
             "accommodation",
             "region",
         ]
-        assert energy_rake["maximum_relative_deviation"] == 0.025
+        # María's ruling of 2026-10-12 (microcosm#1164).
+        assert energy_rake["maximum_relative_deviation"] == 0.035
         assert energy_rake["convergence_window_sweeps"] == 10
         assert energy_rake["maximum_residual_change_over_window"] == 0.001
 

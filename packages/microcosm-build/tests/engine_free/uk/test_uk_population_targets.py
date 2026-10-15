@@ -222,8 +222,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # rows they repeat, as do the two PIP daily-living caseload rows;
     # microcosm#1113 adds ONS 07.2.2 household road fuel; microcosm#1123 adds
     # the four nation household controls (LFS English regions, NRS, Welsh
-    # Government, NI).
-    assert len(resource["targets"]) == 396
+    # Government, NI); microcosm#1095 splits the two national 15_19 sex
+    # bands into ages 15, 16-17 and 18-19 (uk-data#563), six rows for two.
+    assert len(resource["targets"]) == 400
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -237,10 +238,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 344
+    assert len(registry_scope) == 348
     assert len(profile_scope) == 52
-    assert target_ids[:344] == registry_scope
-    assert target_ids[344:] == profile_scope
+    assert target_ids[:348] == registry_scope
+    assert target_ids[348:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -254,9 +255,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
-    # the mapped rows for diagnostics.
-    assert len(mapped_target_ids) == 189
-    assert len(unmapped_declarations) == 155
+    # the mapped rows for diagnostics, and the two incumbent 15_19 sex bands
+    # leave them for the six rows that partition them.
+    assert len(mapped_target_ids) == 187
+    assert len(unmapped_declarations) == 161
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -371,11 +373,63 @@ def test_uk_population_targets_split_terminal_sex_age_bands() -> None:
     ]
 
 
+def test_uk_population_targets_split_the_15_19_sex_bands() -> None:
+    """Ages 15, 16-17 and 18-19 partition each incumbent 15_19 sex band.
+
+    A fit to the five-year band left the ages inside it free to drift
+    (uk-data#563), so the contract binds the three pieces instead and the
+    incumbent rows are excluded, not mapped onto one piece (microcosm#1095).
+    """
+
+    resource = _load()
+    parity = resource["registry_parity"]
+    pieces = {"15": [15], "16_17": [16, 17], "18_19": [18, 19]}
+
+    for sex in ("female", "male"):
+        assert f"ons/{sex}_15_19" not in parity["mapped"]
+        assert "Split, not dropped" in parity["excluded"][f"ons/{sex}_15_19"]
+        ages: list[int] = []
+        for suffix, expected in pieces.items():
+            target = _target_by_id(resource, f"ons.population.{sex}_{suffix}")
+            assert target["target_id"] in parity["unmapped_declarations"]
+            assert target["ledger_selector"]["dimension_values"] == {
+                "sex": sex,
+                "age": expected,
+            }
+            bounds = {
+                item["operator"]: item["value"]
+                for item in target["bindings"]["policyengine"]["filters"]
+                if item["variable"] == "age"
+            }
+            assert bounds == {">=": expected[0], "<=": expected[-1]}
+            assert target["measurement"]["filters"][1:] == [
+                {
+                    "concept": "uk.demographics.age",
+                    "operator": ">=",
+                    "value": expected[0],
+                },
+                {
+                    "concept": "uk.demographics.age",
+                    "operator": "<=",
+                    "value": expected[-1],
+                },
+            ]
+            ages += expected
+        # Disjoint, and together the band they replace.
+        assert ages == [15, 16, 17, 18, 19]
+    assert not any(
+        target["target_id"].endswith("_15_19")
+        and target["target_id"].startswith("ons.population.")
+        for target in resource["targets"]
+    )
+    assert "partition" in parity["accounting_notes"]["ons_15_19_sex_band_split"]
+
+
 def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 396
+    assert len(target_ids) == 400
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -856,7 +910,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 396
+    assert len(targets) == 400
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

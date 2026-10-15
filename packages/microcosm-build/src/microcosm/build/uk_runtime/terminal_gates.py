@@ -208,6 +208,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.gas_consumption",
     "household.geography_household_key",
     "household.has_fuel_consumption",
+    # The LCFS prepayment-meter flag (microcosm#1110): policyengine-uk reads it
+    # from 2.123.3 for the Energy Price Guarantee prepayment discount, and an
+    # older engine ignores the column; the incumbent does not carry it yet
+    # (uk-data#539).
+    "household.uses_energy_prepayment_meter",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
@@ -287,6 +292,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.statutory_paternity_pay",
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
@@ -297,6 +303,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
     "person.person_is_spi_income_band_carrier",
+    "person.person_is_spi_income_recipient",
     # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
     # enhanced-FRS incumbent never carried is allow-listed rather than
     # dropped, so the release candidate ships the spine's own surface. The
@@ -350,6 +357,15 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.srp_regular_code5",
     "benunit.benunit_clone_index",
     "person.person_clone_index",
+    # microcosm#1194: the build identifiers the release keeps beside the
+    # renumbered ones (national_frame.UK_BUILD_IDENTIFIER_COLUMNS). The
+    # lineage columns above describe them.
+    "benunit.benunit_build_id",
+    "household.household_build_id",
+    "person.person_build_id",
+    # The months since each person's last birthday, stored by the root stage
+    # so the engine reads one date of birth everywhere (microcosm#1095).
+    "person.months_since_last_birthday",
     "household.itl1_code",
     "household.itl2_code",
     "household.itl3_code",

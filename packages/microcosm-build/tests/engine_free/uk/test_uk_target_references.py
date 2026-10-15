@@ -65,7 +65,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1279
+ACTIVE_REFERENCE_COUNT = 1283
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -805,7 +805,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1279,
+        "active": 1283,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 15,
     }
@@ -1508,29 +1508,14 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
         _add_signed_rationale_notes(report, fixture_resource=spec.fixture_resource)
         expected = _load_uk_resource(spec.output_resource)
         assert report == expected
-        if spec.target_period == 2023:
-            inherited_uc = [
-                r
-                for r in report["differences"]
-                if r["name"]
-                in {
-                    "dwp.uc.households",
-                    "dwp.uc.households_couple_no_children",
-                    "dwp.uc.households_couple_with_children",
-                    "dwp.uc.households_single_no_children",
-                    "dwp.uc.households_single_with_children",
-                }
-            ]
-            assert len(inherited_uc) == 5
-            assert all(
-                "frozen 2023 production" in r["reason"]
-                and "2025 source windows" in r["reason"]
-                for r in inherited_uc
-            )
         gate = ledger_compile_parity_gate(
             compilation.registry,
             _load_ledger_compile_parity_fixture(spec.fixture_resource),
             signed_differences=expected["differences"],
+            # As the release-cut producer calls it: a reference the feed no
+            # longer resolves is signed as ledger_absent, and the gate tells
+            # it from a fixture-only row by the compile's own report.
+            unsupported=compilation.unsupported,
         )
         assert gate.passed, gate.failures
 

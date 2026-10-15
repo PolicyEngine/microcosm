@@ -140,6 +140,7 @@ __all__ = [
     "UKQRFTailConcentrationPolicy",
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
+    "UK_RELEASE_LINES",
     "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
@@ -262,6 +263,11 @@ UK_INPUT_MASS_REFERENCE_REGISTRY = MappingProxyType(
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
     {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
 )
+#: An entry may name the release lines whose evidence earned it.
+_REVIEWED_EXCLUSION_OPTIONAL_FIELDS = frozenset({"release_lines"})
+#: The UK release lines a gate context can declare (``release_line``): the
+#: national seam and the geographic K-clone pool of the local line.
+UK_RELEASE_LINES = frozenset({"national", "local"})
 
 
 @dataclass(frozen=True)
@@ -285,8 +291,24 @@ class UKReviewedExclusion:
     adjudication: str
     approved_on: str
     expires_on: str
+    release_lines: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.release_lines is not None:
+            lines = self.release_lines
+            if (
+                isinstance(lines, str)
+                or not isinstance(lines, tuple | list)
+                or not lines
+                or any(line not in UK_RELEASE_LINES for line in lines)
+                or len(set(lines)) != len(lines)
+            ):
+                raise ValueError(
+                    "UK reviewed exclusion release_lines must be a non-empty "
+                    f"list of distinct lines from {sorted(UK_RELEASE_LINES)}; "
+                    f"got {lines!r}."
+                )
+            object.__setattr__(self, "release_lines", tuple(sorted(lines)))
         for name in ("reason", "approved_by", "adjudication"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -335,16 +357,38 @@ class UKReviewedExclusion:
 
         return now < date.fromisoformat(self.approved_on)
 
-    def policy_payload(self) -> dict[str, str]:
+    def applies_on(self, line: str | None) -> bool:
+        """Whether the entry is in scope on a release line.
+
+        An entry without ``release_lines`` applies on every line. A scoped
+        entry applies only where the context declares one of its lines, and
+        stands aside elsewhere, including where no line is declared: it then
+        neither suppresses a failure nor reads as stale, because that context's
+        evidence never earned it (a register is shared by the national seam and
+        the K-clone local pool, whose record counts differ by a factor of K).
+        Failing closed keeps a scoped entry from applying in a context that
+        forgot to declare its line.
+        """
+
+        if self.release_lines is None:
+            return True
+        return line is not None and line in self.release_lines
+
+    def policy_payload(self) -> dict[str, object]:
         """The complete record, sealed into the policy digest."""
 
-        return {
+        payload: dict[str, object] = {
             "reason": self.reason,
             "approved_by": self.approved_by,
             "adjudication": self.adjudication,
             "approved_on": self.approved_on,
             "expires_on": self.expires_on,
         }
+        # Unscoped records keep their pre-scope payload, and with it every
+        # policy digest already pinned.
+        if self.release_lines is not None:
+            payload["release_lines"] = list(self.release_lines)
+        return payload
 
 
 def coerce_reviewed_exclusions(
@@ -384,16 +428,28 @@ def coerce_reviewed_exclusions(
                 f"fields {sorted(_REVIEWED_EXCLUSION_FIELDS)} (schema 2); "
                 f"got {type(entry).__name__}."
             )
-        if set(entry) != _REVIEWED_EXCLUSION_FIELDS:
+        if not _REVIEWED_EXCLUSION_FIELDS <= set(entry) or (
+            set(entry)
+            - _REVIEWED_EXCLUSION_FIELDS
+            - _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+        ):
             raise ValueError(
                 f"{label} reviewed exclusion {name!r} fields must be exactly "
-                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, got {sorted(entry)}."
+                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, optionally with "
+                f"{sorted(_REVIEWED_EXCLUSION_OPTIONAL_FIELDS)}; got "
+                f"{sorted(entry)}."
             )
         try:
             records[name] = UKReviewedExclusion(
                 **{
                     field_name: entry[field_name]
-                    for field_name in sorted(_REVIEWED_EXCLUSION_FIELDS)
+                    for field_name in sorted(
+                        set(entry)
+                        & (
+                            _REVIEWED_EXCLUSION_FIELDS
+                            | _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+                        )
+                    )
                 }
             )
         except ValueError as exc:
@@ -1141,7 +1197,12 @@ def uk_qrf_tail_concentration_columns(
     """Assemble the tail-concentration evidence for the declared QRF surface.
 
     The surface defaults to every output declared by a
-    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest.
+    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest, less the
+    report columns ``spi_benefit_coherence`` replaces on every SPI-channel row
+    (microcosm#1100, read from that stage's declaration): after it those
+    columns hold only FRS respondents' own reports, no forest draw, so the
+    #462 broadcast cannot occur in them. They are listed in the surface as
+    ``superseded_by_spi_benefit_coherence``.
     Unlike the US wrapper, there is **no sparsity filter**: on the UK staging
     pool the SPI channel is a large fraction of all persons, so a
     nonzero-share cutoff would silently skip the gate exactly where the risk
@@ -1155,11 +1216,16 @@ def uk_qrf_tail_concentration_columns(
         # at import time.
         from microcosm.build.uk_runtime.hmrc_source_contract import (
             uk_hmrc_weighted_qrf_output_columns,
+            uk_spi_coherence_superseded_columns,
         )
 
-        declared = uk_hmrc_weighted_qrf_output_columns()
+        superseded_columns = set(uk_spi_coherence_superseded_columns())
+        all_declared = uk_hmrc_weighted_qrf_output_columns()
+        declared = tuple(c for c in all_declared if c not in superseded_columns)
+        superseded = [c for c in all_declared if c in superseded_columns]
     else:
         declared = tuple(str(name) for name in output_columns)
+        superseded = []
     if not declared:
         raise ValueError("UK QRF tail-concentration surface must be non-empty.")
 
@@ -1196,6 +1262,7 @@ def uk_qrf_tail_concentration_columns(
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "density_filter": "none: every declared output is checked (#609)",
+        "superseded_by_spi_benefit_coherence": superseded,
     }
     return values, weights, surface
 

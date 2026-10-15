@@ -45,7 +45,16 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
-from . import full_measure, full_problem, ladder_targets, ledger_targets, local_doctrine
+from . import (
+    full_measure,
+    full_problem,
+    ladder_targets,
+    ledger_targets,
+    local_doctrine,
+    local_rowwise,
+    national_doctrine,
+    target_weights,
+)
 from .full_measure import resolve_uk_full_national_problem
 from .full_problem import build_uk_full_local_problem
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
@@ -356,6 +365,14 @@ def compile_uk_full_target_surface(
                 "uk_ledger_compiled_local_registries"
             ].items()
         },
+        "uk_ledger_compile_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_unsupported"].items()
+        },
+        "uk_ledger_compile_local_unsupported": {
+            str(period): [dict(row) for row in rows]
+            for period, rows in inputs["uk_ledger_compile_local_unsupported"].items()
+        },
         "calibration_year": period,
     }
     return payload
@@ -564,6 +581,22 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
 class UKFullProblemKernel(_TargetKernel):
     ref = "uk.full.problem@1"
 
+    def implementation_hash(self) -> str:
+        # The loss weights the problem binds are built by
+        # ``local_rowwise.prepare_uk_full_solve`` from the rules in
+        # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
+        # edit there re-keys the problem instead of replaying a stale vector.
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "weights": source_hash(
+                        local_rowwise, national_doctrine, target_weights
+                    ),
+                }
+            )
+        ).hexdigest()
+
     def run(self, context: KernelContext) -> KernelResult:
         inputs = reconstruct_uk_full_problem_inputs(context)
         frame, local_problem = inputs.frame, inputs.local_problem
@@ -596,6 +629,17 @@ class UKFullProblemKernel(_TargetKernel):
                 }
             )
         doctrine = local_doctrine.UK_LOCAL_SOLVE_DOCTRINE
+        weight_receipt = (
+            {}
+            if prepared.target_rows is None
+            else {
+                "target_loss_weight_receipt": target_weights.uk_target_loss_weight_receipt(
+                    prepared.target_rows,
+                    prepared.target_loss_weights,
+                    rule=str(context.params["target_weight_rule"]),
+                )
+            }
+        )
         payload = encode_problem(
             problem,
             entity_ids=ids,
@@ -621,6 +665,7 @@ class UKFullProblemKernel(_TargetKernel):
                 "cross_geography": cross,
                 "measure_exclusions": full["measure_exclusions"],
                 "calibration_year": full["calibration_year"],
+                **weight_receipt,
             },
         )
         return KernelResult(artifacts={"problem": payload})

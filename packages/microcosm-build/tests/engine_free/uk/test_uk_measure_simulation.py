@@ -38,6 +38,24 @@ class FrameStub:
         return self._tables[entity]
 
 
+class ReleaseIdentifierFrameStub(FrameStub):
+    """The stub on the identifiers a release carries: one plus the rank per
+    entity (microcosm#1194), which a scratch engine file leaves as they are."""
+
+    def __init__(self):
+        self._tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_benunit_id": [1, 1, 2],
+                    "person_household_id": [1, 1, 2],
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": [1, 2]}),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+        }
+
+
 def _stub_value_type(values):
     """The policyengine ``value_type`` a real variable definition would carry."""
 
@@ -602,8 +620,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # structural bias: the v20 measurement (-2.8 % unbound, at weights that
     # never solved toward the row) reproduces the 2.79 % other/unknown-tenure
     # gap the entry records, so it is a diagnostic, not a fit target
-    # (docs/evidence/uk-a16-v20/).
-    "dwp.uc.households_": 1,
+    # (docs/evidence/uk-a16-v20/). microcosm#1095 (2026-10-14): the five-or-more
+    # children row joins it, held out on María's ruling of microcosm#1271.
+    "dwp.uc.households_": 2,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
     # bound are measured on every evaluation but held out of the objective;
@@ -645,7 +664,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 65
+    assert len(names) == len(set(names)) == 66
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -773,6 +792,30 @@ def test_packaged_exclusions_load():
         "ons.household_electricity_expenditure": "microcosm#1207",
         "ons.household_gas_expenditure": "microcosm#1207",
     }
+    # microcosm#1095 (2026-10-14): once dependants in approved training qualify
+    # as young people, fewer than 10 source households separate DWP's count of
+    # UC households with five or more children from its two-child-limit
+    # counts, so the row is held out with the sparse-band expiry and the
+    # two-child-limit rows stay bound (María's ruling on microcosm#1271).
+    # Two rulings share that date (the housing-element renewal below), so the
+    # tranche is told apart by its tracking issue.
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
+    ) == (sorted([*_UC_ELEMENT_REGISTER_ROWS, "dwp.uc.households_children_5_or_more"]))
+    large_families = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-14" and e["tracking"] == "microcosm#1095"
+    ]
+    assert [e["name"] for e in large_families] == [
+        "dwp.uc.households_children_5_or_more"
+    ]
+    (large_family,) = large_families
+    assert large_family["tracking"] == "microcosm#1095"
+    assert large_family["expires_on"] == "2026-11-26"
+    assert "microcosm#1271" in large_family["adjudication"]
+    assert "6168355102" in large_family["adjudication"]
+    assert "fewer than 10 frs source households" in large_family["reason"].lower()
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
@@ -826,11 +869,19 @@ def test_packaged_exclusions_load():
     # retired on 2026-09-16 with their repairs; the any-tenure housing row (a
     # structural bias: DWP's 'Yes' includes an other/unknown tenure the model
     # cannot carry) remains, adjudicated to microcosm#882 and the committed
-    # baseline doc, signed in review of microcosm#921, windowed to one month.
-    elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
+    # baseline doc, signed in review of microcosm#921, windowed to one month,
+    # and renewed one month on 2026-10-14 (microcosm#1124 local release), so
+    # nothing remains on the 2026-09-15 clock.
+    assert [e for e in exclusions if e["approved_on"] == "2026-09-15"] == []
+    elements = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-10-14" and e["tracking"] == "microcosm#882"
+    ]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
-        assert entry["expires_on"] == "2026-10-15", entry["name"]
+        assert entry["expires_on"] == "2026-11-14", entry["name"]
+        assert "renewed one month on 2026-10-14" in entry["adjudication"]
         assert entry["tracking"] == "microcosm#882", entry["name"]
         assert entry["approved_by"] == "juaristi22", entry["name"]
         assert "microcosm#882" in entry["adjudication"], entry["name"]
@@ -898,7 +949,7 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
         lambda frame, path: writes.append((frame, path)) or path,
     )
 
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     direct = UKMeasureResolver(
         simulation_source=tmp_path / "input.h5",
         scratch_dir=tmp_path,
@@ -915,7 +966,8 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
     assert scratch.receipt()["mode"] == "scratch_frame_export"
-    # A frame carrying no export-dropped column is written as it is.
+    # A frame carrying no export-dropped column, already on the release's
+    # identifiers, is written as it is.
     assert "engine_scratch_dropped_columns" not in scratch.receipt()
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [
@@ -1085,19 +1137,20 @@ def test_packaged_exclusion_names_resolve_to_committed_references():
 def test_cgt_taxable_income_nets_the_allowances_the_engine_formula_nets():
     """Hand-computed rows: the band extension and the floors (microcosm#1014)."""
     parts = {
-        "adjusted_net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
-        "allowances": [12_570.0, 12_570.0, 20_570.0, 32_570.0, 27_570.0, 12_570.0],
-        "gift_aid": [0.0, 0.0, 8_000.0, 0.0, 0.0, 0.0],
+        "net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
+        "allowances": [12_570.0, 12_570.0, 12_570.0, 32_570.0, 27_570.0, 12_570.0],
         "personal_pension_contributions": [0.0, 0.0, 0.0, 30_000.0, 5_000.0, 0.0],
         "pension_contributions_relief": [0.0, 0.0, 0.0, 20_000.0, 15_000.0, 0.0],
     }
     np.testing.assert_allclose(
         measure_simulation.cgt_taxable_income_from_components(parts),
-        # 0 floor; 30,000 - 12,570; gift aid leaves the allowances (it extends
-        # the band instead); relief up to the personal contributions leaves
-        # them too; an allowance above income floors at 0.
+        # 0 floor; 30,000 - 12,570; a Gift Aid donor's income is net income
+        # less the allowances, the gift extending the band instead (2.128.0,
+        # pe-uk#2271); relief up to the personal contributions leaves the
+        # allowances; an allowance above income floors at 0.
         [0.0, 17_430.0, 47_430.0, 7_430.0, 57_430.0, 0.0],
     )
+    assert "gift_aid" not in measure_simulation._CGT_TAXABLE_INCOME_COMPONENTS
 
 
 # microcosm#1069 c11: the live counterfactual route (salary sacrifice returned to pay).
@@ -1196,6 +1249,8 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         {**allocation, "basic_below_rate": 0.25},
         {**allocation, "rate_class": "starter"},
         {**allocation, "taxable_income": "adjusted_net_income"},
+        # The bands a Gift Aid donor's gift extends are part of the allocation.
+        {k: v for k, v in allocation.items() if k != "gift_aid_extends_bands"},
     ):
         with pytest.raises(ValueError, match="rate-class allocation must declare"):
             resolver.counterfactual_delta(
@@ -1296,7 +1351,9 @@ def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
     assert not set(aliases) & set(written.columns)
     assert not written.isna().any().any()
     assert written["oa_code"].tolist() == ["E00000001", "S00090001", "N00000101"]
-    assert written["household_id"].tolist() == [100, 200, 300]
+    # The engine file carries the release's identifiers (microcosm#1194); the
+    # resolver's own frame keeps the build's.
+    assert written["household_id"].tolist() == [1, 2, 3]
     # The resolver's own frame is untouched; only the engine's copy changed.
     pd.testing.assert_frame_equal(frame.table("household"), before)
     assert resolver.frame is frame
@@ -1325,7 +1382,7 @@ def test_scratch_engine_input_without_aliases_is_the_frame_itself(
         "write_uk_national_frame",
         lambda frame, path: writes.append(frame) or path,
     )
-    frame = FrameStub()
+    frame = ReleaseIdentifierFrameStub()
     resolver = UKMeasureResolver(
         simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
     )
@@ -1376,6 +1433,92 @@ def _tiny_national_frame(weights):
     )
 
 
+def _tiny_release_identifier_frame(weights):
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+
+    released = uk_release_export_frame(_tiny_national_frame(weights))
+    # The engine file carries no build-identifier column: a frame whose own
+    # identifiers are already the release's.
+    tables = {
+        entity: released.table(entity).drop(columns=[f"{entity}_build_id"])
+        for entity in ("person", "benunit", "household")
+    }
+    return uk_national_frame(
+        **tables,
+        time_period="2024",
+        weight_kind=released.weights_for("household").kind,
+        household_weights=released.weights_for("household").values,
+        mass_log=released.mass_log,
+    )
+
+
+def test_engine_scratch_frame_carries_the_release_identifiers():
+    """microcosm#1194: policyengine-uk keys a person's birth month on
+    ``person_id``, so the solve's engine file carries the identifiers the
+    release will: one plus the rank of the build identifier."""
+    frame = _tiny_national_frame([250.0, 125.0])
+
+    engine_frame, dropped = measure_simulation._engine_scratch_frame(frame)
+
+    assert dropped == ()
+    assert engine_frame.table("person")["person_id"].tolist() == [1, 2, 3, 4]
+    assert engine_frame.table("person")["person_benunit_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("person")["person_household_id"].tolist() == [1, 1, 2, 2]
+    assert engine_frame.table("benunit")["benunit_id"].tolist() == [1, 2]
+    assert engine_frame.table("household")["household_id"].tolist() == [1, 2]
+    # No build-identifier column goes to the engine, and nothing else moves.
+    for entity in ("person", "benunit", "household"):
+        assert f"{entity}_build_id" not in engine_frame.table(entity).columns
+        assert list(engine_frame.table(entity).columns) == list(
+            frame.table(entity).columns
+        )
+    assert engine_frame.table("person")["age"].tolist() == [35, 8, 40, 38]
+    np.testing.assert_array_equal(
+        engine_frame.weights_for("household").values,
+        frame.weights_for("household").values,
+    )
+    assert engine_frame.mass_log == frame.mass_log
+    # The resolver's own frame keeps the build identifiers.
+    assert frame.table("household")["household_id"].tolist() == [100, 200]
+
+
+def test_engine_scratch_block_takes_its_identifiers_from_the_whole_frame():
+    """A per-clone block's rows carry the identifiers they have in the release,
+    which numbers the whole frame, not the block."""
+    whole = _tiny_national_frame([250.0, 125.0])
+    block = whole.select(whole.table("person")["person_household_id"].eq(200))
+
+    alone, _ = measure_simulation._engine_scratch_frame(block)
+    in_whole, _ = measure_simulation._engine_scratch_frame(
+        block, identifier_universe=whole
+    )
+
+    assert alone.table("person")["person_id"].tolist() == [1, 2]
+    assert in_whole.table("person")["person_id"].tolist() == [3, 4]
+    assert in_whole.table("person")["person_household_id"].tolist() == [2, 2]
+    assert in_whole.table("benunit")["benunit_id"].tolist() == [2]
+    assert in_whole.table("household")["household_id"].tolist() == [2]
+
+
+def test_an_identifier_universe_needs_scratch_mode(tmp_path, monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="identifier universe needs scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=FrameStub(),
+            engine_identifier_universe=FrameStub(),
+        )
+
+
 def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     frame = _tiny_national_frame([250.0, 125.0])
     before = frame.weights_for("household").values.copy()
@@ -1400,11 +1543,13 @@ def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
     assert record.reason == measure_simulation.ENGINE_WEIGHT_SCALE_REASON
     # the resolver's own frame keeps the block's true mass
     np.testing.assert_array_equal(frame.weights_for("household").values, before)
-    # no scale (or a unit scale) on an alias-free frame: the frame itself
-    assert measure_simulation._engine_scratch_frame(frame)[0] is frame
+    # no scale (or a unit scale) on an alias-free frame already on the
+    # release's identifiers: the frame itself
+    released = _tiny_release_identifier_frame([250.0, 125.0])
+    assert measure_simulation._engine_scratch_frame(released)[0] is released
     assert (
-        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=1.0)[0]
-        is frame
+        measure_simulation._engine_scratch_frame(released, engine_weight_scale=1.0)[0]
+        is released
     )
     with pytest.raises(ValueError, match="positive finite"):
         measure_simulation._engine_scratch_frame(frame, engine_weight_scale=0.0)

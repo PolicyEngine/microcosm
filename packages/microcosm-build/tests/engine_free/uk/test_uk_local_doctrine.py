@@ -83,18 +83,22 @@ def test_past_cap_census_defaults_scales_and_validates_shapes() -> None:
 
 
 def test_doctrine_constants_are_the_declared_contract() -> None:
-    # microcosm#762 rulings of 2026-09-03 (A2 rule, A3 bound, K, epochs);
-    # each is a measured choice recorded in the receipts (R6-R10). Moving
-    # one is a doctrine revision: edit the constant, its note, and this pin.
+    # microcosm#762 rulings of 2026-09-03 (A2 rule, A3 bound, K, epochs),
+    # revised for the rule, K and epochs by microcosm#1124; each is a measured
+    # choice recorded in the receipts. Moving one is a doctrine revision: edit
+    # the constant, its note, and this pin.
     assert UK_LOCAL_TARGET_LOSS_CAP == 10.0
     assert UK_LOCAL_MAX_WEIGHT_RATIO == 10.0
-    assert UK_LOCAL_TARGET_WEIGHT_RULE == "grain_equal"
-    assert UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert UK_LOCAL_TARGET_WEIGHT_RULE == "nation_grain_family_equal_sqrt_count"
+    assert UK_LOCAL_SOLVE_EPOCHS == 2000
     assert UK_LOCAL_CLONE_COUNT == 15
     assert UK_LOCAL_SOLVE_DOCTRINE.target_loss_cap == UK_LOCAL_TARGET_LOSS_CAP
     assert UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio == UK_LOCAL_MAX_WEIGHT_RATIO
     assert UK_LOCAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule == "grain_equal"
+    assert (
+        UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule
+        == "nation_grain_family_equal_sqrt_count"
+    )
     assert UKLocalSolveDoctrine(target_weight_rule="uniform").target_weight_rule == (
         "uniform"
     )
@@ -117,7 +121,10 @@ def test_local_doctrine_override_is_receipted_and_bounds_are_frozen() -> None:
     )
     assert doctrine.target_weight_rule == "uniform"
     assert receipt == {
-        "target_weight_rule": {"default": "grain_equal", "effective": "uniform"}
+        "target_weight_rule": {
+            "default": "nation_grain_family_equal_sqrt_count",
+            "effective": "uniform",
+        }
     }
     with pytest.raises(ValueError, match="reviewed constants"):
         uk_local_doctrine_with_overrides(

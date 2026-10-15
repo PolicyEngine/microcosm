@@ -65,7 +65,8 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 # Midlands target-fit deferral is retired with microcosm#1106), and the
 # microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
 # expiry is 2026-10-15.
-CLOCK = date(2026, 10, 11)
+# On or after the newest committed receipt's approval (2026-10-14).
+CLOCK = date(2026, 10, 14)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1203,6 +1204,65 @@ class TestExclusionDiscipline:
         assert resupplied == committed
         assert resupplied["exclusions_policy"] == "committed"
 
+    @pytest.mark.parametrize(
+        ("line", "stands_aside"),
+        # Where no line is declared a scoped entry stands aside (fails closed).
+        [("local", True), ("national", False), (None, True)],
+    )
+    def test_a_line_scoped_entry_stands_aside_off_its_line(
+        self, line, stands_aside
+    ) -> None:
+        # employment_income carries signal in the fixture, so an exclusion for
+        # it is stale wherever it applies.
+        scoped = {
+            "person.employment_income": {
+                "reason": "injected: earned on the national line's evidence only",
+                "approved_by": "juaristi22",
+                "adjudication": "microcosm#1124",
+                "approved_on": "2026-08-26",
+                "expires_on": "2027-02-26",
+                "release_lines": ["national"],
+            }
+        }
+        extra = {"reviewed_degenerate_exclusions": scoped}
+        if line is not None:
+            extra["release_line"] = line
+        battery = _run_battery(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts=extra,
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}[
+            "uk_degenerate_release_surface"
+        ]
+        details = outcome.result.details
+        stale = "person.employment_income" in details["stale_exclusions"]
+        assert stale is not stands_aside
+        if stands_aside:
+            assert details["release_line"] == line
+            assert details["out_of_line_exclusions"] == ["person.employment_income"]
+            assert outcome.status is GateStatus.PASSED
+        else:
+            assert "out_of_line_exclusions" not in details
+            assert outcome.status is GateStatus.FAILED
+
+    def test_an_unknown_release_line_is_refused(self) -> None:
+        binding = UK_GATE_REGISTRY["tail_concentration"]
+        context = EvidenceContext(
+            artifacts={"exclusions_evaluated_on": CLOCK, "release_line": "regional"}
+        )
+        with pytest.raises(ValueError, match="release_line must be one of"):
+            binding.evaluate(
+                context,
+                {
+                    "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
+                    "top_k": 1,
+                    "max_top_share": 0.5,
+                    "min_nonzero_records": 2,
+                },
+            )
+
     def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
         person, benunit, household = _tables()
         frame = uk_national_frame(
@@ -1364,7 +1424,6 @@ class TestPreflightBindings:
         assert statuses == {
             "uk_release_input_coverage_manifest_current": GateStatus.PASSED,
             "uk_release_family_build_stages": GateStatus.PASSED,
-            "uk_ledger_compile_parity_production_2023": (GateStatus.EVIDENCE_ABSENT),
             "uk_ledger_compile_parity_incumbent_2025": GateStatus.EVIDENCE_ABSENT,
             "uk_ledger_compile_parity_local_incumbent_2025": (
                 GateStatus.EVIDENCE_ABSENT
@@ -1456,6 +1515,132 @@ class TestPreflightBindings:
             )
             is local
         )
+
+    def test_ledger_compile_parity_requires_the_compiles_unsupported_report(
+        self,
+    ) -> None:
+        # The registries alone are not the evidence. Without the compile's
+        # report of unsupported references the gate is evidence_absent, never
+        # a verdict that reads an unresolved reference as a fixture-only row.
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _ledger_compile_parity_required_artifacts,
+        )
+
+        assert _ledger_compile_parity_required_artifacts({}) == {
+            "uk_ledger_compiled_registries",
+            "uk_ledger_compile_unsupported",
+        }
+        assert _ledger_compile_parity_required_artifacts(
+            {"registry_artifact": "uk_ledger_compiled_local_registries"}
+        ) == {
+            "uk_ledger_compiled_local_registries",
+            "uk_ledger_compile_local_unsupported",
+        }
+
+    def test_ledger_compile_parity_forwards_the_compiles_unsupported_report(
+        self, monkeypatch
+    ) -> None:
+        from microcosm.build.uk_runtime import battery_bindings
+
+        fixture = TargetRegistry(
+            (
+                TargetSpec(
+                    name="ons.series",
+                    entity="household",
+                    measure="measure",
+                    value=5.0,
+                    period=2023,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        monkeypatch.setattr(
+            battery_bindings,
+            "_load_ledger_compile_parity_fixture",
+            lambda resource: fixture,
+        )
+        parameters = {
+            "fixture_resource": "synthetic.json",
+            "target_period": 2023,
+            "signed_differences": (
+                {
+                    "fixture_value": 5.0,
+                    "kind": "ledger_absent",
+                    "name": "ons.series",
+                    "period": 2023,
+                    "reason": "reviewed: the pinned feed no longer resolves it",
+                },
+            ),
+        }
+        unresolved = {"name": "ons.series", "period": 2023, "reason": "no fact"}
+
+        def evaluate(unsupported):
+            return battery_bindings._evaluate_ledger_compile_parity(
+                EvidenceContext(
+                    artifacts={
+                        "uk_ledger_compiled_registries": {
+                            2023: TargetRegistry((), country="uk")
+                        },
+                        "uk_ledger_compile_unsupported": unsupported,
+                    }
+                ),
+                parameters,
+            )
+
+        # The compile reported the reference: the signed ledger_absent row
+        # reproduces. A serialised surface keys its periods as strings.
+        assert evaluate({2023: (unresolved,)}).passed
+        assert evaluate({"2023": [unresolved]}).passed
+        # A clean compile at that period contradicts the signed row.
+        clean = evaluate({2023: ()})
+        assert not clean.passed
+        assert clean.failures == (
+            "signed ledger parity difference ons.series[2023] changed kind: "
+            "signed='ledger_absent', live='fixture_only'.",
+        )
+        # A period the producer compiled and did not report is refused.
+        with pytest.raises(KeyError, match="no entry for target period 2023"):
+            evaluate({2025: ()})
+        with pytest.raises(TypeError, match="must be mappings that name"):
+            evaluate({2023: ("ons.series",)})
+
+    def test_ledger_compile_parity_evidence_attests_the_unsupported_report(
+        self,
+    ) -> None:
+        # The report decides the verdict, so it is part of the attested
+        # evidence: the same registry with and without it must not share a
+        # digest. The names are sorted, so their order in the report is not.
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _ledger_compile_parity_evidence,
+        )
+
+        parameters = {
+            "fixture_resource": "registry_parity_fixture_2025.json",
+            "target_period": 2025,
+        }
+
+        def evidence(unsupported):
+            return _ledger_compile_parity_evidence(
+                EvidenceContext(
+                    artifacts={
+                        "uk_ledger_compiled_registries": {
+                            2025: TargetRegistry((), country="uk")
+                        },
+                        "uk_ledger_compile_unsupported": {2025: unsupported},
+                    }
+                ),
+                parameters,
+            )
+
+        rows = (
+            {"name": "ons.b", "period": 2025, "reason": "no fact"},
+            {"name": "ons.a", "period": 2025, "reason": "no fact"},
+        )
+        assert evidence(rows)["unsupported_references"] == ["ons.a", "ons.b"]
+        assert evidence(rows) == evidence(tuple(reversed(rows)))
+        assert evidence(())["unsupported_references"] == []
+        assert evidence(rows) != evidence(())
 
     def test_local_default_target_surface_uses_metric_names_and_signed_deferrals(
         self, uk_gates

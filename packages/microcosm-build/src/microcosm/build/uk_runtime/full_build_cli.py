@@ -108,6 +108,7 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
+from .dataset_size import UK_SIZE_L2_ANCHORS, UK_SIZE_L2_BASES
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -156,6 +157,11 @@ from .graph_terminal import (
     register_uk_terminal_kernels,
     rowwise_candidate_manifest_from_graph,
 )
+from .inspection_export import (
+    register_uk_inspection_export_kernel,
+    use_inspection_export,
+)
+from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
@@ -169,6 +175,7 @@ from .rowwise_cli import (
     REPOSITORY,
     candidate_clone_counts_argument,
     candidate_identity_digest,
+    cli_size_l2,
     git_commit,
     git_dirty,
     json_text,
@@ -209,6 +216,7 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
+from .weight_year import uk_dataset_year_frame
 
 if TYPE_CHECKING:
     from microcosm.build.staging_v2 import StagingRunBundleWriterV2
@@ -508,7 +516,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, help="Defaults to the role's seed.")
     parser.add_argument("--selection-seed", type=int)
-    parser.add_argument("--selection-pi-hi", type=float, default=1.0)
+    parser.add_argument(
+        "--selection-pi-hi",
+        type=float,
+        default=None,
+        help=(
+            "Inclusion-probability ceiling of the exact-count draw. Defaults to the "
+            "doctrine's 0.5 with --dataset-households, 1.0 otherwise."
+        ),
+    )
     parser.add_argument(
         "--selection-initial-lambda",
         type=float,
@@ -526,13 +542,49 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--baseline-pi-floor",
         type=float,
-        default=0.0,
+        default=None,
         help=(
             "Floor on the inclusion probability the refit's Horvitz-Thompson "
             "baseline divides each selected row's dense weight by (microcosm#355). "
-            "0 (default) is the untrimmed baseline. Requires --dataset-households."
+            "Defaults to the doctrine's 0.5 with --dataset-households; 0 is the "
+            "untrimmed baseline. Requires --dataset-households."
         ),
     )
+    for size_stage, weights, default_note in (
+        (
+            "selection",
+            "the informed L0 size search's pre-gate weights",
+            "off by default",
+        ),
+        (
+            "refit",
+            "the exact-count refit's weights",
+            "with --dataset-households and no refit L2 flag, the doctrine's "
+            "chi-square penalty toward uniform weights at λ 0.0216; 0 turns it off",
+        ),
+    ):
+        parser.add_argument(
+            f"--{size_stage}-l2-lambda",
+            type=float,
+            default=None,
+            help=(
+                f"A chi-square L2 penalty on {weights} toward their anchor "
+                f"(microcosm#1124); {default_note}. Candidate-only; requires "
+                "--dataset-households."
+            ),
+        )
+        parser.add_argument(
+            f"--{size_stage}-l2-anchor",
+            choices=UK_SIZE_L2_ANCHORS,
+            default=None,
+            help=(
+                "'initial' (the stage's starting weights; the refit's is the "
+                "normalized Horvitz-Thompson baseline) or 'uniform' (their mean)."
+            ),
+        )
+        parser.add_argument(
+            f"--{size_stage}-l2-basis", choices=UK_SIZE_L2_BASES, default=None
+        )
     parser.add_argument(
         "--no-size-checkpoint",
         action="store_true",
@@ -550,7 +602,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--target-weight-rule",
-        choices=("uniform", "grain_equal", "family_equal"),
+        choices=(
+            "uniform",
+            "grain_equal",
+            "family_equal",
+            *UK_LOCAL_ROW_METADATA_RULES,
+        ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
     )
     parser.add_argument("--engine-blocks", type=int, default=1)
@@ -562,6 +619,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Dense role only: constituency vintage required from the ladder.",
     )
     parser.add_argument("--skip-holdout", action="store_true")
+    parser.add_argument(
+        "--inspection-export",
+        action="store_true",
+        help=(
+            "Candidate-only: export, package and stage the H5 for inspection "
+            "even when a structural full-build gate blocks the artifact. The "
+            "bundle stays unreleasable and the exit status still reports the "
+            "block. Refused with --release-candidate."
+        ),
+    )
     parser.add_argument("--release-candidate", action="store_true")
     parser.add_argument("--review-date", type=date.fromisoformat, default=date.today())
     parser.add_argument(
@@ -921,6 +988,8 @@ def prepare_full_build(
             selection_initial_lambda=args.selection_initial_lambda,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
+            selection_l2=cli_size_l2(args, "selection"),
+            refit_l2=cli_size_l2(args, "refit"),
         ),
     )
     args._calibration_year = int(config.calibration_year)
@@ -1014,6 +1083,13 @@ def prepare_full_build(
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
+        # Recorded only when on, so a default request (and the export node's
+        # key) is unchanged.
+        **(
+            {"inspection_export": True}
+            if getattr(args, "inspection_export", False)
+            else {}
+        ),
         "targets": {
             "chronicle": {
                 "facts_sha256": feed.facts_sha256,
@@ -1027,6 +1103,7 @@ def prepare_full_build(
         graph,
         population=full.population,
         bindings=bindings,
+        solve_year=int(config.calibration_year),
         artifact_inputs=(
             ArtifactInput(
                 "full_gates",
@@ -1036,6 +1113,9 @@ def prepare_full_build(
             ),
         ),
     )
+    if getattr(args, "inspection_export", False):
+        graph = use_inspection_export(graph)
+        register_uk_inspection_export_kernel(kernels)
     register_uk_full_kernels(
         kernels,
         progress_callback=None if args.dry_run else _solve_observer(args, telemetry),
@@ -1293,14 +1373,12 @@ def _publish_failure_evidence(
     temporary JSON are never published.
     """
     from microcosm.build.artifact_files import publish_staged_bundle
-    from microcosm.build.telemetry_emitter_service.graph_publication import (
-        GRAPH_PUBLICATION_WAIT_SECONDS,
-    )
 
     from .orrery_publication import (
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
+        GRAPH_PUBLICATION_WAIT_SECONDS,
         finalize_graph,
         stage_graph_evidence,
     )
@@ -1916,7 +1994,15 @@ def _execute_full_build(
         local_gate_report=_local_gate_report_state(local_report),
     )
     if not enforcement["artifact_permitted"]:
-        return 1
+        if not getattr(args, "inspection_export", False):
+            return 1
+        print(
+            "warning: structural gates blocked the artifact "
+            f"({', '.join(enforcement['structural_failures'])}); "
+            "--inspection-export continues to an unreleasable inspection bundle.",
+            file=sys.stderr,
+            flush=True,
+        )
     stage(telemetry, "output_bundle", "started")
     manifest = _run_graph_with_progress(
         compile_graph(graph),
@@ -2671,8 +2757,15 @@ def _execute_national_build(
     # 7. The H5, then the graph's readback of it.
     stage(telemetry, "candidate_h5_creation", "started")
     # The release boundary (microcosm#1063 c9): the reviewed export exclusions
-    # leave the candidate here, and the graph readback expects the same.
-    write_uk_national_frame(uk_release_export_frame(frame), paths["dataset"])
+    # leave the candidate here, and the graph readback expects the same. The
+    # weights are written at the dataset's year, so policyengine-uk's own
+    # projection returns the solved weights at the solve year (microcosm#796
+    # A19); the solve, its gates and its evidence keep the solved weights.
+    solve_year = int(registry_document["calibration_year"])
+    write_uk_national_frame(
+        uk_dataset_year_frame(uk_release_export_frame(frame), solve_year=solve_year),
+        paths["dataset"],
+    )
     if state is not None:
         append_phase(state, "staging_h5_written")
     stage(
@@ -2681,7 +2774,9 @@ def _execute_national_build(
         "completed",
         size_bytes=paths["dataset"].stat().st_size,
     )
-    continued = add_uk_national_readback(graph, population=national.population)
+    continued = add_uk_national_readback(
+        graph, population=national.population, solve_year=solve_year
+    )
     final = _run_graph_with_progress(
         compile_graph(continued),
         sources={**sources, "exported_dataset": paths["dataset"]},
@@ -2914,6 +3009,7 @@ def _run_with_telemetry(
         args,
         build_id=build_id,
         run_kind="dry_run" if args.dry_run else "calibration",
+        close_service_on_finish=False,
     )
     emitter.transition_stage(
         "preflight",

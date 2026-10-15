@@ -143,6 +143,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_retirement_distributions_to_puf_support",
         "impute_workers_compensation_to_puf_support",
         "impute_weeks_unemployed_to_puf_support",
+        "impute_prepayment_meter",
         "iterative_proportional_fit",
         "level_road_fuel",
         "redraw_zero_road_fuel",

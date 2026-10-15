@@ -375,3 +375,19 @@ def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
             _zero_row_expand_node(),
             _zero_row_expand_result([0.5, 2.5], total=3.0),
         )
+
+
+def test_property_components_reads_cover_the_stage_inputs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    every person column the landlord stage requires (the recipient flag joined
+    them with microcosm#840; the 13 October twin build failed at the node
+    before the declaration followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.property_components import (
+        PROPERTY_COMPONENTS_PERSON_INPUTS,
+    )
+
+    declared = _STAGE_CONSUMES["property_components"]
+    assert declared is not None
+    required = {("person", column) for column in PROPERTY_COMPONENTS_PERSON_INPUTS}
+    assert required <= declared, sorted(required - declared)

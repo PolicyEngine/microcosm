@@ -361,12 +361,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--lcfs-person-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 person tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 person tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--etb-tab",

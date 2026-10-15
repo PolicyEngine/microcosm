@@ -8,7 +8,10 @@ Two postures, both fail-closed and both printing every failure by name:
 ``--candidate-dir``  after the run: the manifest and the signed gate report
            say what a publishable release candidate must say — release
            posture attested, shippable, every release-blocking gate passed,
-           single-block engine, doctrine values, the A15 census household
+           an exact engine population (one block, or one block per clone
+           whose identical copies are scaled to the pool), doctrine values
+           (and, for a sized run, the size doctrine: 100,000 households under
+           the doctrine's draw, floor and refit penalty), the A15 census household
            uprating and A17 tenure application and the
            measure exclusions receipted, holdout measured, Logbook row
            present, artifact digest recorded and matching.
@@ -99,7 +102,7 @@ def check_env(
             UK_LOCAL_SOLVE_EPOCHS,
         )
 
-        ruled = (10.0, "grain_equal", 15, 1500)
+        ruled = (10.0, "nation_grain_family_equal_sqrt_count", 15, 2000)
         found = (
             float(UK_LOCAL_MAX_WEIGHT_RATIO),
             UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
@@ -110,6 +113,62 @@ def check_env(
             failures.append(f"doctrine constants {found} are not the ruled {ruled}.")
     except ImportError as error:
         failures.append(f"doctrine module not importable: {error}")
+    return failures
+
+
+#: The local size doctrine (microcosm#1124, ruling of 2026-10-13): a sized
+#: release candidate ships this many households, drawn and refit under these
+#: settings, with no selection L2 penalty (refused for every run above).
+#: Restated here, like the solve doctrine, so the pre-flight checks the run
+#: against the ruling rather than against the code that ran it.
+SIZE_DOCTRINE = {
+    "dataset_households": 100_000,
+    "selection_pi_hi": 0.5,
+    "baseline_pi_floor": 0.5,
+}
+REFIT_L2_DOCTRINE = {
+    "lambda": 0.0215748772773509,
+    "anchor": "uniform",
+    "basis": "chi_square",
+}
+
+
+def _size_failures(manifest: dict, parameters: dict) -> list[str]:
+    """A sized run must carry the size doctrine; an unsized one, no refit L2."""
+
+    requested = parameters.get("dataset_households")
+    if requested is None:
+        if parameters.get("refit_l2") is not None:
+            return ["a refit L2 penalty was applied without a size request."]
+        return []
+    failures = [
+        f"parameters.{key} = {parameters.get(key)!r}, expected the size "
+        f"doctrine's {value!r}."
+        for key, value in SIZE_DOCTRINE.items()
+        if parameters.get(key) != value
+    ]
+    if parameters.get("refit_l2") != REFIT_L2_DOCTRINE:
+        failures.append(
+            f"parameters.refit_l2 = {parameters.get('refit_l2')!r}, expected the "
+            f"size doctrine's {REFIT_L2_DOCTRINE!r}."
+        )
+    if parameters.get("resume_size_checkpoint") is not None:
+        failures.append(
+            "the selection was resumed from a size checkpoint; a release draws its own."
+        )
+    size = manifest.get("solve", {}).get("dataset_size")
+    if not isinstance(size, dict):
+        failures.append("solve.dataset_size is missing from a sized run.")
+    elif not (
+        size.get("requested_households") == size.get("realized_households") == requested
+    ):
+        failures.append(
+            "solve.dataset_size requested "
+            f"{size.get('requested_households')!r} / realized "
+            f"{size.get('realized_households')!r}, expected {requested!r}."
+        )
+    if manifest.get("release_posture", {}).get("size_doctrine") is not True:
+        failures.append("release_posture.size_doctrine is not true.")
     return failures
 
 
@@ -138,8 +197,8 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     doctrine = parameters.get("doctrine", {})
     expected = {
         "max_weight_ratio": 10.0,
-        "target_weight_rule": "grain_equal",
-        "solve_epochs": 1500,
+        "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+        "solve_epochs": 2000,
         "clone_count": 15,
     }
     for key, value in expected.items():
@@ -147,17 +206,35 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
             failures.append(
                 f"doctrine.{key} = {doctrine.get(key)!r}, expected {value!r}."
             )
-    if parameters.get("epochs") != 1500 or parameters.get("n_clones") != 15:
+    if parameters.get("epochs") != 2000 or parameters.get("n_clones") != 15:
         failures.append(
-            f"run parameters epochs={parameters.get('epochs')} n_clones={parameters.get('n_clones')} are not the doctrine's 1500 / 15."
+            f"run parameters epochs={parameters.get('epochs')} n_clones={parameters.get('n_clones')} are not the doctrine's 2000 / 15."
         )
     if parameters.get("skip_holdout"):
         failures.append("holdout was skipped.")
+    if parameters.get("selection_l2") is not None:
+        failures.append("a selection L2 penalty was applied (candidate-only).")
+    failures.extend(_size_failures(manifest, parameters))
     solve = manifest.get("solve", {})
     resolution = solve.get("measure_resolution", {})
-    if resolution.get("blocks") != 1:
+    blocks = resolution.get("blocks")
+    representation = resolution.get("engine_population_representation") or {}
+    # One block per clone measures the pool exactly when the blocks are
+    # identical copies scaled to the pool (rowwise_cli.release_verdict); the
+    # build records that check, and nothing else stands in for it.
+    per_clone_exact = (
+        type(blocks) is int
+        and blocks > 1
+        and blocks == parameters.get("n_clones")
+        and representation.get("blocks") == blocks
+        and representation.get("mode") == "block_weights_scaled_to_pool"
+        and representation.get("exact") is True
+    )
+    if blocks != 1 and not per_clone_exact:
         failures.append(
-            f"engine resolved in {resolution.get('blocks')} blocks; release posture is 1."
+            f"engine resolved in {blocks} blocks without an exact pool "
+            "representation; release posture is one block, or one block per "
+            "clone recorded exact."
         )
     if solve.get("target_weight_rule_override"):
         failures.append("a target-weight-rule override was applied.")

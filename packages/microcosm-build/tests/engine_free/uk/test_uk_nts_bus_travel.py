@@ -403,9 +403,10 @@ class _Engine:
         return SimpleNamespace(entity="household")
 
     def materialize(self, frame, variables, period):
+        # The band reads HBAI net income plus the HBAI deductions (#1164).
         rows = len(frame.table("household"))
-        values = {"household_gross_income": self.rng.uniform(5e3, 9e4, rows)}
-        return {name: values[name] for name in variables}
+        values = {"hbai_household_net_income": self.rng.uniform(5e3, 9e4, rows)}
+        return {name: values.get(name, np.zeros(rows)) for name in variables}
 
 
 def test_band_draw_is_identity_keyed_rounded_and_within_the_donor_range() -> None:
@@ -437,6 +438,46 @@ def test_band_draw_is_identity_keyed_rounded_and_within_the_donor_range() -> Non
         n_estimators=4,
     )
     assert (second.band == first.band[order]).all()
+
+
+def test_recipient_income_band_is_hbai_gross_income() -> None:
+    # microcosm#1164: the NTS band is gross cash income, so the recipient adds
+    # the engine's HBAI deductions back to its HBAI net income; the engine's
+    # household_gross_income (capital gains, imputed NHS and education) is not
+    # asked for.
+    from microcosm.build.uk_runtime.household_income import (
+        UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    )
+
+    frame, _ = _recipient_frame()
+    rows = len(frame.table("household"))
+    net = np.full(rows, 20_000.0)
+    net[: rows // 2] = 40_000.0
+    requested: list[str] = []
+
+    class _GrossEngine(_Engine):
+        def materialize(self, frame, variables, period):
+            requested.extend(variables)
+            values = {
+                "hbai_household_net_income": net,
+                "income_tax": np.full(rows, 6_000.0),
+            }
+            return {name: values.get(name, np.zeros(rows)) for name in variables}
+
+    band_parameters = _operation(_committed_stage(), IMPUTE_BUS_USE_BAND_KIND)
+    recipient = recipient_predictors(
+        _recipient_frame()[0],
+        _GrossEngine(np.random.default_rng(0)),
+        columns=_columns(),
+        income_band_edges=band_parameters["income_band_edges"],
+        region_remap=band_parameters.get("region_remap", {}),
+    )
+
+    assert "household_gross_income" not in requested
+    assert set(UK_HBAI_GROSS_INCOME_DEDUCTIONS) <= set(requested)
+    # 20,000 + 6,000 and 40,000 + 6,000 both fall in band 2 (25,000 to
+    # 50,000); on the net income alone the first would be band 1.
+    assert set(recipient["income_band"]) == {2}
 
 
 def test_band_means_and_trip_assignment_split_the_series_by_residence_group() -> None:

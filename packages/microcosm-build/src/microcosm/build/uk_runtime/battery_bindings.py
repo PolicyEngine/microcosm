@@ -110,6 +110,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKQRFTailConcentrationPolicy,
@@ -959,6 +960,46 @@ def _exclusion_clock(context: EvidenceContext) -> date:
     return clock
 
 
+def _release_line(context: EvidenceContext) -> str | None:
+    """The release line the gate context declares (``release_line``), if any."""
+
+    line = context.artifacts.get("release_line")
+    if line is not None and line not in UK_RELEASE_LINES:
+        raise ValueError(
+            f"release_line must be one of {sorted(UK_RELEASE_LINES)}, got {line!r}."
+        )
+    return line
+
+
+def _in_line(
+    records: Mapping[str, UKReviewedExclusion], context: EvidenceContext
+) -> tuple[Mapping[str, UKReviewedExclusion], list[str]]:
+    """The records in scope on the context's line, and the names out of line."""
+
+    line = _release_line(context)
+    applied = {
+        name: record for name, record in records.items() if record.applies_on(line)
+    }
+    return MappingProxyType(applied), sorted(set(records) - set(applied))
+
+
+def _with_out_of_line(
+    result: GateResult, context: EvidenceContext, out_of_line: list[str]
+) -> GateResult:
+    """Record the register entries a line-scoped evaluation set aside."""
+
+    if not out_of_line:
+        return result
+    return replace(
+        result,
+        details={
+            **dict(result.details),
+            "release_line": _release_line(context),
+            "out_of_line_exclusions": out_of_line,
+        },
+    )
+
+
 def _resolve_degenerate_exclusions(
     context: EvidenceContext,
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
@@ -1073,7 +1114,8 @@ def _evaluate_degenerate_release_surface(
             f"runtime loads {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     resolved, _source = _resolve_degenerate_exclusions(context)
-    return uk_degenerate_release_surface_gate(
+    resolved, out_of_line = _in_line(resolved, context)
+    result = uk_degenerate_release_surface_gate(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
@@ -1083,6 +1125,7 @@ def _evaluate_degenerate_release_surface(
         dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _degenerate_exclusions_evidence(
@@ -1531,13 +1574,15 @@ def _evaluate_target_fit(
             f"runtime loads {UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_target_fit_exclusions(context)
+    exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(
+    result = uk_target_fit_gate(
         parity.target_relative_errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _target_fit_required_artifacts(
@@ -1579,6 +1624,7 @@ def _evaluate_input_mass_parity(
     exclusions, _source = _resolve_input_mass_exclusions(
         context, reference=reference_name
     )
+    exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
@@ -1590,7 +1636,7 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
-    return uk_input_mass_parity_gate(
+    result = uk_input_mass_parity_gate(
         uk_input_mass_totals(uk_release_export_frame(context.frame)),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
@@ -1598,6 +1644,7 @@ def _evaluate_input_mass_parity(
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _input_mass_reference_evidence(
@@ -1630,6 +1677,7 @@ def _evaluate_tail_concentration(
             f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_qrf_tail_exclusions(context)
+    exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKQRFTailConcentrationPolicy(
         top_k=top_k,
         max_top_share=max_top_share,
@@ -1657,7 +1705,7 @@ def _evaluate_tail_concentration(
             ],
             "export_dropped_checked_on_spine": sorted(checked_on_spine),
         }
-    return uk_qrf_tail_concentration_gate(
+    result = uk_qrf_tail_concentration_gate(
         values,
         weights,
         policy=policy,
@@ -1665,6 +1713,7 @@ def _evaluate_tail_concentration(
         now=_exclusion_clock(context),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def _evaluate_ledger_compile_parity(
@@ -1679,14 +1728,21 @@ def _evaluate_ledger_compile_parity(
             files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
     return ledger_compile_parity_gate(
         _ledger_compile_parity_registry(
             context,
             target_period,
-            registry_artifact=_ledger_compile_parity_registry_artifact(parameters),
+            registry_artifact=registry_artifact,
         ),
         fixture,
         signed_differences=signed_differences,
+        # The compile's own report of the references that did not resolve at
+        # this period: the signed resource classifies their fixture rows as
+        # ledger_absent, and the gate can only reproduce that kind with it.
+        unsupported=_ledger_compile_parity_unsupported(
+            context, target_period, registry_artifact=registry_artifact
+        ),
     )
 
 
@@ -1722,6 +1778,16 @@ def _ledger_compile_parity_evidence(
         "target_period": target_period,
         "signed_differences": parameters.get("signed_differences", ()),
         "signed_differences_resource": parameters.get("signed_differences_resource"),
+        # The report decides the verdict (a fixture row is ledger_absent only
+        # where the compile reported its reference), so it is attested with
+        # the registry: the same registry with and without the report must not
+        # share one evidence digest.
+        "unsupported_references": sorted(
+            str(row["name"])
+            for row in _ledger_compile_parity_unsupported(
+                context, target_period, registry_artifact=registry_artifact
+            )
+        ),
     }
 
 
@@ -1752,6 +1818,16 @@ _LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS = frozenset(
         "uk_ledger_compiled_local_registries",
     }
 )
+#: Beside each compiled-registries artifact, the compile's unsupported
+#: references by target period: one entry for every compiled period, empty
+#: where every reference resolved. A producer that leaves it out gives the
+#: parity gates no evidence, and a release candidate blocks on that.
+_LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS: Mapping[str, str] = MappingProxyType(
+    {
+        "uk_ledger_compiled_registries": "uk_ledger_compile_unsupported",
+        "uk_ledger_compiled_local_registries": "uk_ledger_compile_local_unsupported",
+    }
+)
 
 
 def _ledger_compile_parity_registry_artifact(
@@ -1767,10 +1843,51 @@ def _ledger_compile_parity_registry_artifact(
     return artifact
 
 
+def _ledger_compile_parity_unsupported(
+    context: EvidenceContext,
+    target_period: object,
+    *,
+    registry_artifact: str,
+) -> tuple[Mapping[str, object], ...]:
+    """The compile's unsupported references at ``target_period``.
+
+    The producer writes an entry for every period it compiled, so a period
+    with no entry is a producer that dropped the report, not a clean compile.
+    """
+
+    artifact = _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact]
+    by_period = context.artifacts[artifact]
+    if not isinstance(by_period, Mapping):
+        raise TypeError(
+            f"{artifact} must map target periods to the compile's unsupported "
+            "references."
+        )
+    for key in (target_period, str(target_period)):
+        if key in by_period:
+            rows = tuple(by_period[key])
+            if not all(isinstance(row, Mapping) and "name" in row for row in rows):
+                raise TypeError(
+                    f"{artifact} rows for target period {target_period!r} must be "
+                    "mappings that name their reference."
+                )
+            return rows
+    raise KeyError(
+        f"UK Ledger compile parity artifact {artifact!r} has no entry for target "
+        f"period {target_period!r}; available periods: "
+        f"{sorted(map(str, by_period))}."
+    )
+
+
 def _ledger_compile_parity_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
-    return frozenset({_ledger_compile_parity_registry_artifact(parameters)})
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    return frozenset(
+        {
+            registry_artifact,
+            _LEDGER_COMPILE_PARITY_UNSUPPORTED_ARTIFACTS[registry_artifact],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

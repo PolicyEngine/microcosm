@@ -263,7 +263,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,
-        "TRAIN": 10,
+        "TRAINEE": 2,
         "EMAAMT": 0.0,
         "CHEMAAMT": 0.0,
         "INEARNS": 10.0,
@@ -291,6 +291,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SLREPAMT": 2.0,
         "SSPADJ": 1.0,
         "SMPADJ": 0.5,
+        "SPPADJ": 0.25,
         "TUBORR": 500.0,
         "ACCSSAMT": 1.0,
         "ACCSSPD": 52.0,
@@ -325,7 +326,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FTED": 1,
         "TYPEED2": 2,
         "EDUCQUAL": 86,
-        "TRAIN": 9,
+        "TRAINEE": 1,
         "EMAAMT": 0.0,
         "CHEMAAMT": 1.0,
         "FSMVAL": 3.0,
@@ -1155,6 +1156,7 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["student_loan_repayments"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["statutory_sick_pay"] == pytest.approx(WEEKS_IN_YEAR)
     assert adult["statutory_maternity_pay"] == pytest.approx(0.5 * WEEKS_IN_YEAR)
+    assert adult["statutory_paternity_pay"] == pytest.approx(0.25 * WEEKS_IN_YEAR)
     assert adult["student_loans"] == pytest.approx(500)
     assert adult["access_fund"] == pytest.approx(WEEKS_IN_YEAR)
     assert adult["education_grants"] == pytest.approx(5)
@@ -1252,6 +1254,20 @@ def test_household_subrent_column_floors_missing_value_codes(
 
     assert household.loc[1, "subrent"] == 0
     assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
+def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
+    """A vintage without SPPADJ refuses; it never sets nobody's paternity pay."""
+
+    tables = _fixture_tables()
+    tables["adult"] = [
+        {key: value for key, value in row.items() if key != "SPPADJ"}
+        for row in tables["adult"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(KeyError, match="no SPPADJ column"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
@@ -2862,6 +2878,8 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "has_fuel_consumption": 0,
         "lcfs_consumption": 0,
         "gas_disconnection": 0,
+        # The prepayment-meter flag (microcosm#1110).
+        "uses_energy_prepayment_meter": 0,
     }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
     assert declared["uc_deduction_attributes"] == {

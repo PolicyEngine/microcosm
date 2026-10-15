@@ -421,7 +421,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "FTED": 2,
             "TYPEED2": 0,
             "EDUCQUAL": 1 + household_id % 18,
-            "TRAIN": 10,
+            "TRAINEE": 2,
             "EMAAMT": 0.0,
             "CHEMAAMT": 0.0,
             "INEARNS": 100.0 + household_id,
@@ -447,6 +447,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "SLREPAMT": 2.0,
             "SSPADJ": 1.0,
             "SMPADJ": 0.5,
+            "SPPADJ": 0.25,
             "TUBORR": 500.0,
             "ACCSSAMT": 1.0,
             "ACCSSPD": 52.0,
@@ -478,7 +479,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FTED": 1,
                     "TYPEED2": 2,
                     "EDUCQUAL": 86,
-                    "TRAIN": 9,
+                    "TRAINEE": 1,
                     "EMAAMT": 0.0,
                     "CHEMAAMT": 1.0,
                     "FSMVAL": 3.0,
@@ -843,14 +844,32 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
-        "weighta": 1.0 + rows % 7 / 10.0,
+        "cal_weight_annual": 1.0 + rows % 7 / 10.0,
         "a122": 1 + rows.astype(int) % 8,
         "a121": 1 + rows.astype(int) % 8,
-        "b226": 6.0 + rows % 3,
-        "b489": 2.0 + rows % 5,
-        "b490": 1.0 + rows % 4,
         "p537": 10.0 + rows,
     }
+    # The labelled fuel, light and power parts (microcosm#1164): an electricity
+    # account everywhere, a gas account on most diaries, combined bills on a
+    # third (gas and electricity components), prepayment meters on a sixth,
+    # and oil on a few.
+    from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_ENERGY_CODES
+
+    for code in UK_LCFS_ENERGY_CODES:
+        if code != "p537":
+            household[code] = np.zeros(_DONOR_ROWS)
+    combined = rows.astype(int) % 3 == 0
+    prepay = rows.astype(int) % 6 == 1
+    household["b175"] = np.where(combined | prepay, 0.0, 8.0 + rows % 5)
+    household["b489"] = household["b175"]
+    household["b170"] = np.where(combined | prepay, 0.0, 4.0 + rows % 4)
+    household["b490"] = household["b170"]
+    household["b231"] = np.where(combined, 10.0 + rows % 3, 0.0)
+    household["b226"] = np.where(combined, 4.0, 0.0)
+    household["b227"] = np.where(combined, 6.0 + rows % 3, 0.0)
+    household["b1751"] = np.where(prepay, 5.0 + rows % 2, 0.0)
+    household["b1701"] = np.where(prepay & (rows.astype(int) % 12 == 1), 3.0, 0.0)
+    household["b017"] = np.where(rows.astype(int) % 10 == 7, 2.5, 0.0)
     for position, source in enumerate(
         (
             "p601",
@@ -1093,6 +1112,11 @@ def _spi_donor() -> pd.DataFrame:
         )
         row["TII"] = row["OTHERINV"] + row["DIVIDENDS"] + row["INCPROP"] + row["INCBBS"]
         row["TI"] = row["TEI"] + row["TII"]
+        # Annex A bridge codes consistent with the leaves (microcosm#840): the
+        # main source is the largest leaf, the trade pages follow PROFITS and
+        # State Pension age follows the State Pension leaf, as the age draw
+        # places every recipient at or over it.
+        row.update(_bridge_codes(row))
         rows.append(row)
         # The reserved income bands (spi_income_band_donors) need a pool in every
     # band from GBP 200,000 for every region, sex and age cell the synthetic
@@ -1122,6 +1146,7 @@ def _spi_donor() -> pd.DataFrame:
                     row["TEI"] = row["PAY"]
                     row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
                     row["TI"] = row["TEI"] + row["TII"]
+                    row.update(_bridge_codes(row))
                     rows.append(row)
     for offset in range(6):
         row = {column: 0.0 for column in SPI_DONOR_REQUIRED_COLUMNS}
@@ -1139,8 +1164,32 @@ def _spi_donor() -> pd.DataFrame:
         row["TEI"] = row["PAY"]
         row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
         row["TI"] = row["TEI"] + row["TII"]
+        # Composite records carry no bridge codes, as the published tape.
+        row.update({"MAINSRCE": -1.0, "SEINC_NUM": -1.0, "SPA": -1.0})
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def _bridge_codes(row: dict[str, float]) -> dict[str, float]:
+    """The published bridge codes implied by a synthetic record's leaves."""
+
+    employment_income = row["PAY"] + row["EPB"] + row["TAXTERM"]
+    pension = row["PENSION"] + row["SRP"]
+    trade = max(row["PROFITS"] - row["CAPALL"] - row["LOSSBF"], 0.0)
+    largest = max(employment_income, pension, trade)
+    if largest <= 0.0:
+        main_source = 5.0
+    elif largest == employment_income:
+        main_source = 1.0
+    elif largest == pension:
+        main_source = 2.0
+    else:
+        main_source = 3.0
+    return {
+        "MAINSRCE": main_source,
+        "SEINC_NUM": 1.0 if row["PROFITS"] > 0.0 else 0.0,
+        "SPA": 1.0 if row["SRP"] > 0.0 else 0.0,
+    }
 
 
 def _hmrc_income_targets(path: Path) -> HMRCIncomeTargetSet:
@@ -1535,11 +1584,22 @@ def _fixture_stages(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "hmrc_spi_income_spine":
+            stage1 = next(
+                operation
+                for operation in stage.operations
+                if operation.kind == "fit_weighted_qrf_stage1"
+            )
             stage = _replace_operation(
                 stage,
                 "fit_weighted_qrf_stage1",
                 sample_size=_SPI_DONOR_SAMPLE_SIZE,
                 n_estimators=_QRF_ESTIMATORS,
+                # The FRS reference forest (microcosm#840) grows the fixture's
+                # estimator count too.
+                reference_model={
+                    **stage1.parameters["reference_model"],
+                    "n_estimators": _QRF_ESTIMATORS,
+                },
             )
             stage = _replace_operation(
                 stage,
