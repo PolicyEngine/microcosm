@@ -1,14 +1,14 @@
 {
   "source_fact_feed": "chronicle-uk-artifact-735820c",
   "target_period": 2025,
-  "candidate_count": 23386,
-  "contract_target_count": 52,
-  "active_reference_count": 21596,
+  "candidate_count": 26065,
+  "contract_target_count": 55,
+  "active_reference_count": 24269,
   "status_counts": {
-    "active": 21596,
+    "active": 24269,
     "no_fact_for_area": 1239,
     "signed_deferral_compile_error": 1,
-    "signed_deferred": 550
+    "signed_deferred": 556
   },
   "areas_by_geography_level": {
     "constituency": [
@@ -9729,6 +9729,39 @@
       "reason_id": "local_authority_support_floor_excluded",
       "rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
       "area_ids": [
+        "E09000001"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1m",
+      "geography_level": "local_authority",
+      "reason_id": "local_authority_support_floor_excluded",
+      "rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+      "area_ids": [
+        "E06000053",
+        "E09000001"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1_5m",
+      "geography_level": "local_authority",
+      "reason_id": "local_authority_support_floor_excluded",
+      "rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+      "area_ids": [
+        "E06000053",
+        "E09000001"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m",
+      "geography_level": "local_authority",
+      "reason_id": "local_authority_support_floor_excluded",
+      "rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+      "area_ids": [
+        "E06000053",
         "E09000001"
       ],
       "defer_if_compiles": true
@@ -457684,7 +457717,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 45.365
             },
             {
@@ -460465,7 +460498,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 1302.843
             },
             {
@@ -469308,7 +469341,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 4.39
             },
             {
@@ -472089,7 +472122,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 534.704
             },
             {
@@ -480932,7 +480965,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 1.463
             },
             {
@@ -483713,7 +483746,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "signed_reason_id": "local_authority_support_floor_excluded",
-              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): respectively 7 and 14 positive-weight rows at K=4, and 17 and 49 at K=10. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
+              "signed_rationale": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4).",
               "deferred_value": 222.128
             },
             {

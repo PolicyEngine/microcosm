@@ -1,11 +1,11 @@
 {
- "compiled_count": 21596,
+ "compiled_count": 24269,
  "counts_by_kind": {
   "calibration_drift": 19275,
   "fixture_only": 4267,
-  "ledger_only": 2318
+  "ledger_only": 4991
  },
- "difference_count": 25860,
+ "difference_count": 28533,
  "differences": [
   {
    "fixture_value": 70.0,

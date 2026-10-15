@@ -43,6 +43,13 @@
       "adjudication": "microcosm#929 (basis ruling 2026-09-15, replacing microcosm#762 A1 of 2026-09-02); renewed three months on 2026-10-14 by juaristi22 (microcosm#1278): the taxbase basis is unchanged.",
       "approved_on": "2026-10-14",
       "expires_on": "2027-01-14"
+    },
+    "high_value_home_stock_derived_estimate": {
+      "reason": "Accepted as the family's basis (microcosm#1240, plan approved 2026-10-13): no publisher counts owner-occupied dwellings above value thresholds by constituency or local authority, and Chronicle registers the Land Registry inputs raw-only (chronicle#343). The estimate's assumptions are declared in the fence and receipted in uk/high_value_home_stock.provenance.json (coverage ratios, the census-implied and controlled owner shares, the uprating fallback counts, the national counts beside the OBR costing note's table 1.1 and the no-correction sensitivities). Renew on the first dense build's receipts: the regional 2m-plus shares and the seat rank correlations against the derived stock and VOA band H decide whether the basis stands. Fence: uk_local_target_census.json#/binding_fences/high_value_home_stock_derived_estimate; membership: local_target_reference_membership.json (the high_value_homes/over_* ids at constituency and local_authority grain, England and Wales).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1240 plan approved by María on 2026-10-13",
+      "approved_on": "2026-10-13",
+      "expires_on": "2026-12-31"
     }
   }
 }

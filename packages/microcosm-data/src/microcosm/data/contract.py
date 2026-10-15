@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "281dc0273fbb7c6f563fd91eb50f1ff1ba106bdb67e9f94b26765bf5c66a2cc1"
+    "4f9c71b596600d03494f4cc38cbb85f50e10d71325d2cb7f81a5e6a949ec5760"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "81b1ae0dd238aa751d8d965f9ce468f5b3693cdad9fc52677ad89fc1b3b2934c"
+    "e3d97e488a821501801df23242acfbc3565dd7a39386aae387808caf116e188d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5fe8f8b057fb55910e18ef9a49d2167ab36ab5d29111f1616472fd5c973b0165"
+    "5d7f7401162a0bd53abf41995047b35bf31d20a4ed6251c5332b762060f43864"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -876,10 +876,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "b34c6fba43a1b27af137e88dc91ff3d34d0fe6bc096f29d5f5cb95a02df4f62d"
+            "a52d74be5d8a8af05cb37b6d3643038de8d8491761a79d7bdbea1048aaee710d"
         ),
         "policy_sha256": (
-            "a6f270c51127486617f007c5f70127f1d5994f113658d528bcfe556db11e64ff"
+            "e258e8712b7ada5796f7e7e446698a5ddabc6c793f7633093d07bd5d3197631b"
         ),
     },
     "calibration_seam": {
@@ -892,10 +892,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "11378b3379da0e59f3a6e22af0f51a81906ea6b13603289a62975e61f1b41c30"
+            "7ea070e3efe5a36dfa246b175bb2de81e37fb52dd8b5a337249ebc02160112d4"
         ),
         "policy_sha256": (
-            "2b0682d4da1d56c1ca43c4a2143cd588e5deac7f8f61fe32c92bce2f4e72567e"
+            "cc7a00cc21ebba070f6b0e48e5198ebe673d05305eeb7b247b16610be8927010"
         ),
     },
 }

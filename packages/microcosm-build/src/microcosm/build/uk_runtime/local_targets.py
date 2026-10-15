@@ -18,6 +18,11 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
+from microcosm.build.uk_runtime.high_value_homes import (
+    high_value_home_mask,
+    uk_high_value_home_metric_names,
+    uk_high_value_home_thresholds,
+)
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
     UK_TENURE_OWNED_WITH_MORTGAGE,

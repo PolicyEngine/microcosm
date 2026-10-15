@@ -737,6 +737,20 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
 
 
+#: microcosm#1240: the high_value_homes family binds a Microcosm-derived
+#: estimate (HM Land Registry stock counts), not a published per-area fact,
+#: so the incumbent register has nothing to compare it with.
+_DERIVED_STOCK_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: the target is a Microcosm-derived estimate "
+    "of the owner-occupied dwelling stock above a value threshold "
+    "(uk/high_value_home_stock_facts.json, fence "
+    "high_value_home_stock_derived_estimate), compiled beside the Chronicle "
+    "feed; no publisher counts such dwellings by area, so the incumbent "
+    "registry carries no row to compare and the difference is the derived "
+    "target itself (microcosm#1240)."
+)
+
+
 def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
     """(target id, area id) -> the signed rationale of each small-cell deferral.
 

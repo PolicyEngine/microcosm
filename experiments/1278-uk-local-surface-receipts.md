@@ -4,9 +4,11 @@ This receipt gives no counts or weighted figures from the licensed spines. Censu
 
 ## C1. Council-tax bands stay inside their nation
 
-**Method.** Two spines were built from the licensed inputs with the same recipe and seed, local only:
+**Method.** Two spines were built from the licensed inputs with the same recipe and seed, local only, before the branch was rebased onto later main:
 - main at `121fd4dd6`;
-- the branch at `78de5f7db` (the band restriction and its raw-score redraw).
+- the branch's two C1 commits on that base (the band restriction and its raw-score redraw).
+
+The shell's code has not changed since: the rebases onto later main (#1271, #1270) touch no part of the redraw. #1270's band redraw after geography derivation runs in the full build, after the spine, and the terminal gate `uk_council_tax_band_domain_terminal` checks it.
 
 They hold the same set of base households (households that are not CGT copies), named by lineage (source household, support channel, clone index, income-band donor). The comparison script is `docs/evidence/uk-local-surface-1278/scripts/compare_twin_bands.py`; its outputs stay with the licensed spines, outside the repository.
 
@@ -18,16 +20,16 @@ They hold the same set of base households (households that are not CGT copies), 
 
 Weighted households by band and nation are not reported for either spine: the difference between the two spines' totals would isolate the households the fix moved.
 
-**The first attempt refused on licensed data.** The first version renormalised `predict_proba` over the nation's bands. For some English households the classifier scores band I so far above A-H that its softmax gives A-H probability exactly zero, and the stage refused. The redraw now takes a softmax of the raw class scores over the nation's bands: the same conditional distribution, without the underflow (`78de5f7db`).
+**The first attempt refused on licensed data.** The first version renormalised `predict_proba` over the nation's bands. For some English households the classifier scores band I so far above A-H that its softmax gives A-H probability exactly zero, and the stage refused. The redraw now takes a softmax of the raw class scores over the nation's bands: the same conditional distribution, without the underflow (the second C1 commit).
 
 ## C2. Signed small-cell rules
 
-Both rules in `uk/local_small_cell_rule.json` are signed: approved by juaristi22 on 2026-10-14, expiring 2027-04-01. `tools/generate_uk_local_target_references.py` regenerated the local references on the pinned feed (`942a1fa`). The cells are publisher target cells, not survey records.
+Both rules in `uk/local_small_cell_rule.json` are signed: approved by juaristi22 on 2026-10-14, expiring 2027-04-01. `tools/generate_uk_local_target_references.py` regenerated the local references on the pinned feed (`735820c`). The cells are publisher target cells, not survey records.
 
-| Status of a local cell | main | This branch |
+| Status of a local cell | main (`579296653`) | This branch |
 | --- | --- | --- |
-| Active (bound) | 21,804 | 21,596 |
-| Signed deferral | 342 | 550 |
+| Active (bound) | 24,477 | 24,269 |
+| Signed deferral | 348 | 556 |
 | No fact for the area | 1,239 | 1,239 |
 | Signed deferral, other compile error | 1 | 1 |
 
@@ -37,13 +39,13 @@ The 208 new deferrals are exactly the cells the two rules name:
 
 No deferral was removed, and no other status moved. Each deferred cell still counts in its region's or nation's control through reconciliation.
 
-The local compile-parity receipt (`uk/ledger_compile_parity_local_incumbent_2025_signed_differences.json`, regenerated with `tools/build_uk_ledger_compile_parity_signed_differences.py --surface local`) now compares 21,596 compiled cells with the incumbent's 23,545:
-- 207 of the 208 deferred cells had no incumbent row, so the ledger-only differences fall from 2,525 to 2,318;
+The local compile-parity receipt (`uk/ledger_compile_parity_local_incumbent_2025_signed_differences.json`, regenerated with `tools/build_uk_ledger_compile_parity_signed_differences.py --surface local`) now compares 24,269 compiled cells with the incumbent's 23,545:
+- 207 of the 208 deferred cells had no incumbent row, so the ledger-only differences fall from 5,198 to 4,991;
 - the other one has an incumbent row, so it moves from calibration drift (19,276 to 19,275) to fixture-only (4,266 to 4,267).
 
 ## C7. Sizing the age-universe change from census data
 
-`tools/uk_target_surface_receipt.py --communal-only` on the pinned feed (`942a1fa`). These are public census figures:
+`tools/uk_target_surface_receipt.py --communal-only` on the `942a1fa` feed; its census packages are unchanged in `735820c`, the feed main now pins. These are public census figures:
 - ONS RM120 for England and Wales;
 - NRS UV101a for Scotland;
 - NISRA CT0105 for Northern Ireland, approximate.

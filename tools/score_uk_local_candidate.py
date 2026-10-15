@@ -33,11 +33,12 @@ from microcosm.calibrate import (
 #: The compiled local reference count the score covers. microcosm#1123
 #: regenerated the UK target surface on the 942a1fa feed and moved it from
 #: 20,885 to 21,804 (docs/evidence/uk-target-surface-1123/surface-diff.json,
-#: ``register_completeness.compiled_local_reference_count``); microcosm#1278
-#: signed the two small-cell rules (uk/local_small_cell_rule.json), which
-#: defer 208 more cells, and moved it to 21,596
-#: (uk/local_target_reference_membership.json, ``active_reference_count``).
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 21_596
+#: ``register_completeness.compiled_local_reference_count``); microcosm#1240
+#: added the high-value homes cells, and microcosm#1278 signed the two
+#: small-cell rules (uk/local_small_cell_rule.json), which defer 208 cells,
+#: and moved it to 24,269 (uk/local_target_reference_membership.json,
+#: ``active_reference_count``).
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 24_269
 _LOCAL_GRAINS = ("constituency", "local_authority", "la")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
