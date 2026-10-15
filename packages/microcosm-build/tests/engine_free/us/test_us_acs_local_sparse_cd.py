@@ -1299,4 +1299,7 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     monkeypatch.setattr(module, "calibrate_surface", interrupted)
     with pytest.raises(RuntimeError, match="interrupted"):
         module.do_calibrate(SimpleNamespace(**{**vars(args), "resume": False}))
-    assert sorted(path.name for path in checkpoint.iterdir()) == ["weights_latest.npz"]
+    # The recorded SSI/Medicaid assignment is a materialize output, so it stays.
+    assert sorted(path.name for path in checkpoint.iterdir()) == sorted(
+        ["weights_latest.npz", module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME]
+    )
