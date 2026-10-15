@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     access_fund_annual,
     build_uk_frs_spine_frame,
     completed_months,
+    frs_council_tax_band,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -1530,6 +1531,15 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
     )
+
+
+def test_northern_ireland_households_take_the_placeholder_band() -> None:
+    # Northern Ireland pays domestic rates, so a ctband code there is ignored;
+    # elsewhere codes 1-9 are bands A-I and any other code is the placeholder.
+    household = pd.DataFrame(
+        {"gvtregno": [13, 13, 6, 11, 6], "ctband": [5, 0, 5, 9, 0]}
+    )
+    assert frs_council_tax_band(household).tolist() == ["D", "D", "E", "I", "D"]
 
 
 def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None:

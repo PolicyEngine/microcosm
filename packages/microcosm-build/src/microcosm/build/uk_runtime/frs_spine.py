@@ -117,7 +117,7 @@ ACCOMMODATION_MAP = {
 }
 
 #: FRS ``ctband`` codes 1-9 are the engine's bands A-I in order; any other
-#: code, and every Northern Ireland household, takes the placeholder band.
+#: code takes the placeholder band (``frs_council_tax_band``).
 COUNCIL_TAX_BAND_MAP = {
     code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
 }
@@ -993,9 +993,7 @@ def _add_household_columns(
     )
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
-    pe_household["council_tax_band"] = _map_codes(
-        household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
-    )
+    pe_household["council_tax_band"] = frs_council_tax_band(household)
     pe_household["council_tax_rebate"] = (
         _positive(household, "ctrebamt") * WEEKS_IN_YEAR
     )
@@ -1078,6 +1076,21 @@ def _sum_positive_fields(frame: pd.DataFrame, columns: tuple[str, ...]) -> np.nd
     for column in columns:
         total += _positive(frame, column).to_numpy()
     return total
+
+
+def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
+    """The engine's council-tax band for each FRS household.
+
+    ``ctband`` maps through ``COUNCIL_TAX_BAND_MAP``. Northern Ireland pays
+    domestic rates, not council tax, so its households take the placeholder
+    band whatever ``ctband`` holds (microcosm#1278).
+    """
+
+    band = _map_codes(
+        household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
+    )
+    region = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
+    return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
 
 
 def _map_codes(
