@@ -1324,7 +1324,14 @@
           },
           "expected_row_count": 4
         }
-      ]
+      ],
+      "licence": {
+        "licence": "Open Government Licence v3.0",
+        "attribution": [
+          "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics).",
+          "Source: Office for National Statistics licensed under the Open Government Licence v.3.0 (Labour Force Survey household estimates; Families and households in the UK)."
+        ]
+      }
     }
   ]
 }
