@@ -393,8 +393,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.130.1",
- "input_count": 299,
+ "engine_version": "2.132.6",
+ "input_count": 300,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -942,6 +942,10 @@
   {
    "entity": "household",
    "name": "local_authority"
+  },
+  {
+   "entity": "person",
+   "name": "loss_relief"
   },
   {
    "entity": "household",

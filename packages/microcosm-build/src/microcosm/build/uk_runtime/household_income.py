@@ -27,8 +27,9 @@ import pandas as pd
 from microcosm.frame import Frame
 
 #: The deductions policyengine-uk takes from HBAI income to reach
-#: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``;
-#: an engine-lane test fails if the two lists part).
+#: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``),
+#: less the ones the gross income does not add back; an engine-lane test fails
+#: if the two lists together part from the engine's.
 UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
     "council_tax",
     "domestic_rates",
@@ -41,6 +42,12 @@ UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
     "external_child_payments",
     "LVT",
 )
+#: The engine's HBAI subtractions the gross income leaves subtracted.
+#: ``trading_loss`` (policyengine-uk 2.131.0) is the year's self-employment
+#: loss: the surveys' gross incomes count self-employment income net of losses,
+#: so adding it back would band a loss-making household on its income before
+#: the loss.
+UK_HBAI_NET_INCOME_SUBTRACTS_NOT_ADDED_BACK = ("trading_loss",)
 #: The engine variables a stage materializes to build the gross income.
 UK_HBAI_GROSS_INCOME_VARIABLES = (
     "hbai_household_net_income",
