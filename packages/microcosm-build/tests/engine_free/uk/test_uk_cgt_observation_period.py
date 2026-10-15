@@ -66,7 +66,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
         monkeypatch.setattr(
             full_measure,
             "compute_household_metrics",
-            lambda _sim, _area, *, period, household_ids: pd.DataFrame(
+            lambda _sim, _area, *, period, input_period, household_ids: pd.DataFrame(
                 {"households": np.ones(len(household_ids))}, index=household_ids
             ),
         )

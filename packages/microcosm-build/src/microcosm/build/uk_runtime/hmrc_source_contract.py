@@ -49,6 +49,8 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_SOURCE_TEI_FORMULA,
     SPI_SOURCE_TI_FORMULA,
     SPI_SOURCE_TII_FORMULA,
+    SPI_STAGE1_CATEGORICAL_PREDICTORS,
+    SPI_STAGE1_PREDICTOR_COLUMNS,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     SPI_TI_IDENTITY_ABS_TOLERANCE_GBP,
 )
@@ -418,13 +420,13 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "stage1.predictors",
         tuple(stage1.get("predictors", ())),
-        ("age", "gender", "region"),
+        SPI_STAGE1_PREDICTOR_COLUMNS,
     )
     _expect(
         failures,
         "stage1.categorical_predictors",
         tuple(stage1.get("categorical_predictors", ())),
-        ("gender", "region"),
+        SPI_STAGE1_CATEGORICAL_PREDICTORS,
     )
     _expect(
         failures,

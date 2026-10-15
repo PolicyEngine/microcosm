@@ -51,6 +51,7 @@ from microcosm.build.uk_runtime.graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
     FULL_DIAGNOSTICS_TYPE,
     FULL_GATE_REPORT_TYPE,
+    FULL_HIGH_VALUE_SUPPORT_CSV_TYPE,
     FULL_HOLDOUT_TYPE,
     FULL_SUPPORT_CSV_TYPE,
     add_uk_export_preparation,
@@ -539,6 +540,15 @@ SUPPORT_CSV = (
     b"E07000008,1,1,1,87.0,87.0,1.0,local_authority\n"
 )
 
+# microcosm#1240: the per-area high-value support table stays a candidate
+# artifact; the harness carries a header and one row so materialisation and
+# replay bind it like the other terminal CSVs.
+HV_SUPPORT_CSV = (
+    b"geography_level,area_code,threshold_id,nonzero_households,"
+    b"nonzero_source_households,weight_sum,max_source_share\n"
+    b"constituency,E14000001,over_gbp_2m,0,0,0.0,0.0\n"
+)
+
 
 class Fixture(KernelBase):
     ref = "uk.test.cli-frame@1"
@@ -574,6 +584,7 @@ class Evidence(KernelBase):
                 calibration_diagnostics=diagnostics_payload(),
                 target_diagnostics_csv=TARGET_ROWS_CSV,
                 area_support_csv=SUPPORT_CSV,
+                high_value_home_support_csv=HV_SUPPORT_CSV,
             )
         return KernelResult(artifacts=artifacts)
 
@@ -812,6 +823,9 @@ def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=
                 ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),
                 ArtifactOutput("target_diagnostics_csv", FULL_DIAGNOSTICS_CSV_TYPE),
                 ArtifactOutput("area_support_csv", FULL_SUPPORT_CSV_TYPE),
+                ArtifactOutput(
+                    "high_value_home_support_csv", FULL_HIGH_VALUE_SUPPORT_CSV_TYPE
+                ),
             ),
         ),
         Node(
@@ -928,6 +942,7 @@ def prepared(tmp_path, failed=None, *, release_candidate=False, size_households=
         graph,
         population=root.id,
         bindings={"target_scope": "all", "geography": synthetic_geography_binding()},
+        solve_year=2025,
         artifact_inputs=(
             ArtifactInput(
                 "gates",

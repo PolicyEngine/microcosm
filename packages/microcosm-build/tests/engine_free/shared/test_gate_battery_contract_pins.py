@@ -216,7 +216,6 @@ class TestMirrorConstants:
         assert input_mass["reviewed_exclusions_resource"] == (
             UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
         )
-        qrf = params["uk_qrf_tail_concentration"]
         assert (
             data_contract._UK_INPUT_MASS_RELATIVE_TOLERANCE
             == (input_mass["relative_tolerance"])
@@ -224,12 +223,6 @@ class TestMirrorConstants:
         assert (
             data_contract._UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL
             == (input_mass["minimum_reference_total"])
-        )
-        assert data_contract._UK_QRF_TAIL_TOP_K == qrf["top_k"]
-        assert data_contract._UK_QRF_TAIL_MAX_TOP_SHARE == qrf["max_top_share"]
-        assert (
-            data_contract._UK_QRF_TAIL_MIN_NONZERO_RECORDS
-            == (qrf["min_nonzero_records"])
         )
         expected_registry = {
             name: descriptor.spec_payload()
@@ -321,6 +314,7 @@ class TestCertificationMirrors:
     def test_part_scopes_mirror_the_ownership_partition(self) -> None:
         from microcosm.build.uk_runtime.calibration_run import (
             UK_CALIBRATION_GATE_SCOPE,
+            UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
             UK_LOCAL_GATE_SCOPE,
             UK_NATIONAL_GATE_SCOPE,
             UK_SHARED_GATE_IDS,
@@ -339,9 +333,11 @@ class TestCertificationMirrors:
         assert data_contract._UK_CERTIFICATION_SHARED_GATE_IDS == frozenset(
             UK_SHARED_GATE_IDS
         )
+        # microcosm#1240: the two report-only high-value homes gates sit
+        # outside certification beside the local battery scope.
         assert data_contract._UK_CERTIFICATION_EXCLUDED_GATE_IDS == frozenset(
             UK_LOCAL_GATE_SCOPE
-        )
+        ) | frozenset(UK_LOCAL_DIAGNOSTIC_GATE_SCOPE)
 
     def test_part_digests_mirror_the_live_scoped_manifests(self) -> None:
         from microcosm.build.uk_runtime.release_certification import (

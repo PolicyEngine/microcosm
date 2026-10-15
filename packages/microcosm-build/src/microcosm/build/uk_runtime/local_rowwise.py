@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.target_weights import (
     UKTargetRows,
+    uk_family_floored_loss_scales,
     uk_target_loss_weights_for_rows,
     uk_target_rows_from_targets,
 )
@@ -1132,6 +1133,10 @@ class UKPreparedFullSolve:
     #: The row carrier a row-metadata weighting rule was computed from
     #: (microcosm#1124); ``None`` under the grain rules.
     target_rows: UKTargetRows | None = None
+    #: The doctrine's row scales (microcosm#1240: the default rule with the
+    #: family floors) and the receipt that names what the floors raised.
+    target_loss_scales: np.ndarray | None = None
+    target_loss_scale_receipt: Mapping[str, Any] | None = None
 
 
 def prepare_uk_full_solve(
@@ -1273,6 +1278,10 @@ def prepare_uk_full_solve(
             grain_labels,
             rule=target_weight_rule,
         )
+    target_loss_scales, scale_receipt = uk_family_floored_loss_scales(
+        np.asarray([target.value for target in target_set.targets], dtype=np.float64),
+        local_metrics=problem.target_frame["metric"].astype(str).tolist(),
+    )
     return UKPreparedFullSolve(
         frame=frame,
         problem=problem,
@@ -1282,6 +1291,8 @@ def prepare_uk_full_solve(
         binding_adjudications=binding_adjudications,
         mass_reason=mass_reason,
         target_rows=target_rows,
+        target_loss_scales=target_loss_scales,
+        target_loss_scale_receipt=scale_receipt,
     )
 
 
@@ -1314,6 +1325,7 @@ def solve_uk_dense_reference(
         budget_iters=budget_iters,
         seed=seed,
         target_loss_weights=prepared.target_loss_weights,
+        target_loss_scales=prepared.target_loss_scales,
         target_loss_cap=doctrine.target_loss_cap,
         progress_callback=progress_callback,
     )
@@ -1789,7 +1801,6 @@ def _doctrine_solve_evidence(
             "derive from the same numbers."
         )
 
-    scales = default_target_loss_scales(targets_vec)
     # Identity joins avoid making local-prefix/national-suffix ordering a
     # public diagnostic contract. Compilation order is still checked above.
     row_positions = {
@@ -1799,6 +1810,16 @@ def _doctrine_solve_evidence(
         [row_positions[target.row_name] for target in _rowwise_target_set(problem)],
         dtype=np.int64,
     )
+    # The doctrine's scales, derived here exactly as the solve derived them:
+    # the local rows (in problem order) take the family floors.
+    local_scales_floored, _ = uk_family_floored_loss_scales(
+        targets_vec[local_positions],
+        local_metrics=problem.target_frame["metric"].astype(str).tolist(),
+    )
+    scales = np.asarray(
+        default_target_loss_scales(targets_vec), dtype=np.float64
+    ).copy()
+    scales[local_positions] = local_scales_floored
     local_targets_vec = targets_vec[local_positions]
     local_scales = scales[local_positions]
     local_initial = initial_estimates[local_positions]
@@ -2036,7 +2057,12 @@ def rotated_uk_local_holdout(
             held_estimates,
             held_targets,
             target_loss_weights=held_weights,
-            target_loss_scales=default_target_loss_scales(held_targets),
+            target_loss_scales=uk_family_floored_loss_scales(
+                held_targets,
+                local_metrics=problem.target_frame.iloc[holdout_indices]["metric"]
+                .astype(str)
+                .tolist(),
+            )[0],
             target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
         )
         fold_rows.append(

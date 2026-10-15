@@ -17,6 +17,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.high_value_homes import (
+    high_value_home_mask,
+    uk_high_value_home_metric_names,
+    uk_high_value_home_thresholds,
+)
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
     UK_TENURE_OWNED_WITH_MORTGAGE,
@@ -120,6 +125,9 @@ def metric_names(
     if area_type == "la":
         names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
     names.append(HIGHER_RATE_TAXPAYERS_METRIC)
+    # microcosm#1240: owner-occupied homes above value thresholds, both grains,
+    # appended after every earlier family under the same append-only rule.
+    names.extend(uk_high_value_home_metric_names())
     return tuple(names)
 
 
@@ -255,6 +263,7 @@ def compute_household_metrics(
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
+    input_period: int | str | None = None,
 ) -> pd.DataFrame:
     """Compute local calibration metrics on household rows.
 
@@ -263,10 +272,17 @@ def compute_household_metrics(
     PolicyEngine-UK's microsimulation API. UC child-band membership is
     evaluated for each benefit unit and summed onto its household row, so a
     multi-benefit-unit household can contribute to more than one band.
+
+    ``input_period`` is the dataset period of the stored inputs. The
+    high-value homes family compares the stored ``main_residence_value``
+    with thresholds deflated to that period's price basis, so it reads the
+    input there rather than at ``period``, where the engine would uprate
+    it (microcosm#1240). When omitted it falls back to ``period``.
     """
 
     _validate_area_type(area_type)
     matrix = pd.DataFrame()
+    stored_period = period if input_period is None else input_period
 
     for income_variable in INCOME_VARIABLES:
         income_values = _values(_calculate(sim, income_variable, period))
@@ -367,6 +383,13 @@ def compute_household_metrics(
             matrix[f"council_tax/band_{band.lower()}"] = (
                 council_tax_band == band
             ).astype(float)
+
+    stored_value = _values(_calculate(sim, "main_residence_value", stored_period))
+    stored_tenure = _values(_calculate(sim, "tenure_type", stored_period))
+    for threshold in uk_high_value_home_thresholds():
+        matrix[threshold.metric_name] = high_value_home_mask(
+            stored_value, stored_tenure, threshold_basis_gbp=threshold.basis_gbp
+        ).astype(float)
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]

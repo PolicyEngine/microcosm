@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shlex
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -237,6 +238,7 @@ def _surface(module):
 def _args(tmp_path, **overrides):
     values = dict(
         checkpoint_dir=tmp_path,
+        staging_summary=tmp_path / "staging.summary.json",
         out_h5=None,
         resume=False,
         epochs=6,
@@ -253,6 +255,19 @@ def _args(tmp_path, **overrides):
     )
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def _load_release_tool_tests():
+    """The release-tool tests, for their record of a current materialization."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_release_tool_tests",
+        Path(__file__).with_name("test_us_acs_local_release_tool.py"),
+    )
+    tests = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(tests)
+    return tests
 
 
 @pytest.fixture
@@ -283,9 +298,14 @@ def calibrate_run(monkeypatch, tmp_path):
 
     monkeypatch.setattr(calibrate_package, "calibrate", spy)
 
+    release_tool_tests = _load_release_tool_tests()
+
     def run(**overrides):
         calls.clear()
-        module.do_calibrate(_args(tmp_path, **overrides))
+        args = _args(tmp_path, **overrides)
+        # A current materialization, so the stack's pre-solve refusals pass.
+        release_tool_tests._record_current_materialization(module, args, identity)
+        module.do_calibrate(args)
         return calls
 
     return SimpleNamespace(

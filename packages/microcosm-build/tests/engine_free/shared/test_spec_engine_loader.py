@@ -14,7 +14,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # protocol inside it attests microcosm.calibrate.solve's bytes, so
     # microcosm#1124's opt-in retain_best_objective moves it.
     assert first.spec_sha256 == (
-        "0beed241fbee407e76639d830853aa46aabbdb33c57df22a942dfee85ca1f404"
+        "43cac9831759a907bbf53205bed5cba6dea4f045aea674c4decae8aed014d0a5"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

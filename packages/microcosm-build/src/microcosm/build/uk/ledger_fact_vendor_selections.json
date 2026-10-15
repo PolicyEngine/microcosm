@@ -1259,6 +1259,35 @@
           "expected_row_count": 11
         }
       ]
+    },
+    {
+      "resource": "obr_hvcts_costing_facts.json",
+      "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
+      "consumers": [
+        "uk_runtime.high_value_homes",
+        "uk_runtime.high_value_homes"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "hvcts_properties_in_scope",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.hvcts_costing.properties_in_scope",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 30
+        },
+        {
+          "label": "hvcts_non_owner_occupied_share",
+          "selector": {
+            "source_name": "obr",
+            "source_concept": "obr.hvcts_costing.non_owner_occupied_share",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 1
+        }
+      ]
     }
   ]
 }
