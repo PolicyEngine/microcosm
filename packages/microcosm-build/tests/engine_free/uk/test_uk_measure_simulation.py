@@ -785,10 +785,11 @@ def test_packaged_exclusions_load():
     # microcosm#1095: the five-or-more children row held out on 2026-10-14
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
     # diagnostic beside the two-child-limit rows, so no exclusion names it and
-    # only the housing-element renewal carries that date.
+    # only the housing-element renewal carries that date. The 2026-10-16
+    # entries are the employer NICs diagnostic and the savings-interest renewal.
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-16"
-    ) == ["obr.ni_employer"]
+    ) == ["obr.ni_employer", "ons.savings_interest_income"]
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
     ) == sorted(_UC_ELEMENT_REGISTER_ROWS)
@@ -806,10 +807,12 @@ def test_packaged_exclusions_load():
         assert entry["tracking"] == a16_issues[name], name
     for name in _A16_CONCEPT_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
-        assert entry["approved_on"] == "2026-09-22", name
-        assert entry["expires_on"] == "2026-10-22", name
+        # Ruling R3 of 2026-09-22, renewed on 2026-10-16 to 2027-01-08.
+        assert entry["approved_on"] == "2026-10-16", name
+        assert entry["expires_on"] == "2027-01-08", name
         assert entry["tracking"] == a16_issues[name], name
         assert "microcosm#1006" in entry["adjudication"], name
+        assert "renewed on 2026-10-16" in entry["adjudication"], name
         assert "D.41" in entry["reason"] and "diagnostic" in entry["reason"], name
         # The fitting anchor the row hands over to: the SPI Table 3.7 interest
         # rows, uprated (PolicyEngine/chronicle#280 lane).
