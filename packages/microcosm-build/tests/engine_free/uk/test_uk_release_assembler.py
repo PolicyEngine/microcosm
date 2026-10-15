@@ -474,6 +474,61 @@ def test_assemble_preserves_successful_version_2_delivery(
     assert manifest["staging"] == delivery
 
 
+_RELEASE_CONTRACT_C1 = (
+    paths_for("microcosm-data").tests / "fixtures" / "release_contract" / "v1" / "c1"
+)
+#: Maps whose keys are data rather than schema: the provider ids of the labels.
+_DATA_KEYED_PATHS = frozenset({("publisher_labels",)})
+
+
+def _json_shape(value: object, path: tuple[str, ...] = ()) -> object:
+    """A JSON document's keys and value types, without its values."""
+
+    if isinstance(value, dict):
+        if path in _DATA_KEYED_PATHS:
+            return {"*": sorted({_json_shape(item) for item in value.values()})}
+        return {key: _json_shape(item, (*path, key)) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_shape(item, (*path, "[]")) for item in value]
+    return type(value).__name__
+
+
+def test_assembled_release_has_the_release_contract_golden_shape(
+    assembler_inputs, capsys
+) -> None:
+    """The C1 golden fixture (docs/release-contract.md) is what this assembler
+    ships: a real assembly's manifests match it key for key and type for type,
+    and its directory holds exactly the inventory's files."""
+
+    record_path = assembler_inputs["diagnostics"].parent / "build_record.json"
+    record = json.loads(record_path.read_text())
+    # The golden records a delivered run; a deliberate opt-out has the same keys
+    # but null strings, so match the delivery to compare types too.
+    golden_build = json.loads(
+        (
+            _RELEASE_CONTRACT_C1 / UK_NATIONAL_RELEASE_ID / "build_manifest.json"
+        ).read_text()
+    )
+    record["staging_delivery"] = golden_build["staging"]
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    assert _load_driver_module().main(assembler_inputs["argv"]) == 0
+    capsys.readouterr()
+    release_dir = assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
+
+    for name in ("build_manifest.json", "release_manifest.json"):
+        assembled = json.loads((release_dir / name).read_text())
+        golden = json.loads(
+            (_RELEASE_CONTRACT_C1 / UK_NATIONAL_RELEASE_ID / name).read_text()
+        )
+        assert _json_shape(assembled) == _json_shape(golden), name
+    inventory = json.loads((_RELEASE_CONTRACT_C1 / "inventory.json").read_text())
+    assert (
+        sorted(path.name for path in release_dir.iterdir())
+        == inventory["release_directory_files"]
+    )
+
+
 def test_assemble_refuses_candidate_sha_mismatch(assembler_inputs) -> None:
     assembler_inputs["candidate"].write_bytes(
         assembler_inputs["candidate"].read_bytes() + b"tampered"
