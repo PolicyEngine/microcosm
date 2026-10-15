@@ -2428,8 +2428,8 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
-    assert len(plan_lib.TOOLS) == 3
-    assert "Three tools are registered" in intro
+    assert len(plan_lib.TOOLS) == 4
+    assert "Four tools are registered" in intro
     for name, tool in plan_lib.TOOLS.items():
         assert f"`{name}`" in intro, name
         if tool.script is not None:

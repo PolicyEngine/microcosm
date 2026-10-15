@@ -322,6 +322,12 @@ class UKSizeCheckpointImportKernel(_CalibrationKernel):
             or not np.array_equal(
                 dense.target_loss_weights, binding["target_loss_weights"]
             )
+            or (
+                binding.get("target_loss_scales") is not None
+                and not np.allclose(
+                    dense.target_loss_scales, binding["target_loss_scales"]
+                )
+            )
         ):
             raise ValueError("Imported dense solve has a different solve doctrine.")
         metadata = {
@@ -366,14 +372,25 @@ class _ObservedSolveKernel(_CalibrationKernel):
 
 
 #: The doctrine fields the dense node does not pass to the solver, with the
-#: one value it solves under: free mass, the default target-loss scales and
-#: no L0 penalty. A problem that binds another value would record a doctrine
+#: one value it solves under: free mass, the default target-loss scales with
+#: the reviewed family floors (microcosm#1240) and no L0 penalty. A problem that binds another value would record a doctrine
 #: the solve did not honour, so the node refuses it instead.
 UK_DENSE_SOLVE_FIXED_DOCTRINE: Mapping[str, object] = {
     "mass_rule": "free",
-    "scale_rule": "default_target_loss_scales",
+    "scale_rule": "default_target_loss_scales_with_family_floors",
     "l0_lambda": 0.0,
 }
+
+
+#: The scale rules the dense node honours: its own (the default with the
+#: family floors, which a problem binds together with the row scales it
+#: yields) and the plain default, which a problem binds without row scales
+#: and which coincides with the floors rule wherever no floored family has a
+#: row (the national seam).
+UK_DENSE_HONOURED_SCALE_RULES = (
+    "default_target_loss_scales_with_family_floors",
+    "default_target_loss_scales",
+)
 
 
 def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
@@ -385,6 +402,13 @@ def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
         bound = binding[key]
         if key == "l0_lambda":
             bound = float(bound)
+        if key == "scale_rule":
+            if bound not in UK_DENSE_HONOURED_SCALE_RULES:
+                raise ValueError(
+                    f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
+                    f"under {honoured!r}."
+                )
+            continue
         if bound != honoured:
             raise ValueError(
                 f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
@@ -467,6 +491,22 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
         if not required <= set(binding):
             raise ValueError("UK ordered problem is missing its solve doctrine.")
         refuse_unhonoured_solve_doctrine(binding)
+        bound_scales = binding.get("target_loss_scales")
+        # A problem under the floors rule binds the row scales the rule
+        # yields; one under the plain default binds none and solves under
+        # the solver's default, which coincides with the floors rule there.
+        floors_rule = UK_DENSE_SOLVE_FIXED_DOCTRINE["scale_rule"]
+        bound_rule = binding.get("scale_rule")
+        if bound_rule == floors_rule and bound_scales is None:
+            raise ValueError(
+                f"UK ordered problem binds scale_rule={bound_rule!r} without its "
+                "target_loss_scales."
+            )
+        if bound_rule == "default_target_loss_scales" and bound_scales is not None:
+            raise ValueError(
+                "UK ordered problem binds target_loss_scales under the plain default "
+                "scale rule."
+            )
         result = calibrate(
             frame,
             problem.to_target_set(),
@@ -479,6 +519,11 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
             max_weight_ratio=binding["max_weight_ratio"],
             target_loss_weights=np.asarray(
                 binding["target_loss_weights"], dtype=np.float64
+            ),
+            target_loss_scales=(
+                None
+                if bound_scales is None
+                else np.asarray(bound_scales, dtype=np.float64)
             ),
             target_loss_cap=binding["target_loss_cap"],
             progress_callback=self.progress_callback,

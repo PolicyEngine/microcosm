@@ -1,11 +1,11 @@
 {
- "compiled_count": 1279,
+ "compiled_count": 1283,
  "counts_by_kind": {
-  "calibration_drift": 568,
-  "fixture_only": 43,
-  "ledger_only": 685
+  "calibration_drift": 566,
+  "fixture_only": 45,
+  "ledger_only": 691
  },
- "difference_count": 1296,
+ "difference_count": 1302,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -167,6 +167,20 @@
    "name": "obr.state_pension",
    "period": 2025,
    "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2036402.0,
+   "kind": "fixture_only",
+   "name": "ons.population.female_15_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2149930.0,
+   "kind": "fixture_only",
+   "name": "ons.population.male_15_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
   },
   {
    "fixture_value": 82000.0,
@@ -5049,10 +5063,52 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 408119.0,
+   "name": "ons.population.female_15",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 812522.0,
+   "name": "ons.population.female_16_17",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 781458.0,
+   "name": "ons.population.female_18_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 425428.0,
    "name": "ons.population.female_90_plus",
    "period": 2025,
    "reason": "María ruling 2026-08-21: new female 90_plus tail constrains ages 90+; the incumbent six-year terminal band left ages 91+ unconstrained."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 427529.0,
+   "name": "ons.population.male_15",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 856296.0,
+   "name": "ons.population.male_16_17",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 823183.0,
+   "name": "ons.population.male_18_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -9176,14 +9232,6 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
-   "fixture_value": 2036402.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2002099.0,
-   "name": "ons.population.female_15_19",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
    "fixture_value": 2033478.0,
    "kind": "calibration_drift",
    "ledger_value": 2036764.0,
@@ -9316,14 +9364,6 @@
    "kind": "calibration_drift",
    "ledger_value": 2115846.0,
    "name": "ons.population.male_10_14",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 2149930.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2107008.0,
-   "name": "ons.population.male_15_19",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

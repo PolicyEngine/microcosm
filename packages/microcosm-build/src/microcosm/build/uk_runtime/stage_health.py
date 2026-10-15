@@ -57,6 +57,8 @@ def uk_stage_health_gate(
         return _cgt_residential_split_gate(stage, evidence, parameters)
     if check == "cgt_support_split":
         return _cgt_support_split_gate(stage, evidence, parameters)
+    if check == "high_value_home_support":
+        return _high_value_home_support_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
         return _spi_income_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
@@ -3402,6 +3404,94 @@ def _property_components_gate(
         "top_band_multiplier": multiplier,
         "top_band_multiplier_cap": cap,
         "top_band_multiplier_at_floor": bool(top.get("multiplier_at_floor", False)),
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+def _high_value_home_support_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The high-value home support split conserved mass and met its rule.
+
+    microcosm#1240 fix 1: every region's owner households at or above the
+    declared rank are copied the declared number of times at equal weight;
+    the total household mass is conserved to the declared deviation and no
+    value moves, so nothing distributional is held.
+    """
+
+    check = "high_value_home_support"
+    stratum_lower = _finite_number(
+        parameters["stratum_lower"], label=f"{stage}.stratum_lower"
+    )
+    copies = _finite_number(parameters["copies"], label=f"{stage}.copies")
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
+    failures: list[str] = []
+    declared = _mapping(evidence.get("parameters"), label=f"{stage}.parameters")
+    for key, expected in (("stratum_lower", stratum_lower), ("copies", copies)):
+        value = _finite_number(declared.get(key), label=f"{stage}.parameters.{key}")
+        if value != expected:
+            failures.append(
+                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+            )
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}."
+        )
+    totals = _mapping(evidence.get("totals"), label=f"{stage}.totals")
+    selected = totals.get("households_selected")
+    created = totals.get("copies_created")
+    for key, value in (("households_selected", selected), ("copies_created", created)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{stage}.totals.{key} must be a non-negative integer.")
+    if created != selected * (int(copies) - 1):
+        failures.append(
+            f"{stage}: {created} copies created for {selected} selected households "
+            f"at {int(copies)} copies each."
+        )
+    rows = evidence.get("regions")
+    if not isinstance(rows, list | tuple):
+        raise ValueError(f"{stage}.regions must be a list.")
+    regions_with_owners = 0
+    for row in rows:
+        if not isinstance(row, Mapping):
+            failures.append(f"{stage}: region row is not an object.")
+            continue
+        owners = row.get("owner_households")
+        chosen = row.get("households_selected")
+        if not isinstance(owners, int) or not isinstance(chosen, int):
+            raise ValueError(f"{stage}: region counts must be integers.")
+        if owners > 0:
+            regions_with_owners += 1
+            if chosen < 1:
+                failures.append(
+                    f"{stage}: region {row.get('region')!r} has owner households but "
+                    "selected none into the stratum."
+                )
+    if regions_with_owners == 0:
+        failures.append(f"{stage}: no region carries owner households.")
+    # The shipped details round the survey counts to the nearest ten (the
+    # receipts rule of microcosm#1095); the exact counts stay in the stage
+    # receipt the checkpoint holds.
+    details = {
+        "households_selected_nearest_10": int(round(selected / 10.0)) * 10,
+        "copies_created_nearest_10": int(round(created / 10.0)) * 10,
+        "mass_deviation": deviation,
+        "regions_with_owners": regions_with_owners,
     }
     if failures:
         return _fail(stage, check, failures, details)
