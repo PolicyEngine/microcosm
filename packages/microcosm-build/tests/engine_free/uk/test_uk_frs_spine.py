@@ -1154,6 +1154,7 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert other["property_income"] == pytest.approx(8 * WEEKS_IN_YEAR)
     assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert adult["trading_loss"] == 0.0
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
@@ -3527,6 +3528,28 @@ class TestUCStartUpPeriod:
 
         with pytest.raises(KeyError, match="job.sejblong"):
             build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_self_employment_loss_goes_to_trading_loss(tmp_path: Path) -> None:
+    # uk-data#528, pe-uk#2085: SEINCAM2 carries a loss as a negative amount;
+    # the engine takes profits in self_employment_income, never below zero,
+    # and the year's loss in trading_loss as a positive amount.
+    tables = _fixture_tables()
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    adult_2["SEINCAM2"] = -4.0
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    by_id = person.set_index("person_id")
+
+    assert by_id.loc[2001, "self_employment_income"] == 0.0
+    assert by_id.loc[2001, "trading_loss"] == pytest.approx(4 * WEEKS_IN_YEAR)
+    assert by_id.loc[1001, "self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert by_id.loc[1001, "trading_loss"] == 0.0
+    # Never both, and never negative.
+    assert not (
+        (person["self_employment_income"] > 0) & (person["trading_loss"] > 0)
+    ).any()
+    assert (person["trading_loss"] >= 0).all()
 
 
 def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:

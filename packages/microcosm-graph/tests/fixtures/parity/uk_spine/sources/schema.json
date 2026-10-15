@@ -101,6 +101,7 @@
       "student_loan_repayments": "float64",
       "student_loans": "float64",
       "tax_free_savings_income": "float64",
+      "trading_loss": "float64",
       "uc_is_in_gainful_self_employment": "bool",
       "uc_is_in_startup_period": "bool",
       "universal_credit_reported": "float64",

@@ -19,7 +19,7 @@ from microcosm.frame.concept_mapping import (
     Recode,
     RelationshipRole,
     Role,
-    Sum,
+    SignedPart,
     TakeUpThreshold,
     bind,
 )
@@ -258,12 +258,34 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
                 "fact:person.nonfarm_self_employment_income",
                 "fact:person.farm_self_employment_income",
             ),
-            Sum(),
-            AlignmentRelation.EXACT,
+            SignedPart("positive"),
+            AlignmentRelation.APPROXIMATE,
             (
                 "Engine documentation: 'Income from self-employment profits, "
-                "including gig work ... net of self-employment expenses'; it "
-                "has no farm split, so the two concepts sum into it."
+                "including gig work ... net of self-employment expenses', "
+                "never negative from 2.131.0, the year's losses going to "
+                "trading_loss (pe-uk#2085). It has no farm split, so the two "
+                "concepts sum and the profit is the positive part of the sum. "
+                "The concepts net each person's trades, so a profit beside "
+                "another trade's loss arrives net of that loss."
+            ),
+        ),
+        bind(
+            "trading_loss",
+            "person",
+            (
+                "fact:person.nonfarm_self_employment_income",
+                "fact:person.farm_self_employment_income",
+            ),
+            SignedPart("negative"),
+            AlignmentRelation.APPROXIMATE,
+            (
+                "Engine documentation: 'Losses made in the tax year by the "
+                "person's trades, professions or vocations, as a positive "
+                "amount' (pe-uk#2085, from 2.131.0): the negative part of the "
+                "two concepts' sum, so it and self_employment_income never "
+                "both hold an amount. The concepts net each person's trades, "
+                "so a loss beside another trade's profit arrives net of it."
             ),
         ),
         # --- Capital income -----------------------------------------------

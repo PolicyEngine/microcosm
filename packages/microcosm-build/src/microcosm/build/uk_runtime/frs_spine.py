@@ -207,6 +207,7 @@ OUTPUT_COLUMNS = (
     "rent_paid_as_lodger",
     "employment_income",
     "self_employment_income",
+    "trading_loss",
     "private_pension_income",
     "tax_free_savings_income",
     "savings_interest_income",
@@ -538,7 +539,14 @@ def _assemble_frame(
     pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
     pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
-    pe_person["self_employment_income"] = _positive(person, "seincam2") * WEEKS_IN_YEAR
+    # SEINCAM2 is the self-employment income the respondent gives, a loss as a
+    # negative amount. policyengine-uk takes profits in self_employment_income,
+    # never below zero, and the year's losses in trading_loss as a positive
+    # amount (pe-uk#2085, from 2.131.0), so the amount splits by its sign
+    # (uk-data#528).
+    self_employment = _number(person, "seincam2") * WEEKS_IN_YEAR
+    pe_person["self_employment_income"] = np.maximum(self_employment, 0)
+    pe_person["trading_loss"] = np.maximum(-self_employment, 0)
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)

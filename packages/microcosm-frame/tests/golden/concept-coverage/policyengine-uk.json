@@ -78,6 +78,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.has_disability": [
@@ -100,6 +104,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.parent_1_person_id": [
@@ -229,7 +237,7 @@
    }
   ]
  },
- "covered_count": 40,
+ "covered_count": 41,
  "covered_inputs": [
   {
    "entity": "person",
@@ -318,6 +326,10 @@
   {
    "entity": "household",
    "name": "tenure_type"
+  },
+  {
+   "entity": "person",
+   "name": "trading_loss"
   },
   {
    "entity": "person",
@@ -1334,10 +1346,6 @@
   {
    "entity": "person",
    "name": "tax_reported"
-  },
-  {
-   "entity": "person",
-   "name": "trading_loss"
   },
   {
    "entity": "household",
