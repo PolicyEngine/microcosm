@@ -52,7 +52,7 @@ Read on 2026-10-15 from policyengine.py's bundle 6.4.3
 | US candidate (tag only) | `populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z` (Route A) | `tools/route_a/` then the fiscal-refresh tool | No: 16 gates in an ad hoc `gates` dict, staging `{"enabled": false, "reason": "--no-staging"}`, no certification |
 | UK, PolicyEngine app | policyengine-uk-data 1.58.1, `enhanced_frs_2024_25` | policyengine-uk-data | Not a Microcosm release; certified for policyengine-uk 2.130.1 on the `legacy_compatible_model_package` basis |
 | UK, `microcosm.data.resolve("uk")` | `populace_uk_2023.h5` (the June 2023 file) | none current | Grandfathered id |
-| UK national line | `latest-national.json` names `microcosm-uk-2024-25-national` at a per-cut tag | `microcosm-build-uk` on `run_graph`, then `tools/certify_uk_release_cut.py` and `tools/assemble_uk_release_dir.py` | Meets today's C1 and C5. Lacks what no producer writes yet: C1's declared identity, C3's run-outcome binding and C4's Logbook binding |
+| UK national line | `latest-national.json` names `microcosm-uk-2024-25-national` at a per-cut tag | `microcosm-build-uk` on `run_graph`, then `tools/certify_uk_release_cut.py` and `tools/assemble_uk_release_dir.py` | The assembler refuses to write a cut that fails today's C1, and line promotion runs C5's guards. It lacks what no producer writes yet: C1's declared identity, C3's run-outcome binding and C4's Logbook binding |
 
 So three producers serve three datasets, and microcosm's own registry points the
 UK default at a fourth file.
@@ -99,7 +99,7 @@ sibling). It dispatches in three steps:
      checks fire on the `populace-us-` prefix; the UK identity checks fire on
      `populace-uk-` and the exact-k pattern.
 
-Whatever the id, a national release must carry:
+Whatever the id, a `calibration` release in the national-default role must carry:
 
 - **`build_manifest.json`**: `build_id` equal to the directory name; `code`
   with `repository`, a 40-character `git_commit` and `git_dirty: false`;
@@ -203,10 +203,11 @@ release directory carries:
   country's part reports, with every part's report file beside it bound by
   digest, and the score receipt that decided shippability.
 
-The US meets this by adapter at M2: the fiscal-refresh tool declares its 16
-gates in `us/gates.json`, projects its own verdicts through the gate battery
-under `BlockingMode.MARKS_ARTIFACT`, and composes the certification from the
-projected reports. It projects; it does not re-evaluate. No US release conforms
+The 10-09 report's plan brings the US to this shape by adapter at M2: the
+fiscal-refresh tool declares its 16 gates in `us/gates.json`, projects its own
+verdicts through the gate battery under `BlockingMode.MARKS_ARTIFACT`, and
+composes the certification from the projected reports. It projects; it does not
+re-evaluate. No US release conforms
 yet, so there is deliberately no US C1 golden. The US national shape the
 publisher accepts until 11-06 stays pinned by `test_support/microcosm_data/release.py`
 and the fiscal-refresh builder tests.
@@ -277,7 +278,8 @@ while one is still served.
 - **The run outcome.** `microcosm.build.run_outcome` (microcosm#1147) decides how
   a build ended once (`completed`, `blocked`, `failed`, `interrupted`,
   `terminated`, `aborted`) and derives the staging status and the Logbook
-  disposition from it. The UK full build uses it; no US tool does.
+  disposition from it. The UK full build, spine build and row-wise staging use
+  it; no US tool does.
 - **The emitter.** Hosted telemetry is delivered by the external
   `microcosm-emitter` package (pinned `==0.2.1` in microcosm-build), which
   microcosm#1153 extracted on 2026-10-13; Max accepted the extraction on
@@ -400,9 +402,11 @@ national onto the UK national chain and the M6 move of US source stages onto
 - **Solver stages need declared tolerance bands**, because there is a measured
   nondeterminism floor (the amendment to #378, citing microcosm#307). A solve
   shown deterministic on a platform is held to bitwise-equal weights on that
-  platform instead, which is the M4 acceptance for the dense solve.
-- **The fixture, the tolerance and the verdict are recorded before the
-  deletion**, in the pull request that deletes the incumbent stage.
+  platform instead, which is the 10-09 report's M4 acceptance for the dense
+  solve.
+This document adds one requirement to #378's rule: the pinned fixture, the
+declared tolerance and the parity verdict are recorded in the pull request that
+deletes the incumbent stage.
 
 #378 closes when this document merges; this section supersedes it.
 
