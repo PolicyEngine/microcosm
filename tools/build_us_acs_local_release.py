@@ -2516,6 +2516,57 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
+#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
+#: CPS-reported Social Security with the PUF prediction, so a zero prediction
+#: erased a CPS reporter's benefit; on the national default
+#: populace-us-2024-spm-20260915 that erased 4,495 PUF-support records. The
+#: fix runs where a national base is built. The ACS staging takes its donor
+#: as a finished H5 and never re-runs it, so a release inherits whatever its
+#: donor carries. The register is empty: every published US national release
+#: predates #1186. Add a donor's release id only after checking its
+#: PUF-support CPS reporters keep their reported benefit; until then the
+#: release discloses the inherited erasure.
+DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
+
+
+def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
+    """The inherited microcosm#1178 erasure, unless the donor is verified free."""
+
+    release_id = donor_release.get("release_id")
+    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+        return None
+    return {
+        "id": "social_security_cps_reporters_erased_inherited",
+        "status": "reviewed_inherited_defect",
+        "issue": "microcosm#1178",
+        "fixed_by": "microcosm#1186 (980282520), in the national base build",
+        "donor_release": release_id,
+        "affected_spines": ["asec_puf", "acs_2024_1yr"],
+        "reason": (
+            "The donor was built before microcosm#1186, so its PUF-support "
+            "records carry the microcosm#1178 erasure of CPS-reported Social "
+            "Security: on the national default populace-us-2024-spm-20260915 "
+            "(the parent of the reported-receipt donor, which keeps every "
+            "existing field's bytes and adds three receipt columns), 4,495 "
+            "PUF-support records lost "
+            "their reported benefit, while no ASEC-arm record did. Donor rows "
+            "enter this artifact as they are, and the ACS transfer learns the "
+            "Social Security components from those donor rows, so ACS rows "
+            "can inherit the distortion; its size on this artifact is not "
+            "measured."
+        ),
+        "treatment": (
+            "Refresh this artifact against the first national release built "
+            "after microcosm#1186 (its refresh_recipe re-runs the chain with "
+            "that release as the donor), then add the donor's release id to "
+            "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
+            "reporters are checked."
+        ),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
@@ -2628,6 +2679,9 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    social_security = _social_security_erasure_limitation(donor_release)
+    if social_security is not None:
+        limitations.append(social_security)
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation

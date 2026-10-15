@@ -266,8 +266,48 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     }
     donor = by_id["donor_sparse_selection_training_set"]
     assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # Every published donor predates microcosm#1186, so the inherited
+    # Social Security erasure is disclosed by default.
+    social_security = by_id["social_security_cps_reporters_erased_inherited"]
+    assert social_security["status"] == "reviewed_inherited_defect"
+    assert social_security["calibration_blocker"] is False
+    assert social_security["donor_release"] == (
+        "populace-us-2024-buildo-sparse-rmloss100-x"
+    )
+    assert "microcosm#1186" in social_security["fixed_by"]
     # Ids are unique after dedupe.
     assert len(by_id) == len(limitations)
+
+
+def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosure(
+    monkeypatch,
+) -> None:
+    """The disclosure is fail-safe: it leaves the register only for a donor
+    added to DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE after checking."""
+
+    module = _load_tool_module()
+    assert module.DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE == frozenset()
+    staging_summary = {
+        "base": {"donor_release": {"release_id": "populace-us-2024-after-1186"}},
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def ids():
+        return {
+            item["id"]
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    assert "social_security_cps_reporters_erased_inherited" in ids()
+    monkeypatch.setattr(
+        module,
+        "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE",
+        frozenset({"populace-us-2024-after-1186"}),
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in ids()
 
 
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
