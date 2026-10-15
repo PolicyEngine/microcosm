@@ -79,6 +79,8 @@ from microcosm.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SCF_2025_FULL_EXTRACT,
+    SCF_2025_SUMMARY_EXTRACT,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
@@ -109,6 +111,7 @@ from microcosm.build.us_runtime import (
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
+    fetch_scf_public_file,
     fetch_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
@@ -117,6 +120,7 @@ from microcosm.build.us_runtime import (
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_scf_2025_education_debt_donor,
     load_sipp_2023_financial_asset_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
@@ -162,6 +166,8 @@ from microcosm.build.us_runtime import (
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
     us_scf_auto_loans_signal_gate,
+    us_scf_education_debt_fit_table,
+    us_scf_education_debt_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_head_start_signal_gate,
     us_sipp_tips_signal_gate,
@@ -200,6 +206,7 @@ from microcosm.build.us_runtime import (
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
     with_us_scf_auto_loan_inputs,
+    with_us_scf_education_debt_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_head_start_input,
     with_us_sipp_tip_inputs,
@@ -1595,6 +1602,35 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional path to the Federal Reserve SCF 2022 full public Stata "
             "extract (p22i6.dta) used for household auto-loan balance and "
             "interest. When omitted, scf2022s.zip is fetched and cached."
+        ),
+    )
+    parser.add_argument(
+        "--scf-education-debt",
+        action="store_true",
+        help=(
+            "Impute the four federal student loan person inputs "
+            "(federal_student_loan_balance, federal_parent_plus_loan_balance, "
+            "is_income_based_repayment_new_borrower, "
+            "federal_student_loan_graduate_share) from the 2025 SCF "
+            "(microcosm#1073). Off by default until the pinned policyengine-us "
+            "defines them (policyengine-us#9721, #9724); the certified engine "
+            "ignores them until then."
+        ),
+    )
+    parser.add_argument(
+        "--scf-2025-summary-extract",
+        type=Path,
+        help=(
+            "Optional local rscfp2025.dta for --scf-education-debt. When "
+            "omitted, the sha-pinned scfp2025s.zip is fetched and cached."
+        ),
+    )
+    parser.add_argument(
+        "--scf-2025-full-extract",
+        type=Path,
+        help=(
+            "Optional local p25i6.dta for --scf-education-debt. When omitted, "
+            "the sha-pinned scf2025s.zip is fetched and cached."
         ),
     )
     parser.add_argument(
@@ -12456,6 +12492,78 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
+def _with_scf_education_debt_stage(
+    base_frame: Frame,
+    *,
+    args: argparse.Namespace,
+    telemetry: Any,
+    fit_path: Path | None,
+) -> Frame:
+    """Run the opt-in SCF 2025 education-debt stage and its signal gate."""
+
+    if telemetry is not None:
+        telemetry.stage(
+            "scf_education_debt_inputs",
+            message=(
+                "Imputing federal student loan balances, Parent PLUS balances, "
+                "IBR new-borrower status and graduate shares from the 2025 SCF."
+            ),
+        )
+    summary_path = (
+        Path(args.scf_2025_summary_extract)
+        if args.scf_2025_summary_extract is not None
+        else fetch_scf_public_file(SCF_2025_SUMMARY_EXTRACT)
+    )
+    full_path = (
+        Path(args.scf_2025_full_extract)
+        if args.scf_2025_full_extract is not None
+        else fetch_scf_public_file(SCF_2025_FULL_EXTRACT)
+    )
+    donor = load_scf_2025_education_debt_donor(summary_path, full_path)
+    base_frame = with_us_scf_education_debt_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        scf_education_debt_donor=donor,
+    )
+    gate = us_scf_education_debt_signal_gate(base_frame)
+    if not gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "scf_education_debt_gate",
+                status="failed",
+                message="SCF education-debt signal gate failed.",
+                failures=list(gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SCF education-debt signal failed: {failure}"
+                for failure in gate.failures
+            )
+        )
+    if fit_path is not None:
+        # Design-weight fit of the staged frame against the SCF; the receipt
+        # tool tabulates the calibrated export the same way (microcosm#1073).
+        fit_path.parent.mkdir(parents=True, exist_ok=True)
+        fit_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "weights": "pre_calibration_household_weights",
+                    "fit": us_scf_education_debt_fit_table(base_frame),
+                },
+                indent=2,
+                sort_keys=True,
+                default=float,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return base_frame
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -14036,6 +14144,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 f"SCF auto-loan signal failed: {failure}"
                 for failure in scf_auto_loan_gate.failures
             )
+        )
+    if args.scf_education_debt:
+        # microcosm#1073: federal student loan balances from the 2025 SCF. The
+        # pinned engine does not define these inputs yet, so the stage is
+        # opt-in and its columns ride in the stored-input register until it
+        # does (microcosm.data.stored_inputs).
+        base_frame = _with_scf_education_debt_stage(
+            base_frame,
+            args=args,
+            telemetry=telemetry,
+            fit_path=(
+                artifact_root / "us_scf_education_debt_fit.json"
+                if dry_run is None
+                else None
+            ),
         )
     if telemetry is not None:
         telemetry.stage(

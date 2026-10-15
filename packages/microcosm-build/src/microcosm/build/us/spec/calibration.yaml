@@ -278,6 +278,9 @@ tail_contracts:
     - farm_operations_income_would_be_qualified
     - farm_rent_income
     - farm_rent_income_would_be_qualified
+    - federal_parent_plus_loan_balance
+    - federal_student_loan_balance
+    - federal_student_loan_graduate_share
     - first_home_mortgage_balance
     - first_home_mortgage_interest
     - first_home_mortgage_origination_year
@@ -292,6 +295,7 @@ tail_contracts:
     - is_executive_administrative_professional
     - is_farmer_fisher
     - is_hispanic
+    - is_income_based_repayment_new_borrower
     - is_military
     - is_paid_hourly
     - is_union_member_or_covered

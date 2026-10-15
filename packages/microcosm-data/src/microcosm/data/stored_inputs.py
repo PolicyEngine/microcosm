@@ -284,7 +284,10 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: (microcosm#884). No examined file stores them yet, so they rest on their
 #: live producer, ``eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS``,
 #: which ``test_us_stored_input_register.py`` binds, and leave the register
-#: once the pinned engine defines them.
+#: once the pinned engine defines them. The four federal student loan inputs
+#: (microcosm#1073) likewise postdate them: their producer is
+#: ``scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS``, and they leave
+#: the register once the pinned engine carries policyengine-us#9721 and #9724.
 #:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
@@ -441,6 +444,42 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
             for column, pointer in (
                 ("parent_1_id", "PEPAR1"),
                 ("parent_2_id", "PEPAR2"),
+            )
+        },
+        **{
+            column: (
+                f"{detail}, imputed from the 2025 Survey of Consumer Finances by "
+                "microcosm.build.us_runtime.scf_education_debt "
+                "(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS; microcosm#1073), and "
+                "written only when the fiscal-refresh build runs with "
+                "--scf-education-debt. The certified engine does not define it "
+                f"yet, so it is ignored there; policyengine-us#{pull} adds it as "
+                "an input. Remove this entry when the pinned engine defines the "
+                "variable."
+            )
+            for column, detail, pull in (
+                (
+                    "federal_student_loan_balance",
+                    "The person's own federal student loan balance",
+                    9721,
+                ),
+                (
+                    "federal_parent_plus_loan_balance",
+                    "The person's federal Parent PLUS loan balance",
+                    9721,
+                ),
+                (
+                    "is_income_based_repayment_new_borrower",
+                    "Whether every federal loan the person holds was borrowed in "
+                    "2014 or later (IBR new-borrower status)",
+                    9724,
+                ),
+                (
+                    "federal_student_loan_graduate_share",
+                    "The graduate or professional share of the original principal "
+                    "of the person's own federal student loans",
+                    9724,
+                ),
             )
         },
     }

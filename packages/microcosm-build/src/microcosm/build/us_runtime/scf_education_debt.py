@@ -1,0 +1,1611 @@
+"""Federal student loan balances from the 2025 Survey of Consumer Finances.
+
+microcosm#1073 carries SCF education debt into the US build for the EqRC student
+debt pilot (PolicyEngine/us-student-debt#1). It writes four person inputs of
+PolicyEngine-US: ``federal_student_loan_balance`` and
+``federal_parent_plus_loan_balance`` (policyengine-us#9721), and
+``is_income_based_repayment_new_borrower`` and
+``federal_student_loan_graduate_share`` (policyengine-us#9724).
+
+**Vintage.** Only education debt reads the 2025 SCF. Net worth, the liquid-asset
+leaves and auto loans stay on the 2022 SCF in :mod:`scf_wealth` and
+:mod:`scf_auto_loans` until the whole ``scf_wealth`` stage moves. The 2025 wave
+is three years closer to the build, follows the end of the payment pause, and
+records each loan's year borrowed and program type, which 2022 does not. Every
+2025-specific coordinate lives in :data:`SCF_2025_SUMMARY_EXTRACT` and
+:data:`SCF_2025_FULL_EXTRACT`, and the predictor construction is the shared
+summary-extract one from :mod:`scf_wealth`. The 2025 summary extract carries
+every column that construction reads, so moving the stage is a change of pinned
+coordinates, not of code.
+
+**Donor targets, per SCF family and implicate.** For each of education loans
+1-6 the full public file records the amount still owed (X7824, X7847, X7870,
+X7924, X7947, X7970), whether it is a federal loan (X7879, X7884, X7889, X7894,
+X7899, X7994; 1 = yes), whose education it paid for (X7978, X7883, X7888,
+X7893, X7898, X7993), the year borrowed (X9332-X9337), the program it financed
+(X9338-X9343) and the amount borrowed (X7805, X7828, X7851, X7905, X7928,
+X7951). Loans beyond the sixth are one total, X7179, with none of these items.
+
+- Only loans flagged federal (code 1) count. A loan whose federal status is
+  not recorded (code 0; the 2025 public file leaves some "don't know" answers
+  blank) counts as non-federal.
+- **X7179 rule.** The remaining-loans total is allocated in proportion to the
+  family's balances on loans 1-6: every loan 1-6 is scaled by
+  ``1 + X7179 / (sum of balances on loans 1-6)``. This applies the family's
+  federal share of loans 1-6 to X7179, and splits the federal part among people
+  in the same proportions as loans 1-6. A family with X7179 but no balance on
+  loans 1-6 contributes nothing (none in the public files read).
+- **Whose-education rule** (:data:`SCF_WHOSE_EDUCATION_HOLDER`). Code 1
+  (respondent; the public file swaps respondent and spouse codes so code 1 is
+  the SCF reference person) is the head's own loan, and code 2 (spouse or
+  partner) the spouse's own loan; both go to ``federal_student_loan_balance``.
+  Code 3 (child or stepchild; the public file folds grandchild and other
+  relative into 3) is a loan for a child's education and goes to the head's
+  ``federal_parent_plus_loan_balance``. Code 6 (multiple people), code 7
+  (unrelated person) and code -7 (other) go to the head's own balance: none can
+  be a Parent PLUS loan for one dependent student, and the SCF reference person
+  is the household's default borrower. Any other code (the public file folds 4
+  and 5 into 3, so none is expected) also goes to the head.
+- **IBR new-borrower status** is true when the person holds a federal loan and
+  every federal loan the person holds (own and Parent PLUS) was borrowed in
+  2014 or later. The item records a year only, so 2014 counts as after July 1,
+  2014. For a consolidated loan the year is that of the most recent underlying
+  loan.
+- **Graduate share** is the share of the original amount of the person's own
+  federal loans (Parent PLUS excluded) that financed a master's, professional
+  or doctoral program (codes 13-15), weighted by the amount borrowed (falling
+  back to the balance when the amount is missing), as 34 CFR 685.209(f)(1)
+  weights the SAVE rates.
+
+**Imputation.** Two regime-gated weighted QRFs (:class:`microcosm.fit.QRF`)
+condition on the eight shared SCF predictors plus household income excluding
+capital gains (:data:`SCF_EDUCATION_DEBT_PREDICTORS`). The first draws each
+recipient household's federal education debt from every SCF family. The
+second, fit on borrower families only and conditioning also on that total,
+draws the chained composition: the head's and spouse's shares of the total,
+their graduate shares, and their new-borrower flags. Shares are clipped to
+[0, 1] and rescaled when the two own shares exceed one; the remainder is the
+head's Parent PLUS balance.
+
+**Recipients.** The household's SCF-style reference person
+(:func:`scf_auto_loans._scf_reference_person_mask`) carries the reference
+person's demographics and the household-summed incomes, as for auto loans. The
+spouse is the member whose line number is the reference person's ``A_SPOUSE``,
+or else its ``PECOHAB`` partner when that column is present. A household drawn
+with a spouse's balance but no spouse or partner present gives that balance to
+the reference person, whose graduate share becomes the balance-weighted mean
+of the two and whose new-borrower flag requires both. Everyone else gets zero.
+
+**Known limits.** The SCF records the debts of the primary economic unit, so a
+financially independent adult living in someone else's household is missed,
+and an adult child's own loan in the unit is coded 3 and lands on the parent as
+Parent PLUS. The SCF federal flag includes FFEL and Perkins loans that
+``federal_student_loan_balance`` excludes until consolidated. Balances are
+2025 survey-date dollars. The FSA calibration (microcosm#1074) pins totals.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from microcosm.build.gates import GateResult
+from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.eligibility_inputs import _own_children_in_household
+from microcosm.build.us_runtime.scf_auto_loans import _scf_reference_person_mask
+from microcosm.build.us_runtime.scf_wealth import (
+    SCF_WEALTH_PREDICTORS,
+    _recipient_cps_race,
+    _replace_sentinels,
+    _scf_summary_predictor_table,
+    _sum_present,
+)
+from microcosm.frame import Frame
+from microcosm.frame.units import US_SCHEMA
+
+__all__ = [
+    "SCF_2025_FULL_EXTRACT",
+    "SCF_2025_SUMMARY_EXTRACT",
+    "SCF_EDUCATION_DEBT_BALANCE_BANDS",
+    "SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS",
+    "SCF_EDUCATION_DEBT_COMPOSITION_TARGETS",
+    "SCF_EDUCATION_DEBT_PREDICTORS",
+    "SCF_EDUCATION_DEBT_TOTAL_TARGET",
+    "SCF_EDUCATION_DEBT_VINTAGE",
+    "SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS",
+    "SCF_EDUCATION_LOAN_BALANCE_COLUMNS",
+    "SCF_EDUCATION_LOAN_FEDERAL_COLUMNS",
+    "SCF_EDUCATION_LOAN_PROGRAM_COLUMNS",
+    "SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN",
+    "SCF_EDUCATION_LOAN_WHOSE_COLUMNS",
+    "SCF_EDUCATION_LOAN_YEAR_COLUMNS",
+    "SCF_WHOSE_EDUCATION_HOLDER",
+    "ScfPublicFile",
+    "US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS",
+    "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS",
+    "derive_scf_education_debt_targets",
+    "draw_scf_education_debt_households",
+    "education_debt_fit_table",
+    "fetch_scf_public_file",
+    "impute_us_scf_education_debt",
+    "load_scf_2025_education_debt_donor",
+    "scf_education_debt_donor_fit_table",
+    "us_scf_education_debt_fit_table",
+    "us_scf_education_debt_signal_gate",
+    "us_scf_education_debt_stage_spec",
+    "us_scf_education_debt_summary",
+    "with_us_scf_education_debt_inputs",
+]
+
+_SCF_STAGE_NAME = "scf_wealth"
+_DONOR_WEIGHT_COLUMN = "scf_weight"
+_HOUSEHOLD_ID_COLUMN = "person_household_id"
+_DEFAULT_N_ESTIMATORS = 100
+_SCF_HTTP_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+#: The SCF wave education debt reads (``scf_wealth`` itself stays on 2022).
+SCF_EDUCATION_DEBT_VINTAGE = "2025"
+
+
+@dataclass(frozen=True)
+class ScfPublicFile:
+    """One pinned Federal Reserve SCF public file: a Stata member in a zip."""
+
+    url: str
+    member: str
+    zip_sha256: str
+    member_sha256: str
+    rows: int
+
+    @property
+    def zip_name(self) -> str:
+        return self.url.rsplit("/", maxsplit=1)[-1]
+
+
+#: The 2025 public summary extract. Both 2025 files were released 2026-10-09;
+#: these digests match a fresh Federal Reserve download of 2026-10-12. Each
+#: file has one row per family and implicate (4,360 families x 5).
+SCF_2025_SUMMARY_EXTRACT = ScfPublicFile(
+    url="https://www.federalreserve.gov/econres/files/scfp2025s.zip",
+    member="rscfp2025.dta",
+    zip_sha256="32dcf86be48b20fb5fd9e659f79fa22a4d9cccf456e44b6ca9b1329e9869bbeb",
+    member_sha256="454a287f188bf13f94efc09820fa878482d897db1d2a16ac63bec14eb580d2dd",
+    rows=21_800,
+)
+#: The 2025 full public file.
+SCF_2025_FULL_EXTRACT = ScfPublicFile(
+    url="https://www.federalreserve.gov/econres/files/scf2025s.zip",
+    member="p25i6.dta",
+    zip_sha256="c4010bd5decaa13d5d027862ed4b6c41b4106925089290f879749f8f5a467741",
+    member_sha256="38926275dfb8f00ea843b80ced7a9412ad4653d39c7fab8fe24c3bdf912902ad",
+    rows=21_800,
+)
+
+#: Education loans 1-6 (codebook "EDUCATION LOANS"): amount still owed.
+SCF_EDUCATION_LOAN_BALANCE_COLUMNS: tuple[str, ...] = (
+    "x7824",
+    "x7847",
+    "x7870",
+    "x7924",
+    "x7947",
+    "x7970",
+)
+#: Total owed on all remaining loans beyond the sixth.
+SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN = "x7179"
+#: "Is this loan a federal student loan?" 1 = yes, 5 = no.
+SCF_EDUCATION_LOAN_FEDERAL_COLUMNS: tuple[str, ...] = (
+    "x7879",
+    "x7884",
+    "x7889",
+    "x7894",
+    "x7899",
+    "x7994",
+)
+#: "For whose education was this loan taken out?"
+SCF_EDUCATION_LOAN_WHOSE_COLUMNS: tuple[str, ...] = (
+    "x7978",
+    "x7883",
+    "x7888",
+    "x7893",
+    "x7898",
+    "x7993",
+)
+#: "In what year was this loan (or the most recent underlying loan) borrowed?"
+SCF_EDUCATION_LOAN_YEAR_COLUMNS: tuple[str, ...] = (
+    "x9332",
+    "x9333",
+    "x9334",
+    "x9335",
+    "x9336",
+    "x9337",
+)
+#: "What type of educational program did this loan help finance?"
+SCF_EDUCATION_LOAN_PROGRAM_COLUMNS: tuple[str, ...] = (
+    "x9338",
+    "x9339",
+    "x9340",
+    "x9341",
+    "x9342",
+    "x9343",
+)
+#: "How much was borrowed for this loan?" (or the balance after the most
+#: recent consolidation or refinancing).
+SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS: tuple[str, ...] = (
+    "x7805",
+    "x7828",
+    "x7851",
+    "x7905",
+    "x7928",
+    "x7951",
+)
+_SCF_FULL_EXTRACT_SPOUSE_AGE_COLUMN = "x19"
+
+_FEDERAL_LOAN_YES = 1
+#: Programs counted as graduate or professional: master's (13), professional
+#: school (14) and doctorate (15).
+_GRADUATE_PROGRAM_CODES = frozenset({13, 14, 15})
+#: First year counted as a new IBR borrower (20 U.S.C. 1098e(e): no
+#: outstanding balance on July 1, 2014). The SCF records only the year.
+_IBR_NEW_BORROWER_FIRST_YEAR = 2014
+
+_HEAD = "head"
+_SPOUSE = "spouse"
+_PARENT_PLUS = "parent_plus"
+#: Whose-education code -> who holds the loan in the build. See the module
+#: docstring for the rule and its reasons.
+SCF_WHOSE_EDUCATION_HOLDER: Mapping[int, str] = {
+    1: _HEAD,
+    2: _SPOUSE,
+    3: _PARENT_PLUS,
+    6: _HEAD,
+    7: _HEAD,
+    -7: _HEAD,
+}
+
+#: Household-total target of the first QRF.
+SCF_EDUCATION_DEBT_TOTAL_TARGET = "federal_education_debt"
+#: Chained targets of the second (borrower-family) QRF.
+SCF_EDUCATION_DEBT_COMPOSITION_TARGETS: tuple[str, ...] = (
+    "head_own_share",
+    "spouse_own_share",
+    "head_graduate_share",
+    "spouse_graduate_share",
+    "head_is_ibr_new_borrower",
+    "spouse_is_ibr_new_borrower",
+)
+#: The shared SCF predictors plus household income excluding capital gains.
+#: Educational attainment joins once microcosm#297 carries it on the CPS side.
+SCF_EDUCATION_DEBT_PREDICTORS: tuple[str, ...] = (
+    *SCF_WEALTH_PREDICTORS,
+    "household_income",
+)
+
+US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS: tuple[str, ...] = (
+    "federal_student_loan_balance",
+    "federal_parent_plus_loan_balance",
+)
+US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS: tuple[str, ...] = (
+    *US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS,
+    "is_income_based_repayment_new_borrower",
+    "federal_student_loan_graduate_share",
+)
+
+#: Federal Student Aid portfolio bands (dollars, lower bound inclusive).
+SCF_EDUCATION_DEBT_BALANCE_BANDS: tuple[tuple[str, float, float], ...] = (
+    ("under_5k", 0.0, 5_000.0),
+    ("5k_to_10k", 5_000.0, 10_000.0),
+    ("10k_to_20k", 10_000.0, 20_000.0),
+    ("20k_to_40k", 20_000.0, 40_000.0),
+    ("40k_to_60k", 40_000.0, 60_000.0),
+    ("60k_to_80k", 60_000.0, 80_000.0),
+    ("80k_to_100k", 80_000.0, 100_000.0),
+    ("100k_to_200k", 100_000.0, 200_000.0),
+    ("200k_plus", 200_000.0, np.inf),
+)
+#: Federal Student Aid borrower age bands (years, inclusive bounds).
+SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS: tuple[tuple[str, float, float], ...] = (
+    ("24_and_younger", -np.inf, 24.0),
+    ("25_to_34", 25.0, 34.0),
+    ("35_to_49", 35.0, 49.0),
+    ("50_to_61", 50.0, 61.0),
+    ("62_and_older", 62.0, np.inf),
+)
+#: SCF ``racecl4`` labels (2025 folds Middle Eastern or North African into 1).
+_RACECL4_LABELS: Mapping[int, str] = {
+    1: "white_non_hispanic",
+    2: "black_non_hispanic",
+    3: "hispanic",
+    4: "other_or_multiple",
+}
+
+#: Summary-extract columns read beyond the shared predictor surface.
+_SUMMARY_EXTRA_COLUMNS: tuple[str, ...] = (
+    "y1",
+    "yy1",
+    "income",
+    "kginc",
+    "racecl4",
+    "edn_inst",
+    "educ",
+)
+#: Person income inputs summed into the recipient household's income, the CPS
+#: counterpart of SCF ``income`` less ``kginc``. Absent columns count as zero.
+_RECIPIENT_HOUSEHOLD_INCOME_COLUMNS: tuple[str, ...] = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "farm_operations_income",
+    "farm_rent_income",
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "rental_income",
+    "estate_income",
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+    "taxable_private_pension_income",
+    "tax_exempt_private_pension_income",
+    "taxable_ira_distributions",
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "taxable_sep_distributions",
+    "unemployment_compensation",
+    "alimony_income",
+    "child_support_received",
+    "veterans_benefits",
+    "workers_compensation",
+    "disability_benefits",
+)
+_RECIPIENT_INTEREST_DIVIDEND_COLUMNS = (
+    "taxable_interest_income",
+    "tax_exempt_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+)
+_RECIPIENT_SS_PENSION_COLUMNS = (
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+    "taxable_private_pension_income",
+    "tax_exempt_private_pension_income",
+)
+_REQUIRED_RECIPIENT_PERSON_COLUMNS: tuple[str, ...] = (
+    _HOUSEHOLD_ID_COLUMN,
+    "age",
+    "is_female",
+    "PRDTRACE",
+    "PRDTHSP",
+    "A_MARITL",
+    "A_LINENO",
+    "A_SPOUSE",
+    "PH_SEQ",
+    "PEPAR1",
+    "PEPAR2",
+    "employment_income_before_lsr",
+)
+_OPTIONAL_PARTNER_COLUMN = "PECOHAB"
+
+#: Weighted share of households holding federal education debt allowed by the
+#: signal gate. The SCF 2025 share holding any education debt is 19.9%.
+_BORROWER_HOUSEHOLD_SHARE_BAND = (0.08, 0.35)
+
+
+# --------------------------------------------------------------------------- #
+# Source files                                                                  #
+# --------------------------------------------------------------------------- #
+def _sha256_hexdigest(payload: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(payload).hexdigest()
+
+
+def fetch_scf_public_file(
+    public_file: ScfPublicFile,
+    cache_dir: str | Path | None = None,
+) -> Path:
+    """Download, verify and cache one pinned SCF public Stata member.
+
+    A cached member whose SHA-256 matches the pin is reused without a network
+    call; anything else is fetched from the Federal Reserve, and both the zip
+    and the member must match their pins before the member is cached.
+    """
+
+    import io
+    import urllib.request
+    import zipfile
+
+    root = (
+        Path(cache_dir).expanduser()
+        if cache_dir is not None
+        else Path.home() / ".cache" / "microcosm" / "scf"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / public_file.member
+    if target.exists() and target.stat().st_size > 0:
+        if _sha256_hexdigest(target.read_bytes()) == public_file.member_sha256:
+            return target
+
+    request = urllib.request.Request(
+        public_file.url,
+        headers={"User-Agent": _SCF_HTTP_USER_AGENT},
+    )
+    with urllib.request.urlopen(request, timeout=300) as response:  # noqa: S310
+        payload = response.read()
+    digest = _sha256_hexdigest(payload)
+    if digest != public_file.zip_sha256:
+        raise ValueError(
+            f"SCF {public_file.zip_name} failed sha-256 verification: "
+            f"expected {public_file.zip_sha256}, got {digest}."
+        )
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        if public_file.member not in archive.namelist():
+            raise ValueError(
+                f"SCF {public_file.zip_name} is missing member {public_file.member!r}."
+            )
+        member_bytes = archive.read(public_file.member)
+    digest = _sha256_hexdigest(member_bytes)
+    if digest != public_file.member_sha256:
+        raise ValueError(
+            f"SCF {public_file.member} failed sha-256 verification: "
+            f"expected {public_file.member_sha256}, got {digest}."
+        )
+    target.write_bytes(member_bytes)
+    return target
+
+
+def _read_stata_columns(
+    path: str | Path,
+    columns: Sequence[str],
+    *,
+    label: str,
+    chunksize: int = 4_000,
+) -> pd.DataFrame:
+    """Read named columns of a Stata file in row chunks.
+
+    The full public file is about 220 MB with over 5,000 variables; reading it
+    whole would hold every variable in memory. Chunks keep only the requested
+    columns resident.
+    """
+
+    wanted = list(dict.fromkeys(columns))
+    try:
+        with pd.read_stata(
+            path,
+            convert_categoricals=False,
+            columns=wanted,
+            chunksize=chunksize,
+        ) as reader:
+            parts = [chunk for chunk in reader]
+    except ValueError as error:
+        if "not found in the Stata data set" not in str(error):
+            raise
+        raise ValueError(f"SCF {label} missing required column(s): {error}.") from error
+    table = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    missing = sorted(set(wanted) - set(table.columns))
+    if missing:
+        raise ValueError(f"SCF {label} missing required column(s): {missing}.")
+    return table.loc[:, wanted]
+
+
+# --------------------------------------------------------------------------- #
+# Donor targets                                                                 #
+# --------------------------------------------------------------------------- #
+def _numeric(table: pd.DataFrame, column: str) -> np.ndarray:
+    return (
+        pd.to_numeric(table[column], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+
+
+def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
+    """Derive household federal education-debt targets from per-loan items.
+
+    Pure and row-preserving: one output row per input (family, implicate) row.
+    See the module docstring for the federal, X7179, whose-education, IBR and
+    graduate-share rules this applies.
+
+    Returns columns:
+        ``federal_education_debt``: federal balance after the X7179 rule.
+        ``head_federal_student_loan_balance``,
+        ``spouse_federal_student_loan_balance``,
+        ``federal_parent_plus_loan_balance``: its split by holder.
+        ``head_own_share``, ``spouse_own_share``: the two own balances over the
+        total (zero for a family without federal education debt).
+        ``head_is_ibr_new_borrower``, ``spouse_is_ibr_new_borrower``: 0/1.
+        ``head_graduate_share``, ``spouse_graduate_share``: in [0, 1].
+        ``education_debt``: every education loan, federal or not (EDN_INST
+        without the education-coded installment loans).
+        ``federal_status_unrecorded_balance``: loans 1-6 balances whose federal
+        flag is blank (counted as non-federal).
+        ``remaining_loans_without_detail``: X7179 in a family with no balance
+        on loans 1-6 (dropped).
+    """
+
+    required = (
+        *SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
+        SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
+        *SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
+        *SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
+        *SCF_EDUCATION_LOAN_YEAR_COLUMNS,
+        *SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
+        *SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
+    )
+    missing = [column for column in required if column not in full.columns]
+    if missing:
+        raise ValueError(f"SCF education-debt derivation missing column(s): {missing}.")
+
+    n = len(full)
+    balances = np.column_stack(
+        [np.maximum(_numeric(full, c), 0.0) for c in SCF_EDUCATION_LOAN_BALANCE_COLUMNS]
+    ).reshape(n, len(SCF_EDUCATION_LOAN_BALANCE_COLUMNS))
+    remaining = np.maximum(
+        _numeric(full, SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN), 0.0
+    )
+    federal_code = np.column_stack(
+        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_FEDERAL_COLUMNS]
+    ).reshape(balances.shape)
+    whose = np.column_stack(
+        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_WHOSE_COLUMNS]
+    ).reshape(balances.shape)
+    year = np.column_stack(
+        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_YEAR_COLUMNS]
+    ).reshape(balances.shape)
+    program = np.column_stack(
+        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_PROGRAM_COLUMNS]
+    ).reshape(balances.shape)
+    borrowed = np.column_stack(
+        [
+            np.maximum(_numeric(full, c), 0.0)
+            for c in SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS
+        ]
+    ).reshape(balances.shape)
+
+    has_balance = balances > 0
+    federal = has_balance & (federal_code == _FEDERAL_LOAN_YES)
+    loans_1_6 = balances.sum(axis=1)
+    gross_up = np.ones(n, dtype=np.float64)
+    positive_detail = loans_1_6 > 0
+    gross_up[positive_detail] = (
+        1.0 + remaining[positive_detail] / loans_1_6[positive_detail]
+    )
+    federal_balance = np.where(federal, balances, 0.0) * gross_up[:, None]
+
+    holder = np.full(balances.shape, _HEAD, dtype=object)
+    for code, role in SCF_WHOSE_EDUCATION_HOLDER.items():
+        holder[whose == code] = role
+    is_head_own = federal & (holder == _HEAD)
+    is_spouse_own = federal & (holder == _SPOUSE)
+    is_parent_plus = federal & (holder == _PARENT_PLUS)
+
+    head_own = np.where(is_head_own, federal_balance, 0.0).sum(axis=1)
+    spouse_own = np.where(is_spouse_own, federal_balance, 0.0).sum(axis=1)
+    parent_plus = np.where(is_parent_plus, federal_balance, 0.0).sum(axis=1)
+    total = head_own + spouse_own + parent_plus
+
+    def _share(numerator: np.ndarray) -> np.ndarray:
+        return np.divide(
+            numerator,
+            total,
+            out=np.zeros(n, dtype=np.float64),
+            where=total > 0,
+        )
+
+    new_loan = year >= _IBR_NEW_BORROWER_FIRST_YEAR
+
+    def _new_borrower(holds: np.ndarray) -> np.ndarray:
+        return (holds.any(axis=1) & np.all(new_loan | ~holds, axis=1)).astype(
+            np.float64
+        )
+
+    weight = np.where(borrowed > 0, borrowed, balances)
+    graduate = np.isin(program, list(_GRADUATE_PROGRAM_CODES))
+
+    def _graduate_share(holds: np.ndarray) -> np.ndarray:
+        denominator = np.where(holds, weight, 0.0).sum(axis=1)
+        numerator = np.where(holds & graduate, weight, 0.0).sum(axis=1)
+        return np.divide(
+            numerator,
+            denominator,
+            out=np.zeros(n, dtype=np.float64),
+            where=denominator > 0,
+        )
+
+    result = pd.DataFrame(index=full.index)
+    result[SCF_EDUCATION_DEBT_TOTAL_TARGET] = total
+    result["head_federal_student_loan_balance"] = head_own
+    result["spouse_federal_student_loan_balance"] = spouse_own
+    result["federal_parent_plus_loan_balance"] = parent_plus
+    result["head_own_share"] = _share(head_own)
+    result["spouse_own_share"] = _share(spouse_own)
+    result["head_graduate_share"] = _graduate_share(is_head_own)
+    result["spouse_graduate_share"] = _graduate_share(is_spouse_own)
+    result["head_is_ibr_new_borrower"] = _new_borrower(is_head_own | is_parent_plus)
+    result["spouse_is_ibr_new_borrower"] = _new_borrower(is_spouse_own)
+    result["education_debt"] = loans_1_6 + remaining
+    result["federal_status_unrecorded_balance"] = np.where(
+        has_balance & (federal_code == 0), balances, 0.0
+    ).sum(axis=1)
+    result["remaining_loans_without_detail"] = np.where(positive_detail, 0.0, remaining)
+    return result
+
+
+def load_scf_2025_education_debt_donor(
+    summary_extract_path: str | Path,
+    full_extract_path: str | Path,
+    *,
+    expected_rows: int | None = SCF_2025_FULL_EXTRACT.rows,
+) -> pd.DataFrame:
+    """Join the 2025 summary and full files and derive the donor table.
+
+    The two files must join one-to-one on ``(y1, yy1)`` across all five
+    implicates, each must have ``expected_rows`` rows (``None`` skips that
+    check, for test fixtures), and the per-loan balances must reproduce the
+    summary extract's ``edn_inst``. Returns one row per (family, implicate)
+    with a positive weight: the predictors, the targets of
+    :func:`derive_scf_education_debt_targets`, the ``scf_weight`` donor weight
+    and the fit-table covariates (``racecl4``, ``income``, ``educ``,
+    ``spouse_age``, ``yy1``, ``implicate``).
+    """
+
+    summary_columns = (
+        *dict.fromkeys(
+            (
+                *_SUMMARY_EXTRA_COLUMNS,
+                "wgt",
+                "age",
+                "hhsex",
+                "racecl5",
+                "married",
+                "kids",
+                "wageinc",
+                "intdivinc",
+                "ssretinc",
+            )
+        ),
+    )
+    full_columns = (
+        "y1",
+        "yy1",
+        _SCF_FULL_EXTRACT_SPOUSE_AGE_COLUMN,
+        *SCF_EDUCATION_LOAN_BALANCE_COLUMNS,
+        SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN,
+        *SCF_EDUCATION_LOAN_FEDERAL_COLUMNS,
+        *SCF_EDUCATION_LOAN_WHOSE_COLUMNS,
+        *SCF_EDUCATION_LOAN_YEAR_COLUMNS,
+        *SCF_EDUCATION_LOAN_PROGRAM_COLUMNS,
+        *SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS,
+    )
+    summary = _read_stata_columns(
+        summary_extract_path, summary_columns, label="2025 summary extract"
+    )
+    full = _read_stata_columns(full_extract_path, full_columns, label="2025 full file")
+    keys = ["y1", "yy1"]
+    for label, table in (("summary", summary), ("full", full)):
+        if expected_rows is not None and len(table) != int(expected_rows):
+            raise ValueError(
+                f"SCF 2025 {label} file has {len(table)} rows; expected "
+                f"{int(expected_rows)}."
+            )
+        if table.duplicated(keys).any():
+            raise ValueError(
+                f"SCF 2025 {label} file does not have one-to-one (y1, yy1) keys."
+            )
+    keyed_summary = summary.reset_index(drop=True)
+    keyed_summary["_summary_order"] = np.arange(len(keyed_summary))
+    joined = keyed_summary.merge(
+        full,
+        on=keys,
+        how="outer",
+        validate="one_to_one",
+        indicator=True,
+        sort=False,
+    )
+    unmatched = int((joined["_merge"] != "both").sum())
+    if unmatched:
+        raise ValueError(
+            "SCF 2025 summary/full files have unmatched (y1, yy1) implicates; "
+            f"a one-to-one join is required ({unmatched} unmatched row(s))."
+        )
+    joined = joined.sort_values("_summary_order").reset_index(drop=True)
+    implicate = pd.to_numeric(joined["y1"], errors="coerce").astype("int64") % 10
+    if sorted(implicate.unique().tolist()) != [1, 2, 3, 4, 5]:
+        raise ValueError("SCF 2025 rows must carry implicates 1-5 (y1 mod 10).")
+
+    targets = derive_scf_education_debt_targets(joined)
+    edn_inst = _numeric(joined, "edn_inst")
+    mismatch = np.abs(edn_inst - targets["education_debt"].to_numpy()) > 1.0
+    if mismatch.any():
+        raise ValueError(
+            "SCF 2025 education-loan balances do not reproduce edn_inst on "
+            f"{int(mismatch.sum())} row(s); the per-loan definition has drifted."
+        )
+
+    predictors = _scf_summary_predictor_table(joined)
+    donor = predictors.reset_index(drop=True)
+    donor["household_income"] = _numeric(joined, "income") - _numeric(joined, "kginc")
+    for column in targets.columns:
+        donor[column] = targets[column].to_numpy(dtype=np.float64)
+    donor["racecl4"] = _numeric(joined, "racecl4")
+    donor["income"] = _numeric(joined, "income")
+    donor["educ"] = _numeric(joined, "educ")
+    donor["spouse_age"] = _replace_sentinels(
+        joined[_SCF_FULL_EXTRACT_SPOUSE_AGE_COLUMN]
+    ).to_numpy(dtype=np.float64)
+    donor["yy1"] = pd.to_numeric(joined["yy1"], errors="coerce").to_numpy()
+    donor["implicate"] = implicate.to_numpy()
+    return donor.loc[donor[_DONOR_WEIGHT_COLUMN] > 0].reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------- #
+# Recipients                                                                    #
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _Recipients:
+    """Household-ordered predictors and each household's head and spouse rows."""
+
+    features: pd.DataFrame
+    head_position: np.ndarray
+    spouse_position: np.ndarray  # -1 where no spouse or partner is present
+
+
+def _resolve_partner_positions(
+    person: pd.DataFrame, head_positions: np.ndarray
+) -> np.ndarray:
+    """Positional row of each head's spouse (A_SPOUSE) or partner (PECOHAB)."""
+
+    household = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(-1).to_numpy()
+    lookup = {
+        (household_id, int(line_number)): position
+        for position, (household_id, line_number) in enumerate(
+            zip(household, line, strict=True)
+        )
+    }
+    pointers = [pd.to_numeric(person["A_SPOUSE"], errors="coerce").fillna(0).to_numpy()]
+    if _OPTIONAL_PARTNER_COLUMN in person.columns:
+        pointers.append(
+            pd.to_numeric(person[_OPTIONAL_PARTNER_COLUMN], errors="coerce")
+            .fillna(0)
+            .to_numpy()
+        )
+    result = np.full(len(head_positions), -1, dtype=np.int64)
+    for index, head in enumerate(head_positions):
+        for pointer in pointers:
+            target = int(pointer[head])
+            if target <= 0:
+                continue
+            partner = lookup.get((household[head], target))
+            if partner is not None and partner != head:
+                result[index] = partner
+                break
+    return result
+
+
+def _recipients(frame: Frame) -> _Recipients:
+    person = frame.table("person")
+    household = frame.table("household")
+    missing = sorted(set(_REQUIRED_RECIPIENT_PERSON_COLUMNS) - set(person.columns))
+    if missing:
+        raise ValueError(
+            "US SCF education-debt imputation requires recipient person "
+            f"column(s): {missing}."
+        )
+    if "household_id" not in household.columns:
+        raise ValueError("US SCF education-debt imputation requires household_id.")
+
+    mask = _scf_reference_person_mask(person)
+    head_rows = np.flatnonzero(mask)
+    household_ids = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    head_by_household = pd.Series(head_rows, index=household_ids[head_rows])
+    if head_by_household.index.duplicated().any():
+        raise ValueError("SCF education-debt receiver selected two reference persons.")
+    order = household["household_id"].to_numpy()
+    aligned = head_by_household.reindex(order)
+    if aligned.isna().any():
+        missing_ids = order[aligned.isna().to_numpy()][:5].tolist()
+        raise ValueError(
+            "SCF education-debt receiver household alignment failed: "
+            f"no reference person for household id(s) {missing_ids}."
+        )
+    head_position = aligned.to_numpy(dtype=np.int64)
+
+    per_person = pd.DataFrame(index=np.arange(len(person)))
+    per_person["age"] = (
+        pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    )
+    per_person["is_female"] = person["is_female"].astype(bool).astype(float).to_numpy()
+    per_person["cps_race"] = _recipient_cps_race(person)
+    per_person["is_married"] = (
+        pd.to_numeric(person["A_MARITL"], errors="coerce")
+        .isin([1, 2])
+        .astype(float)
+        .to_numpy()
+    )
+    per_person["own_children_in_household"] = _own_children_in_household(person)
+
+    income = pd.DataFrame(
+        {
+            "household_id": household_ids,
+            "employment_income": np.maximum(
+                pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
+                .fillna(0.0)
+                .to_numpy(dtype=np.float64),
+                0.0,
+            ),
+            "interest_dividend_income": _sum_present(
+                person, _RECIPIENT_INTEREST_DIVIDEND_COLUMNS
+            ),
+            "social_security_pension_income": _sum_present(
+                person, _RECIPIENT_SS_PENSION_COLUMNS
+            ),
+            "household_income": _sum_present(
+                person, _RECIPIENT_HOUSEHOLD_INCOME_COLUMNS
+            ),
+        }
+    )
+    household_income = income.groupby("household_id", sort=False).sum()
+    features = per_person.iloc[head_position].reset_index(drop=True)
+    sums = household_income.reindex(order)
+    for column in household_income.columns:
+        features[column] = sums[column].to_numpy(dtype=np.float64)
+    features.index = household.index
+    return _Recipients(
+        features=features.loc[:, list(SCF_EDUCATION_DEBT_PREDICTORS)],
+        head_position=head_position,
+        spouse_position=_resolve_partner_positions(person, head_position),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Imputation                                                                    #
+# --------------------------------------------------------------------------- #
+def _stage_seed(seed: int, step: int) -> int:
+    """A model seed for one of the stage's two QRFs, independent of other stages."""
+
+    sequence = np.random.SeedSequence([int(seed), 1073, int(step)])
+    return int(sequence.generate_state(1, dtype=np.uint32)[0])
+
+
+def _fit_frame(donor: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
+    missing = [column for column in columns if column not in donor.columns]
+    if missing:
+        raise ValueError(f"SCF education-debt donor missing column(s): {missing}.")
+    fit = donor.loc[:, list(columns)].copy()
+    for column in columns:
+        fit[column] = pd.to_numeric(fit[column], errors="coerce")
+        if not np.isfinite(fit[column].to_numpy(dtype=np.float64)).all():
+            raise ValueError(
+                f"SCF education-debt donor column {column!r} contains nonfinite values."
+            )
+    return fit
+
+
+def draw_scf_education_debt_households(
+    features: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    predictors: Sequence[str] = SCF_EDUCATION_DEBT_PREDICTORS,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> pd.DataFrame:
+    """Draw household totals and their composition for recipient rows.
+
+    ``features`` carries the predictor columns, one row per recipient
+    household (or held-out SCF family). Returns, on the same index, the drawn
+    total and the normalized composition: the head's and spouse's own
+    balances, the head's Parent PLUS balance, both graduate shares and both
+    new-borrower flags. Used by the build and by the SCF hold-out fit check.
+    """
+
+    from microcosm.fit import QRF
+
+    predictors = list(predictors)
+    total_fit = _fit_frame(
+        donor, (*predictors, SCF_EDUCATION_DEBT_TOTAL_TARGET, _DONOR_WEIGHT_COLUMN)
+    )
+    total_model = QRF(n_estimators=int(n_estimators), seed=_stage_seed(seed, 1)).fit(
+        total_fit,
+        predictors=predictors,
+        targets=[SCF_EDUCATION_DEBT_TOTAL_TARGET],
+        weights=_DONOR_WEIGHT_COLUMN,
+    )
+    drawn_total = np.maximum(
+        np.asarray(
+            total_model.predict(features.loc[:, predictors], release_models=True)[
+                SCF_EDUCATION_DEBT_TOTAL_TARGET
+            ],
+            dtype=np.float64,
+        ),
+        0.0,
+    )
+    drawn_total = np.round(drawn_total)
+
+    result = pd.DataFrame(index=features.index)
+    result[SCF_EDUCATION_DEBT_TOTAL_TARGET] = drawn_total
+    for column in SCF_EDUCATION_DEBT_COMPOSITION_TARGETS:
+        result[column] = 0.0
+    borrowers = drawn_total > 0
+    if borrowers.any():
+        composition_predictors = [*predictors, SCF_EDUCATION_DEBT_TOTAL_TARGET]
+        borrower_donor = donor.loc[
+            pd.to_numeric(donor[SCF_EDUCATION_DEBT_TOTAL_TARGET], errors="coerce") > 0
+        ]
+        composition_fit = _fit_frame(
+            borrower_donor,
+            (
+                *composition_predictors,
+                *SCF_EDUCATION_DEBT_COMPOSITION_TARGETS,
+                _DONOR_WEIGHT_COLUMN,
+            ),
+        )
+        composition_model = QRF(
+            n_estimators=int(n_estimators), seed=_stage_seed(seed, 2)
+        ).fit(
+            composition_fit,
+            predictors=composition_predictors,
+            targets=list(SCF_EDUCATION_DEBT_COMPOSITION_TARGETS),
+            weights=_DONOR_WEIGHT_COLUMN,
+        )
+        recipients = features.loc[borrowers, predictors].copy()
+        recipients[SCF_EDUCATION_DEBT_TOTAL_TARGET] = drawn_total[borrowers]
+        drawn = composition_model.predict(recipients, release_models=True)
+        for column in SCF_EDUCATION_DEBT_COMPOSITION_TARGETS:
+            result.loc[borrowers, column] = np.asarray(drawn[column], dtype=np.float64)
+
+    head_share = result["head_own_share"].clip(0.0, 1.0).to_numpy()
+    spouse_share = result["spouse_own_share"].clip(0.0, 1.0).to_numpy()
+    own = head_share + spouse_share
+    scale = np.where(own > 1.0, 1.0 / np.where(own > 0, own, 1.0), 1.0)
+    head_share = head_share * scale
+    spouse_share = spouse_share * scale
+    head_own = np.round(drawn_total * head_share)
+    # Whole dollars that never exceed the drawn total once rounded.
+    spouse_own = np.minimum(
+        np.round(drawn_total * spouse_share), drawn_total - head_own
+    )
+    parent_plus = np.maximum(drawn_total - head_own - spouse_own, 0.0)
+    result["head_federal_student_loan_balance"] = head_own
+    result["spouse_federal_student_loan_balance"] = spouse_own
+    result["federal_parent_plus_loan_balance"] = parent_plus
+    for prefix, own_balance in (("head", head_own), ("spouse", spouse_own)):
+        graduate = result[f"{prefix}_graduate_share"].clip(0.0, 1.0).to_numpy()
+        result[f"{prefix}_graduate_share"] = np.where(own_balance > 0, graduate, 0.0)
+    head_holds = (head_own + parent_plus) > 0
+    result["head_is_ibr_new_borrower"] = (
+        head_holds & (result["head_is_ibr_new_borrower"].to_numpy() >= 0.5)
+    ).astype(np.float64)
+    result["spouse_is_ibr_new_borrower"] = (
+        (spouse_own > 0) & (result["spouse_is_ibr_new_borrower"].to_numpy() >= 0.5)
+    ).astype(np.float64)
+    result["head_own_share"] = head_share
+    result["spouse_own_share"] = spouse_share
+    return result
+
+
+def impute_us_scf_education_debt(
+    frame: Frame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> pd.DataFrame:
+    """Impute the four person columns onto a US frame.
+
+    Returns a DataFrame indexed like the person table with
+    :data:`US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS`; only reference persons and
+    their spouses or partners can be nonzero.
+    """
+
+    recipients = _recipients(frame)
+    drawn = draw_scf_education_debt_households(
+        recipients.features,
+        donor,
+        seed=seed,
+        n_estimators=n_estimators,
+    )
+    person = frame.table("person")
+    n_person = len(person)
+    own = np.zeros(n_person, dtype=np.float64)
+    parent_plus = np.zeros(n_person, dtype=np.float64)
+    graduate = np.zeros(n_person, dtype=np.float64)
+    new_borrower = np.zeros(n_person, dtype=bool)
+
+    head = recipients.head_position
+    spouse = recipients.spouse_position
+    has_spouse = spouse >= 0
+    head_own = drawn["head_federal_student_loan_balance"].to_numpy()
+    spouse_own = drawn["spouse_federal_student_loan_balance"].to_numpy()
+    head_graduate = drawn["head_graduate_share"].to_numpy()
+    spouse_graduate = drawn["spouse_graduate_share"].to_numpy()
+    head_new = drawn["head_is_ibr_new_borrower"].to_numpy() >= 0.5
+    spouse_new = drawn["spouse_is_ibr_new_borrower"].to_numpy() >= 0.5
+
+    # Without a spouse or partner present, the reference person holds the
+    # spouse's draw too: a balance-weighted graduate share, and new-borrower
+    # status only when both holders' loans are new.
+    moved = ~has_spouse & (spouse_own > 0)
+    combined_own = np.where(moved, head_own + spouse_own, head_own)
+    combined_graduate = np.where(
+        moved,
+        np.divide(
+            head_own * head_graduate + spouse_own * spouse_graduate,
+            combined_own,
+            out=np.zeros_like(combined_own),
+            where=combined_own > 0,
+        ),
+        head_graduate,
+    )
+    head_holds_any = (
+        head_own + drawn["federal_parent_plus_loan_balance"].to_numpy()
+    ) > 0
+    combined_new = np.where(
+        moved,
+        np.where(head_holds_any, head_new, True) & spouse_new,
+        head_new,
+    )
+    own[head] = combined_own
+    parent_plus[head] = drawn["federal_parent_plus_loan_balance"].to_numpy()
+    graduate[head] = combined_graduate
+    new_borrower[head] = combined_new
+    spouse_rows = spouse[has_spouse]
+    own[spouse_rows] = spouse_own[has_spouse]
+    graduate[spouse_rows] = spouse_graduate[has_spouse]
+    new_borrower[spouse_rows] = spouse_new[has_spouse]
+
+    holds_any = (own + parent_plus) > 0
+    result = pd.DataFrame(index=person.index)
+    result["federal_student_loan_balance"] = own
+    result["federal_parent_plus_loan_balance"] = parent_plus
+    result["is_income_based_repayment_new_borrower"] = new_borrower & holds_any
+    result["federal_student_loan_graduate_share"] = np.where(own > 0, graduate, 0.0)
+    return result
+
+
+def _surface_has_signal(person: pd.DataFrame) -> bool:
+    if not all(column in person for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS):
+        return False
+    for column in US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS:
+        values = pd.to_numeric(person[column], errors="coerce")
+        if values.isna().any() or values.nunique() < 2 or not (values > 0).any():
+            return False
+    return True
+
+
+def with_us_scf_education_debt_inputs(
+    frame: Frame,
+    *,
+    seed: int,
+    time_period: int,
+    scf_education_debt_donor: pd.DataFrame,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> Frame:
+    """Write the four education-debt person inputs; idempotent on a signal."""
+
+    del time_period  # The draw depends on the seed only; kept for the stage API.
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US SCF education-debt inputs require the US schema.")
+    us_scf_education_debt_stage_spec()
+    person = frame.table("person")
+    if _surface_has_signal(person):
+        return frame
+    imputed = impute_us_scf_education_debt(
+        frame,
+        scf_education_debt_donor,
+        seed=int(seed),
+        n_estimators=int(n_estimators),
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS:
+        tables["person"][column] = imputed[column].to_numpy()
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Stage declaration, diagnostics and gate                                       #
+# --------------------------------------------------------------------------- #
+def us_scf_education_debt_stage_spec() -> SourceStageSpec:
+    """Load the ``scf_wealth`` declaration and check its 2025 education-debt part."""
+
+    manifest = load_source_manifest(
+        files("microcosm.build.us").joinpath("source_stages.json")
+    )
+    spec = manifest.stage_map()[_SCF_STAGE_NAME]
+    missing = sorted(set(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS) - set(spec.outputs))
+    if missing:
+        raise ValueError(
+            f"{_SCF_STAGE_NAME!r} manifest stage does not declare education-debt "
+            f"output(s) {missing}."
+        )
+    for public_file in (SCF_2025_SUMMARY_EXTRACT, SCF_2025_FULL_EXTRACT):
+        declared = [
+            artifact
+            for artifact in spec.artifacts
+            if artifact.get("locator") == public_file.url
+        ]
+        if len(declared) != 1:
+            raise ValueError(
+                f"{_SCF_STAGE_NAME!r} manifest must declare {public_file.url} once."
+            )
+        artifact = declared[0]
+        expected = {
+            "vintage": SCF_EDUCATION_DEBT_VINTAGE,
+            "member": public_file.member,
+            "sha256": public_file.zip_sha256,
+            "member_sha256": public_file.member_sha256,
+        }
+        drift = {
+            key: (artifact.get(key), value)
+            for key, value in expected.items()
+            if artifact.get(key) != value
+        }
+        if drift:
+            raise ValueError(
+                f"{_SCF_STAGE_NAME!r} SCF {SCF_EDUCATION_DEBT_VINTAGE} artifact pin "
+                f"drift for {public_file.member}: {drift}."
+            )
+    fits = [
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+        and operation.parameters.get("donor") == "scf_2025_education_debt"
+    ]
+    if len(fits) != 1 or tuple(fits[0].parameters.get("predictors", ())) != (
+        SCF_EDUCATION_DEBT_PREDICTORS
+    ):
+        raise ValueError(
+            f"{_SCF_STAGE_NAME!r} education-debt QRF predictors have drifted."
+        )
+    return spec
+
+
+def _weighted_quantile(values: np.ndarray, weights: np.ndarray, q: float) -> float:
+    """First value whose cumulative weight reaches ``q`` of the total."""
+
+    if len(values) == 0 or float(weights.sum()) <= 0:
+        return float("nan")
+    order = np.argsort(values, kind="mergesort")
+    cumulative = np.cumsum(weights[order])
+    index = int(np.searchsorted(cumulative, q * cumulative[-1], side="left"))
+    return float(values[order][min(index, len(values) - 1)])
+
+
+def _band_shares(
+    values: np.ndarray,
+    weights: np.ndarray,
+    bands: Sequence[tuple[str, float, float]],
+    *,
+    inclusive_upper: bool,
+) -> dict[str, float]:
+    total = float(weights.sum())
+    shares: dict[str, float] = {}
+    for label, low, high in bands:
+        if inclusive_upper:
+            inside = (values >= low) & (values <= high)
+        else:
+            inside = (values >= low) & (values < high)
+        shares[label] = float(weights[inside].sum()) / total if total > 0 else 0.0
+    return shares
+
+
+def _income_quintiles(income: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Weighted income quintile (1-5) of each household."""
+
+    order = np.argsort(income, kind="mergesort")
+    cumulative = np.cumsum(weights[order])
+    total = cumulative[-1] if len(cumulative) else 0.0
+    quintile = np.empty(len(income), dtype=np.int64)
+    if total <= 0:
+        quintile[:] = 1
+        return quintile
+    # Midpoint rule: a household's rank is the cumulative weight at its centre.
+    midpoint = (cumulative - weights[order] / 2.0) / total
+    quintile[order] = np.minimum((midpoint * 5).astype(np.int64) + 1, 5)
+    return quintile
+
+
+def education_debt_fit_table(
+    *,
+    household_debt: np.ndarray,
+    household_weight: np.ndarray,
+    head_age: np.ndarray,
+    race_group: np.ndarray,
+    income_quintile: np.ndarray,
+    borrower_balance: np.ndarray,
+    borrower_age: np.ndarray,
+    borrower_weight: np.ndarray,
+    parent_plus_total: float,
+    graduate_numerator: float,
+    graduate_denominator: float,
+    new_borrower_weight: float,
+) -> dict[str, object]:
+    """The microcosm#1073 fit table from household and borrower arrays.
+
+    Household statistics follow the Fed's SCF tables (share of households with
+    federal education debt, mean and median among them, by the age of the
+    reference person, race and income quintile). Borrower statistics follow
+    Federal Student Aid's portfolio tables: people holding a federal balance
+    (own plus Parent PLUS), by balance band and borrower age band.
+    """
+
+    household_debt = np.asarray(household_debt, dtype=np.float64)
+    household_weight = np.asarray(household_weight, dtype=np.float64)
+    borrower = household_debt > 0
+    total_weight = float(household_weight.sum())
+
+    def _group(mask: np.ndarray) -> dict[str, float]:
+        weight = household_weight[mask]
+        debt = household_debt[mask]
+        holders = debt > 0
+        group_weight = float(weight.sum())
+        holder_weight = float(weight[holders].sum())
+        return {
+            "household_weight": group_weight,
+            "share_with_federal_education_debt": (
+                holder_weight / group_weight if group_weight > 0 else float("nan")
+            ),
+            "mean_among_borrowers": (
+                float(np.average(debt[holders], weights=weight[holders]))
+                if holder_weight > 0
+                else float("nan")
+            ),
+            "median_among_borrowers": _weighted_quantile(
+                debt[holders], weight[holders], 0.5
+            ),
+        }
+
+    head_age = np.asarray(head_age, dtype=np.float64)
+    race_group = np.asarray(race_group)
+    income_quintile = np.asarray(income_quintile)
+    borrower_balance = np.asarray(borrower_balance, dtype=np.float64)
+    borrower_age = np.asarray(borrower_age, dtype=np.float64)
+    borrower_weight = np.asarray(borrower_weight, dtype=np.float64)
+    federal_total = float(np.dot(household_debt, household_weight))
+    return {
+        "households": {
+            **_group(np.ones(len(household_debt), dtype=bool)),
+            "total_household_weight": total_weight,
+            "federal_education_debt_total": federal_total,
+            "parent_plus_share_of_total": (
+                parent_plus_total / federal_total if federal_total > 0 else float("nan")
+            ),
+        },
+        "household_balance_bands": _band_shares(
+            household_debt[borrower],
+            household_weight[borrower],
+            SCF_EDUCATION_DEBT_BALANCE_BANDS,
+            inclusive_upper=False,
+        ),
+        "by_head_age_band": {
+            label: _group((head_age >= low) & (head_age <= high))
+            for label, low, high in SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS
+        },
+        "by_race": {
+            label: _group(race_group == code) for code, label in _RACECL4_LABELS.items()
+        },
+        "by_income_quintile": {
+            str(quintile): _group(income_quintile == quintile)
+            for quintile in range(1, 6)
+        },
+        "borrowers": {
+            "borrower_weight": float(borrower_weight.sum()),
+            "mean_balance": (
+                float(np.average(borrower_balance, weights=borrower_weight))
+                if float(borrower_weight.sum()) > 0
+                else float("nan")
+            ),
+            "median_balance": _weighted_quantile(
+                borrower_balance, borrower_weight, 0.5
+            ),
+            "balance_bands": _band_shares(
+                borrower_balance,
+                borrower_weight,
+                SCF_EDUCATION_DEBT_BALANCE_BANDS,
+                inclusive_upper=False,
+            ),
+            "age_bands": _band_shares(
+                np.floor(borrower_age),
+                borrower_weight,
+                SCF_EDUCATION_DEBT_BORROWER_AGE_BANDS,
+                inclusive_upper=True,
+            ),
+            "graduate_share_of_own_original_principal": (
+                graduate_numerator / graduate_denominator
+                if graduate_denominator > 0
+                else float("nan")
+            ),
+            "ibr_new_borrower_share": (
+                new_borrower_weight / float(borrower_weight.sum())
+                if float(borrower_weight.sum()) > 0
+                else float("nan")
+            ),
+        },
+    }
+
+
+def scf_education_debt_donor_fit_table(
+    donor: pd.DataFrame,
+    *,
+    imputed: pd.DataFrame | None = None,
+) -> dict[str, object]:
+    """Fit table of the SCF donor itself, or of draws made for its rows.
+
+    ``imputed`` (from :func:`draw_scf_education_debt_households`, on the
+    donor's index) replaces the observed targets, so a hold-out draw and the
+    observed SCF are tabulated identically. Implicates are pooled with
+    ``wgt`` (each implicate carries one fifth of the population), as the Fed
+    pools them for medians.
+    """
+
+    source = donor if imputed is None else imputed
+    weight = donor[_DONOR_WEIGHT_COLUMN].to_numpy(dtype=np.float64)
+    head_own = source["head_federal_student_loan_balance"].to_numpy(dtype=np.float64)
+    spouse_own = source["spouse_federal_student_loan_balance"].to_numpy(
+        dtype=np.float64
+    )
+    parent_plus = source["federal_parent_plus_loan_balance"].to_numpy(dtype=np.float64)
+    head_balance = head_own + parent_plus
+    head_holds = head_balance > 0
+    spouse_holds = spouse_own > 0
+    head_age = donor["age"].to_numpy(dtype=np.float64)
+    spouse_age = donor["spouse_age"].to_numpy(dtype=np.float64)
+    head_graduate = source["head_graduate_share"].to_numpy(dtype=np.float64)
+    spouse_graduate = source["spouse_graduate_share"].to_numpy(dtype=np.float64)
+    head_new = source["head_is_ibr_new_borrower"].to_numpy(dtype=np.float64) >= 0.5
+    spouse_new = source["spouse_is_ibr_new_borrower"].to_numpy(dtype=np.float64) >= 0.5
+    income = donor["household_income"].to_numpy(dtype=np.float64)
+    return education_debt_fit_table(
+        household_debt=head_own + spouse_own + parent_plus,
+        household_weight=weight,
+        head_age=head_age,
+        race_group=donor["racecl4"].to_numpy(),
+        income_quintile=_income_quintiles(income, weight),
+        borrower_balance=np.concatenate(
+            [head_balance[head_holds], spouse_own[spouse_holds]]
+        ),
+        borrower_age=np.concatenate([head_age[head_holds], spouse_age[spouse_holds]]),
+        borrower_weight=np.concatenate([weight[head_holds], weight[spouse_holds]]),
+        parent_plus_total=float(np.dot(parent_plus, weight)),
+        graduate_numerator=float(
+            np.dot(head_own * head_graduate + spouse_own * spouse_graduate, weight)
+        ),
+        graduate_denominator=float(np.dot(head_own + spouse_own, weight)),
+        new_borrower_weight=float(
+            weight[head_holds & head_new].sum()
+            + weight[spouse_holds & spouse_new].sum()
+        ),
+    )
+
+
+def _racecl4_from_cps(person: pd.DataFrame) -> np.ndarray:
+    """SCF ``racecl4`` grouping of CPS race and Hispanic origin."""
+
+    race = pd.to_numeric(person["PRDTRACE"], errors="coerce").fillna(0).to_numpy()
+    hispanic = pd.to_numeric(person["PRDTHSP"], errors="coerce").fillna(0).to_numpy()
+    group = np.full(len(person), 4, dtype=np.int64)
+    group[race == 1] = 1
+    group[race == 2] = 2
+    group[hispanic > 0] = 3
+    return group
+
+
+def us_scf_education_debt_fit_table(frame: Frame) -> dict[str, object]:
+    """The microcosm#1073 fit table of an imputed US frame, at its weights.
+
+    Households are grouped by the SCF-style reference person's age and
+    ``racecl4``-equivalent race, and by weighted quintiles of the household
+    income the imputation conditions on (income quintiles of the frame's own
+    households, like the SCF's).
+    """
+
+    person = frame.table("person")
+    recipients = _recipients(frame)
+    household_weight = np.asarray(
+        frame.weights_for("household").values, dtype=np.float64
+    )
+    own = (
+        pd.to_numeric(person["federal_student_loan_balance"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    parent_plus = (
+        pd.to_numeric(person["federal_parent_plus_loan_balance"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    graduate = (
+        pd.to_numeric(person["federal_student_loan_graduate_share"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    new_borrower = (
+        person["is_income_based_repayment_new_borrower"].astype(bool).to_numpy()
+    )
+    household_ids = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    order = frame.table("household")["household_id"].to_numpy()
+    weight_by_household = pd.Series(household_weight, index=order)
+    person_weight = weight_by_household.reindex(household_ids).to_numpy(
+        dtype=np.float64
+    )
+    balance = own + parent_plus
+    household_debt = (
+        pd.Series(balance, index=household_ids)
+        .groupby(level=0, sort=False)
+        .sum()
+        .reindex(order)
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    holds = balance > 0
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    head = recipients.head_position
+    return education_debt_fit_table(
+        household_debt=household_debt,
+        household_weight=household_weight,
+        head_age=age[head],
+        race_group=_racecl4_from_cps(person)[head],
+        income_quintile=_income_quintiles(
+            recipients.features["household_income"].to_numpy(dtype=np.float64),
+            household_weight,
+        ),
+        borrower_balance=balance[holds],
+        borrower_age=age[holds],
+        borrower_weight=person_weight[holds],
+        parent_plus_total=float(np.dot(parent_plus, person_weight)),
+        graduate_numerator=float(np.dot(own * graduate, person_weight)),
+        graduate_denominator=float(np.dot(own, person_weight)),
+        new_borrower_weight=float(person_weight[holds & new_borrower].sum()),
+    )
+
+
+def us_scf_education_debt_summary(frame: Frame) -> dict[str, object]:
+    """Weighted signal and consistency diagnostics for the four columns."""
+
+    person = frame.table("person")
+    present = [c for c in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS if c in person.columns]
+    summary: dict[str, object] = {
+        "present_columns": present,
+        "household_income_columns_present": [
+            c for c in _RECIPIENT_HOUSEHOLD_INCOME_COLUMNS if c in person.columns
+        ],
+        "borrower_household_share_band": list(_BORROWER_HOUSEHOLD_SHARE_BAND),
+    }
+    if len(present) != len(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS):
+        return summary
+    balances = {
+        column: pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        for column in US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS
+    }
+    graduate = pd.to_numeric(
+        person["federal_student_loan_graduate_share"], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    new_borrower = person["is_income_based_repayment_new_borrower"]
+    holds = (
+        balances["federal_student_loan_balance"]
+        + balances["federal_parent_plus_loan_balance"]
+    ) > 0
+    household_ids = person[_HOUSEHOLD_ID_COLUMN].to_numpy()
+    order = frame.table("household")["household_id"].to_numpy()
+    household_weight = np.asarray(
+        frame.weights_for("household").values, dtype=np.float64
+    )
+    household_holds = (
+        pd.Series(holds, index=household_ids)
+        .groupby(level=0, sort=False)
+        .any()
+        .reindex(order)
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
+    total_weight = float(household_weight.sum())
+    summary.update(
+        {
+            "nonfinite_counts": {
+                column: int((~np.isfinite(values)).sum())
+                for column, values in balances.items()
+            },
+            "negative_counts": {
+                column: int((values < 0).sum()) for column, values in balances.items()
+            },
+            "unique_counts": {
+                column: int(pd.Series(values).nunique())
+                for column, values in balances.items()
+            },
+            "graduate_share_out_of_range": int(
+                ((graduate < 0) | (graduate > 1) | ~np.isfinite(graduate)).sum()
+            ),
+            "graduate_share_without_own_balance": int(
+                ((graduate > 0) & (balances["federal_student_loan_balance"] <= 0)).sum()
+            ),
+            "new_borrower_dtype_is_bool": bool(
+                pd.api.types.is_bool_dtype(new_borrower)
+            ),
+            "new_borrower_without_balance": int(
+                (new_borrower.astype(bool).to_numpy() & ~holds).sum()
+            ),
+            "borrower_household_share": (
+                float(household_weight[household_holds].sum()) / total_weight
+                if total_weight > 0
+                else 0.0
+            ),
+        }
+    )
+    return summary
+
+
+def us_scf_education_debt_signal_gate(frame: Frame) -> GateResult:
+    """Require finite, nonnegative, nonconstant and coherent education debt."""
+
+    summary = us_scf_education_debt_summary(frame)
+    missing = sorted(
+        set(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS) - set(summary["present_columns"])
+    )
+    if missing:
+        return GateResult(
+            name="scf_education_debt_signal",
+            passed=False,
+            failures=(f"person columns missing: {missing}.",),
+            details=summary,
+        )
+    failures: list[str] = []
+    for column, count in summary["nonfinite_counts"].items():
+        if count:
+            failures.append(f"{column}: {count} nonfinite value(s).")
+    for column, count in summary["negative_counts"].items():
+        if count:
+            failures.append(f"{column}: {count} negative value(s).")
+    for column, count in summary["unique_counts"].items():
+        if count < 2:
+            failures.append(f"{column}: constant column carries no signal.")
+    if summary["graduate_share_out_of_range"]:
+        failures.append(
+            "federal_student_loan_graduate_share: "
+            f"{summary['graduate_share_out_of_range']} value(s) outside [0, 1]."
+        )
+    if summary["graduate_share_without_own_balance"]:
+        failures.append(
+            "federal_student_loan_graduate_share is positive for "
+            f"{summary['graduate_share_without_own_balance']} person(s) without "
+            "a federal_student_loan_balance."
+        )
+    if not summary["new_borrower_dtype_is_bool"]:
+        failures.append("is_income_based_repayment_new_borrower is not boolean.")
+    if summary["new_borrower_without_balance"]:
+        failures.append(
+            "is_income_based_repayment_new_borrower is true for "
+            f"{summary['new_borrower_without_balance']} person(s) without a "
+            "federal balance."
+        )
+    share = float(summary["borrower_household_share"])
+    low, high = _BORROWER_HOUSEHOLD_SHARE_BAND
+    if not low <= share <= high:
+        failures.append(
+            f"federal education-debt household share {share:.3f} outside "
+            f"plausibility band [{low}, {high}]."
+        )
+    return GateResult(
+        name="scf_education_debt_signal",
+        passed=not failures,
+        failures=tuple(failures),
+        details=summary,
+    )
