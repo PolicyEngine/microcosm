@@ -1,0 +1,1008 @@
+{
+  "built_on": "2026-10-13",
+  "inputs": {
+    "method": "uk-high-value-home-stock-v1",
+    "registrations": {
+      "nspl": {
+        "chronicle_package_id": "ons-nspl-august-2026",
+        "chronicle_source_id": "ons",
+        "files": {
+          "2026": {
+            "filename": "NSPL_AUG_2026.zip",
+            "r2_key": "raw/uk/ons/ons-nspl-august-2026/2026/f5d86a518d360cad67f0304f25574d3ce619f242d9ea6385a120abab7c15b15c/NSPL_AUG_2026.zip",
+            "sha256": "f5d86a518d360cad67f0304f25574d3ce619f242d9ea6385a120abab7c15b15c",
+            "size_bytes": 185109467,
+            "source_url": "https://www.arcgis.com/sharing/rest/content/items/9d8364ebae8b4439aa66cda440e54fc8/data"
+          }
+        },
+        "registration_kind": "raw_only"
+      },
+      "price_paid": {
+        "chronicle_package_id": "hmlr-price-paid-data-yearly-august-2026",
+        "chronicle_source_id": "hmlr",
+        "files": {
+          "1995": {
+            "filename": "pp-1995.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/1995/9a3671663cf21518a8d29500760d131be0b1c2ceb06bcdc58b08ac5b23dd93e5/pp-1995.csv",
+            "sha256": "9a3671663cf21518a8d29500760d131be0b1c2ceb06bcdc58b08ac5b23dd93e5",
+            "size_bytes": 139427399,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-1995.csv"
+          },
+          "1996": {
+            "filename": "pp-1996.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/1996/184730b4ab9fe2e96f8d039aeb3416b68b340c9be544853cebe497ed9eb9f7d2/pp-1996.csv",
+            "sha256": "184730b4ab9fe2e96f8d039aeb3416b68b340c9be544853cebe497ed9eb9f7d2",
+            "size_bytes": 169672292,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-1996.csv"
+          },
+          "1997": {
+            "filename": "pp-1997.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/1997/c8d7d481881034de7cf596050633a35b0925a5074153f7e4bb189692efae4d60/pp-1997.csv",
+            "sha256": "c8d7d481881034de7cf596050633a35b0925a5074153f7e4bb189692efae4d60",
+            "size_bytes": 192752518,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-1997.csv"
+          },
+          "1998": {
+            "filename": "pp-1998.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/1998/a4a3b6c51521975ebab84161953fa1d5a588152526a7ce9213a23e7615cb7d3b/pp-1998.csv",
+            "sha256": "a4a3b6c51521975ebab84161953fa1d5a588152526a7ce9213a23e7615cb7d3b",
+            "size_bytes": 185265661,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-1998.csv"
+          },
+          "1999": {
+            "filename": "pp-1999.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/1999/94244d50a2c82b8d9794bcd9029f316531f0adc0659925755c8699c3397eeb08/pp-1999.csv",
+            "sha256": "94244d50a2c82b8d9794bcd9029f316531f0adc0659925755c8699c3397eeb08",
+            "size_bytes": 204412596,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-1999.csv"
+          },
+          "2000": {
+            "filename": "pp-2000.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2000/ffc2ece4fbaa492a222c4198f0f952f8b414ffc544f8449b53d8f0b6d160f212/pp-2000.csv",
+            "sha256": "ffc2ece4fbaa492a222c4198f0f952f8b414ffc544f8449b53d8f0b6d160f212",
+            "size_bytes": 193403540,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2000.csv"
+          },
+          "2001": {
+            "filename": "pp-2001.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2001/ae0e0806857def483fcb4e811f650823eccf02b22b840472b149b6f9dbed11e4/pp-2001.csv",
+            "sha256": "ae0e0806857def483fcb4e811f650823eccf02b22b840472b149b6f9dbed11e4",
+            "size_bytes": 220264042,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2001.csv"
+          },
+          "2002": {
+            "filename": "pp-2002.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2002/a437468d27cc8f479ebdec76de547b931c46e29ab53fefb235bc56ccbc53f91e/pp-2002.csv",
+            "sha256": "a437468d27cc8f479ebdec76de547b931c46e29ab53fefb235bc56ccbc53f91e",
+            "size_bytes": 239344429,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2002.csv"
+          },
+          "2003": {
+            "filename": "pp-2003.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2003/46e83d6a44102a8b58b483611eda76f1d55363a0d69657cf77dc370508557f79/pp-2003.csv",
+            "sha256": "46e83d6a44102a8b58b483611eda76f1d55363a0d69657cf77dc370508557f79",
+            "size_bytes": 219039457,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2003.csv"
+          },
+          "2004": {
+            "filename": "pp-2004.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2004/53b90da9915356241b924cde7728215a55ff7017579be01ea4870968b7a7e937/pp-2004.csv",
+            "sha256": "53b90da9915356241b924cde7728215a55ff7017579be01ea4870968b7a7e937",
+            "size_bytes": 218673956,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2004.csv"
+          },
+          "2005": {
+            "filename": "pp-2005.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2005/0f4fa73bf0209ca82b6bae380002fe957423c835d11b816f8e18a8c50c51834f/pp-2005.csv",
+            "sha256": "0f4fa73bf0209ca82b6bae380002fe957423c835d11b816f8e18a8c50c51834f",
+            "size_bytes": 187585989,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2005.csv"
+          },
+          "2006": {
+            "filename": "pp-2006.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2006/d79b8d7687d4159b82d7c4a90d8e169e98c5f27b6357daf0adf5c5f7bb60a73f/pp-2006.csv",
+            "sha256": "d79b8d7687d4159b82d7c4a90d8e169e98c5f27b6357daf0adf5c5f7bb60a73f",
+            "size_bytes": 235220185,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2006.csv"
+          },
+          "2007": {
+            "filename": "pp-2007.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2007/c70508d262fbc5553a87e5975cb6fc599516d077f070cec8ead61b1e60b129fc/pp-2007.csv",
+            "sha256": "c70508d262fbc5553a87e5975cb6fc599516d077f070cec8ead61b1e60b129fc",
+            "size_bytes": 226206473,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2007.csv"
+          },
+          "2008": {
+            "filename": "pp-2008.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2008/2d6f26f928b37089576aded3c22fd39f5b8e732a438e325df577697c677da426/pp-2008.csv",
+            "sha256": "2d6f26f928b37089576aded3c22fd39f5b8e732a438e325df577697c677da426",
+            "size_bytes": 115618842,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2008.csv"
+          },
+          "2009": {
+            "filename": "pp-2009.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2009/c90e30e37393ec3534e3e6207205babb2d0a07640bf620d84a2e380f79df3ddb/pp-2009.csv",
+            "sha256": "c90e30e37393ec3534e3e6207205babb2d0a07640bf620d84a2e380f79df3ddb",
+            "size_bytes": 108265538,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2009.csv"
+          },
+          "2010": {
+            "filename": "pp-2010.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2010/0c328111c1adfa81836083bb3f421247107e3fe4c4d313c1bd47fd07ae9986b0/pp-2010.csv",
+            "sha256": "0c328111c1adfa81836083bb3f421247107e3fe4c4d313c1bd47fd07ae9986b0",
+            "size_bytes": 114497684,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2010.csv"
+          },
+          "2011": {
+            "filename": "pp-2011.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2011/4715e27c40fc2dfffb4ca40f45f5be105ff22dda13254d52002dba5e903e409b/pp-2011.csv",
+            "sha256": "4715e27c40fc2dfffb4ca40f45f5be105ff22dda13254d52002dba5e903e409b",
+            "size_bytes": 114100421,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2011.csv"
+          },
+          "2012": {
+            "filename": "pp-2012.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2012/6df8570c7b6ecaed27a84d61eac29e189ca042057fae2f4a36ab66a3c46dfcb1/pp-2012.csv",
+            "sha256": "6df8570c7b6ecaed27a84d61eac29e189ca042057fae2f4a36ab66a3c46dfcb1",
+            "size_bytes": 115480992,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2012.csv"
+          },
+          "2013": {
+            "filename": "pp-2013.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2013/c111999510f6b047684d12090254a657f05be4d16201a072b0fef793bcfcc72b/pp-2013.csv",
+            "sha256": "c111999510f6b047684d12090254a657f05be4d16201a072b0fef793bcfcc72b",
+            "size_bytes": 140174843,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2013.csv"
+          },
+          "2014": {
+            "filename": "pp-2014.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2014/6001129f1e3019c75f79fa88c27e47bd24175822eefdcc78a012d9ce2addd237/pp-2014.csv",
+            "sha256": "6001129f1e3019c75f79fa88c27e47bd24175822eefdcc78a012d9ce2addd237",
+            "size_bytes": 170482701,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2014.csv"
+          },
+          "2015": {
+            "filename": "pp-2015.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2015/b16108a0c074e863d80fd78331dbdb52d0f75079a2b38130692376e737e5078a/pp-2015.csv",
+            "sha256": "b16108a0c074e863d80fd78331dbdb52d0f75079a2b38130692376e737e5078a",
+            "size_bytes": 175207909,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2015.csv"
+          },
+          "2016": {
+            "filename": "pp-2016.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2016/3ddb83af8195fc199ac3eba08b26140fe39646784325fa52b41b4a6cfdbea517/pp-2016.csv",
+            "sha256": "3ddb83af8195fc199ac3eba08b26140fe39646784325fa52b41b4a6cfdbea517",
+            "size_bytes": 181646479,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2016.csv"
+          },
+          "2017": {
+            "filename": "pp-2017.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2017/e5eacbcfca377e074be4f0ec83efc604b24502e89753650a356a7c89df0ee291/pp-2017.csv",
+            "sha256": "e5eacbcfca377e074be4f0ec83efc604b24502e89753650a356a7c89df0ee291",
+            "size_bytes": 185355333,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2017.csv"
+          },
+          "2018": {
+            "filename": "pp-2018.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2018/2e9fb3872f0800c86458ea62a2c999195a7b55b5da17b4a8a96705c122590b27/pp-2018.csv",
+            "sha256": "2e9fb3872f0800c86458ea62a2c999195a7b55b5da17b4a8a96705c122590b27",
+            "size_bytes": 180182279,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2018.csv"
+          },
+          "2019": {
+            "filename": "pp-2019.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2019/94764797c69f02556f904a8dffb3efb962df3048f6eadd64b28e7a18fa2c2d39/pp-2019.csv",
+            "sha256": "94764797c69f02556f904a8dffb3efb962df3048f6eadd64b28e7a18fa2c2d39",
+            "size_bytes": 176115167,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2019.csv"
+          },
+          "2020": {
+            "filename": "pp-2020.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2020/ca172e2eec82097d12b577026811922b0256ba4eae2c28624c2ead6aa9c4803c/pp-2020.csv",
+            "sha256": "ca172e2eec82097d12b577026811922b0256ba4eae2c28624c2ead6aa9c4803c",
+            "size_bytes": 156338463,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2020.csv"
+          },
+          "2021": {
+            "filename": "pp-2021.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2021/04f6869b861bcebd0bee3eec00baccdbe19372b299190a161b33b476589a6bfc/pp-2021.csv",
+            "sha256": "04f6869b861bcebd0bee3eec00baccdbe19372b299190a161b33b476589a6bfc",
+            "size_bytes": 223312496,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2021.csv"
+          },
+          "2022": {
+            "filename": "pp-2022.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2022/e543dd53d6b2f8f47d95bed2956693c38c28ba2d0450c3df173ddce3eb80b84a/pp-2022.csv",
+            "sha256": "e543dd53d6b2f8f47d95bed2956693c38c28ba2d0450c3df173ddce3eb80b84a",
+            "size_bytes": 187904681,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2022.csv"
+          },
+          "2023": {
+            "filename": "pp-2023.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2023/0d87c096be0c46d358d2d0a9e426e3e9aff16c0ca9d514162b5e56f000d97a1d/pp-2023.csv",
+            "sha256": "0d87c096be0c46d358d2d0a9e426e3e9aff16c0ca9d514162b5e56f000d97a1d",
+            "size_bytes": 150366878,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2023.csv"
+          },
+          "2024": {
+            "filename": "pp-2024.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2024/afec0cff353cc4570cc02795b78dbd270b4e678b5a0a50bc3e082c883abb7707/pp-2024.csv",
+            "sha256": "afec0cff353cc4570cc02795b78dbd270b4e678b5a0a50bc3e082c883abb7707",
+            "size_bytes": 162424209,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2024.csv"
+          },
+          "2025": {
+            "filename": "pp-2025.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2025/83540b18086e5748116c744d9e930ad210cafcbb01a5d7d41fcbd2464ba0b5fd/pp-2025.csv",
+            "sha256": "83540b18086e5748116c744d9e930ad210cafcbb01a5d7d41fcbd2464ba0b5fd",
+            "size_bytes": 169648191,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2025.csv"
+          },
+          "2026": {
+            "filename": "pp-2026.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-price-paid-data-yearly-august-2026/2026/3ba529a2e622f38159bb9bdceb292b7311e1e7b770f0d3bc7bc4c7b3d80b9ad4/pp-2026.csv",
+            "sha256": "3ba529a2e622f38159bb9bdceb292b7311e1e7b770f0d3bc7bc4c7b3d80b9ad4",
+            "size_bytes": 67147774,
+            "source_url": "https://price-paid-data.publicdata.landregistry.gov.uk/pp-2026.csv"
+          }
+        },
+        "registration_kind": "raw_only"
+      },
+      "uk_hpi": {
+        "chronicle_package_id": "hmlr-uk-hpi-full-file-july-2026",
+        "chronicle_source_id": "hmlr",
+        "files": {
+          "2026": {
+            "filename": "UK-HPI-full-file-2026-07.csv",
+            "r2_key": "raw/uk/hmlr/hmlr-uk-hpi-full-file-july-2026/2026/654a541934ba7b393a741e23bc0c6fb668690f562feb8a7b4fff62d653fd6607/UK-HPI-full-file-2026-07.csv",
+            "sha256": "654a541934ba7b393a741e23bc0c6fb668690f562feb8a7b4fff62d653fd6607",
+            "size_bytes": 35012747,
+            "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2026-07.csv"
+          }
+        },
+        "registration_kind": "raw_only"
+      },
+      "voa_ctsop": {
+        "chronicle_package_id": "voa-council-tax-stock-by-lad-2025",
+        "chronicle_source_id": "voa",
+        "files": {
+          "2025": {
+            "filename": "CTSOP1.1.zip",
+            "r2_key": "raw/voa/voa-council-tax-stock-by-lad-2025/2025/e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7/CTSOP1.1.zip",
+            "sha256": "e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7",
+            "size_bytes": 749909,
+            "source_url": "https://assets.publishing.service.gov.uk/media/6a0ad444c75cc34a8ff8f397/CTSOP1.1.zip"
+          }
+        },
+        "registration_kind": "committed"
+      }
+    },
+    "support_sha256": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797"
+  },
+  "inputs_sha256": "41c4f1595befe47a299aa03c803f8539e2406750ab8a312e469affdc7d4990fa",
+  "issues": {
+    "chronicle_registration": "PolicyEngine/chronicle#343",
+    "umbrella": "PolicyEngine/microcosm#1240"
+  },
+  "kind": "uk_high_value_home_stock_provenance",
+  "ledger_feed": {
+    "fact_row_count": 950242,
+    "facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
+    "schema_version": "policyengine_ledger.consumer_artifact.v2"
+  },
+  "licence": {
+    "attribution": [
+      "Contains HM Land Registry data \u00a9 Crown copyright and database right 2026. This data is licensed under the Open Government Licence v3.0.",
+      "Contains OS data \u00a9 Crown copyright and database right 2026",
+      "Contains Royal Mail data \u00a9 Royal Mail copyright and database right 2026",
+      "Source: Office for National Statistics licensed under the Open Government Licence v.3.0",
+      "Contains public sector information licensed under the Open Government Licence v3.0 (Valuation Office Agency CTSOP1.1; Office for Budget Responsibility)"
+    ],
+    "inputs": {
+      "census_ts054": "ONS Census 2021 TS054, OGL v3.0",
+      "nspl": "ONS National Statistics Postcode Lookup, OGL v3.0 with OS and Royal Mail notices (England and Wales postcodes only)",
+      "obr_hvcts": "Office for Budget Responsibility costing note, OGL v3.0",
+      "price_paid": "HM Land Registry Price Paid Data, OGL v3.0 (address data under Royal Mail and Ordnance Survey terms; none is published here)",
+      "uk_hpi": "HM Land Registry UK House Price Index, OGL v3.0",
+      "voa_ctsop": "Valuation Office Agency CTSOP1.1, OGL v3.0"
+    },
+    "licence": "Open Government Licence v3.0 (every input); NSPL third-party notices below"
+  },
+  "method": "uk-high-value-home-stock-v1",
+  "parameters": {
+    "basis_year": 2024,
+    "bulk_transfer_rule": "transfers sharing completion date, price and postcode across more than one dwelling are not valuations",
+    "coverage_rule": "VOA CTSOP1.1 all properties over valued dwellings ever sold, per local authority, clipped to [0.5, 3.0]",
+    "dwelling_identity": "postcode, PAON and SAON",
+    "frame_basis_thresholds": {
+      "over_gbp_1_5m": 1451687.866927593,
+      "over_gbp_1m": 967791.9112850621,
+      "over_gbp_2m": 1935583.8225701242
+    },
+    "owner_occupied_share_rule": "Census 2021 TS054 owner-occupied share of the private-sector stock (all households less social rented) by local authority, rescaled by one factor so the England share of dwellings over \u00a32m equals one minus the OBR costing's non-owner-occupied share",
+    "reference_month": "2026-04",
+    "stock_date": "2025-12-31",
+    "thresholds_gbp_at_reference_month": {
+      "over_gbp_1_5m": 1500000,
+      "over_gbp_1m": 1000000,
+      "over_gbp_2m": 2000000
+    },
+    "uprating": "UK HPI by local authority and property type to the calendar-year average, falling back to region then nation, Isles of Scilly to Cornwall"
+  },
+  "receipts": {
+    "coverage": {
+      "basis": "VOA CTSOP1.1 all properties at 31 March 2025, less the census social-rented share, over valued dwellings ever sold since 1995",
+      "bounds": [
+        0.5,
+        3.0
+      ],
+      "clipped_high": [],
+      "clipped_low": [],
+      "england_wales_private_stock": 24838557.294550236,
+      "england_wales_stock_voa": 27231050.0,
+      "england_wales_valued_dwellings": 15567861,
+      "local_authorities": 318,
+      "ratio_quantiles": {
+        "0.05": 1.3820454528801411,
+        "0.25": 1.4663405883259142,
+        "0.5": 1.5403665205660895,
+        "0.75": 1.6774246956094288,
+        "0.95": 1.928019564499949
+      }
+    },
+    "dwellings": {
+      "dwellings_ever_sold": 15751809,
+      "dwellings_in_stock": 15751256,
+      "dwellings_not_valued_bulk_only": 182803,
+      "dwellings_output_area_outside_support": 3,
+      "dwellings_postcode_unmatched": 589,
+      "dwellings_uprating_unresolved": 0,
+      "dwellings_valued_in_stock": 15567861,
+      "transfers_by_year": {
+        "1995": {
+          "bulk_transfers": 7526,
+          "new_build_first_registrations": 107589,
+          "postcode_unmatched": 3,
+          "residential_category_a": 796610
+        },
+        "1996": {
+          "bulk_transfers": 8592,
+          "new_build_first_registrations": 116242,
+          "postcode_unmatched": 8,
+          "residential_category_a": 964823
+        },
+        "1997": {
+          "bulk_transfers": 9747,
+          "new_build_first_registrations": 123216,
+          "postcode_unmatched": 14,
+          "residential_category_a": 1093961
+        },
+        "1998": {
+          "bulk_transfers": 9639,
+          "new_build_first_registrations": 112476,
+          "postcode_unmatched": 9,
+          "residential_category_a": 1050026
+        },
+        "1999": {
+          "bulk_transfers": 10982,
+          "new_build_first_registrations": 120365,
+          "postcode_unmatched": 17,
+          "residential_category_a": 1194384
+        },
+        "2000": {
+          "bulk_transfers": 12125,
+          "new_build_first_registrations": 117315,
+          "postcode_unmatched": 24,
+          "residential_category_a": 1128751
+        },
+        "2001": {
+          "bulk_transfers": 13676,
+          "new_build_first_registrations": 118095,
+          "postcode_unmatched": 35,
+          "residential_category_a": 1245037
+        },
+        "2002": {
+          "bulk_transfers": 17093,
+          "new_build_first_registrations": 126737,
+          "postcode_unmatched": 78,
+          "residential_category_a": 1350833
+        },
+        "2003": {
+          "bulk_transfers": 18354,
+          "new_build_first_registrations": 122326,
+          "postcode_unmatched": 40,
+          "residential_category_a": 1234515
+        },
+        "2004": {
+          "bulk_transfers": 20245,
+          "new_build_first_registrations": 122998,
+          "postcode_unmatched": 45,
+          "residential_category_a": 1231260
+        },
+        "2005": {
+          "bulk_transfers": 19884,
+          "new_build_first_registrations": 122601,
+          "postcode_unmatched": 30,
+          "residential_category_a": 1061030
+        },
+        "2006": {
+          "bulk_transfers": 23322,
+          "new_build_first_registrations": 136184,
+          "postcode_unmatched": 27,
+          "residential_category_a": 1325472
+        },
+        "2007": {
+          "bulk_transfers": 26289,
+          "new_build_first_registrations": 100808,
+          "postcode_unmatched": 31,
+          "residential_category_a": 1271676
+        },
+        "2008": {
+          "bulk_transfers": 16659,
+          "new_build_first_registrations": 75932,
+          "postcode_unmatched": 79,
+          "residential_category_a": 649100
+        },
+        "2009": {
+          "bulk_transfers": 9997,
+          "new_build_first_registrations": 66207,
+          "postcode_unmatched": 67,
+          "residential_category_a": 624918
+        },
+        "2010": {
+          "bulk_transfers": 7276,
+          "new_build_first_registrations": 59753,
+          "postcode_unmatched": 57,
+          "residential_category_a": 662879
+        },
+        "2011": {
+          "bulk_transfers": 6194,
+          "new_build_first_registrations": 59820,
+          "postcode_unmatched": 36,
+          "residential_category_a": 660738
+        },
+        "2012": {
+          "bulk_transfers": 5380,
+          "new_build_first_registrations": 65343,
+          "postcode_unmatched": 39,
+          "residential_category_a": 668358
+        },
+        "2013": {
+          "bulk_transfers": 7424,
+          "new_build_first_registrations": 76353,
+          "postcode_unmatched": 19,
+          "residential_category_a": 791446
+        },
+        "2014": {
+          "bulk_transfers": 10091,
+          "new_build_first_registrations": 86620,
+          "postcode_unmatched": 35,
+          "residential_category_a": 919111
+        },
+        "2015": {
+          "bulk_transfers": 12243,
+          "new_build_first_registrations": 98842,
+          "postcode_unmatched": 16,
+          "residential_category_a": 918686
+        },
+        "2016": {
+          "bulk_transfers": 14423,
+          "new_build_first_registrations": 107594,
+          "postcode_unmatched": 15,
+          "residential_category_a": 922413
+        },
+        "2017": {
+          "bulk_transfers": 14735,
+          "new_build_first_registrations": 108465,
+          "postcode_unmatched": 8,
+          "residential_category_a": 906708
+        },
+        "2018": {
+          "bulk_transfers": 14252,
+          "new_build_first_registrations": 113355,
+          "postcode_unmatched": 10,
+          "residential_category_a": 875421
+        },
+        "2019": {
+          "bulk_transfers": 12096,
+          "new_build_first_registrations": 113514,
+          "postcode_unmatched": 8,
+          "residential_category_a": 842859
+        },
+        "2020": {
+          "bulk_transfers": 7603,
+          "new_build_first_registrations": 98865,
+          "postcode_unmatched": 3,
+          "residential_category_a": 753241
+        },
+        "2021": {
+          "bulk_transfers": 11819,
+          "new_build_first_registrations": 119234,
+          "postcode_unmatched": 19,
+          "residential_category_a": 1086734
+        },
+        "2022": {
+          "bulk_transfers": 12073,
+          "new_build_first_registrations": 115903,
+          "postcode_unmatched": 4,
+          "residential_category_a": 909859
+        },
+        "2023": {
+          "bulk_transfers": 5778,
+          "new_build_first_registrations": 80259,
+          "postcode_unmatched": 7,
+          "residential_category_a": 708233
+        },
+        "2024": {
+          "bulk_transfers": 3807,
+          "new_build_first_registrations": 72599,
+          "postcode_unmatched": 4,
+          "residential_category_a": 763740
+        },
+        "2025": {
+          "bulk_transfers": 2654,
+          "new_build_first_registrations": 50194,
+          "postcode_unmatched": 6,
+          "residential_category_a": 809259
+        },
+        "2026": {
+          "bulk_transfers": 154,
+          "new_build_first_registrations": 555,
+          "postcode_unmatched": 2,
+          "residential_category_a": 331026
+        }
+      },
+      "transfers_total": 29753107,
+      "uprating_chain_used": {
+        "local_authority_all_types": 67,
+        "local_authority_type": 15567794,
+        "nation_all_types": 0,
+        "nation_type": 0,
+        "region_all_types": 0,
+        "region_type": 0
+      }
+    },
+    "hpi": {
+      "areas": 405,
+      "last_month": [
+        2026,
+        7
+      ],
+      "scilly_fallback": "E06000052"
+    },
+    "hpssa": {
+      "basis": "category A residential sales (detached, semi-detached, terraced, flats) by the output area's 2024 constituency in the committed support; fiscal years run April to March as the HPSSA year-ending-March tables do",
+      "fiscal_years": [
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "median": {
+        "by_fiscal_year_and_type": {
+          "fy2022:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01379,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 7e-05,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:detached": {
+            "cells": 566,
+            "max_abs_rel_diff": 0.01613,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.04294,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9965
+          },
+          "fy2022:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01081,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9983
+          },
+          "fy2022:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.00885,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 1.0
+          },
+          "fy2023:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01176,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00155,
+            "share_within_tolerance": 0.9983
+          },
+          "fy2023:detached": {
+            "cells": 559,
+            "max_abs_rel_diff": 0.05333,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 1e-05,
+            "share_within_tolerance": 0.9982
+          },
+          "fy2023:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.06818,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00092,
+            "share_within_tolerance": 0.9843
+          },
+          "fy2023:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.01316,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9948
+          },
+          "fy2023:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.00985,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 1.0
+          },
+          "fy2024:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.02612,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0023,
+            "share_within_tolerance": 0.9826
+          },
+          "fy2024:detached": {
+            "cells": 564,
+            "max_abs_rel_diff": 0.01632,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00314,
+            "share_within_tolerance": 0.9823
+          },
+          "fy2024:flat_maisonette": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.04515,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00429,
+            "share_within_tolerance": 0.9669
+          },
+          "fy2024:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.02778,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00201,
+            "share_within_tolerance": 0.993
+          },
+          "fy2024:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01449,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00167,
+            "share_within_tolerance": 0.993
+          },
+          "fy2025:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.05469,
+            "median_abs_rel_diff": 0.00465,
+            "p90_abs_rel_diff": 0.01818,
+            "share_within_tolerance": 0.6991
+          },
+          "fy2025:detached": {
+            "cells": 556,
+            "max_abs_rel_diff": 0.35172,
+            "median_abs_rel_diff": 0.00576,
+            "p90_abs_rel_diff": 0.02064,
+            "share_within_tolerance": 0.6709
+          },
+          "fy2025:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.26316,
+            "median_abs_rel_diff": 0.00472,
+            "p90_abs_rel_diff": 0.02619,
+            "share_within_tolerance": 0.6661
+          },
+          "fy2025:semi_detached": {
+            "cells": 573,
+            "max_abs_rel_diff": 0.25,
+            "median_abs_rel_diff": 0.00238,
+            "p90_abs_rel_diff": 0.01491,
+            "share_within_tolerance": 0.7976
+          },
+          "fy2025:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03333,
+            "median_abs_rel_diff": 0.00209,
+            "p90_abs_rel_diff": 0.01302,
+            "share_within_tolerance": 0.8487
+          }
+        },
+        "cells_compared": 11440,
+        "cells_missing_from_price_paid": 0,
+        "feed_cells": 11440,
+        "tolerance": 0.01
+      },
+      "sales": {
+        "by_fiscal_year_and_type": {
+          "fy2022:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01374,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00104,
+            "share_within_tolerance": 0.9861
+          },
+          "fy2022:detached": {
+            "cells": 573,
+            "max_abs_rel_diff": 0.03136,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00145,
+            "share_within_tolerance": 0.9634
+          },
+          "fy2022:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03684,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00312,
+            "share_within_tolerance": 0.8957
+          },
+          "fy2022:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.02045,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00169,
+            "share_within_tolerance": 0.9809
+          },
+          "fy2022:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01493,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0,
+            "share_within_tolerance": 0.9635
+          },
+          "fy2023:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01372,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00201,
+            "share_within_tolerance": 0.9391
+          },
+          "fy2023:detached": {
+            "cells": 572,
+            "max_abs_rel_diff": 0.03226,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00319,
+            "share_within_tolerance": 0.8899
+          },
+          "fy2023:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.17857,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.006,
+            "share_within_tolerance": 0.8365
+          },
+          "fy2023:semi_detached": {
+            "cells": 574,
+            "max_abs_rel_diff": 0.01521,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00246,
+            "share_within_tolerance": 0.9443
+          },
+          "fy2023:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.01515,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00248,
+            "share_within_tolerance": 0.9235
+          },
+          "fy2024:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.05007,
+            "median_abs_rel_diff": 0.00126,
+            "p90_abs_rel_diff": 0.00536,
+            "share_within_tolerance": 0.7913
+          },
+          "fy2024:detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.09859,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00695,
+            "share_within_tolerance": 0.7287
+          },
+          "fy2024:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.13636,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.0101,
+            "share_within_tolerance": 0.6783
+          },
+          "fy2024:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.08863,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00544,
+            "share_within_tolerance": 0.7878
+          },
+          "fy2024:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.03513,
+            "median_abs_rel_diff": 0.0,
+            "p90_abs_rel_diff": 0.00401,
+            "share_within_tolerance": 0.8139
+          },
+          "fy2025:all": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.1812,
+            "median_abs_rel_diff": 0.07132,
+            "p90_abs_rel_diff": 0.09615,
+            "share_within_tolerance": 0.0
+          },
+          "fy2025:detached": {
+            "cells": 572,
+            "max_abs_rel_diff": 2.0,
+            "median_abs_rel_diff": 0.08464,
+            "p90_abs_rel_diff": 0.13719,
+            "share_within_tolerance": 0.0297
+          },
+          "fy2025:flat_maisonette": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.45455,
+            "median_abs_rel_diff": 0.06038,
+            "p90_abs_rel_diff": 0.11346,
+            "share_within_tolerance": 0.0348
+          },
+          "fy2025:semi_detached": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.3,
+            "median_abs_rel_diff": 0.07317,
+            "p90_abs_rel_diff": 0.10942,
+            "share_within_tolerance": 0.0087
+          },
+          "fy2025:terraced": {
+            "cells": 575,
+            "max_abs_rel_diff": 0.17687,
+            "median_abs_rel_diff": 0.05539,
+            "p90_abs_rel_diff": 0.08568,
+            "share_within_tolerance": 0.0
+          }
+        },
+        "cells_compared": 11491,
+        "cells_missing_from_price_paid": 9,
+        "feed_cells": 11500,
+        "tolerance": 0.003
+      }
+    },
+    "knots": {
+      "cap": 20000000,
+      "grid": [
+        0.0,
+        0.05,
+        0.1,
+        0.15,
+        0.2,
+        0.25,
+        0.3,
+        0.35,
+        0.4,
+        0.45,
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.91,
+        0.92,
+        0.93,
+        0.94,
+        0.95,
+        0.96,
+        0.97,
+        0.98,
+        0.99,
+        0.991,
+        0.992,
+        0.993,
+        0.994,
+        0.995,
+        0.996,
+        0.997,
+        0.998,
+        0.999,
+        1.0
+      ],
+      "minimum_count": 50,
+      "suppressed": {
+        "constituency": [],
+        "country": [],
+        "region": []
+      }
+    },
+    "national_counts": {
+      "owner_occupied_homes": {
+        "E92000001:over_gbp_1_5m": 247474.6,
+        "E92000001:over_gbp_1m": 712014.8,
+        "E92000001:over_gbp_2m": 115920.8,
+        "W92000004:over_gbp_1_5m": 898.9,
+        "W92000004:over_gbp_1m": 5536.8,
+        "W92000004:over_gbp_2m": 262.5
+      },
+      "private_sector_dwellings": {
+        "E92000001:over_gbp_1_5m": 391429.8,
+        "E92000001:over_gbp_1m": 1049214.0,
+        "E92000001:over_gbp_2m": 193201.3,
+        "W92000004:over_gbp_1_5m": 1087.5,
+        "W92000004:over_gbp_1m": 6739.3,
+        "W92000004:over_gbp_2m": 315.7
+      }
+    },
+    "owner_occupied": {
+      "achieved_share_over_2m_england": 0.6000000000000002,
+      "basis": "Census 2021 TS054 by local authority: private-sector stock is all households less social rented; the owner-occupied share is owned outright plus owned with a mortgage over that private stock",
+      "census_implied_share_over_2m_england": 0.5208362037686077,
+      "control_owner_occupied_share_over_2m_england": 0.6,
+      "local_authorities_capped_at_one": [],
+      "local_authorities_with_tenure": 350,
+      "obr_fact_key": "ledger.aggregate_fact.v2:6ae750bc79ad4efce34dabb9",
+      "obr_non_owner_occupied_share": 0.4,
+      "rescale_factor": 1.151993651091433,
+      "tenure_record_set_spec_ids": [
+        "uk.local_geography.tenure.all_households.v1",
+        "uk.local_geography.tenure.owned_mortgage.v1",
+        "uk.local_geography.tenure.owned_outright.v1",
+        "uk.local_geography.tenure.private_rent.v1",
+        "uk.local_geography.tenure.rent_free.v1",
+        "uk.local_geography.tenure.shared_equity.v1",
+        "uk.local_geography.tenure.shared_ownership.v1",
+        "uk.local_geography.tenure.social_rent.v1"
+      ]
+    },
+    "regional_over_2m_owner_occupied_share": {
+      "E12000001": 0.0018,
+      "E12000002": 0.0249,
+      "E12000003": 0.0078,
+      "E12000004": 0.0083,
+      "E12000005": 0.0128,
+      "E12000006": 0.085,
+      "E12000007": 0.5459,
+      "E12000008": 0.2588,
+      "E12000009": 0.0548
+    },
+    "sensitivities": {
+      "no_coverage_correction": {
+        "E92000001:over_gbp_1_5m": 157768.2,
+        "E92000001:over_gbp_1m": 458501.3,
+        "E92000001:over_gbp_2m": 73434.8,
+        "W92000004:over_gbp_1_5m": 537.7,
+        "W92000004:over_gbp_1m": 3312.5,
+        "W92000004:over_gbp_2m": 155.0
+      },
+      "owner_share_without_obr_control": {
+        "E92000001:over_gbp_1_5m": 214822.9,
+        "E92000001:over_gbp_1m": 618071.8,
+        "E92000001:over_gbp_2m": 100626.3,
+        "W92000004:over_gbp_1_5m": 780.3,
+        "W92000004:over_gbp_1m": 4806.3,
+        "W92000004:over_gbp_2m": 227.9
+      }
+    },
+    "thresholds": {
+      "basis_values": {
+        "over_gbp_1_5m": 1451687.866927593,
+        "over_gbp_1m": 967791.9112850621,
+        "over_gbp_2m": 1935583.8225701242
+      },
+      "basis_year": 2024,
+      "england_all_dwellings_deflator": 0.967791911285062,
+      "reference_month": "2026-04"
+    }
+  },
+  "schema_version": 1,
+  "tool": "tools/build_uk_high_value_home_stock.py"
+}

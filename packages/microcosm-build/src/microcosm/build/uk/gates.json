@@ -593,6 +593,21 @@
       "notes": "Stage-time conservation gate over the CGT incidence clone receipt."
     },
     {
+      "id": "uk_stage_high_value_home_support_mass",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "high_value_home_support",
+        "check": "high_value_home_support",
+        "stratum_lower": 0.95,
+        "copies": 6,
+        "maximum_relative_mass_deviation": 1e-09
+      },
+      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. The stage assigns no value and makes no draw, so it holds no distributional threshold."
+    },
+    {
       "id": "uk_stage_cgt_support_split_mass",
       "gate": "stage_health",
       "phase": "transferred",
@@ -884,10 +899,11 @@
           "etb_services_support_bounds.json",
           "uc_deduction_support_bounds.json",
           "nts_bus_travel_support_bounds.json",
-          "was_lisa_support_bounds.json"
+          "was_lisa_support_bounds.json",
+          "price_paid_property_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003. Since microcosm#1240 the dense graph rewrites main_residence_value and property_wealth per clone from the Land Registry value knots, winsorised at the knots' declared cap; price_paid_property_support_bounds.json, generated beside the knots, carries that cap as the two columns' bound and is listed last so it overrides the WAS donor bound for them."
     },
     {
       "id": "uk_aggregate_admin",
@@ -1021,6 +1037,7 @@
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
+          "person.statutory_paternity_pay",
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
@@ -1031,6 +1048,7 @@
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
           "person.person_is_spi_income_band_carrier",
+          "person.person_is_spi_income_recipient",
           "benunit.benunit_source_id",
           "benunit.benunit_support_channel",
           "benunit.benunit_support_clone_index",
@@ -1071,6 +1089,10 @@
           "person.srp_regular_code5",
           "benunit.benunit_clone_index",
           "person.person_clone_index",
+          "benunit.benunit_build_id",
+          "household.household_build_id",
+          "person.person_build_id",
+          "person.months_since_last_birthday",
           "household.itl1_code",
           "household.itl2_code",
           "household.itl3_code",
@@ -1242,19 +1264,6 @@
       "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the reviewed per-reference exclusions (charitable_investment_gifts, signed at +15,168.8% on the post-#710 surface; owned_land, signed for seed variance) were retired on 2026-09-22 when the first release-cut certification measured both inside the fence (-99.0% and -73.5% against the enhanced FRS reference, microcosm#967); the register is empty and the gate's current failures are the two genuine breaches it names. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
     },
     {
-      "id": "uk_qrf_tail_concentration",
-      "gate": "tail_concentration",
-      "phase": "terminal",
-      "criticality": "release_blocking",
-      "parameters": {
-        "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
-        "top_k": 100,
-        "max_top_share": 0.9994670564654868,
-        "min_nonzero_records": 104
-      },
-      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Armed from the #686 L3 baselines per #757 B4, each threshold recording the run that measured it: the 47-column qrf_tail grids of uk_weighted_integrity_baselines_686.json (sha256 8b3f6c4e9c522445bf3e05d3451ee8557f4e14d25524ceac3af8bfe05401a146, licensed acceptance dir 686-spine-swap), measured on spine-a.h5 (sha256 a65f2132736d1dcecb91709a513a0d54a5887635ea03760629cc888d188ee306, 113,649 person rows, design weights) for the #609/#578 threshold adjudication. top_k 100 is the measurement grid anchor [10, 100, 500, 1000]; max_top_share is the exact measured maximum over the checked surface (hmrc_spi_other_social_security_income, 104 carriers), no headroom; min_nonzero_records is the thinnest measured column above the grid anchor (the same column) - the policy domain requires min_nonzero_records > top_k, so the three saturated sub-anchor columns (hmrc_spi_taxable_termination_pay 12, charitable_investment_gifts 22, sda_reported 24 carriers, each top-100 share 1.0) sit below it and go thin visibly in the signed details on every run, never a silent pass. The baselines are design-weight measurements and the terminal gate runs on the calibrated release frame; a calibrated-weight breach names its column and is a finding, not noise. The 12 household_qrf_tail grids (was_wealth surface) are measured in the same baselines file and not yet armed - a household-surface gate entry is a declared follow-up. Reviewed exclusions live in the named register resource of this package."
-    },
-    {
       "id": "uk_local_geography_ladder_post_calibration",
       "gate": "spine_agreement",
       "phase": "terminal",
@@ -1323,6 +1332,29 @@
         "minimum_ess_fraction": 0.01
       },
       "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
+    },
+    {
+      "id": "uk_high_value_homes_benchmarks",
+      "gate": "high_value_home_benchmarks",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "minimum_rank_correlation": 0.6,
+        "maximum_regional_share_gap": 0.1
+      },
+      "notes": "microcosm#1240 fix 8, report-only. On the calibrated pool: England owner-occupied homes by surcharge band at April-2026 prices beside the OBR costing note's Table 1.1 (every residential property in scope, 2028-29; shown with the note's non-owner-occupied share, never bound); the regional split of homes over 2m beside the derived Land Registry stock; and the Spearman rank correlation by constituency of homes over 1.5m and over 2m against the derived stock and VOA band H. Fails when a correlation is below 0.6 or a region's share differs by more than 0.10. The 11 October 2026 candidate measured 0.37 against VOA band H before this family existed."
+    },
+    {
+      "id": "uk_high_value_homes_support",
+      "gate": "high_value_home_support",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "minimum_distinct_sources": 10,
+        "minimum_target_homes": 100.0,
+        "dominance_share": 0.5
+      },
+      "notes": "microcosm#1240 fix 8, report-only. For every constituency and local authority where the derived stock places at least 100 owner-occupied homes over 1.5m or over 2m, the pool must carry at least 10 distinct source households above the threshold with no source household above half of the cell (the UKDS disclosure floor the Budget-day outputs apply). The gate's details carry counts of areas by support band only; the per-area table is the candidate's high_value_home_support.csv, which stays in the run directory."
     }
   ]
 }
