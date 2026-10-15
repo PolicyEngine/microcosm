@@ -1,0 +1,1 @@
+US builds now forward calibration epochs to their staging bundle and hosted telemetry the way UK builds do: every tenth epoch and each solve's last epoch, with the stride growing so no run forwards more than about 2,400 rows. Previously every epoch was forwarded. The rule is defined once in `microcosm.build.calibration_epoch_telemetry` and both countries use it.

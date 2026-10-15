@@ -7,6 +7,7 @@ the retired rowwise tool pinned them, plus the tool's stub.
 """
 
 # ruff: noqa: F403, F405
+from microcosm.build.calibration_epoch_telemetry import CALIBRATION_MAX_EPOCH_ROWS
 from test_support.microcosm_build.uk_rowwise_candidate import *
 
 
@@ -492,8 +493,7 @@ def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
     for epochs, households in ((2000, 55000), (10000, 55000), (100000, None)):
         solves = 1 if households is None else 2 + rowwise_cli.BUDGET_ITERS
         assert (
-            epochs * solves / stride(epochs, households)
-            <= builder._STAGING_MAX_EPOCH_ROWS
+            epochs * solves / stride(epochs, households) <= CALIBRATION_MAX_EPOCH_ROWS
         )
 
 
