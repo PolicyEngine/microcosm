@@ -1,0 +1,63 @@
+{
+ "build_id": "microcosm-uk-2024-25-national",
+ "code": {
+  "repository": "PolicyEngine/microcosm",
+  "git_commit": "a8fe1b954d0d42c1a6b10d663024d11201717a50",
+  "git_dirty": false
+ },
+ "build_sha": "a8fe1b9",
+ "runtime": {
+  "python": "3.13.0",
+  "policyengine-core": "3.0.0",
+  "policyengine-uk": "2.0.0",
+  "microcosm-data": "0.1.0",
+  "microcosm-build": "0.1.0",
+  "microcosm-calibrate": "0.1.0"
+ },
+ "dataset": {
+  "filename": "microcosm_uk_2024_25.h5",
+  "sha256": "d357112f939979d7e34696637ef874ca0531902c86bd34f503e1885d02eafb3e"
+ },
+ "calibration": {
+  "filename": "microcosm_uk_2024_25_calibration.npz",
+  "sha256": "d1356e9ae3fb9baea7e7860931eeb274874f5ac61fc0b87277fc8245eac0801f",
+  "household_weight_year": {
+   "dataset_year": 2024,
+   "basis": "dataset_year"
+  },
+  "target_surface": {
+   "sha256": "48b07537f3af196a534c7591ef2638babeb38c3d8dcfef910512b457ee5f2de8",
+   "n_targets": 2
+  },
+  "target_registry": {
+   "version": "release-contract-fixture-v1",
+   "n_specs": 2
+  }
+ },
+ "gates": {
+  "spine": {
+   "uk_release_input_coverage": "passed"
+  },
+  "calibration_seam": {
+   "uk_input_mass_parity": "passed"
+  },
+  "release_cut": {
+   "uk_aggregate_admin": "passed"
+  }
+ },
+ "attempt_id": "uk-frs-calibration-attempt-20260101T000000Z-00000000",
+ "cut_tag": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
+ "created_at": "2026-01-01T00:00:00+00:00",
+ "staging": {
+  "contract_version": 2,
+  "enabled": true,
+  "mode": "local_and_remote",
+  "run_id": "uk-national-release-contract-fixture",
+  "configured_repository": "policyengine/populace-uk-staging",
+  "upload_attempts": 6,
+  "upload_successes": 6,
+  "read_back": "passed",
+  "last_error_code": null,
+  "opt_out_reason": null
+ }
+}

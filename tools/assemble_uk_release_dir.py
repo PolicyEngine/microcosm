@@ -49,6 +49,17 @@ _RUNTIME_PACKAGES = (
     "microcosm-build",
     "microcosm-calibrate",
 )
+#: The signed evidence a national release ships beside its manifests, in
+#: release-manifest order: the artifact key, the release-directory filename, and
+#: the name ``_assemble`` measures its digest under.
+_EVIDENCE = (
+    ("calibration_diagnostics", "calibration_diagnostics.json", "diagnostics"),
+    ("release_certification", "release_certification.json", "certification"),
+    ("terminal_gates", "terminal_gates.json", "calibration seam report"),
+    ("release_cut_gates", "release_cut_gates.json", "release-cut report"),
+    ("spine_gates", "spine_gates.json", "spine report"),
+    ("score_vs_enhanced_frs", "score_vs_enhanced_frs.json", "score receipt"),
+)
 
 
 def _uk_publisher_labels() -> dict[str, str]:
@@ -359,18 +370,12 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         calibration_path.unlink(missing_ok=True)
 
 
-def _stage_and_finalize(
+def uk_national_release_manifests(
     *,
-    args: argparse.Namespace,
-    staging_parent: Path,
-    destination: Path,
-    npz_destination: Path,
-    calibration_path: Path,
-    calibration_filename: str,
-    household_weight: np.ndarray,
-    initial_household_weight: np.ndarray,
-    household_weight_year: Mapping[str, object],
     measured: Mapping[str, str],
+    calibration_filename: str,
+    calibration_sha: str,
+    household_weight_year: Mapping[str, object],
     cut_tag: str,
     attempt_id: str,
     runtime: Mapping[str, str],
@@ -380,19 +385,19 @@ def _stage_and_finalize(
     spine_part: Mapping[str, object],
     seam_part: Mapping[str, object],
     release_cut_part: Mapping[str, object],
-    spine_report_path: Path,
     staging_delivery: Mapping[str, object],
-) -> dict[str, object]:
-    np.savez(
-        calibration_path,
-        household_weight=household_weight,
-        initial_household_weight=initial_household_weight,
-    )
-    calibration_sha = _sha256(calibration_path)
+    created_at: str,
+    publisher_labels: Mapping[str, str],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Return the national line's build and release manifests.
 
-    created_at = datetime.now(UTC).isoformat()
-    release_dir = staging_parent / UK_NATIONAL_RELEASE_ID
-    release_dir.mkdir(parents=True)
+    A pure function of its inputs: the assembler writes exactly these two
+    documents, and the release-contract golden fixtures
+    (``tools/generate_release_contract_fixtures.py``, docs/release-contract.md
+    C1) are written by this same function, so a change to either manifest's
+    shape is a change to those fixtures.
+    """
+
     build_manifest = {
         "build_id": UK_NATIONAL_RELEASE_ID,
         "code": {
@@ -434,29 +439,6 @@ def _stage_and_finalize(
         "cut_tag": cut_tag,
         "created_at": created_at,
         "staging": dict(staging_delivery),
-    }
-    build_manifest_path = release_dir / "build_manifest.json"
-    _write_json(build_manifest_path, build_manifest)
-
-    evidence = {
-        "calibration_diagnostics": (
-            args.diagnostics_json,
-            "calibration_diagnostics.json",
-        ),
-        "release_certification": (
-            args.certification_json,
-            "release_certification.json",
-        ),
-        "terminal_gates": (args.seam_gate_report, "terminal_gates.json"),
-        "release_cut_gates": (
-            args.release_cut_gate_json,
-            "release_cut_gates.json",
-        ),
-        "spine_gates": (spine_report_path, "spine_gates.json"),
-        "score_vs_enhanced_frs": (
-            args.score_receipt,
-            "score_vs_enhanced_frs.json",
-        ),
     }
 
     def artifact(kind: str, path: str, sha256: str) -> dict[str, str]:
@@ -509,54 +491,88 @@ def _stage_and_finalize(
                 "calibration", calibration_filename, calibration_sha
             ),
             **{
-                key: artifact("diagnostics", filename, measured[name])
-                for key, (_source, filename), name in (
-                    (
-                        "calibration_diagnostics",
-                        evidence["calibration_diagnostics"],
-                        "diagnostics",
-                    ),
-                    (
-                        "release_certification",
-                        evidence["release_certification"],
-                        "certification",
-                    ),
-                    (
-                        "terminal_gates",
-                        evidence["terminal_gates"],
-                        "calibration seam report",
-                    ),
-                    (
-                        "release_cut_gates",
-                        evidence["release_cut_gates"],
-                        "release-cut report",
-                    ),
-                    (
-                        "spine_gates",
-                        evidence["spine_gates"],
-                        "spine report",
-                    ),
-                    (
-                        "score_vs_enhanced_frs",
-                        evidence["score_vs_enhanced_frs"],
-                        "score receipt",
-                    ),
-                )
+                key: artifact("diagnostics", filename, measured[measured_as])
+                for key, filename, measured_as in _EVIDENCE
             },
         },
         "description": (
             "UK national calibration pipeline release assembled from attempt "
             f"{attempt_id} at immutable cut {cut_tag}."
         ),
-        "publisher_labels": _uk_publisher_labels(),
+        "publisher_labels": dict(publisher_labels),
     }
+    return build_manifest, release_manifest
+
+
+def _stage_and_finalize(
+    *,
+    args: argparse.Namespace,
+    staging_parent: Path,
+    destination: Path,
+    npz_destination: Path,
+    calibration_path: Path,
+    calibration_filename: str,
+    household_weight: np.ndarray,
+    initial_household_weight: np.ndarray,
+    household_weight_year: Mapping[str, object],
+    measured: Mapping[str, str],
+    cut_tag: str,
+    attempt_id: str,
+    runtime: Mapping[str, str],
+    code_pin: str,
+    target_surface: Mapping[str, object],
+    target_registry: Mapping[str, object],
+    spine_part: Mapping[str, object],
+    seam_part: Mapping[str, object],
+    release_cut_part: Mapping[str, object],
+    spine_report_path: Path,
+    staging_delivery: Mapping[str, object],
+) -> dict[str, object]:
+    np.savez(
+        calibration_path,
+        household_weight=household_weight,
+        initial_household_weight=initial_household_weight,
+    )
+    calibration_sha = _sha256(calibration_path)
+
+    created_at = datetime.now(UTC).isoformat()
+    release_dir = staging_parent / UK_NATIONAL_RELEASE_ID
+    release_dir.mkdir(parents=True)
+    build_manifest, release_manifest = uk_national_release_manifests(
+        measured=measured,
+        calibration_filename=calibration_filename,
+        calibration_sha=calibration_sha,
+        household_weight_year=household_weight_year,
+        cut_tag=cut_tag,
+        attempt_id=attempt_id,
+        runtime=runtime,
+        code_pin=code_pin,
+        target_surface=target_surface,
+        target_registry=target_registry,
+        spine_part=spine_part,
+        seam_part=seam_part,
+        release_cut_part=release_cut_part,
+        staging_delivery=staging_delivery,
+        created_at=created_at,
+        publisher_labels=_uk_publisher_labels(),
+    )
+    build_manifest_path = release_dir / "build_manifest.json"
+    _write_json(build_manifest_path, build_manifest)
     release_manifest_path = release_dir / "release_manifest.json"
     _write_json(release_manifest_path, release_manifest)
 
+    sources = {
+        "calibration_diagnostics": args.diagnostics_json,
+        "release_certification": args.certification_json,
+        "terminal_gates": args.seam_gate_report,
+        "release_cut_gates": args.release_cut_gate_json,
+        "spine_gates": spine_report_path,
+        "score_vs_enhanced_frs": args.score_receipt,
+    }
     evidence_summary: dict[str, dict[str, str]] = {}
-    for key, (source, filename) in evidence.items():
+    for key, filename, _measured_as in _EVIDENCE:
         copy_path = release_dir / filename
-        shutil.copyfile(source, copy_path)
+        shutil.copyfile(sources[key], copy_path)
         evidence_summary[key] = {
             "path": str(destination / filename),
             "sha256": _sha256(copy_path),
