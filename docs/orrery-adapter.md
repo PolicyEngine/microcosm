@@ -376,6 +376,67 @@ The marker is the producer extension `microcosm.reconstruction`:
   executed, cached or gated. CI parses one with Orrery's public parser
   (`tools/orrery-contract/verify-reconstruction.mjs`).
 
+### UK builds before #1144
+
+UK dense and national builds from before #1144 wrote `graph.json` beside their
+outputs, and recorded their code revision in `rowwise_candidate_manifest.json`.
+This command turns such a build's output directory into a reconstructed
+publication:
+
+```sh
+uv run python -m microcosm.build.uk_runtime.orrery_reconstruction \
+  --build path/to/past-build \
+  --output path/to/reconstructed-publication
+```
+
+The declaration is the build's own `graph.json`, never one re-derived from
+current code. The declaration format has not changed since the UK graph driver,
+so a recorded file reproduces byte for byte; one that does not is refused.
+
+The build directory is only read. The command:
+
+- **Reads:** `graph.json`, which is required, and also `build.json`,
+  `rowwise_candidate_manifest.json` and `sha256sums.txt` where present. Links,
+  devices and inputs over 32 MiB are refused.
+- **Checks recorded digests:** a file whose bytes disagree with a digest the
+  build recorded for it is refused. `build.json` binds the candidate manifest,
+  and `sha256sums.txt` binds the files it lists.
+- **Resolves the revision:** it takes the candidate manifest's `git_commit`
+  and `git_dirty`, which must agree with the copy under `identity.code`.
+  `--revision` must match that commit, or supplies one when the build recorded
+  none; that revision is marked `caller_asserted`. With neither, it refuses.
+- **Refuses later builds:** a build that records Orrery evidence
+  (`graph.schema.json` or `execution.evidence.json`) is exported with
+  `python -m microcosm.graph.orrery` instead.
+- **Refuses missing declarations:** a directory without `graph.json` is refused,
+  and the refusal names the build records that were found. Staged bundles never
+  carried `graph.json`, and builds from before the UK graph driver never wrote
+  it.
+
+It writes a new directory with the layout of a normal publication, and moves the
+directory into place only after every file is written:
+
+| File | Contents |
+| --- | --- |
+| `graph.schema.json` | Compiler schema of the recorded declaration, with the reconstruction marker |
+| `graph.orrery.json` | Orrery document, titled `UK · reconstructed declaration (<commit>)` |
+| `orrery.upload.json` | Publication inventory (roles `graph` and `schema`); its publication ID is derived from the files' digests |
+| `orrery.reconstruction.json` | Summary report; not in the inventory |
+
+The summary report, of which the command prints a short version, lists:
+
+- the inputs and how each was verified;
+- the expected files that are missing;
+- evidence found but not bound to operations: run manifests,
+  `evidence-index.json`, `operations.json` and the content store;
+- warnings, for a dirty or unrecorded working tree, a caller-asserted revision,
+  or a declaration the build recorded no digest for. Before #1144, the last one
+  applies to every build.
+
+Output is deterministic: reconstructing the same build twice gives identical
+bytes and the same publication ID. The command uploads nothing and starts no
+emitter service, so publishing the directory remains a separate step.
+
 ## Orrery evidence panels
 
 | Surface | Exported evidence |
