@@ -45,6 +45,13 @@ from microcosm.build.us_runtime.acs_local_income import (
     acs_local_income_transfer_signal_gate,
     require_acs_local_income_donor,
 )
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    acs_local_ssi_disability_signal_gate,
+    load_acs_local_ssi_disability_donor,
+    require_acs_local_ssi_disability_donor,
+    with_acs_local_ssi_disability_criteria,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_DISABILITY_ITEMS,
     ACS_LOCAL_DISABILITY_COLUMNS,
@@ -80,6 +87,10 @@ from microcosm.build.us_runtime.h5_io import (
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
+)
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+    fetch_sipp_2023_ssi_disability_donor,
 )
 from microcosm.frame import (
     Frame,
@@ -189,6 +200,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--sipp-donor",
+        type=Path,
+        help=(
+            "Local copy of the sha-pinned full SIPP 2023 public-use file "
+            "(pu2023.csv) for the ACS rows' SSI disability criteria "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). Defaults to the canonical "
+            "cache, downloading the pinned 3.73 GB file on first use."
+        ),
+    )
+    parser.add_argument(
         "--donor-release-manifest",
         type=Path,
         help=(
@@ -265,11 +286,17 @@ def main(argv: list[str] | None = None) -> int:
     _require_benefit_participation_inputs(base)
     _require_immigration_donor(base, period=args.period)
     _require_income_donor(base)
+    _require_ssi_disability_donor(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
         donor_channel=args.donor_channel,
         target_families=transfer_plan,
+    )
+    # microcosm#1022: resolve and verify the pinned SIPP donor before the ACS
+    # fetch and transfer, so an unavailable donor fails in minutes, not hours.
+    ssi_disability_donor, ssi_disability_identity = _load_ssi_disability_donor(
+        args.sipp_donor, period=args.period
     )
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
@@ -332,6 +359,18 @@ def main(argv: list[str] | None = None) -> int:
     # separate ASEC-channel pass; gate them before the input-null audit.
     income = _require_local_income_transfer(result)
     gc.collect()
+    # microcosm#1022: run the donor's SIPP SSI disability-criteria model on
+    # the ACS rows (it reads the income pass's disability_benefits) and gate
+    # it before the input-null audit; left missing, the reviewed-null fill
+    # would fail every ACS person under 65 who is not blind.
+    result, ssi_disability = _with_local_ssi_disability(
+        result,
+        sipp_donor=ssi_disability_donor,
+        donor_identity=ssi_disability_identity,
+        seed=args.seed,
+    )
+    del ssi_disability_donor
+    gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
     hours_gate = acs_local_hours_signal_gate(
@@ -374,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     summary.update(immigration)
     summary.update(work_disability)
     summary.update(income)
+    summary.update(ssi_disability)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -543,6 +583,86 @@ def _require_local_income_transfer(result: AcsMultispineResult) -> dict[str, obj
     return {
         "acs_local_income_transfer": receipt,
         "acs_local_income_transfer_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_ssi_disability_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor without the SSI criteria."""
+
+    try:
+        require_acs_local_ssi_disability_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot anchor the ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+
+
+def _load_ssi_disability_donor(
+    path: Path | None, *, period: int
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The verified SIPP training frame and the identity its receipt pins.
+
+    ``path`` is ``--sipp-donor``; without it the pinned file is resolved
+    through the canonical cache the fiscal lane's SIPP stages share,
+    downloading it on first use. Either way the byte length and sha-256 are
+    verified before the training frame is built.
+    """
+
+    try:
+        resolved = path if path is not None else fetch_sipp_2023_ssi_disability_donor()
+        return load_acs_local_ssi_disability_donor(resolved, time_period=period)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            "The pinned full SIPP 2023 donor for the ACS local SSI disability "
+            f"criteria ({ACS_LOCAL_SSI_DISABILITY_ISSUE}) is unavailable: {exc} "
+            "Pass --sipp-donor with a local pu2023.csv (sha256 "
+            f"{SIPP_2023_SSI_DISABILITY_DONOR_SHA256}) or allow the pinned "
+            "download."
+        ) from exc
+
+
+def _with_local_ssi_disability(
+    result: AcsMultispineResult,
+    *,
+    sipp_donor: pd.DataFrame,
+    donor_identity: dict[str, object],
+    seed: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local SSI disability stage; return the summary entries.
+
+    The stage fills only missing ACS-row ``meets_ssi_disability_criteria``;
+    its gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_ssi_disability`` and ``acs_local_ssi_disability_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_ssi_disability_criteria(
+            result.frame,
+            sipp_donor=sipp_donor,
+            donor_identity=donor_identity,
+            seed=seed,
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local SSI disability-criteria stage failed "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_ssi_disability_signal_gate(frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging SSI disability-criteria gate failed: "
+            + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_ssi_disability": receipt,
+        "acs_local_ssi_disability_gate": {
             "name": gate.name,
             "passed": gate.passed,
             "failures": list(gate.failures),
