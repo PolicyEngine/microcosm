@@ -85,6 +85,7 @@ from microcosm.fit.model import (  # noqa: E402 - after the compatibility gate
 from microcosm.fit.qrf import (  # noqa: E402 - after the compatibility gate
     DEFAULT_N_ESTIMATORS,
     DEFAULT_ZERO_ATOL,
+    ConditionalUniforms,
     FittedRegimeGatedQRF,
     QRFChainState,
     QRFChainStepResult,
@@ -144,6 +145,7 @@ __all__ = [
     "QRF",
     "RegimeGatedQRF",
     "FittedRegimeGatedQRF",
+    "ConditionalUniforms",
     "QRFChainState",
     "QRFChainStepResult",
     "Regime",

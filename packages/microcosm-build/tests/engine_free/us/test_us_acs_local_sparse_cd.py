@@ -54,6 +54,19 @@ def _load_fixtures():
     return fixtures
 
 
+def _load_release_tool_tests():
+    """The release-tool tests, for their record of a current materialization."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_release_tool_tests",
+        Path(__file__).with_name("test_us_acs_local_release_tool.py"),
+    )
+    tests = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(tests)
+    return tests
+
+
 def _district_hierarchy(name: str, district: str):
     """A production-shaped hierarchy: its target id is the spec name."""
 
@@ -1198,6 +1211,7 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     monkeypatch.setattr(module.cd_surface, "calibration_target_set", lambda *a, **k: [])
     args = SimpleNamespace(
         checkpoint_dir=checkpoint,
+        staging_summary=tmp_path / "staging.summary.json",
         resume=True,
         epochs=10,
         epoch_batch=5,
@@ -1209,6 +1223,9 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
         seed=0,
         target_family_loss_multipliers={},
     )
+    # A current materialization, so the stack's pre-solve refusals pass
+    # and the stamp checks below are what refuse.
+    _load_release_tool_tests()._record_current_materialization(module, args, identity)
     settings = module._solver_settings(
         args, module.release_target_loss_weights(args, [])[1]
     )
@@ -1282,4 +1299,7 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     monkeypatch.setattr(module, "calibrate_surface", interrupted)
     with pytest.raises(RuntimeError, match="interrupted"):
         module.do_calibrate(SimpleNamespace(**{**vars(args), "resume": False}))
-    assert sorted(path.name for path in checkpoint.iterdir()) == ["weights_latest.npz"]
+    # The recorded SSI/Medicaid assignment is a materialize output, so it stays.
+    assert sorted(path.name for path in checkpoint.iterdir()) == sorted(
+        ["weights_latest.npz", module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME]
+    )

@@ -124,6 +124,8 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "export_surface",
         "exported_nonzero",
         "formula_owned_export",
+        "high_value_home_benchmarks",
+        "high_value_home_support",
         "input_mass_parity",
         "ledger_compile_parity",
         "macro_realism",

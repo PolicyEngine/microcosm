@@ -51,6 +51,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
+from microcosm.build.uk_runtime.weight_year import uk_engine_year_frame
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.data.contract import uk_incumbent_surface_assessment
@@ -214,6 +215,10 @@ def main(argv=None) -> int:
 
     print("loading the candidate frame ...", file=sys.stderr, flush=True)
     frame, _ = load_uk_rowwise_dataset(args.candidate_h5)
+    # The candidate is read as policyengine-uk gives it at the calibration
+    # year: its stored household weights times the engine's own projection
+    # from the file's year (microcosm#796 A19).
+    frame = uk_engine_year_frame(frame, simulation_year=period)
     weights = np.asarray(frame.resolve_weights("household").values, dtype=np.float64)
 
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)

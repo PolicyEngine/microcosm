@@ -12,18 +12,17 @@ binding adapts evidence, it never re-implements a verdict, so the
 migration onto the battery executor is behaviour-preserving by
 construction (the differential test pins it).
 
-Two legacy evaluators mint UK-flavored result names
-(``uk_release_input_coverage``, ``qrf_tail_concentration``); their
-bindings re-mint the verdict under the declared neutral name, because the
-battery executor fails a gate closed when the returned name disagrees
-with the declared one. Any *other* unexpected name passes through
+Legacy evaluators that mint UK-flavored result names (such as
+``uk_release_input_coverage``) have their verdicts re-minted under the
+declared neutral name, because the battery executor fails a gate closed
+when the returned name disagrees with the declared one. Any *other* unexpected name passes through
 untouched so that check keeps biting.
 
 The evidence surface handed to the legacy gate modules (the three entity
 tables plus period, weight-kind, and mass-log metadata) lives in
 :mod:`microcosm.build.uk_runtime.national_frame` as the single copy shared
-with the legacy report evaluator; the Frame-typed gates (input-mass parity,
-QRF tail concentration) read the frame directly and skip it.
+with the legacy report evaluator; the Frame-typed input-mass parity gate
+reads the frame directly and skips it.
 """
 
 from __future__ import annotations
@@ -65,6 +64,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
 from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
+from microcosm.build.uk_runtime.high_value_home_gates import (
+    high_value_home_benchmarks_gate,
+    high_value_home_support_gate,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
     load_hmrc_cgt_conditioning_facts,
@@ -109,22 +112,17 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
-    uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import Frame
@@ -739,6 +737,10 @@ def _evaluate_support(
         "uc_deduction_support_bounds.json",
         "nts_bus_travel_support_bounds.json",
         "was_lisa_support_bounds.json",
+        # microcosm#1240: the post-geography value map's declared cap replaces the
+        # WAS donor bound for the two columns it rewrites; it is listed after the
+        # WAS resource so its bounds win.
+        "price_paid_property_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -1088,21 +1090,6 @@ def _resolve_input_mass_exclusions(
     return MappingProxyType(active), "override"
 
 
-def _resolve_qrf_tail_exclusions(
-    context: EvidenceContext,
-) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """QRF tail exclusions and their content source."""
-
-    committed = uk_default_qrf_tail_reviewed_exclusions()
-    override = context.artifacts.get("reviewed_qrf_tail_exclusions")
-    if override is None:
-        return committed, "committed"
-    resolved = coerce_reviewed_exclusions(override, label="UK QRF tail policy")
-    if _exclusion_payload(resolved) == _exclusion_payload(committed):
-        return committed, "committed"
-    return MappingProxyType(resolved), "override"
-
-
 def _evaluate_degenerate_release_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1232,6 +1219,22 @@ def _local_area_roster(
             raise ValueError(f"{resource} level {level!r} must expose area_ids.")
         roster[level] = tuple(str(area_id) for area_id in area_ids)
     return roster
+
+
+def _evaluate_high_value_home_benchmarks(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_benchmarks_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
+
+
+def _evaluate_high_value_home_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return high_value_home_support_gate(
+        context.artifacts["uk_high_value_home_evidence"], **dict(parameters)
+    )
 
 
 def _evaluate_area_support(
@@ -1663,59 +1666,6 @@ def _input_mass_reference_evidence(
     }
 
 
-def _evaluate_tail_concentration(
-    context: EvidenceContext, parameters: Mapping[str, Any]
-) -> GateResult:
-    kwargs = dict(parameters)
-    register = kwargs.pop("reviewed_exclusions_resource", None)
-    top_k = kwargs.pop("top_k", None)
-    max_top_share = kwargs.pop("max_top_share", None)
-    min_nonzero_records = kwargs.pop("min_nonzero_records", None)
-    if register != UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE:
-        raise ValueError(
-            f"uk/gates.json names exclusion register {register!r} but the "
-            f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
-        )
-    exclusions, _source = _resolve_qrf_tail_exclusions(context)
-    exclusions, out_of_line = _in_line(exclusions, context)
-    policy = UKQRFTailConcentrationPolicy(
-        top_k=top_k,
-        max_top_share=max_top_share,
-        min_nonzero_records=min_nonzero_records,
-        reviewed_exclusions=exclusions,
-    )
-    values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
-    # Declared QRF outputs the release export drops are checked on the spine
-    # frame the certifier supplies, at the spine's person weights.
-    absent = [str(column) for column in surface.get("absent_columns", ())]
-    on_spine = _export_dropped_columns_from_spine(context, absent)
-    if on_spine:
-        spine_values, spine_weights, spine_surface = uk_qrf_tail_concentration_columns(
-            context.artifacts["spine_frame"], output_columns=tuple(on_spine)
-        )
-        checked_on_spine = list(spine_surface["checked_columns"])
-        for column in checked_on_spine:
-            values[column] = spine_values[column]
-            weights[column] = spine_weights[column]
-        surface = {
-            **surface,
-            "checked_columns": sorted([*surface["checked_columns"], *checked_on_spine]),
-            "absent_columns": [
-                column for column in absent if column not in checked_on_spine
-            ],
-            "export_dropped_checked_on_spine": sorted(checked_on_spine),
-        }
-    result = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=policy,
-        surface=surface,
-        now=_exclusion_clock(context),
-        **kwargs,
-    )
-    return _with_out_of_line(result, context, out_of_line)
-
-
 def _evaluate_ledger_compile_parity(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1898,13 +1848,31 @@ def _ledger_compile_parity_required_artifacts(
 #: gate ``uk/gates.json`` declares. ``weights_audit`` overrides the shared
 #: binding to keep the legacy guard the shared one lacks — a fit stage
 #: that emitted an empty record set is a failed audit, not a vacuous pass.
-#: ``input_mass_parity`` and ``tail_concentration`` override the generic
-#: data-in-artifacts bindings with UK ones that derive candidate evidence
-#: from the frame and hold the supplied reference to the spec-declared pin
-#: (the microcosm#327 rule: a parity gate's reference is a declared input,
-#: never implicit module state).
+#: ``input_mass_parity`` overrides the generic data-in-artifacts binding
+#: with a UK one that derives candidate evidence from the frame and holds the
+#: supplied reference to the spec-declared pin (the microcosm#327 rule: a
+#: parity gate's reference is a declared input, never implicit module
+#: state).
 UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     **DEFAULT_REGISTRY,
+    "high_value_home_benchmarks": UKGateBinding(
+        name="high_value_home_benchmarks",
+        evaluator=_evaluate_high_value_home_benchmarks,
+        parameter_keys=frozenset(
+            {"minimum_rank_correlation", "maximum_regional_share_gap"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
+    "high_value_home_support": UKGateBinding(
+        name="high_value_home_support",
+        evaluator=_evaluate_high_value_home_support,
+        parameter_keys=frozenset(
+            {"minimum_distinct_sources", "minimum_target_homes", "dominance_share"}
+        ),
+        artifact_keys=frozenset({"uk_high_value_home_evidence"}),
+        needs_frame=False,
+    ),
     "weights_audit": UKGateBinding(
         name="weights_audit",
         evaluator=_evaluate_weights_audit,
@@ -1970,6 +1938,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
+                # microcosm#1240 high_value_home_support stage-health check.
+                "stratum_lower",
+                "copies",
                 "minimum_identity_rows",
                 "minimum_target_count",
                 "minimum_signal_rows",
@@ -2207,20 +2178,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         ),
         artifact_keys=frozenset({"input_mass_reference", "exclusions_evaluated_on"}),
         evidence=_input_mass_reference_evidence,
-    ),
-    "tail_concentration": UKGateBinding(
-        name="tail_concentration",
-        evaluator=_evaluate_tail_concentration,
-        parameter_keys=frozenset(
-            {
-                "reviewed_exclusions_resource",
-                "top_k",
-                "max_top_share",
-                "min_nonzero_records",
-            }
-        ),
-        artifact_keys=frozenset({"exclusions_evaluated_on"}),
-        legacy_name="qrf_tail_concentration",
     ),
     "ledger_compile_parity": UKGateBinding(
         name="ledger_compile_parity",

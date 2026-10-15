@@ -689,6 +689,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if _geography_assignment(args) == "legacy":
             # The release line is the identity-keyed atomic assignment.
             refused.append("--geography-assignment legacy")
+        if getattr(args, "property_localisation", "price_paid") == "none":
+            # The release line localises home values and bands (microcosm#1240).
+            refused.append("--property-localisation none")
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",
