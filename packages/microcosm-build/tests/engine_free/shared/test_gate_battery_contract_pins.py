@@ -216,7 +216,6 @@ class TestMirrorConstants:
         assert input_mass["reviewed_exclusions_resource"] == (
             UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
         )
-        qrf = params["uk_qrf_tail_concentration"]
         assert (
             data_contract._UK_INPUT_MASS_RELATIVE_TOLERANCE
             == (input_mass["relative_tolerance"])
@@ -224,12 +223,6 @@ class TestMirrorConstants:
         assert (
             data_contract._UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL
             == (input_mass["minimum_reference_total"])
-        )
-        assert data_contract._UK_QRF_TAIL_TOP_K == qrf["top_k"]
-        assert data_contract._UK_QRF_TAIL_MAX_TOP_SHARE == qrf["max_top_share"]
-        assert (
-            data_contract._UK_QRF_TAIL_MIN_NONZERO_RECORDS
-            == (qrf["min_nonzero_records"])
         )
         expected_registry = {
             name: descriptor.spec_payload()

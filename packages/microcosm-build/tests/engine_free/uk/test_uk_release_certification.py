@@ -230,7 +230,7 @@ def test_compose_refuses_tampered_part_signature(green_certification_inputs):
 def test_compose_refuses_entry_id_gap(green_certification_inputs):
     cut_path = green_certification_inputs["release_cut_report_path"]
     payload = json.loads(cut_path.read_text(encoding="utf-8"))
-    payload["gates"].pop("uk_qrf_tail_concentration")
+    payload["gates"].pop("uk_input_mass_parity")
     cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(UKReleaseCertificationError, match="entry ids"):
         compose_uk_release_certification(**green_certification_inputs)

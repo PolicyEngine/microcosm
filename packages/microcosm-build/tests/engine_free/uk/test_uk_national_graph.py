@@ -54,7 +54,6 @@ from microcosm.build.uk_runtime.terminal_gates import (
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
 )
 from microcosm.calibrate import calibrate
 from microcosm.calibrate.artifacts import decode_problem
@@ -194,7 +193,6 @@ def _review_date() -> str:
             uk_default_target_fit_reviewed_exclusions(),
             uk_default_degenerate_reviewed_exclusions(),
             uk_default_input_mass_reviewed_exclusions(),
-            uk_default_qrf_tail_reviewed_exclusions(),
             load_uk_calibration_measure_exclusions(),
         )
         for record in records(register)

@@ -15,14 +15,12 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     UKZeroWeightStratumDeclaration,
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_input_mass_parity_gate,
-    uk_qrf_tail_concentration_gate,
     uk_target_fit_gate,
     uk_target_surface_gate,
     uk_weight_ess_gate,
@@ -686,12 +684,6 @@ def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
     return UKInputMassParityPolicy(**fields)
 
 
-def _qrf_tail_policy(**overrides) -> UKQRFTailConcentrationPolicy:
-    fields = {"top_k": 1, "max_top_share": 0.5, "min_nonzero_records": 2}
-    fields.update(overrides)
-    return UKQRFTailConcentrationPolicy(**fields)
-
-
 def _input_mass_gate(candidate_totals, reference=None, *, policy=None):
     with patch(VALIDATE_REFERENCE, return_value=None):
         return uk_input_mass_parity_gate(
@@ -742,27 +734,6 @@ def test_weighted_integrity_type_errors_are_named() -> None:
             descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy(),
         )
-    with pytest.raises(TypeError, match="policy must be UKQRFTailConcentrationPolicy"):
-        uk_qrf_tail_concentration_gate(
-            {"self_employment_income": [1.0, 2.0]},
-            {"self_employment_income": [1.0, 1.0]},
-            policy=object(),
-        )
-
-
-def test_concentrated_qrf_output_fails_by_name() -> None:
-    values = np.ones(10)
-    values[0] = 1_000.0
-
-    gate = uk_qrf_tail_concentration_gate(
-        {"self_employment_income": values},
-        {"self_employment_income": np.ones(10)},
-        policy=_qrf_tail_policy(),
-    )
-
-    assert not gate.passed
-    assert gate.name == "qrf_tail_concentration"
-    assert "self_employment_income" in gate.failures[0]
 
 
 def test_committed_degenerate_register_is_the_policy_of_record() -> None:
