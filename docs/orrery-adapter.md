@@ -251,6 +251,39 @@ npx orrery --input build/graph.orrery.json --output build/graph.orrery.html
 Native evidence links and saved-schema relative references are rebased to the
 command's output directory; keep the referenced files available with the HTML.
 
+`collect_execution_evidence` returns the execution overlay: the
+`microcosm.graph.execution-evidence.v1` object that the projection embeds at
+`metadata.execution`. `microcosm.graph.execution_overlay` saves it as its own
+file, so a later projection needs only the schema and that file, not the store:
+
+```python
+from microcosm.graph.execution_overlay import (
+    execution_overlay_bytes,
+    load_execution_overlay,
+)
+
+Path("build/graph.execution.json").write_bytes(execution_overlay_bytes(execution))
+
+# Later, in a process without the store, numpy, pandas or microcosm-frame:
+schema = json.loads(Path("build/graph.schema.json").read_bytes())
+overlay = load_execution_overlay(Path("build/graph.execution.json"))
+Path("build/graph.orrery.json").write_text(
+    orrery_json_from_schema(schema, execution=overlay), encoding="utf-8"
+)
+```
+
+The file is the overlay's canonical JSON: UTF-8, sorted keys and no
+whitespace. It has none of the transport tags for numbers JavaScript cannot
+represent; the projection adds those. Reading it back gives an equal object,
+so the projection is byte-identical to projecting the in-memory overlay. The
+reader takes only a regular file within the schema's 32 MiB serialized limit,
+which evidence collection and projection already apply to the overlay. It
+refuses duplicate keys, non-finite numbers, values outside the schema's JSON
+bounds and any other protocol. The overlay's graph binding and records are
+checked when it is projected. Its native-evidence links are relative to the
+directory it was collected for (`reference_base`), so project into that
+directory, beside the linked files.
+
 Other countries supply the same three inputs: a presentation dictionary (groups,
 scope, optional labels and references), an artifact-summary registry keyed by
 artifact type, and driver wiring that calls `save_graph_schema`,

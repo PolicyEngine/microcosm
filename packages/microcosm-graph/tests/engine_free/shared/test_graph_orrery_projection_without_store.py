@@ -1,14 +1,15 @@
 """The Orrery projection runs without the build runtime.
 
 A collector worker will project a saved compiler schema and execution overlay
-without the content store or the population libraries. These tests run that
-projection in a fresh interpreter that refuses to import numpy, pandas,
+file without the content store or the population libraries. These tests run
+that projection in a fresh interpreter that refuses to import numpy, pandas,
 microcosm-frame or the store, and compare its bytes with the projection a
 build makes in-process.
 """
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 
@@ -17,6 +18,7 @@ import pytest
 import microcosm.graph as graph_api
 from microcosm.graph import (
     collect_execution_evidence,
+    execution_overlay,
     graph_schema,
     record_run_binding,
 )
@@ -62,11 +64,12 @@ _RESTRICTED_PROJECTION = (
     + r"""
 from pathlib import Path
 
+from microcosm.graph.execution_overlay import load_execution_overlay
 from microcosm.graph.orrery import orrery_json_from_schema
 
 schema_path, overlay_path, output_path = (Path(argument) for argument in sys.argv[2:5])
 schema = json.loads(schema_path.read_bytes())
-overlay = json.loads(overlay_path.read_bytes())
+overlay = load_execution_overlay(overlay_path)
 output_path.write_text(
     orrery_json_from_schema(schema, execution=overlay), encoding="utf-8"
 )
@@ -144,7 +147,7 @@ def test_orrery_projection_runs_where_numpy_pandas_frame_and_store_cannot_import
     overlay_path = tmp_path / "graph.execution.json"
     output_path = tmp_path / "graph.orrery.json"
     schema_path.write_bytes(canonical_json(schema))
-    overlay_path.write_bytes(canonical_json(overlay))
+    overlay_path.write_bytes(execution_overlay.execution_overlay_bytes(overlay))
 
     completed = _run_restricted(
         _RESTRICTED_PROJECTION,
@@ -194,3 +197,84 @@ def test_package_runtime_exports_still_resolve_from_the_package():
     assert graph_api.run_graph is executor.run_graph
     with pytest.raises(AttributeError, match="not_an_export"):
         graph_api.not_an_export  # noqa: B018
+
+
+def test_execution_overlay_file_round_trips_to_byte_identical_orrery_json(
+    recorded, tmp_path
+):
+    schema, overlay = recorded
+    overlay_path = tmp_path / "graph.execution.json"
+    overlay_path.write_bytes(execution_overlay.execution_overlay_bytes(overlay))
+
+    loaded = execution_overlay.load_execution_overlay(overlay_path)
+
+    assert overlay_path.read_bytes() == canonical_json(overlay)
+    assert loaded["protocol"] == "microcosm.graph.execution-evidence.v1"
+    assert loaded == overlay
+    assert orrery_json_from_schema(schema, execution=loaded) == (
+        orrery_json_from_schema(schema, execution=overlay)
+    )
+
+
+_OVERLAY_PROTOCOL_FIELD = b'"protocol":"microcosm.graph.execution-evidence.v1"'
+
+
+@pytest.mark.parametrize(
+    "payload,message",
+    [
+        (b'{"protocol":"microcosm.graph.execution-input.v1"}', "evidence.v1 object"),
+        (b'["microcosm.graph.execution-evidence.v1"]', "evidence.v1 object"),
+        (
+            b"{" + _OVERLAY_PROTOCOL_FIELD + b',"history":"a","history":"b"}',
+            "duplicate",
+        ),
+        (b"{" + _OVERLAY_PROTOCOL_FIELD + b',"history":NaN}', "finite JSON numbers"),
+        (b"{" + _OVERLAY_PROTOCOL_FIELD + b',"history":1e400}', "finite numbers"),
+        (b"{" + _OVERLAY_PROTOCOL_FIELD.replace(b"evidence", b"\xff") + b"}", "utf-8"),
+    ],
+    ids=[
+        "another protocol",
+        "not an object",
+        "duplicate key",
+        "NaN literal",
+        "overflowing number",
+        "not UTF-8",
+    ],
+)
+def test_execution_overlay_reader_refuses_malformed_files(tmp_path, payload, message):
+    overlay_path = tmp_path / "graph.execution.json"
+    overlay_path.write_bytes(payload)
+    with pytest.raises(ValueError, match=message):
+        execution_overlay.load_execution_overlay(overlay_path)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires POSIX FIFO")
+def test_execution_overlay_reader_refuses_a_fifo_without_waiting_for_a_writer(
+    tmp_path,
+):
+    overlay_path = tmp_path / "graph.execution.json"
+    os.mkfifo(overlay_path)
+    with pytest.raises(ValueError, match="regular file"):
+        execution_overlay.load_execution_overlay(overlay_path)
+
+
+def test_execution_overlay_reader_refuses_a_file_over_the_byte_limit(
+    recorded, tmp_path, monkeypatch
+):
+    _schema, overlay = recorded
+    overlay_path = tmp_path / "graph.execution.json"
+    payload = execution_overlay.execution_overlay_bytes(overlay)
+    overlay_path.write_bytes(payload)
+    monkeypatch.setattr(execution_overlay, "_MAX_OVERLAY_BYTES", len(payload) - 1)
+    with pytest.raises(ValueError, match="byte limit"):
+        execution_overlay.load_execution_overlay(overlay_path)
+
+
+def test_execution_overlay_writer_refuses_a_value_without_the_overlay_protocol(
+    recorded,
+):
+    _schema, overlay = recorded
+    another_protocol = {**overlay, "protocol": "microcosm.graph.execution-input.v1"}
+    for value in (another_protocol, [overlay]):
+        with pytest.raises(ValueError, match="evidence.v1 object"):
+            execution_overlay.execution_overlay_bytes(value)
