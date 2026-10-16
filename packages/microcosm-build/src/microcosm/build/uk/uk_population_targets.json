@@ -2575,7 +2575,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/esa",
-          "value_expression": "esa_income + esa_contrib",
+          "value_expression": "esa_income + esa_contrib + incapacity_benefit + sda",
           "map_to": "household",
           "household_conditions": [
             {
@@ -2599,7 +2599,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (compute/income.py:115-119), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
         },
         "axiom": {
           "metric_name": "obr/esa",

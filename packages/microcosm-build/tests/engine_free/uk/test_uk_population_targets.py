@@ -645,7 +645,7 @@ def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
         _target_by_id(resource, "obr.esa")["bindings"]["policyengine"][
             "value_expression"
         ]
-        == "esa_income + esa_contrib"
+        == "esa_income + esa_contrib + incapacity_benefit + sda"
     )
 
 

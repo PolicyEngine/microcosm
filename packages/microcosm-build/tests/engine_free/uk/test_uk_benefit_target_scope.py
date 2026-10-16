@@ -198,6 +198,20 @@ def test_obr_pip_binds_dla_and_pip_together() -> None:
     assert "value_variable" not in binding
 
 
+def test_obr_esa_binds_every_benefit_on_the_incapacity_line() -> None:
+    """OBR table 4.9 footnote 2: the "Incapacity benefits" line holds ESA,
+    Incapacity Benefit, Severe Disablement Allowance and the incapacity part of
+    Income Support (microcosm#1095, uk-data#582). The engine has no variable for
+    the Income Support part, which the notes record as a residual."""
+
+    binding = _targets()["obr.esa"]["bindings"]["policyengine"]
+    terms = [term.strip() for term in binding["value_expression"].split("+")]
+    assert terms == ["esa_income", "esa_contrib", "incapacity_benefit", "sda"]
+    assert "value_variable" not in binding
+    assert "Income Support" in binding["notes"]
+    assert "Severe Disablement Allowance" in binding["notes"]
+
+
 def test_pip_caseload_rows_are_england_and_wales_diagnostics_on_obr_pip() -> None:
     """The two rows resolve at K04000001, the geography Chronicle stamps DWP's
     caseload with, and fit; fitting them breaks the weight-ratio fence, so

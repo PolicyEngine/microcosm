@@ -364,6 +364,10 @@ def _materialization_binding_frame(
             "region": "LONDON",
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
+            # OBR's incapacity line also carries Incapacity Benefit and SDA
+            # (table 4.9 footnote 2; microcosm#1095, uk-data#582).
+            "incapacity_benefit": [0.0, 0.0, 0.5],
+            "sda": [0.0, 3.0, 4.0],
         }
     )
     salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
@@ -712,7 +716,7 @@ def test_packaged_binding_classes_materialize_through_the_national_route() -> No
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
-        ("household", "obr/esa"): [11.0, 22.0, 0.0],
+        ("household", "obr/esa"): [11.0, 25.0, 4.5],
         ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
         # The prepared affected-child counts stay distinct from the claim
         # indicator [1.0, 0.0, 1.0] and legacy person-native entitlement flags.
