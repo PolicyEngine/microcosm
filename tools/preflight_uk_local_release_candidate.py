@@ -13,8 +13,10 @@ Two postures, both fail-closed and both printing every failure by name:
            (and, for a sized run, the size doctrine: 100,000 households under
            the doctrine's draw, floor and refit penalty), the A15 census household
            uprating and A17 tenure application and the
-           measure exclusions receipted, holdout measured, Logbook row
-           present, artifact digest recorded and matching.
+           measure exclusions receipted, the rotated holdout either not
+           requested (an opt-in diagnostic, microcosm#1301) or measured
+           with 5 folds, Logbook row present, artifact digest recorded and
+           matching.
 
 Exit 0 only when nothing failed. This is the check that stops a 3-hour run
 from ending in a manifest that cannot be released for a missing key or flag.
@@ -172,6 +174,46 @@ def _size_failures(manifest: dict, parameters: dict) -> list[str]:
     return failures
 
 
+def _holdout_failures(manifest: dict, parameters: dict) -> list[str]:
+    """The rotated holdout is an opt-in diagnostic (microcosm#1301).
+
+    A run that did not request it records the skip marker and claims no
+    out-of-sample fit; a run that did must carry the five measured folds and
+    a finite mean. The record must agree with the request either way.
+    """
+
+    holdout = (manifest.get("fit") or {}).get("rotated_holdout")
+    if not isinstance(holdout, dict):
+        return ["fit.rotated_holdout is missing: neither measured nor skipped."]
+    requested_skip = parameters.get("skip_holdout")
+    if requested_skip not in (True, False):
+        return [
+            f"parameters.skip_holdout = {requested_skip!r}; the run must record "
+            "whether the holdout was requested."
+        ]
+    if holdout.get("skipped") is True:
+        if requested_skip is not True:
+            return [
+                "the rotated holdout was requested (--rotated-holdout) but the "
+                "run recorded it as skipped."
+            ]
+        return []
+    if requested_skip is True:
+        return [
+            "the rotated holdout was not requested but the run recorded a "
+            "measured holdout."
+        ]
+    mean = holdout.get("mean_holdout_loss")
+    if (
+        holdout.get("n_folds") != 5
+        or isinstance(mean, bool)
+        or not isinstance(mean, (int, float))
+        or not math.isfinite(mean)
+    ):
+        return ["rotated holdout is not measured with 5 folds and a finite mean."]
+    return []
+
+
 def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> list[str]:
     failures: list[str] = []
     today = today or date.today()
@@ -210,8 +252,6 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
         failures.append(
             f"run parameters epochs={parameters.get('epochs')} n_clones={parameters.get('n_clones')} are not the doctrine's 2000 / 15."
         )
-    if parameters.get("skip_holdout"):
-        failures.append("holdout was skipped.")
     if parameters.get("selection_l2") is not None:
         failures.append("a selection L2 penalty was applied (candidate-only).")
     failures.extend(_size_failures(manifest, parameters))
@@ -238,13 +278,7 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
         )
     if solve.get("target_weight_rule_override"):
         failures.append("a target-weight-rule override was applied.")
-    holdout = manifest.get("fit", {}).get("rotated_holdout", {})
-    if (
-        holdout.get("skipped")
-        or holdout.get("n_folds") != 5
-        or holdout.get("mean_holdout_loss") is None
-    ):
-        failures.append("rotated holdout is not measured with 5 folds.")
+    failures.extend(_holdout_failures(manifest, parameters))
     uprating = manifest.get("census_household_uprating", {})
     if uprating.get("applied") is not True:
         failures.append("A15 census household uprating not applied.")

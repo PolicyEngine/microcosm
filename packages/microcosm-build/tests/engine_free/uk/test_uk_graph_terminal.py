@@ -594,6 +594,73 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
 
 
+def test_holdout_kernel_records_an_unrequested_holdout(monkeypatch):
+    """microcosm#1301: the rotated holdout is an opt-in diagnostic; the kernel
+    records the skip with its reason and runs no fold."""
+    import json
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    monkeypatch.setattr(
+        graph_targets,
+        "reconstruct_uk_full_problem_inputs",
+        lambda context: pytest.fail("a skipped holdout reconstructs no problem"),
+    )
+    context = SimpleNamespace(
+        params={"skip_holdout": True},
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
+            "problem": SimpleNamespace(payload=b"unread", key="b" * 64),
+        },
+    )
+    result = json.loads(UKFullHoldoutKernel().run(context).artifacts["holdout"])
+    assert result["skipped"] is True and result["report_only"] is True
+    assert result["reason"] == (
+        "Not requested: opt-in diagnostic; no out-of-sample claim."
+    )
+    assert result["graph_binding"]["original_problem_artifact"] == "b" * 64
+
+
+def test_full_gate_nodes_skip_the_holdout_unless_requested():
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
+    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+
+    raw = uk_spine_graph(source_mode="split")
+    config = UKFullBuildConfig(calibration_year=2025)
+    full = uk_full_graph(
+        config,
+        spine=raw,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    )
+    common = {
+        "calibration": full.calibration,
+        "spine_stage_names": uk_spine_endpoint(raw).stage_names,
+        "engine_identity": "fixture-engine",
+        "review_date": "2026-09-10",
+    }
+    default = append_uk_full_gate_nodes(full.graph, **common)
+    assert default.node("uk.full.holdout").params["skip_holdout"] is True
+    requested = append_uk_full_gate_nodes(full.graph, **common, skip_holdout=False)
+    assert requested.node("uk.full.holdout").params["skip_holdout"] is False
+    assert requested.node("uk.full.holdout").description.startswith(
+        "Optional (--rotated-holdout)"
+    )
+
+
 def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     monkeypatch,
 ):
@@ -925,7 +992,7 @@ def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
     skipped = {
         "report_only": True,
         "skipped": True,
-        "reason": "Explicit development request; no holdout claim.",
+        "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
         "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
     }
     assert diagnostics_rotated_holdout(skipped) == {"skipped": True}

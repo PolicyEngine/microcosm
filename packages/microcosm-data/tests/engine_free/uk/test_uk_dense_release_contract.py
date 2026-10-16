@@ -91,6 +91,19 @@ def _signed_report(*, blocking_status: str = "passed", release_candidate: bool =
     return report
 
 
+def _resigned(report: dict, gate_id: str, details: dict) -> dict:
+    """``report`` with one gate's details replaced, re-signed with the test key."""
+    report = json.loads(json.dumps(report))
+    report["gates"][gate_id]["details"] = json.loads(json.dumps(details))
+    attestation = report["attestation"]
+    attestation["gate_outcomes_sha256"] = _canonical_sha256(report["gates"])
+    attestation["signature"] = None
+    attestation["signature"] = hmac.new(
+        KEY_BYTES, _canonical_json_bytes(report), hashlib.sha256
+    ).hexdigest()
+    return report
+
+
 def write_dense_bundle(
     root: Path,
     *,
@@ -102,10 +115,53 @@ def write_dense_bundle(
     drop_coverage_key: str | None = None,
     drop_households: bool = False,
     attempt_id: str | None = None,
+    with_incumbent: bool = False,
+    holdout: str = "skipped",
+    sized: bool = False,
+    national_exclusions: tuple[str, ...] = (),
 ) -> Path:
+    """A synthetic dense release directory.
+
+    The core bundle claims neither the rotated holdout nor the incumbent
+    comparison (microcosm#1301); ``with_incumbent`` attaches the three
+    incumbent files, ``holdout="measured"`` reports a holdout, and ``sized``
+    records a sized release, each with its matching limitation. The candidate
+    manifest records the same holdout and size. Every reviewed exclusion the
+    signed report's local target-fit and area-support gates stood on, and each
+    of ``national_exclusions`` (a ``uk_target_fit`` name), is named in the
+    coverage and the manifest's limitations, the areas in ``area_support``.
+    """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
     report = report or _signed_report()
+    stood_on = {
+        gate_id: sorted(
+            (report["gates"].get(gate_id, {}).get("details") or {}).get(
+                "reviewed_exclusions"
+            )
+            or {}
+        )
+        for gate_id in ("uk_local_target_fit", "uk_local_area_support")
+    }
+    below_floor: dict[str, list[str]] = {}
+    for key in stood_on["uk_local_area_support"]:
+        level, _, code = key.partition("/")
+        below_floor.setdefault(level, []).append(code)
+    measured_holdout = {
+        "report_only": True,
+        "n_folds": 5,
+        "mean_holdout_loss": 0.2,
+        "worst_holdout_loss": 0.3,
+        "folds": [{"fold": 0}],
+    }
+    size_record = {
+        "clone_count": 2,
+        "dataset_households": 4 if sized else None,
+        "realized_households": 4 if sized else None,
+        "selection_initial_lambda": 2.5e-8 if sized else None,
+        "selection_l0_lambda": 3e-9 if sized else None,
+        "search_bracket": {"lower": 1e-10, "upper": 10.0} if sized else None,
+    }
     diagnostics = {
         "schema_version": 6,
         "households": 4,
@@ -151,7 +207,11 @@ def write_dense_bundle(
             "manifest_sha256": "c" * 64,
         },
         "geography_ladder": {"sha256": "d" * 64},
-        "incumbent": {"snapshot": {"incumbent_h5": {"sha256": "e" * 64}}},
+        "incumbent": (
+            {"compared": True, "snapshot": {"incumbent_h5": {"sha256": "e" * 64}}}
+            if with_incumbent
+            else {"compared": False}
+        ),
         "doctrine": {"max_weight_ratio": 10.0},
         "measure_exclusions": {
             "obr.housing_benefit": {
@@ -163,8 +223,24 @@ def write_dense_bundle(
                 "expires_on": "2026-10-03",
             }
         },
-        "signed_deferrals": {"binding_adjudications": {"x": {}}},
-        "holdout": {"mean_holdout_loss": 0.2, "n_folds": 5},
+        "signed_deferrals": {
+            "binding_adjudications": {"x": {}},
+            "reviewed_exclusions": {
+                "uk_target_fit": sorted(national_exclusions),
+                "uk_local_target_fit": stood_on["uk_local_target_fit"],
+                "uk_input_mass_parity": [],
+            },
+        },
+        "holdout": (
+            {
+                **{k: v for k, v in measured_holdout.items() if k != "folds"},
+                "run": True,
+                "claim": "report_only",
+            }
+            if holdout == "measured"
+            else {"run": False, "claim": "none"}
+        ),
+        "size": {"sized": sized, **size_record},
         "uprating": {"applied": True, "factor": 1.03},
     }
     if drop_coverage_key:
@@ -184,7 +260,6 @@ def write_dense_bundle(
         "gate_summary.json": json.dumps(gate_summary, indent=1).encode(),
         "uk_source_coverage.json": json.dumps(coverage, indent=1).encode(),
         "uk_local_gates.json": json.dumps(report, indent=1).encode(),
-        "score_vs_incumbent.json": json.dumps(score, indent=1).encode(),
         "build_manifest.json": json.dumps(build_manifest, indent=1).encode(),
     }
     source_diagnostics = payloads["calibration_diagnostics.json"]
@@ -205,12 +280,38 @@ def write_dense_bundle(
         },
     }
     candidate["measure_exclusions"] = coverage.get("measure_exclusions", {})
+    candidate["parameters"] = {
+        "skip_holdout": holdout != "measured",
+        "n_clones": size_record["clone_count"],
+        "dataset_households": size_record["dataset_households"],
+        "selection_initial_lambda": size_record["selection_initial_lambda"],
+    }
+    candidate["fit"] = {
+        "rotated_holdout": (
+            measured_holdout
+            if holdout == "measured"
+            else {"report_only": True, "skipped": True, "reason": "Not requested."}
+        )
+    }
+    candidate["solve"] = {
+        "measure_resolution": {"blocks": 1},
+        "dataset_size": (
+            {
+                "requested_households": size_record["dataset_households"],
+                "realized_households": size_record["realized_households"],
+                "selection_l0_lambda": size_record["selection_l0_lambda"],
+                "selection_search_bracket": size_record["search_bracket"],
+            }
+            if sized
+            else None
+        ),
+    }
     incumbent = {
         "inputs": {"incumbent_h5": {"sha256": "e" * 64}},
         "outputs": {"metrics": {"sha256": "6" * 64}, "weights": {"sha256": "7" * 64}},
     }
     payloads["rowwise_candidate_manifest.json"] = json.dumps(candidate).encode()
-    payloads["incumbent_manifest.json"] = json.dumps(incumbent).encode()
+    incumbent_manifest = json.dumps(incumbent).encode()
     payloads["source_calibration_diagnostics.json"] = source_diagnostics
     evaluation = {
         "schema_version": 2,
@@ -225,7 +326,7 @@ def write_dense_bundle(
             "candidate_diagnostics_sha256": _sha(source_diagnostics),
             "ledger_facts_sha256": "b" * 64,
             "ledger_manifest_sha256": "c" * 64,
-            "incumbent_manifest_sha256": _sha(payloads["incumbent_manifest.json"]),
+            "incumbent_manifest_sha256": _sha(incumbent_manifest),
             "incumbent_metrics_sha256": "6" * 64,
             "incumbent_weights_sha256": "7" * 64,
         },
@@ -237,9 +338,37 @@ def write_dense_bundle(
         "incumbent_household_metrics": {"sha256": "6" * 64},
         "incumbent_wide_weights": {"sha256": "7" * 64},
     }
-    payloads["score_vs_incumbent.json"] = json.dumps(score).encode()
     evaluation["summary"] = dc.uk_incumbent_surface_assessment(evaluation)
-    payloads["incumbent_surface_evaluation.json"] = json.dumps(evaluation).encode()
+    limitations = [
+        {"id": "engine_measurement", "blocks": 1},
+        (
+            {"id": "rotated_holdout", "claim": "report_only"}
+            if holdout == "measured"
+            else {"id": "no_out_of_sample_claim"}
+        ),
+        *([{"id": "size_doctrine", **size_record}] if sized else []),
+        *(
+            {"id": f"reviewed_exclusion:uk_target_fit:{name}"}
+            for name in sorted(national_exclusions)
+        ),
+        *(
+            {"id": f"reviewed_exclusion:uk_local_target_fit:{name}"}
+            for name in stood_on["uk_local_target_fit"]
+        ),
+        *(
+            {"id": f"area_support_exclusion:{key}"}
+            for key in stood_on["uk_local_area_support"]
+        ),
+    ]
+    if with_incumbent:
+        payloads["score_vs_incumbent.json"] = json.dumps(score).encode()
+        payloads["incumbent_manifest.json"] = incumbent_manifest
+        payloads["incumbent_surface_evaluation.json"] = json.dumps(evaluation).encode()
+        limitations.append(
+            {"id": "incumbent_surface_diagnostic", "passed": True, "failure_count": 0}
+        )
+    else:
+        limitations.append({"id": "no_incumbent_comparison"})
     for name, payload in payloads.items():
         (release_dir / name).write_bytes(payload)
     h5_bytes = b"dense-h5-stand-in"
@@ -272,7 +401,16 @@ def write_dense_bundle(
                 if name != "build_manifest.json"
             },
         },
-        "reviewed_limitations": [{"id": "rotated_holdout"}],
+        "reviewed_limitations": limitations,
+        "area_support": {
+            "gate": "uk_local_area_support",
+            "floors": {
+                "minimum_rows": 50,
+                "minimum_effective_sample_size": 50.0,
+                "minimum_distinct_sources": 50,
+            },
+            "below_floor": below_floor,
+        },
     }
     manifest_text = json.dumps(manifest, indent=1)
     (release_dir / "release_manifest.json").write_text(manifest_text)
@@ -553,19 +691,19 @@ def _synthetic_surface_inventory(monkeypatch):
 @pytest.mark.parametrize(
     "mutation,expected",
     [
-        ("missing_file", "required file 'incumbent_surface_evaluation.json'"),
+        ("missing_file", "all together or not at all"),
         ("missing_row", "complete nonempty row list"),
+        ("renamed_row", "pinned incumbent target inventory"),
         ("nonfinite_candidate", "not valid JSON"),
-        ("missing_comparator", "incumbent_estimate"),
         ("changed_identity", "identity.candidate_dataset_sha256"),
         ("changed_summary", "summary does not match"),
-        ("deferred_miss", "absolute relative error"),
     ],
 )
 def test_dense_release_refuses_bad_incumbent_surface_evidence(
     tmp_path, mutation, expected
 ):
-    release_dir = write_dense_bundle(tmp_path)
+    """An attached comparison's identities refuse (microcosm#1301)."""
+    release_dir = write_dense_bundle(tmp_path, with_incumbent=True)
     path = release_dir / "incumbent_surface_evaluation.json"
     if mutation == "missing_file":
         path.unlink()
@@ -573,19 +711,549 @@ def test_dense_release_refuses_bad_incumbent_surface_evidence(
         payload = json.loads(path.read_text())
         if mutation == "missing_row":
             payload["national_rows"] = []
+        elif mutation == "renamed_row":
+            payload["local_rows"][0]["incumbent_name"] = "another_local"
+            payload["summary"] = dc.uk_incumbent_surface_assessment(payload)
         elif mutation == "nonfinite_candidate":
             payload["national_rows"][0]["candidate_estimate"] = float("nan")
-        elif mutation == "missing_comparator":
-            payload["local_rows"][0]["incumbent_estimate"] = None
         elif mutation == "changed_identity":
             payload["identity"]["candidate_dataset_sha256"] = "9" * 64
         elif mutation == "changed_summary":
             payload["summary"]["grains"]["local"]["measured"] = 100
-        elif mutation == "deferred_miss":
-            payload["local_rows"][0]["candidate_estimate"] = 1.8
-            payload["summary"] = dc.uk_incumbent_surface_assessment(payload)
         path.write_text(json.dumps(payload))
     assert expected in _failures(release_dir)
+
+
+def _record_incumbent_limitation(release_dir: Path) -> dict:
+    """Re-derive the comparison's limitation as the assembler would."""
+    path = release_dir / "incumbent_surface_evaluation.json"
+    payload = json.loads(path.read_text())
+    record = dc._check_uk_incumbent_surface_evaluation(
+        payload, [], expected_identity=payload["identity"], enforce_limits=False
+    )
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for item in manifest["reviewed_limitations"]:
+        if item["id"] == "incumbent_surface_diagnostic":
+            item["passed"] = record["passed"]
+            item["failure_count"] = len(record["limit_failures"])
+    manifest_path.write_text(json.dumps(manifest))
+    _refresh_packaging_checksums(release_dir)
+    return record
+
+
+@pytest.mark.parametrize(
+    "mutation,failure",
+    [
+        ("missing_comparator", "incumbent_estimate"),
+        ("deferred_miss", "absolute relative error"),
+        ("two_blocks", "single-block engine measurement"),
+    ],
+)
+def test_an_attached_comparison_records_its_limit_misses(tmp_path, mutation, failure):
+    """The measured limits are the diagnostic's verdict, recorded not enforced.
+
+    A failed assessment ships only when the manifest says so: the
+    limitation must carry the recomputed verdict (microcosm#1301).
+    """
+    release_dir = write_dense_bundle(tmp_path, with_incumbent=True)
+    path = release_dir / "incumbent_surface_evaluation.json"
+    payload = json.loads(path.read_text())
+    if mutation == "missing_comparator":
+        payload["local_rows"][0]["incumbent_estimate"] = None
+    elif mutation == "deferred_miss":
+        payload["local_rows"][0]["candidate_estimate"] = 1.8
+    else:
+        payload["measure_resolution"]["blocks"] = 2
+    payload["summary"] = dc.uk_incumbent_surface_assessment(payload)
+    path.write_text(json.dumps(payload))
+    _refresh_packaging_checksums(release_dir)
+    # The manifest still claims a passing comparison: refused.
+    assert "recomputes (False, 1)" in _failures(release_dir)
+    record = _record_incumbent_limitation(release_dir)
+    assert record["passed"] is False
+    assert len(record["limit_failures"]) == 1
+    assert failure in record["limit_failures"][0]
+    validate_release_dir(release_dir)
+
+
+def test_the_core_bundle_claims_neither_holdout_nor_incumbent(tmp_path) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    for name in dc._UK_DENSE_INCUMBENT_FILES:
+        assert not (release_dir / name).exists()
+    coverage = json.loads((release_dir / "uk_source_coverage.json").read_text())
+    assert coverage["holdout"] == {"run": False, "claim": "none"}
+    assert coverage["incumbent"] == {"compared": False}
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"with_incumbent": True},
+        {"holdout": "measured"},
+        {"sized": True},
+        {"with_incumbent": True, "holdout": "measured", "sized": True},
+    ],
+)
+def test_opt_in_diagnostics_validate_with_their_limitations(tmp_path, options):
+    validate_release_dir(write_dense_bundle(tmp_path, **options))
+
+
+@pytest.mark.parametrize("name", dc._UK_DENSE_INCUMBENT_FILES)
+def test_incumbent_files_ship_all_together_or_not_at_all(tmp_path, name) -> None:
+    release_dir = write_dense_bundle(tmp_path, with_incumbent=True)
+    (release_dir / name).unlink()
+    assert "all together or not at all" in _failures(release_dir)
+
+
+def test_declared_incumbent_files_cannot_be_removed(tmp_path) -> None:
+    """Deleting all three files does not detach a comparison the manifest
+    declares: the coverage and the limitation still say it was attached."""
+    release_dir = write_dense_bundle(tmp_path, with_incumbent=True)
+    for name in dc._UK_DENSE_INCUMBENT_FILES:
+        (release_dir / name).unlink()
+    text = _failures(release_dir)
+    assert "all together or not at all" in text
+    assert "release_manifest.json must declare" not in text
+
+
+def test_a_stray_incumbent_file_attaches_the_comparison(tmp_path) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    (release_dir / "score_vs_incumbent.json").write_text("{}")
+    text = _failures(release_dir)
+    assert "all together or not at all" in text
+    assert "incumbent.compared is False" in text
+
+
+@pytest.mark.parametrize(
+    "tamper,expected",
+    [
+        ("shipped_diagnostics", "changed original evaluated"),
+        ("gate_report_hash", "gate report does not match released attempt"),
+        ("candidate_git_dirty", "identity.code.git_dirty must be false"),
+        ("candidate_dataset_hash", "dataset hash does not match released evidence"),
+        ("candidate_ledger", "Ledger facts_sha256"),
+    ],
+)
+def test_core_joins_refuse_without_any_incumbent_file(tmp_path, tamper, expected):
+    """The key guard of the split (microcosm#1301): with no incumbent file
+    attached, the candidate's own evidence still joins the released bytes."""
+    release_dir = write_dense_bundle(tmp_path)
+    assert not any(
+        (release_dir / name).exists() for name in dc._UK_DENSE_INCUMBENT_FILES
+    )
+    candidate_path = release_dir / "rowwise_candidate_manifest.json"
+    candidate = json.loads(candidate_path.read_text())
+    if tamper == "shipped_diagnostics":
+        path = release_dir / "calibration_diagnostics.json"
+        diagnostics = json.loads(path.read_text())
+        diagnostics["targets"][0]["final_estimate"] = 11.0
+        path.write_text(json.dumps(diagnostics))
+    elif tamper == "gate_report_hash":
+        candidate["outputs"]["local_gate_report"]["sha256"] = "9" * 64
+    elif tamper == "candidate_git_dirty":
+        candidate["identity"]["code"]["git_dirty"] = True
+    elif tamper == "candidate_dataset_hash":
+        candidate["outputs"]["dataset"]["sha256"] = "9" * 64
+    else:
+        candidate["identity"]["targets"]["chronicle"]["facts_sha256"] = "9" * 64
+    if tamper != "shipped_diagnostics":
+        candidate_path.write_text(json.dumps(candidate))
+    # Unsigned packaging is refreshed, so only the join can catch the tamper.
+    _refresh_packaging_checksums(release_dir)
+    assert expected in _failures(release_dir)
+
+
+def _rewrite_coverage(release_dir: Path, mutate) -> None:
+    path = release_dir / "uk_source_coverage.json"
+    coverage = json.loads(path.read_text())
+    mutate(coverage)
+    path.write_text(json.dumps(coverage))
+    _refresh_packaging_checksums(release_dir)
+
+
+@pytest.mark.parametrize(
+    "options,mutate,expected",
+    [
+        (
+            {},
+            lambda c: c["holdout"].__setitem__("claim", "out_of_sample"),
+            "holdout.claim must be 'none' or 'report_only'",
+        ),
+        (
+            {},
+            lambda c: c["holdout"].__setitem__("run", True),
+            "holdout.run must be false",
+        ),
+        (
+            {"holdout": "measured"},
+            lambda c: c["holdout"].pop("mean_holdout_loss"),
+            "holdout.mean_holdout_loss must be a finite number",
+        ),
+        (
+            {},
+            lambda c: c["incumbent"].__setitem__("compared", True),
+            "incumbent.compared is True",
+        ),
+        (
+            {"with_incumbent": True},
+            lambda c: c["incumbent"].__setitem__("compared", False),
+            "incumbent.compared is False",
+        ),
+        (
+            {"with_incumbent": True},
+            lambda c: c["incumbent"].pop("snapshot"),
+            "private-repo snapshot",
+        ),
+        (
+            {},
+            lambda c: c["incumbent"].pop("compared"),
+            "incumbent.compared must be true or false",
+        ),
+        (
+            {},
+            lambda c: c["size"].__setitem__("sized", "yes"),
+            "size.sized must be true or false",
+        ),
+        (
+            {"sized": True},
+            lambda c: c["size"].__setitem__("dataset_households", None),
+            "size.dataset_households must be a positive integer",
+        ),
+        ({}, lambda c: c.pop("size"), "coverage object 'size'"),
+    ],
+)
+def test_coverage_discriminators_are_validated(tmp_path, options, mutate, expected):
+    release_dir = write_dense_bundle(tmp_path, **options)
+    _rewrite_coverage(release_dir, mutate)
+    assert expected in _failures(release_dir)
+
+
+def _rewrite_limitations(release_dir: Path, mutate) -> None:
+    path = release_dir / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["reviewed_limitations"] = mutate(manifest["reviewed_limitations"])
+    path.write_text(json.dumps(manifest))
+    _refresh_packaging_checksums(release_dir)
+
+
+def _without(identifier: str):
+    return lambda items: [item for item in items if item["id"] != identifier]
+
+
+@pytest.mark.parametrize(
+    "options,mutate,expected",
+    [
+        ({}, _without("engine_measurement"), "must carry 'engine_measurement'"),
+        ({}, _without("no_out_of_sample_claim"), "must carry 'no_out_of_sample_claim'"),
+        (
+            {},
+            lambda items: [*items, {"id": "rotated_holdout", "claim": "report_only"}],
+            "carries 'rotated_holdout'",
+        ),
+        (
+            {"holdout": "measured"},
+            lambda items: [
+                {**item, "claim": "out_of_sample"}
+                if item["id"] == "rotated_holdout"
+                else item
+                for item in items
+            ],
+            "must say claim 'report_only'",
+        ),
+        (
+            {},
+            _without("no_incumbent_comparison"),
+            "must carry 'no_incumbent_comparison'",
+        ),
+        (
+            {"with_incumbent": True},
+            _without("incumbent_surface_diagnostic"),
+            "must carry 'incumbent_surface_diagnostic'",
+        ),
+        (
+            {"with_incumbent": True},
+            lambda items: [*items, {"id": "no_incumbent_comparison"}],
+            "carries 'no_incumbent_comparison'",
+        ),
+        (
+            {"with_incumbent": True},
+            lambda items: [
+                {**item, "failure_count": 3}
+                if item["id"] == "incumbent_surface_diagnostic"
+                else item
+                for item in items
+            ],
+            "records passed/failure_count",
+        ),
+        ({"sized": True}, _without("size_doctrine"), "must carry 'size_doctrine'"),
+        (
+            {},
+            lambda items: [*items, {"id": "size_doctrine"}],
+            "'size_doctrine' for an unsized release",
+        ),
+    ],
+)
+def test_limitations_must_match_what_ran(tmp_path, options, mutate, expected):
+    release_dir = write_dense_bundle(tmp_path, **options)
+    _rewrite_limitations(release_dir, mutate)
+    assert expected in _failures(release_dir)
+
+
+#: A local cell and an area the signed gates excused (synthetic records).
+_SIGNED_CELL = "synthetic_family/E06000053/synthetic_metric"
+_SIGNED_AREA = "local_authority/E06000053"
+_NATIONAL_EXCLUSION = "synthetic.target_fit_row@2025"
+
+
+def _signed_bundle(tmp_path: Path, **options) -> Path:
+    """A dense bundle whose gates stood on a reviewed local cell, a reviewed
+    area and a reviewed national row (microcosm#1301)."""
+    report = _resigned(
+        _resigned(
+            _signed_report(),
+            "uk_local_target_fit",
+            {"reviewed_exclusions": {_SIGNED_CELL: {"reason": "synthetic"}}},
+        ),
+        "uk_local_area_support",
+        {"reviewed_exclusions": {_SIGNED_AREA: {"record": {"reason": "synthetic"}}}},
+    )
+    return write_dense_bundle(
+        tmp_path,
+        report=report,
+        national_exclusions=(_NATIONAL_EXCLUSION,),
+        **options,
+    )
+
+
+def test_a_bundle_naming_every_signed_exclusion_validates(tmp_path) -> None:
+    release_dir = _signed_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    ids = {item["id"] for item in manifest["reviewed_limitations"]}
+    assert {
+        f"reviewed_exclusion:uk_local_target_fit:{_SIGNED_CELL}",
+        f"reviewed_exclusion:uk_target_fit:{_NATIONAL_EXCLUSION}",
+        f"area_support_exclusion:{_SIGNED_AREA}",
+    } <= ids
+    assert manifest["area_support"]["below_floor"] == {"local_authority": ["E06000053"]}
+    validate_release_dir(release_dir)
+
+
+def _rewrite_manifest(release_dir: Path, mutate) -> None:
+    path = release_dir / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    mutate(manifest)
+    path.write_text(json.dumps(manifest))
+    _refresh_packaging_checksums(release_dir)
+
+
+def _drop_limitation(identifier: str):
+    def mutate(manifest: dict) -> None:
+        manifest["reviewed_limitations"] = _without(identifier)(
+            manifest["reviewed_limitations"]
+        )
+
+    return mutate
+
+
+def _drop_coverage_name(gate_id: str, name: str):
+    def mutate(coverage: dict) -> None:
+        names = coverage["signed_deferrals"]["reviewed_exclusions"][gate_id]
+        names.remove(name)
+
+    return mutate
+
+
+@pytest.mark.parametrize(
+    "manifest_edit,coverage_edit,expected",
+    [
+        (
+            _drop_limitation(f"reviewed_exclusion:uk_local_target_fit:{_SIGNED_CELL}"),
+            None,
+            "must name each reviewed exclusion the gates stood on; 1 missing",
+        ),
+        (
+            _drop_limitation(f"reviewed_exclusion:uk_target_fit:{_NATIONAL_EXCLUSION}"),
+            None,
+            "must name each reviewed exclusion the gates stood on; 1 missing",
+        ),
+        (
+            lambda m: m["reviewed_limitations"].append(
+                {"id": "reviewed_exclusion:uk_input_mass_parity:synthetic_column"}
+            ),
+            None,
+            "exclusion(s) the gates did not stand on",
+        ),
+        (
+            # The coverage and the manifest both drop the signed cell: the
+            # signed report still names it.
+            _drop_limitation(f"reviewed_exclusion:uk_local_target_fit:{_SIGNED_CELL}"),
+            _drop_coverage_name("uk_local_target_fit", _SIGNED_CELL),
+            "does not match the reviewed exclusions the signed uk_local_gates.json",
+        ),
+        (
+            None,
+            lambda c: c["signed_deferrals"].pop("reviewed_exclusions"),
+            "signed_deferrals.reviewed_exclusions must map each of",
+        ),
+        (
+            lambda m: m.pop("area_support"),
+            None,
+            "must carry the 'area_support' block for a dense release",
+        ),
+        (
+            # The block and the limitation both drop the excused area: the
+            # signed report still names it.
+            lambda m: (
+                m["area_support"].__setitem__("below_floor", {}),
+                _drop_limitation(f"area_support_exclusion:{_SIGNED_AREA}")(m),
+            ),
+            None,
+            "must list exactly the areas whose reviewed exclusions",
+        ),
+        (
+            lambda m: m["reviewed_limitations"].append(
+                {"id": "area_support_exclusion:local_authority/E09000001"}
+            ),
+            None,
+            "for areas not listed below the floor",
+        ),
+        (
+            _drop_limitation(f"area_support_exclusion:{_SIGNED_AREA}"),
+            None,
+            "without a reviewed area_support_exclusion limitation",
+        ),
+    ],
+)
+def test_every_signed_exclusion_is_named_in_the_manifest(
+    tmp_path, manifest_edit, coverage_edit, expected
+):
+    """After microcosm#1301 local cells and areas are signed at the gate only,
+    so the manifest's limitations are where a consumer learns of them: the
+    local names are checked against the signed report, the national names
+    against the coverage."""
+    release_dir = _signed_bundle(tmp_path)
+    if coverage_edit is not None:
+        _rewrite_coverage(release_dir, coverage_edit)
+    if manifest_edit is not None:
+        _rewrite_manifest(release_dir, manifest_edit)
+    assert expected in _failures(release_dir)
+
+
+def _set_holdout_claim(claim: str, limitation: dict, **fields):
+    """Rewrite the coverage's holdout claim and the matching limitation."""
+
+    def coverage_edit(coverage: dict) -> None:
+        coverage["holdout"] = {
+            "run": claim == "report_only",
+            "claim": claim,
+            **fields,
+        }
+
+    def manifest_edit(manifest: dict) -> None:
+        manifest["reviewed_limitations"] = [
+            item
+            for item in manifest["reviewed_limitations"]
+            if item["id"] not in ("rotated_holdout", "no_out_of_sample_claim")
+        ] + [limitation]
+
+    return coverage_edit, manifest_edit
+
+
+@pytest.mark.parametrize(
+    "options,edits,expected",
+    [
+        (
+            {},
+            _set_holdout_claim(
+                "report_only",
+                {"id": "rotated_holdout", "claim": "report_only"},
+                mean_holdout_loss=0.1,
+                n_folds=5,
+            ),
+            "holdout is reported, but the evaluated candidate skipped",
+        ),
+        (
+            {"holdout": "measured"},
+            _set_holdout_claim("none", {"id": "no_out_of_sample_claim"}),
+            "holdout claims nothing, but the evaluated candidate did not skip",
+        ),
+        (
+            {"holdout": "measured"},
+            (lambda c: c["holdout"].__setitem__("mean_holdout_loss", 0.01), None),
+            "holdout.mean_holdout_loss does not match",
+        ),
+        (
+            {"holdout": "measured"},
+            (lambda c: c["holdout"].__setitem__("n_folds", 4), None),
+            "holdout.n_folds does not match",
+        ),
+        (
+            {"sized": True},
+            (lambda c: c["size"].__setitem__("dataset_households", 5), None),
+            "size ['dataset_households'] do not match the evaluated candidate",
+        ),
+        (
+            {"sized": True},
+            (lambda c: c["size"].__setitem__("clone_count", 3), None),
+            "size ['clone_count'] do not match the evaluated candidate",
+        ),
+        (
+            {},
+            (
+                lambda c: c["size"].update(sized=True, dataset_households=4),
+                lambda m: m["reviewed_limitations"].append({"id": "size_doctrine"}),
+            ),
+            "size.sized is True, but the evaluated candidate requested no",
+        ),
+        (
+            {},
+            (
+                None,
+                lambda m: m["reviewed_limitations"][0].__setitem__("blocks", 2),
+            ),
+            "limitation 'engine_measurement' ['blocks'] do not match",
+        ),
+        (
+            {"sized": True},
+            (
+                None,
+                lambda m: [
+                    item.__setitem__("dataset_households", 5)
+                    for item in m["reviewed_limitations"]
+                    if item["id"] == "size_doctrine"
+                ],
+            ),
+            "limitation 'size_doctrine' ['dataset_households'] do not match",
+        ),
+    ],
+)
+def test_holdout_and_size_claims_restate_the_evaluated_candidate(
+    tmp_path, options, edits, expected
+):
+    """The unsigned coverage cannot switch the release between
+    no_out_of_sample_claim and rotated_holdout, invent a holdout loss or
+    resize it: each claim is joined to the candidate manifest (microcosm#1301)."""
+    release_dir = write_dense_bundle(tmp_path, **options)
+    coverage_edit, manifest_edit = edits
+    if coverage_edit is not None:
+        _rewrite_coverage(release_dir, coverage_edit)
+    if manifest_edit is not None:
+        _rewrite_manifest(release_dir, manifest_edit)
+    assert expected in _failures(release_dir)
+
+
+def test_a_sized_candidate_must_realize_its_requested_size(tmp_path) -> None:
+    release_dir = write_dense_bundle(tmp_path, sized=True)
+    path = release_dir / "rowwise_candidate_manifest.json"
+    candidate = json.loads(path.read_text())
+    candidate["solve"]["dataset_size"]["realized_households"] = 3
+    path.write_text(json.dumps(candidate))
+    _refresh_packaging_checksums(release_dir)
+    assert "did not realize the dataset size the candidate requested" in _failures(
+        release_dir
+    )
 
 
 def test_incumbent_surface_limits_keep_exact_existing_boundaries():
@@ -646,7 +1314,7 @@ def test_dense_directory_rechecks_exclusion_dates_on_each_validation(
 def test_dense_release_joins_every_receipt_to_the_evaluated_sources(
     tmp_path, name, mutate, expected
 ):
-    release_dir = write_dense_bundle(tmp_path)
+    release_dir = write_dense_bundle(tmp_path, with_incumbent=True)
     path = release_dir / name
     data = json.loads(path.read_text())
     if mutate == "ledger":

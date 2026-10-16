@@ -4,6 +4,11 @@ The candidate side is read from the current calibration diagnostics schema. The
 incumbent side is deliberately explicit: a household-grain metric table and a
 wide weight table with one column per local area.  Both are evaluated on the
 same frozen UK TargetRegistry; no fitted row is allowed to disappear.
+
+The comparison is an optional diagnostic (microcosm#1301): a release does not
+need it. The candidate's rotated holdout is reported beside it when the build
+measured one; a build that did not request the holdout scores with no holdout
+(``holdout_basis: "none_requested"``).
 """
 
 from __future__ import annotations
@@ -30,22 +35,37 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-#: The compiled local reference count the score covers. microcosm#1123
-#: regenerated the UK target surface on the 942a1fa feed and moved it from
-#: 20,885 to 21,804 (docs/evidence/uk-target-surface-1123/surface-diff.json,
-#: ``register_completeness.compiled_local_reference_count``); microcosm#1240
-#: added the high-value homes cells, and microcosm#1278 signed the two
-#: small-cell rules (uk/local_small_cell_rule.json), which defer 208 cells,
-#: and moved it to 24,269 (uk/local_target_reference_membership.json,
-#: ``active_reference_count``); microcosm#1207's DESNZ energy rows add 1,040
-#: authority cells, to 25,309.
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 25_309
 _LOCAL_GRAINS = ("constituency", "local_authority", "la")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
 UK_LOCAL_INCUMBENT_HOLDOUT_BASIS = "none_available_incumbent_not_resolved"
 _HOUSEHOLD_ID_COLUMN = "household_id"
+
+
+#: The basis a score records when the build did not request the holdout.
+UK_LOCAL_HOLDOUT_NOT_REQUESTED_BASIS = "none_requested"
+
+
+def uk_local_active_reference_count() -> int:
+    """The compiled local reference count the score covers.
+
+    Read from the committed membership file
+    (``uk/local_target_reference_membership.json``, ``active_reference_count``)
+    rather than restated here, so a regenerated surface needs no scorer edit
+    (microcosm#1301).
+    """
+    from microcosm.build.uk_runtime.ledger_targets import (
+        load_uk_local_target_reference_membership,
+    )
+
+    count = load_uk_local_target_reference_membership().get("active_reference_count")
+    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+        raise ValueError(
+            "local_target_reference_membership.json must carry a positive integer "
+            f"active_reference_count, got {count!r}."
+        )
+    return count
 
 
 def _sha256_file(path: str | Path) -> str:
@@ -112,25 +132,30 @@ def _candidate_estimates(
     )
 
 
-def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
+def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object] | None:
     """Read the candidate's measured rotated holdout out of its diagnostics.
 
-    The candidate driver runs the rotation and publishes it in the current
-    diagnostics payload this scorer already reads, so a receipt that reported
-    ``none_declared`` beside it would be understating what was measured. The
-    block is required: a candidate whose diagnostics carry no rotation is
-    refused rather than scored on its fitted surface alone.
+    The candidate driver publishes the rotation, when it ran one, in the
+    current diagnostics payload this scorer already reads, so a measured
+    holdout is validated and reported beside the fitted surface. The holdout
+    is an opt-in diagnostic (microcosm#1301): a candidate that did not request
+    it carries no block or the bare skip marker, and is scored with no
+    holdout (``None``). The ``uk_diagnostics`` block itself stays required.
     """
 
     uk_diagnostics = diagnostics.get("uk_diagnostics")
     if not isinstance(uk_diagnostics, Mapping):
         raise ValueError("candidate diagnostics must carry a uk_diagnostics block.")
     holdout = uk_diagnostics.get("rotated_holdout")
+    if holdout is None:
+        return None
     if not isinstance(holdout, Mapping):
         raise ValueError(
-            "candidate diagnostics must carry uk_diagnostics.rotated_holdout; "
-            "scoring a candidate with no measured holdout is refused."
+            "candidate diagnostics uk_diagnostics.rotated_holdout must be an "
+            "object: the measured report or the skip marker."
         )
+    if holdout.get("skipped") is True:
+        return None
     method = str(holdout.get("method") or "")
     n_folds = holdout.get("n_folds")
     seed = holdout.get("seed")
@@ -369,11 +394,13 @@ def score_uk_local_candidate(
     incumbent_weights: pd.DataFrame,
     incumbent_metrics: pd.DataFrame,
     target_registry: TargetRegistry,
-    expected_reference_count: int = UK_LOCAL_ACTIVE_REFERENCE_COUNT,
+    expected_reference_count: int | None = None,
     target_period: int = UK_LOCAL_SCORE_TARGET_PERIOD,
 ) -> dict[str, Any]:
     """Score both sides on the exact frozen local target surface."""
 
+    if expected_reference_count is None:
+        expected_reference_count = uk_local_active_reference_count()
     if target_registry.country != "uk":
         raise ValueError("UK local scoring requires a UK TargetRegistry.")
     if len(target_registry) != expected_reference_count:
@@ -510,7 +537,9 @@ def score_uk_local_candidate(
         "candidate_fitted_surface_loss_on_compared_rows": (
             candidate_loss_on_compared_rows
         ),
-        "candidate_holdout_loss": holdout["mean_holdout_loss"],
+        "candidate_holdout_loss": (
+            None if holdout is None else holdout["mean_holdout_loss"]
+        ),
         "incumbent_fitted_surface_loss": incumbent_loss,
         "incumbent_holdout_loss": None,
         "candidate_target_wins": candidate_wins,
@@ -519,7 +548,11 @@ def score_uk_local_candidate(
         "rows_candidate_only": int((~compared_mask).sum()),
         "incumbent_missing_areas": incumbent_missing_areas,
         "rows_outside_register": rows_outside_register,
-        "holdout_basis": holdout["basis"],
+        "holdout_basis": (
+            UK_LOCAL_HOLDOUT_NOT_REQUESTED_BASIS
+            if holdout is None
+            else holdout["basis"]
+        ),
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
         "candidate_holdout": holdout,
         "fitted_basis": {

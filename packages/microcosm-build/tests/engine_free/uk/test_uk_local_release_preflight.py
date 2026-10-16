@@ -263,7 +263,6 @@ def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> Non
             ),
             "max_weight_ratio",
         ),
-        (lambda m, r: m["parameters"].__setitem__("skip_holdout", True), "holdout"),
         (
             lambda m, r: m["parameters"].__setitem__(
                 "refit_l2", {"lambda": 0.03, "anchor": "initial", "basis": "chi_square"}
@@ -306,6 +305,78 @@ def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None
     (candidate / "microcosm_uk_2024_25_local.local_gates.json").write_text(
         json.dumps(report)
     )
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any(needle in failure for failure in failures), failures
+
+
+_SKIPPED = {"report_only": True, "skipped": True, "reason": "Not requested."}
+
+
+def _rewrite_manifest(candidate: Path, mutate) -> None:
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    mutate(manifest)
+    path.write_text(json.dumps(manifest))
+
+
+def test_a_holdout_that_was_not_requested_passes(tmp_path: Path) -> None:
+    """The rotated holdout is an opt-in diagnostic (microcosm#1301)."""
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+
+    def skip(manifest):
+        manifest["parameters"]["skip_holdout"] = True
+        manifest["fit"]["rotated_holdout"] = dict(_SKIPPED)
+
+    _rewrite_manifest(candidate, skip)
+    assert module.check_candidate_dir(candidate, today=date(2026, 9, 4)) == []
+
+
+@pytest.mark.parametrize(
+    "holdout",
+    [
+        {"n_folds": 4, "mean_holdout_loss": 0.2},
+        {"n_folds": 5},
+        {"n_folds": 5, "mean_holdout_loss": float("nan")},
+        {"n_folds": 5, "mean_holdout_loss": True},
+    ],
+    ids=["four-folds", "no-mean", "nan-mean", "bool-mean"],
+)
+def test_a_measured_holdout_needs_five_folds_and_a_finite_mean(
+    tmp_path: Path, holdout: dict
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    _rewrite_manifest(
+        candidate, lambda m: m["fit"].__setitem__("rotated_holdout", holdout)
+    )
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any("5 folds and a finite mean" in failure for failure in failures)
+
+
+@pytest.mark.parametrize(
+    ("skip_holdout", "holdout", "needle"),
+    [
+        (False, _SKIPPED, "requested (--rotated-holdout) but the run recorded it"),
+        (True, {"n_folds": 5, "mean_holdout_loss": 0.2}, "not requested but"),
+        (None, _SKIPPED, "must record whether the holdout was requested"),
+        (True, None, "neither measured nor skipped"),
+    ],
+)
+def test_the_holdout_record_must_match_the_request(
+    tmp_path: Path, skip_holdout, holdout, needle: str
+) -> None:
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+
+    def mutate(manifest):
+        manifest["parameters"]["skip_holdout"] = skip_holdout
+        if holdout is None:
+            del manifest["fit"]["rotated_holdout"]
+        else:
+            manifest["fit"]["rotated_holdout"] = dict(holdout)
+
+    _rewrite_manifest(candidate, mutate)
     failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
     assert any(needle in failure for failure in failures), failures
 

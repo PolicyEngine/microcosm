@@ -587,7 +587,6 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "7",
         "--epochs",
         "2",
-        "--skip-holdout",
         *extra,
     ]
 

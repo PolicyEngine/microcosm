@@ -54,7 +54,23 @@ from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
 from microcosm.build.uk_runtime.weight_year import uk_engine_year_frame
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
-from microcosm.data.contract import uk_incumbent_surface_assessment
+from microcosm.data.contract import (
+    _uk_incumbent_surface_inventory_failures,
+    uk_incumbent_surface_assessment,
+)
+
+
+def _assess(payload: dict) -> None:
+    """Record the release assessment and, separately, the row-inventory check.
+
+    The contract checks the pinned incumbent inventory apart from the measured
+    limits (microcosm#1301), so the summary no longer carries it; the evidence
+    file records any inventory drift beside the summary and the tool warns.
+    """
+    payload["summary"] = uk_incumbent_surface_assessment(payload)
+    payload["inventory_failures"] = _uk_incumbent_surface_inventory_failures(payload)
+    for failure in payload["inventory_failures"]:
+        print(f"warning: incumbent inventory: {failure}", file=sys.stderr)
 
 
 def _parse_args(argv):
@@ -450,7 +466,7 @@ def main(argv=None) -> int:
         "national_rows": national.replace({np.nan: None}).to_dict(orient="records"),
         "local_rows": local.replace({np.nan: None}).to_dict(orient="records"),
     }
-    payload["summary"] = uk_incumbent_surface_assessment(payload)
+    _assess(payload)
     args.out_json.write_text(
         json.dumps(payload, indent=1, default=str, allow_nan=False)
     )

@@ -510,12 +510,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--native-scorecard",
         type=Path,
-        help="Measured incumbent-surface comparison bound to immutable candidate.json and its exact output bytes.",
+        help=(
+            "Optional diagnostic: a measured incumbent-surface comparison bound "
+            "to immutable candidate.json and its exact output bytes."
+        ),
     )
     parser.add_argument(
         "--matched-size-scorecard",
         type=Path,
-        help="Additional measured comparison with both populations at requested k.",
+        help=(
+            "Optional diagnostic: a further measured comparison with both "
+            "populations at the requested k."
+        ),
     )
     parser.add_argument(
         "--target-geographies",
@@ -657,7 +663,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--expected-constituency-vintage",
         help="Dense role only: constituency vintage required from the ladder.",
     )
-    parser.add_argument("--skip-holdout", action="store_true")
+    parser.add_argument(
+        "--rotated-holdout",
+        action="store_true",
+        help=(
+            "Dense only: run the five-fold rotated local holdout, an opt-in "
+            "report-only diagnostic (microcosm#1301). Each fold repeats the "
+            "dense solve and, in a sized build, the size search and refit. "
+            "Without it the holdout is recorded as not requested and the "
+            "release claims no out-of-sample fit."
+        ),
+    )
     parser.add_argument(
         "--inspection-export",
         action="store_true",

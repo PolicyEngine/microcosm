@@ -128,7 +128,7 @@ def build_uk_country_graph(
     engine_identity: str | None = None,
     review_date: date | None = None,
     release_candidate: bool = False,
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
     atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
     """Compile the canonical full graph; default target scope is all geographies.

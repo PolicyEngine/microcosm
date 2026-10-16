@@ -289,7 +289,7 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "engine_blocks": int(args.engine_blocks),
         "target_weight_rule": args.target_weight_rule,
         "release_candidate": bool(args.release_candidate),
-        "skip_holdout": bool(args.skip_holdout),
+        "skip_holdout": bool(getattr(args, "skip_holdout", False)),
         "epochs": int(args.epochs),
         "learning_rate": float(args.learning_rate),
         "expected_constituency_vintage": (
@@ -476,6 +476,12 @@ def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
     if args.expected_constituency_vintage is None:
         args.expected_constituency_vintage = posture.expected_constituency_vintage
     _resolve_size_defaults(args, posture)
+    # The rotated holdout is an opt-in, report-only diagnostic (microcosm#1301):
+    # a dense build skips it unless --rotated-holdout asks for it, and the
+    # national line has no holdout node, so it records false as before.
+    args.skip_holdout = bool(posture.holdout) and not bool(
+        getattr(args, "rotated_holdout", False)
+    )
     args._posture = posture
     return posture
 
@@ -682,8 +688,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             refused.append(f"--n-clones != doctrine {posture.clone_count}")
         if args.measure_exclusions is not None:
             refused.append("--measure-exclusions")
-        if args.skip_holdout:
-            refused.append("--skip-holdout")
         if args.sample_fraction != 1.0:
             refused.append("--sample-fraction != 1.0")
         if _geography_assignment(args) == "legacy":
@@ -793,8 +797,8 @@ def refuse_dense_role_arguments(
         refused.append("--engine-blocks")
     if args.households_only:
         refused.append("--households-only")
-    if args.skip_holdout:
-        refused.append("--skip-holdout")
+    if getattr(args, "rotated_holdout", False):
+        refused.append("--rotated-holdout")
     if args.dataset_households is not None:
         refused.append("--dataset-households")
     if args.selection_seed is not None:

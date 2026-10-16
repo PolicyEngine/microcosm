@@ -685,7 +685,11 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     assert manifest["solve"]["target_weight_rule_override"] == {}
     assert manifest["solve"]["n_households"] == 2
     assert manifest["solve"]["pool_households"] == 2
-    assert manifest["fit"]["rotated_holdout"]["n_folds"] == 5
+    # The rotated holdout is an opt-in diagnostic (microcosm#1301): a release
+    # candidate that did not request it records the skip marker.
+    assert manifest["parameters"]["skip_holdout"] is True
+    assert manifest["fit"]["rotated_holdout"]["skipped"] is True
+    assert manifest["diagnostics"]["rotated_holdout"] == {"skipped": True}
     assert manifest["fit"]["local_by_family"][0]["family"] == "census_households"
     assert manifest["weights"]["realized_max_weight_ratio_vs_design"] == 1.0
     assert manifest["weights"]["household_weight_kind"] == "calibrated"
@@ -709,6 +713,39 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
         path = Path(entry["path"])
         assert path.parent == out and path.is_file()
         assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
+
+
+def test_release_candidate_holdout_is_opt_in(tmp_path, monkeypatch):
+    """microcosm#1301: a release candidate validates without the holdout and
+    records that it was not requested; --rotated-holdout runs it."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    release = arguments(tmp_path, "--release-candidate")
+    cli.validate_cli_args(release)
+    assert release.skip_holdout is True
+    assert rowwise_parameters(release, source_year=2024)["skip_holdout"] is True
+    rotated = arguments(tmp_path, "--release-candidate", "--rotated-holdout")
+    cli.validate_cli_args(rotated)
+    assert rotated.skip_holdout is False
+    assert rowwise_parameters(rotated, source_year=2024)["skip_holdout"] is False
+    national = cli.parse_args(_national_argv(tmp_path))
+    assert national.skip_holdout is False
+    assert rowwise_parameters(national, source_year=2024)["skip_holdout"] is False
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--skip-holdout")
+
+
+def test_a_requested_holdout_projects_its_measured_folds(tmp_path):
+    pytest.importorskip("tables")
+    args = arguments(tmp_path, "--release-candidate", "--rotated-holdout")
+    build = prepared(tmp_path, release_candidate=True, rotated_holdout=True)
+    assert cli.execute_full_build(build, args) == 0
+    manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
+    assert manifest["parameters"]["skip_holdout"] is False
+    assert manifest["fit"]["rotated_holdout"]["n_folds"] == 5
+    assert "skipped" not in manifest["fit"]["rotated_holdout"]
+    assert manifest["diagnostics"]["rotated_holdout"]["n_folds"] == 5
 
 
 def test_blocked_gate_projects_an_unreleasable_manifest(tmp_path):

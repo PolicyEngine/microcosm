@@ -737,12 +737,19 @@ _UK_DENSE_REQUIRED_RELEASE_FILES = (
     "gate_summary.json",
     _UK_DENSE_SOURCE_COVERAGE_FILE,
     _UK_DENSE_GATE_REPORT_FILE,
-    _UK_DENSE_SCORE_RECEIPT_FILE,
-    "incumbent_surface_evaluation.json",
     "rowwise_candidate_manifest.json",
-    "incumbent_manifest.json",
     "source_calibration_diagnostics.json",
     "sha256sums.txt",
+)
+# The incumbent comparison is an opt-in diagnostic (microcosm#1301): a dense
+# release ships these three files all together or not at all, and its
+# manifest says which (the ``no_incumbent_comparison`` or
+# ``incumbent_surface_diagnostic`` limitation). Literals, because the surface
+# file's own constant is defined with its assessment further down.
+_UK_DENSE_INCUMBENT_FILES = (
+    _UK_DENSE_SCORE_RECEIPT_FILE,
+    "incumbent_surface_evaluation.json",
+    "incumbent_manifest.json",
 )
 # The local battery scope (microcosm.build.uk_runtime.calibration_run
 # .UK_LOCAL_GATE_SCOPE) and its scoped spec digests, mirrored and
@@ -774,6 +781,16 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "signed_deferrals",
     "holdout",
     "uprating",
+    "size",
+)
+# The gates whose reviewed exclusions a dense release names, one
+# ``reviewed_exclusion:<gate>:<name>`` limitation each, with the names recorded
+# in the coverage's ``signed_deferrals.reviewed_exclusions`` (microcosm#1301).
+# The assembler (tools/assemble_uk_dense_release_dir.py) imports this tuple.
+_UK_DENSE_SIGNED_EXCLUSION_GATES = (
+    "uk_target_fit",
+    "uk_local_target_fit",
+    "uk_input_mass_parity",
 )
 # The per-cut tag grammar the assembler mints from the calibration attempt id
 # (tools/assemble_uk_release_dir.py). The contract validates the same shape so
@@ -4487,12 +4504,17 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     The non-default local-area role with UK evidence in place of the US
     coverage file: the signed local gate-battery report verified with the
     executor's key (release posture attested, every release-blocking entry
-    passed, the scoped spec digests pinned), the head-to-head score against
-    the incumbent, and a source-coverage receipt naming the spine, the Ledger
-    artifact, the geography ladder, the incumbent extraction, the doctrine,
-    the reviewed exclusions and signed deferrals, the holdout and the vintage
-    uprating. Artifacts pin to the release id or to one of its immutable
-    per-cut tags.
+    passed, the scoped spec digests pinned), and a source-coverage receipt
+    naming the spine, the Ledger artifact, the geography ladder, the doctrine,
+    the reviewed exclusions and signed deferrals, the holdout, the incumbent
+    comparison, the size record and the vintage uprating. The candidate's
+    own evidence (its manifest and original diagnostics) always joins the
+    released bytes, and the coverage's holdout and size records restate it.
+    The rotated holdout and the incumbent comparison are
+    opt-in diagnostics (microcosm#1301): the coverage says whether each ran,
+    the incumbent files ship all together or not at all, and the manifest's
+    reviewed limitations must say what the release does not claim. Artifacts
+    pin to the release id or to one of its immutable per-cut tags.
     """
 
     failures: list[str] = []
@@ -4503,6 +4525,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     manifest_path = release_dir / "release_manifest.json"
     if manifest_path.is_file():
         release_manifest = _load_json(manifest_path, failures)
+    incumbent_attached = _uk_dense_incumbent_attached(
+        release_dir, release_manifest or {}, failures
+    )
     if release_manifest is not None:
         _check_local_area_release_manifest(
             release_manifest,
@@ -4557,6 +4582,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
             ):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
+    report: Mapping | None = None
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
         report = _load_json(report_path, failures)
@@ -4572,18 +4598,43 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
                     "release_manifest.json must declare the signed gate report "
                     f"{_UK_DENSE_GATE_REPORT_FILE!r} as an artifact."
                 )
+    coverage: Mapping | None = None
     coverage_path = release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE
     if coverage_path.is_file():
         coverage = _load_json(coverage_path, failures)
         if coverage is not None:
-            _check_uk_dense_source_coverage(coverage, failures)
+            _check_uk_dense_source_coverage(
+                coverage, failures, incumbent_attached=incumbent_attached
+            )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    _check_uk_dense_surface_files(release_dir, release_manifest or {}, failures)
+    # The core joins run whether or not the incumbent comparison is attached.
+    candidate_identity = _check_uk_dense_surface_files(
+        release_dir, release_manifest or {}, failures
+    )
+    incumbent: dict | None = None
+    if incumbent_attached:
+        incumbent = _check_uk_dense_incumbent_files(
+            release_dir,
+            release_manifest or {},
+            failures,
+            candidate_identity=candidate_identity,
+            coverage=coverage,
+        )
+    if release_manifest is not None:
+        _check_uk_dense_reviewed_limitations(
+            release_manifest,
+            coverage,
+            failures,
+            incumbent_attached=incumbent_attached,
+            incumbent=incumbent,
+            report=report,
+        )
     _check_local_area_checksum_ledger(
         release_dir,
         release_manifest,
         failures,
-        required_files=_UK_DENSE_REQUIRED_RELEASE_FILES,
+        required_files=_UK_DENSE_REQUIRED_RELEASE_FILES
+        + (_UK_DENSE_INCUMBENT_FILES if incumbent_attached else ()),
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
@@ -4752,7 +4803,44 @@ def _check_uk_dense_gate_report(
         )
 
 
-def _check_uk_dense_source_coverage(coverage: Mapping, failures: list[str]) -> None:
+def _uk_dense_incumbent_attached(
+    release_dir: Path, release_manifest: Mapping, failures: list[str]
+) -> bool:
+    """Whether the opt-in incumbent comparison ships, all files or none.
+
+    Any incumbent file present in the directory or declared by the manifest
+    attaches the comparison; an attached comparison then requires all three
+    files, so a partial set or a declared-but-removed file refuses.
+    """
+    present = [
+        name for name in _UK_DENSE_INCUMBENT_FILES if (release_dir / name).is_file()
+    ]
+    declared = [
+        name
+        for name in _UK_DENSE_INCUMBENT_FILES
+        if _artifact_by_path(release_manifest, name) is not None
+    ]
+    attached = bool(present or declared)
+    if attached and len(present) != len(_UK_DENSE_INCUMBENT_FILES):
+        missing = [name for name in _UK_DENSE_INCUMBENT_FILES if name not in present]
+        failures.append(
+            "the incumbent comparison files ship all together or not at all; "
+            f"missing {missing}."
+        )
+    return attached
+
+
+def _finite_number(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
+def _check_uk_dense_source_coverage(
+    coverage: Mapping, failures: list[str], *, incumbent_attached: bool
+) -> None:
     file = _UK_DENSE_SOURCE_COVERAGE_FILE
     for key in _UK_DENSE_SOURCE_COVERAGE_KEYS:
         value = coverage.get(key)
@@ -4769,16 +4857,75 @@ def _check_uk_dense_source_coverage(coverage: Mapping, failures: list[str]) -> N
             digest = block.get(sha_field)
             if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
                 failures.append(f"{file} {key}.{sha_field} must be a sha256 digest.")
+    # The names of the reviewed exclusions each fit gate stood on
+    # (microcosm#1301), which the manifest's limitations must restate.
+    deferrals = coverage.get("signed_deferrals")
+    if isinstance(deferrals, Mapping):
+        named = deferrals.get("reviewed_exclusions")
+        if not (
+            isinstance(named, Mapping)
+            and set(map(str, named)) == set(_UK_DENSE_SIGNED_EXCLUSION_GATES)
+            and all(
+                isinstance(names, list)
+                and all(isinstance(name, str) and name for name in names)
+                and len(set(names)) == len(names)
+                for names in named.values()
+            )
+        ):
+            failures.append(
+                f"{file} signed_deferrals.reviewed_exclusions must map each of "
+                f"{list(_UK_DENSE_SIGNED_EXCLUSION_GATES)} to the distinct names "
+                "of the reviewed exclusions its gate stood on."
+            )
+    # The opt-in diagnostics (microcosm#1301) carry a discriminator each, so
+    # the coverage says what ran rather than leaving it to absence.
     incumbent = coverage.get("incumbent")
-    if isinstance(incumbent, Mapping) and not incumbent.get("snapshot"):
-        failures.append(f"{file} incumbent must name the private-repo snapshot.")
+    if isinstance(incumbent, Mapping):
+        compared = incumbent.get("compared")
+        if compared not in (True, False):
+            failures.append(f"{file} incumbent.compared must be true or false.")
+        elif compared is not incumbent_attached:
+            failures.append(
+                f"{file} incumbent.compared is {compared} but the incumbent "
+                f"comparison files are {'' if incumbent_attached else 'not '}"
+                "attached."
+            )
+        elif compared and not incumbent.get("snapshot"):
+            failures.append(f"{file} incumbent must name the private-repo snapshot.")
     holdout = coverage.get("holdout")
     if isinstance(holdout, Mapping):
-        value = holdout.get("mean_holdout_loss")
-        if not isinstance(value, (int, float)) or not math.isfinite(value):
+        claim = holdout.get("claim")
+        if claim == "none":
+            if holdout.get("run") is not False:
+                failures.append(
+                    f"{file} holdout claims nothing, so holdout.run must be false."
+                )
+        elif claim == "report_only":
+            if holdout.get("run") is not True:
+                failures.append(
+                    f"{file} holdout is reported, so holdout.run must be true."
+                )
+            if not _finite_number(holdout.get("mean_holdout_loss")):
+                failures.append(
+                    f"{file} holdout.mean_holdout_loss must be a finite number."
+                )
+        else:
             failures.append(
-                f"{file} holdout.mean_holdout_loss must be a finite number."
+                f"{file} holdout.claim must be 'none' or 'report_only', got {claim!r}."
             )
+    size = coverage.get("size")
+    if isinstance(size, Mapping):
+        sized = size.get("sized")
+        if sized not in (True, False):
+            failures.append(f"{file} size.sized must be true or false.")
+        elif sized:
+            for key in ("dataset_households", "clone_count"):
+                value = size.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    failures.append(
+                        f"{file} size.{key} must be a positive integer for a "
+                        "sized release."
+                    )
 
 
 def _check_local_area_checksum_ledger(
@@ -6838,16 +6985,15 @@ def _uk_incumbent_row_identity(row: Mapping, grain: str) -> dict:
     return {field: row.get(field) for field in fields}
 
 
-def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
-    """Recompute unchanged absolute quality limits over the full incumbent surface.
+def _uk_incumbent_surface_inventory_failures(payload: Mapping) -> list[str]:
+    """The structural checks on an incumbent-surface evaluation's rows.
 
-    National comparisons use incumbent target values, not invented realized
-    incumbent estimates. Local comparisons additionally require the incumbent's
-    measured estimates. Deferred and unmeasurable rows never disappear.
+    Each grain must be a complete nonempty row list matching the pinned
+    incumbent target inventory, with nonempty unique row names. These are the
+    evaluation's identity, so they refuse whether or not the measured limits
+    are enforced (microcosm#1301).
     """
     failures = []
-    grains = {}
-    limits = _UK_DENSE_SURFACE_LIMITS
     for grain in ("national", "local"):
         rows = payload.get(f"{grain}_rows")
         if (
@@ -6871,6 +7017,30 @@ def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
             set(names)
         ) != len(names):
             failures.append(f"{grain} row names must be nonempty and unique.")
+    return failures
+
+
+def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
+    """Recompute unchanged absolute quality limits over the full incumbent surface.
+
+    National comparisons use incumbent target values, not invented realized
+    incumbent estimates. Local comparisons additionally require the incumbent's
+    measured estimates. Deferred and unmeasurable rows never disappear. The
+    row inventory is checked separately
+    (:func:`_uk_incumbent_surface_inventory_failures`); a grain that is not a
+    row list is left out here.
+    """
+    failures = []
+    grains = {}
+    limits = _UK_DENSE_SURFACE_LIMITS
+    for grain in ("national", "local"):
+        rows = payload.get(f"{grain}_rows")
+        if (
+            not isinstance(rows, list)
+            or not rows
+            or any(not isinstance(r, Mapping) for r in rows)
+        ):
+            continue
         measured = 0
         errors = []
         families = {}
@@ -6949,8 +7119,21 @@ def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
 
 
 def _check_uk_incumbent_surface_evaluation(
-    payload: Mapping, failures: list[str], *, expected_identity: Mapping
-) -> None:
+    payload: Mapping,
+    failures: list[str],
+    *,
+    expected_identity: Mapping,
+    enforce_limits: bool,
+) -> dict:
+    """Check one incumbent-surface evaluation; return its limit record.
+
+    The schema, the input identities, the pinned row inventory and the
+    recomputed summary always refuse. The measured quality limits and the
+    single-block measurement are the comparison's verdict: they refuse only
+    when ``enforce_limits``; otherwise they are recorded in the returned
+    ``{"passed", "limit_failures"}`` (microcosm#1301: the comparison is an
+    opt-in diagnostic).
+    """
     label = _UK_DENSE_SURFACE_FILE
     if (
         payload.get("schema_version") != 2
@@ -6974,28 +7157,34 @@ def _check_uk_incumbent_surface_evaluation(
                 failures.append(
                     f"{label} identity.{key} does not match its source artifact."
                 )
+    failures.extend(
+        f"{label}: {failure}"
+        for failure in _uk_incumbent_surface_inventory_failures(payload)
+    )
+    limit_failures = []
     resolution = payload.get("measure_resolution")
     if (
         not isinstance(resolution, Mapping)
         or type(resolution.get("blocks")) is not int
         or resolution.get("blocks") != 1
     ):
-        failures.append(f"{label} requires single-block engine measurement.")
+        limit_failures.append(f"{label} requires single-block engine measurement.")
     assessment = uk_incumbent_surface_assessment(payload)
     if payload.get("summary") != assessment:
         failures.append(f"{label} summary does not match its measured rows.")
-    failures.extend(f"{label}: {failure}" for failure in assessment["failures"])
+    limit_failures.extend(f"{label}: {failure}" for failure in assessment["failures"])
+    if enforce_limits:
+        failures.extend(limit_failures)
+    return {"passed": not limit_failures, "limit_failures": limit_failures}
 
 
-def _check_uk_dense_surface_files(
-    release_dir: Path, release_manifest: Mapping, failures: list[str]
-) -> None:
-    names = (
-        _UK_DENSE_SURFACE_FILE,
-        "rowwise_candidate_manifest.json",
-        "incumbent_manifest.json",
-        "source_calibration_diagnostics.json",
-    )
+def _load_dense_evidence(
+    release_dir: Path,
+    release_manifest: Mapping,
+    names: tuple[str, ...],
+    failures: list[str],
+) -> tuple[dict, dict] | None:
+    """Load declared evidence files and their byte hashes, or None if any fails."""
     loaded = {}
     hashes = {}
     for name in names:
@@ -7009,19 +7198,40 @@ def _check_uk_dense_surface_files(
                 f"release_manifest.json must declare {name!r} as an artifact."
             )
     if len(loaded) != len(names) or any(v is None for v in loaded.values()):
-        return
+        return None
+    return loaded, hashes
+
+
+def _check_uk_dense_surface_files(
+    release_dir: Path, release_manifest: Mapping, failures: list[str]
+) -> dict | None:
+    """Join the candidate's own evidence to the released bytes.
+
+    These joins hold for every dense release, with or without the incumbent
+    comparison (microcosm#1301). Returns the candidate identity an attached
+    comparison must be bound to, or None when the evidence is incomplete
+    (the failure is recorded).
+    """
+    evidence = _load_dense_evidence(
+        release_dir,
+        release_manifest,
+        ("rowwise_candidate_manifest.json", "source_calibration_diagnostics.json"),
+        failures,
+    )
+    if evidence is None:
+        return None
+    loaded, hashes = evidence
     candidate = loaded["rowwise_candidate_manifest.json"]
-    incumbent = loaded["incumbent_manifest.json"]
     try:
         chronicle = candidate["identity"]["targets"]["chronicle"]
     except (KeyError, TypeError):
         failures.append(
             "rowwise_candidate_manifest.json is missing identity.targets.chronicle."
         )
-        return
+        return None
     try:
         dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
-        expected = {
+        identity = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],
             "candidate_diagnostics_sha256": hashes[
@@ -7029,15 +7239,12 @@ def _check_uk_dense_surface_files(
             ],
             "ledger_facts_sha256": chronicle["facts_sha256"],
             "ledger_manifest_sha256": chronicle["manifest_sha256"],
-            "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
-            "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
-            "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
         }
         for key, identity_key in (
             ("dataset", "candidate_dataset_sha256"),
             ("calibration_diagnostics", "candidate_diagnostics_sha256"),
         ):
-            if candidate["outputs"][key]["sha256"] != expected[identity_key]:
+            if candidate["outputs"][key]["sha256"] != identity[identity_key]:
                 failures.append(
                     f"rowwise_candidate_manifest.json {key} hash does not match released evidence."
                 )
@@ -7076,10 +7283,9 @@ def _check_uk_dense_surface_files(
                     failures.append(
                         f"uk_source_coverage.json Ledger {key} does not match the evaluated source."
                     )
-            if coverage.get("incumbent", {}).get("snapshot") != incumbent.get("inputs"):
-                failures.append(
-                    "uk_source_coverage.json incumbent snapshot does not match the evaluated source."
-                )
+            _check_uk_dense_claims_against_candidate(
+                candidate, coverage, release_manifest, failures
+            )
         shipped_diagnostics = _load_json(
             release_dir / "calibration_diagnostics.json", failures
         )
@@ -7089,7 +7295,7 @@ def _check_uk_dense_surface_files(
                 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
             ):
                 shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
-                if shipped_sha256 != expected["candidate_diagnostics_sha256"]:
+                if shipped_sha256 != identity["candidate_diagnostics_sha256"]:
                     failures.append(
                         "calibration_diagnostics.json bytes do not match the "
                         "evaluated canonical diagnostics."
@@ -7102,7 +7308,7 @@ def _check_uk_dense_surface_files(
             else:
                 if (
                     shipped_diagnostics.get("source_diagnostics_sha256")
-                    != expected["candidate_diagnostics_sha256"]
+                    != identity["candidate_diagnostics_sha256"]
                 ):
                     failures.append(
                         "calibration_diagnostics.json source hash does not match "
@@ -7116,27 +7322,377 @@ def _check_uk_dense_surface_files(
                         "calibration_diagnostics.json changed original evaluated "
                         "diagnostic values."
                     )
-        score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
+        if build and report and report.get("release_id") != build.get("attempt_id"):
+            failures.append(
+                "the signed gate report is not bound to the released attempt."
+            )
+    except (KeyError, TypeError) as error:
+        failures.append(f"candidate source identities are incomplete: {error}.")
+        return None
+    return identity
+
+
+def _as_mapping(value: object) -> Mapping:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _check_uk_dense_claims_against_candidate(
+    candidate: Mapping,
+    coverage: Mapping,
+    release_manifest: Mapping,
+    failures: list[str],
+) -> None:
+    """The holdout and size claims restate the evaluated candidate (microcosm#1301).
+
+    The coverage and the manifest are unsigned packaging, so they are joined
+    to the candidate as its measure exclusions and Ledger pins are: an edit
+    cannot switch the release between ``no_out_of_sample_claim`` and
+    ``rotated_holdout``, report a holdout loss the candidate did not measure,
+    or change the size record, and the ``engine_measurement`` and
+    ``size_doctrine`` limitations restate the candidate's own record.
+    """
+
+    file = _UK_DENSE_SOURCE_COVERAGE_FILE
+    parameters = _as_mapping(candidate.get("parameters"))
+    measured = _as_mapping(_as_mapping(candidate.get("fit")).get("rotated_holdout"))
+    solve = _as_mapping(candidate.get("solve"))
+    holdout = coverage.get("holdout")
+    if isinstance(holdout, Mapping):
+        skipped = (
+            parameters.get("skip_holdout") is True and measured.get("skipped") is True
+        )
+        claim = holdout.get("claim")
+        if claim == "none" and not skipped:
+            failures.append(
+                f"{file} holdout claims nothing, but the evaluated candidate did "
+                "not skip the rotated holdout."
+            )
+        elif claim == "report_only" and skipped:
+            failures.append(
+                f"{file} holdout is reported, but the evaluated candidate skipped "
+                "the rotated holdout."
+            )
+        elif claim == "report_only":
+            for key in ("mean_holdout_loss", "n_folds"):
+                if holdout.get(key) != measured.get(key):
+                    failures.append(
+                        f"{file} holdout.{key} does not match the evaluated "
+                        "candidate's rotated holdout."
+                    )
+    requested = parameters.get("dataset_households")
+    dataset_size = _as_mapping(solve.get("dataset_size"))
+    # The size record as the assembler restates it from the candidate.
+    expected_size = {
+        "clone_count": parameters.get("n_clones"),
+        "dataset_households": requested,
+        "realized_households": dataset_size.get("realized_households"),
+        "selection_initial_lambda": parameters.get("selection_initial_lambda"),
+        "selection_l0_lambda": dataset_size.get("selection_l0_lambda"),
+        "search_bracket": dataset_size.get("selection_search_bracket"),
+    }
+    if requested is not None and expected_size["realized_households"] != requested:
+        failures.append(
+            "rowwise_candidate_manifest.json solve.dataset_size did not realize "
+            "the dataset size the candidate requested."
+        )
+    size = coverage.get("size")
+    if isinstance(size, Mapping):
+        sized = size.get("sized")
+        if sized in (True, False) and sized is not (requested is not None):
+            failures.append(
+                f"{file} size.sized is {sized}, but the evaluated candidate "
+                f"requested {'a' if requested is not None else 'no'} dataset size."
+            )
+        mismatched = sorted(
+            key for key, value in expected_size.items() if size.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"{file} size {mismatched} do not match the evaluated candidate."
+            )
+    limitations = release_manifest.get("reviewed_limitations")
+    by_id = {
+        str(item.get("id")): item
+        for item in (limitations if isinstance(limitations, list) else [])
+        if isinstance(item, Mapping)
+    }
+    engine = by_id.get("engine_measurement")
+    if engine is not None:
+        resolution = _as_mapping(solve.get("measure_resolution"))
+        representation = _as_mapping(resolution.get("engine_population_representation"))
+        expected_engine = {
+            "blocks": resolution.get("blocks"),
+            "representation_mode": representation.get("mode"),
+            "representation_exact": representation.get("exact"),
+            "representation_exact_scope": representation.get("exact_scope"),
+        }
+        mismatched = sorted(
+            key for key, value in expected_engine.items() if engine.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"release_manifest.json limitation 'engine_measurement' "
+                f"{mismatched} do not match the evaluated candidate's measure "
+                "resolution."
+            )
+    doctrine = by_id.get("size_doctrine")
+    if doctrine is not None:
+        mismatched = sorted(
+            key for key, value in expected_size.items() if doctrine.get(key) != value
+        )
+        if mismatched:
+            failures.append(
+                f"release_manifest.json limitation 'size_doctrine' {mismatched} "
+                "do not match the evaluated candidate."
+            )
+
+
+def _check_uk_dense_incumbent_files(
+    release_dir: Path,
+    release_manifest: Mapping,
+    failures: list[str],
+    *,
+    candidate_identity: Mapping[str, str] | None,
+    coverage: Mapping | None,
+) -> dict | None:
+    """Join an attached incumbent comparison to the candidate and its sources.
+
+    Its identities refuse; its measured limits are recorded, not enforced
+    (microcosm#1301). Returns the evaluation's limit record, or None when the
+    comparison is incomplete (the failure is recorded).
+    """
+    evidence = _load_dense_evidence(
+        release_dir, release_manifest, _UK_DENSE_INCUMBENT_FILES, failures
+    )
+    if evidence is None or candidate_identity is None:
+        return None
+    loaded, hashes = evidence
+    incumbent = loaded["incumbent_manifest.json"]
+    try:
+        expected = {
+            **candidate_identity,
+            "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
+            "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
+            "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
+        }
+        covered = coverage.get("incumbent") if isinstance(coverage, Mapping) else None
+        if isinstance(covered, Mapping) and covered.get("snapshot") != incumbent.get(
+            "inputs"
+        ):
+            failures.append(
+                "uk_source_coverage.json incumbent snapshot does not match the evaluated source."
+            )
+        score = loaded[_UK_DENSE_SCORE_RECEIPT_FILE]
         for key, identity_key in (
             ("candidate_diagnostics", "candidate_diagnostics_sha256"),
             ("incumbent_household_metrics", "incumbent_metrics_sha256"),
             ("incumbent_wide_weights", "incumbent_weights_sha256"),
         ):
+            artifacts = score.get("artifacts")
+            entry = artifacts.get(key) if isinstance(artifacts, Mapping) else None
             if (
-                not score
-                or score.get("artifacts", {}).get(key, {}).get("sha256")
-                != expected[identity_key]
+                not isinstance(entry, Mapping)
+                or entry.get("sha256") != expected[identity_key]
             ):
                 failures.append(
                     f"score_vs_incumbent.json {key} does not match the evaluated source."
                 )
-        if build and report and report.get("release_id") != build.get("attempt_id"):
-            failures.append(
-                "incumbent evaluation source manifest is not bound to released attempt."
-            )
     except (KeyError, TypeError) as error:
-        failures.append(f"incumbent surface source identities are incomplete: {error}.")
-        return
-    _check_uk_incumbent_surface_evaluation(
-        loaded[_UK_DENSE_SURFACE_FILE], failures, expected_identity=expected
+        failures.append(
+            f"incumbent comparison source identities are incomplete: {error}."
+        )
+        return None
+    return _check_uk_incumbent_surface_evaluation(
+        loaded[_UK_DENSE_SURFACE_FILE],
+        failures,
+        expected_identity=expected,
+        enforce_limits=False,
     )
+
+
+def _check_uk_dense_reviewed_limitations(
+    release_manifest: Mapping,
+    coverage: Mapping | None,
+    failures: list[str],
+    *,
+    incumbent_attached: bool,
+    incumbent: Mapping | None,
+    report: Mapping | None = None,
+) -> None:
+    """The manifest says what a dense release does not claim (microcosm#1301).
+
+    Every release records how the engine measured it; the holdout, the
+    incumbent comparison and the size record each name the limitation that
+    matches what the coverage says ran. A comparison that was attached carries
+    its recomputed verdict, so a failed assessment cannot ship as a pass.
+    Every reviewed exclusion the fit gates and the area-support gate stood on
+    is named (see :func:`_check_uk_dense_signed_exclusions`).
+    """
+    limitations = release_manifest.get("reviewed_limitations")
+    if not isinstance(limitations, list):
+        return
+    by_id = {
+        str(item.get("id")): item for item in limitations if isinstance(item, Mapping)
+    }
+    file = "release_manifest.json"
+
+    def expect(present: str, absent: str | None) -> Mapping | None:
+        if present not in by_id:
+            failures.append(f"{file} reviewed_limitations must carry {present!r}.")
+        if absent is not None and absent in by_id:
+            failures.append(
+                f"{file} reviewed_limitations carries {absent!r}, which "
+                "contradicts the release's source coverage."
+            )
+        return by_id.get(present)
+
+    expect("engine_measurement", None)
+    holdout = coverage.get("holdout") if isinstance(coverage, Mapping) else None
+    if isinstance(holdout, Mapping):
+        claim = holdout.get("claim")
+        if claim == "none":
+            expect("no_out_of_sample_claim", "rotated_holdout")
+        elif claim == "report_only":
+            entry = expect("rotated_holdout", "no_out_of_sample_claim")
+            if entry is not None and entry.get("claim") != "report_only":
+                failures.append(
+                    f"{file} limitation 'rotated_holdout' must say claim 'report_only'."
+                )
+    if not incumbent_attached:
+        expect("no_incumbent_comparison", "incumbent_surface_diagnostic")
+    else:
+        entry = expect("incumbent_surface_diagnostic", "no_incumbent_comparison")
+        if entry is not None and incumbent is not None:
+            recorded = (entry.get("passed"), entry.get("failure_count"))
+            measured = (incumbent["passed"], len(incumbent["limit_failures"]))
+            if recorded != measured:
+                failures.append(
+                    f"{file} limitation 'incumbent_surface_diagnostic' records "
+                    f"passed/failure_count {recorded}, but the shipped evaluation "
+                    f"recomputes {measured}."
+                )
+    size = coverage.get("size") if isinstance(coverage, Mapping) else None
+    if isinstance(size, Mapping) and size.get("sized") in (True, False):
+        if size["sized"]:
+            expect("size_doctrine", None)
+        elif "size_doctrine" in by_id:
+            failures.append(
+                f"{file} reviewed_limitations carries 'size_doctrine' for an "
+                "unsized release."
+            )
+    _check_uk_dense_signed_exclusions(
+        release_manifest, coverage, report, set(by_id), failures
+    )
+
+
+def _uk_dense_signed_gate_exclusions(
+    report: Mapping | None, gate_id: str
+) -> set[str] | None:
+    """The reviewed exclusions a gate of the signed local report stood on.
+
+    ``None`` when the report does not carry the gate; the report's own check
+    records that failure.
+    """
+
+    gates = report.get("gates") if isinstance(report, Mapping) else None
+    entry = gates.get(gate_id) if isinstance(gates, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return None
+    details = _as_mapping(entry.get("details"))
+    excluded = details.get("reviewed_exclusions")
+    dormant = details.get("dormant_exclusions")
+    names = set(map(str, excluded)) if isinstance(excluded, Mapping) else set()
+    return names - set(map(str, dormant if isinstance(dormant, list) else ()))
+
+
+def _check_uk_dense_signed_exclusions(
+    release_manifest: Mapping,
+    coverage: Mapping | None,
+    report: Mapping | None,
+    limitation_ids: set[str],
+    failures: list[str],
+) -> None:
+    """The manifest names every reviewed exclusion the gates stood on (microcosm#1301).
+
+    Local cells and areas are signed at the gate only, so the manifest's
+    limitations are where a consumer learns of them. The local target-fit
+    names and the areas below the support floor are checked against the
+    signed local report the release ships. The national target-fit and
+    input-mass names come from the full gate report, which does not ship, so
+    the contract holds the manifest to the names the coverage records for
+    them; nothing shipped can confirm those two lists themselves.
+    """
+
+    file = "release_manifest.json"
+    deferrals = _as_mapping(_as_mapping(coverage).get("signed_deferrals"))
+    named = deferrals.get("reviewed_exclusions")
+    if isinstance(named, Mapping):
+        recorded = named.get("uk_local_target_fit")
+        signed = _uk_dense_signed_gate_exclusions(report, "uk_local_target_fit")
+        if (
+            signed is not None
+            and isinstance(recorded, list)
+            and set(map(str, recorded)) != signed
+        ):
+            failures.append(
+                f"{_UK_DENSE_SOURCE_COVERAGE_FILE} signed_deferrals."
+                "reviewed_exclusions.uk_local_target_fit does not match the "
+                f"reviewed exclusions the signed {_UK_DENSE_GATE_REPORT_FILE} "
+                "stood on."
+            )
+        expected = {
+            f"reviewed_exclusion:{gate_id}:{name}"
+            for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES
+            for name in (
+                named.get(gate_id) if isinstance(named.get(gate_id), list) else ()
+            )
+        }
+        present = {
+            key for key in limitation_ids if key.startswith("reviewed_exclusion:")
+        }
+        missing = sorted(expected - present)
+        if missing:
+            failures.append(
+                f"{file} reviewed_limitations must name each reviewed exclusion "
+                f"the gates stood on; {len(missing)} missing, first "
+                f"{missing[:5]}."
+            )
+        unexpected = sorted(present - expected)
+        if unexpected:
+            failures.append(
+                f"{file} reviewed_limitations names {len(unexpected)} reviewed "
+                "exclusion(s) the gates did not stand on, first "
+                f"{unexpected[:5]}."
+            )
+    block = release_manifest.get("area_support")
+    if block is None:
+        failures.append(
+            f"{file} must carry the 'area_support' block for a dense release: "
+            "the areas below the support floor that the signed gate excused."
+        )
+        return
+    below = _as_mapping(block).get("below_floor")
+    if not isinstance(below, Mapping) or not all(
+        isinstance(codes, list) for codes in below.values()
+    ):
+        return  # _check_area_support_block records the malformed block
+    listed = {f"{level}/{code}" for level, codes in below.items() for code in codes}
+    stood_on = _uk_dense_signed_gate_exclusions(report, "uk_local_area_support")
+    if stood_on is not None and listed != stood_on:
+        failures.append(
+            f"{file} 'area_support.below_floor' must list exactly the areas "
+            f"whose reviewed exclusions the signed {_UK_DENSE_GATE_REPORT_FILE} "
+            f"stood on; missing {sorted(stood_on - listed)[:5]}, unexpected "
+            f"{sorted(listed - stood_on)[:5]}."
+        )
+    prefix = "area_support_exclusion:"
+    stray = sorted(
+        key.removeprefix(prefix)
+        for key in limitation_ids
+        if key.startswith(prefix) and key.removeprefix(prefix) not in listed
+    )
+    if stray:
+        failures.append(
+            f"{file} reviewed_limitations names area_support_exclusion(s) for "
+            f"areas not listed below the floor: {stray[:5]}."
+        )

@@ -242,14 +242,69 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
 
 
 def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
-    # microcosm#1123's surface regeneration on the 942a1fa feed:
-    # register_completeness.compiled_local_reference_count 20,885 -> 21,804;
-    # microcosm#1240 adds the high-value homes cells, microcosm#1278's
-    # signed small-cell rules defer 208 cells, and microcosm#1207's DESNZ
-    # energy rows add 1,040 authority cells.
-    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 25_309
+    # The scorer reads the count from the committed membership file
+    # (microcosm#1301), so a regenerated surface needs no scorer edit.
     membership = load_uk_local_target_reference_membership()
-    assert membership["active_reference_count"] == 25_309
+    assert (
+        _load_scorer().uk_local_active_reference_count()
+        == membership["active_reference_count"]
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "25", None])
+def test_the_reference_count_must_be_a_positive_integer(monkeypatch, bad) -> None:
+    from microcosm.build.uk_runtime import ledger_targets
+
+    monkeypatch.setattr(
+        ledger_targets,
+        "load_uk_local_target_reference_membership",
+        lambda: {"active_reference_count": bad},
+    )
+    with pytest.raises(ValueError, match="positive integer active_reference_count"):
+        _load_scorer().uk_local_active_reference_count()
+
+
+@pytest.mark.parametrize(
+    "holdout",
+    ["absent", None, {"skipped": True}],
+    ids=["no-key", "null", "skip-marker"],
+)
+def test_a_candidate_without_a_requested_holdout_scores_with_none(holdout) -> None:
+    """The rotated holdout is an opt-in diagnostic (microcosm#1301)."""
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    if holdout == "absent":
+        del candidate["uk_diagnostics"]["rotated_holdout"]
+    else:
+        candidate["uk_diagnostics"]["rotated_holdout"] = holdout
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["holdout_basis"] == "none_requested"
+    assert result["candidate_holdout_loss"] is None
+    assert result["candidate_holdout"] is None
+    assert result["incumbent_holdout_loss"] is None
+    assert result["rows_compared"] == 2
+
+
+def test_a_malformed_holdout_block_is_refused() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"] = ["not", "a", "report"]
+    with pytest.raises(ValueError, match="must be an object"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
 
 
 def test_a_graph_target_selection_scores_its_local_rows(tmp_path) -> None:
@@ -398,8 +453,8 @@ def test_local_scorer_refuses_duplicate_incumbent_households() -> None:
         )
 
 
-def test_local_scorer_refuses_a_candidate_with_no_measured_holdout() -> None:
-    """The rotation ships in the same payload; scoring without it is refused."""
+def test_local_scorer_refuses_a_candidate_with_no_uk_diagnostics() -> None:
+    """The UK diagnostics block stays required, holdout or not."""
 
     scorer = _load_scorer()
     registry, candidate, weights, metrics = _case()

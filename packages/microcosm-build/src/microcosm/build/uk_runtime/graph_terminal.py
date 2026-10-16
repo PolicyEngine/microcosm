@@ -981,7 +981,7 @@ def append_uk_full_gate_nodes(
     release_candidate: bool = False,
     spine_provenance: ArtifactInput | None = None,
     input_population: str = "uk.full.pool",
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
 ) -> Graph:
     """Own source preflight before solve and final diagnostics after installation."""
     from microcosm.calibrate.artifacts import PROBLEM_TYPE, RESULT_TYPE, SOLUTION_TYPE
@@ -1202,7 +1202,7 @@ class UKFullHoldoutKernel(KernelBase):
             report = {
                 "report_only": True,
                 "skipped": True,
-                "reason": "Explicit development request; no holdout claim.",
+                "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
             }
         else:
             inputs = reconstruct_uk_full_problem_inputs(context)
@@ -1306,7 +1306,7 @@ def uk_full_holdout_node(
             ),
         ),
         artifact_outputs=(ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),),
-        description="Preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine.",
+        description="Optional (--rotated-holdout): preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine; otherwise record that none was requested.",
     )
 
 

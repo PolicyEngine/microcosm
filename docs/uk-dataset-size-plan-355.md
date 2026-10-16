@@ -184,8 +184,9 @@ Three should-fix items and two questions changed the machinery:
 
 **Ruling of 2026-10-13 (microcosm#1124):** the local release ships the
 100,000-household selection under the dense line's publication requirements
-(every release-blocking gate, the rotated holdout, the pre-flight and the
-incumbent-surface evaluation on one engine over the released file). The whole
+(every release-blocking gate and the pre-flight; since microcosm#1301 the
+rotated holdout and the incumbent-surface evaluation are opt-in diagnostics,
+and the release records the limitations it does not claim). The whole
 pool is too large for one engine and for the consumers who load the file. A
 release candidate may request exactly that size with the size doctrine
 (`local_doctrine.uk_local_size_doctrine`); the pre-flight checks the size

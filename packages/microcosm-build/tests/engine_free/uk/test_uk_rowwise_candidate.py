@@ -649,7 +649,7 @@ def test_dense_role_requires_the_ladder(tmp_path) -> None:
         (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),
         (["--engine-blocks", "2"], "--engine-blocks"),
         (["--households-only"], "--households-only"),
-        (["--skip-holdout"], "--skip-holdout"),
+        (["--rotated-holdout"], "--rotated-holdout"),
         (["--dataset-households", "10"], "--dataset-households"),
         (["--selection-seed", "3"], "--selection-seed"),
         (["--selection-pi-hi", "0.5"], "--selection-pi-hi"),
@@ -668,6 +668,23 @@ def test_national_role_refusal_table(tmp_path, extra, needle) -> None:
     with pytest.raises(ValueError, match="--release-role national refuses") as excinfo:
         builder._validate_cli_args(args)
     assert needle in str(excinfo.value)
+
+
+def test_the_rotated_holdout_is_an_opt_in_on_the_dense_line(tmp_path) -> None:
+    """microcosm#1301: dense skips the holdout unless --rotated-holdout asks;
+    the national line has no holdout and keeps recording false."""
+    builder = _load_builder_module()
+    dense = builder._parse_args(_dense_argv(tmp_path))
+    assert dense.skip_holdout is True
+    rotated = builder._parse_args(_dense_argv(tmp_path, "--rotated-holdout"))
+    assert rotated.skip_holdout is False
+    builder._validate_cli_args(rotated)
+    national = builder._parse_args(_role_argv(tmp_path, "national"))
+    assert national.skip_holdout is False
+    # The old spelling is gone, not aliased: a launcher that still passes it
+    # fails at parse.
+    with pytest.raises(SystemExit):
+        builder._parse_args(_dense_argv(tmp_path, "--skip-holdout"))
 
 
 def test_national_role_refuses_release_candidate_with_the_seam_reason(tmp_path):
