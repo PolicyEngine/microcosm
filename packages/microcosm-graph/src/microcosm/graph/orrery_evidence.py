@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from .canonical import canonical_json
-from .evidence import EXECUTION_PROTOCOL, sha256
+from .canonical import canonical_json, sha256
+from .execution_overlay import EXECUTION_PROTOCOL
 from .presentation import (
     digest,
     presentation_id,
