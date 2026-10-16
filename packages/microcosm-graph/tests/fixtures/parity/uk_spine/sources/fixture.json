@@ -5845,6 +5845,66 @@
       "stage": "uc_deduction_attributes",
       "survey": "DWP Universal Credit deductions statistics, March 2025 to February 2026"
     },
+    "uc_legacy_closure_take_up": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dwp_move_to_uc_facts.json",
+          "role": "move_to_uc_facts",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Ports uk-data#534 (a draft, at c67077a66; uk-data#492) at the spine's design weights (microcosm#1095). policyengine-uk 2.128.0 (pe-uk#2119) moves a family off a legacy benefit DWP has closed (tax credits from 2025-26) and takes its other legacy awards away; the family then claims Universal Credit if would_claim_uc or would_claim_uc_at_legacy_closure is true, and the engine's default for the second, true, put every such family on Universal Credit. The stage runs after uc_capital_coherence, the last writer of would_claim_uc and universal_credit_reported, and before pension_credit_take_up and CGT cloning, so every SPI benefit unit draws on its own final receipts and every clone carries its source's draw. A benefit unit with a member reporting Universal Credit, a unit whose would_claim_uc is true, and a unit reporting none of the six legacy means-tested benefits (child_tax_credit, working_tax_credit, housing_benefit, esa_income, income_support and jsa_income, each read as a member's <benefit>_reported above 0) is true, the engine's default. Every other unit is drawn at (r - p) / (1 - p), clipped to [0, 1], where r is DWP's claimed / (claimed + did not claim) for the unit's combination of legacy benefits (the all-households rate where DWP reports none; households still in progress are left out) and p is the combination's share of such units whose would_claim_uc is true, at the stage's household weights mapped to benefit units (uk-data#534's p is unweighted, as its draw precedes calibration; Mar\u00eda's ruling of 2026-10-16); so the share claiming at the closure in each combination is DWP's rate. DWP's rates cover Great Britain, and Northern Ireland's units draw at the same rates. The uniform reads an identity-keyed stream on benunit_id.",
+      "operations": [
+        {
+          "artifact_role": "move_to_uc_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2025,
+          "period_mapping": "cumulative_claim_rates_applied_at_every_closure",
+          "record_sets": [
+            "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+            "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total"
+          ],
+          "require_before_source_read": true,
+          "resource": "dwp_move_to_uc_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "July 2022 to June 2026"
+        },
+        {
+          "kind": "draw_uc_claim_at_legacy_closure",
+          "legacy_benefits": [
+            "child_tax_credit",
+            "working_tax_credit",
+            "housing_benefit",
+            "esa_income",
+            "income_support",
+            "jsa_income"
+          ],
+          "output": "would_claim_uc_at_legacy_closure",
+          "p": "the combination's weighted share of drawn units with would_claim_uc true, at the spine's design weights",
+          "port_of": "uk-data#534 at c67077a66",
+          "probability": "clip((rate - p) / (1 - p), 0, 1)",
+          "rate": "claimed / (claimed + did not claim) for the combination, the all-households rate where DWP reports none",
+          "stream": {
+            "salt": "would_claim_uc_at_legacy_closure",
+            "seed": 0
+          },
+          "true_without_draw": "a member reports universal_credit_reported, would_claim_uc is true, or no member reports a legacy benefit"
+        }
+      ],
+      "outputs": [
+        "would_claim_uc_at_legacy_closure"
+      ],
+      "rewrites": [],
+      "source": "https://stat-xplore.dwp.gov.uk",
+      "stage": "uc_legacy_closure_take_up",
+      "survey": "DWP Stat-Xplore, Households invited to Move to Universal Credit by legacy benefit and move status, notices July 2022 to June 2026"
+    },
     "uc_reporter_redraw": {
       "artifacts": [],
       "grain": "benunit",

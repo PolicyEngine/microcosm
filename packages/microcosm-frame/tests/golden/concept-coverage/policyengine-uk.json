@@ -217,6 +217,10 @@
    },
    {
     "entity": "benunit",
+    "name": "would_claim_uc_at_legacy_closure"
+   },
+   {
+    "entity": "benunit",
     "name": "would_claim_uc_childcare"
    },
    {
@@ -237,7 +241,7 @@
    }
   ]
  },
- "covered_count": 41,
+ "covered_count": 42,
  "covered_inputs": [
   {
    "entity": "person",
@@ -394,6 +398,10 @@
   {
    "entity": "benunit",
    "name": "would_claim_uc"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_uc_at_legacy_closure"
   },
   {
    "entity": "benunit",
@@ -1446,10 +1454,6 @@
   {
    "entity": "benunit",
    "name": "working_tax_credit_run_on"
-  },
-  {
-   "entity": "benunit",
-   "name": "would_claim_uc_at_legacy_closure"
   },
   {
    "entity": "household",

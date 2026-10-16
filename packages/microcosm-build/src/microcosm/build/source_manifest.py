@@ -127,6 +127,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "head_carry",
         "impute_annual_property_purchases",
         "assign_regional_home_values",
+        "draw_uc_claim_at_legacy_closure",
         "impute_bus_use_band",
         "impute_frs_property_finance_costs",
         "impute_lifetime_isa_balance",

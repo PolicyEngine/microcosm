@@ -108,6 +108,7 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
@@ -164,6 +165,9 @@ _STAGE_HELPER_MODULES = {
         uc_capital_coherence,
     ),
     "uc_capital_coherence": (uc_relationships,),
+    # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
+    # weight mapping and reads the vendored DWP rows (microcosm#1095).
+    "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
@@ -494,6 +498,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .high_value_home_support import UKHighValueHomeSupportStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
@@ -709,6 +714,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
+            ),
+            "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+                stage=stages["uc_legacy_closure_take_up"]
             ),
             "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
                 stage=stages["pension_credit_take_up"], engine=engine

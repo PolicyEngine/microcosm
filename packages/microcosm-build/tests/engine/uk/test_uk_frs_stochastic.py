@@ -77,8 +77,9 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
     # Named exception (iv): from 2.128.0 the closure of tax credits moves a
     # family onto Universal Credit (pe-uk#2119), and a pension-age Working Tax
     # Credit recipient claims it with the upper age condition waived (SI
-    # 2014/1230 reg 60A). The population leaves them out; the build leaves
-    # would_claim_uc_at_legacy_closure at the engine's default.
+    # 2014/1230 reg 60A). The population leaves them out; whether such a
+    # family claims at the closure is would_claim_uc_at_legacy_closure, which
+    # uc_legacy_closure_take_up draws at DWP's Move to UC rates (microcosm#1095).
     assert _engine_uc_eligible(
         {"wtc": {"age": {2025: 70}, "working_tax_credit_reported": {2025: 2_000}}},
         {"b_wtc": {"members": ["wtc"]}},

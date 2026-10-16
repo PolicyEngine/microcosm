@@ -5314,6 +5314,64 @@
    "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.134.4 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine's proxies share household capital over every claimant or partner instead, which puts a parent's property on an adult child's claim; they apply only to a unit on the unavailable sentinel. The property counts at 90% of its value, market value less 10% for the costs of sale (UC Regs 2013 reg 49; SPC Regs 2002 reg 19); debt secured on it is not on the frame and is not netted (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both."
   },
   {
+   "stage": "uc_legacy_closure_take_up",
+   "survey": "DWP Stat-Xplore, Households invited to Move to Universal Credit by legacy benefit and move status, notices July 2022 to June 2026",
+   "source": "https://stat-xplore.dwp.gov.uk",
+   "grain": "benunit",
+   "artifacts": [
+    {
+     "role": "move_to_uc_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "dwp_move_to_uc_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "move_to_uc_facts",
+     "resource": "dwp_move_to_uc_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06",
+      "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total"
+     ],
+     "source_vintage": "July 2022 to June 2026",
+     "mapped_build_period": 2025,
+     "period_mapping": "cumulative_claim_rates_applied_at_every_closure",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
+    {
+     "kind": "draw_uc_claim_at_legacy_closure",
+     "output": "would_claim_uc_at_legacy_closure",
+     "port_of": "uk-data#534 at c67077a66",
+     "legacy_benefits": [
+      "child_tax_credit",
+      "working_tax_credit",
+      "housing_benefit",
+      "esa_income",
+      "income_support",
+      "jsa_income"
+     ],
+     "true_without_draw": "a member reports universal_credit_reported, would_claim_uc is true, or no member reports a legacy benefit",
+     "rate": "claimed / (claimed + did not claim) for the combination, the all-households rate where DWP reports none",
+     "probability": "clip((rate - p) / (1 - p), 0, 1)",
+     "p": "the combination's weighted share of drawn units with would_claim_uc true, at the spine's design weights",
+     "stream": {
+      "salt": "would_claim_uc_at_legacy_closure",
+      "seed": 0
+     }
+    }
+   ],
+   "outputs": [
+    "would_claim_uc_at_legacy_closure"
+   ],
+   "notes": "Ports uk-data#534 (a draft, at c67077a66; uk-data#492) at the spine's design weights (microcosm#1095). policyengine-uk 2.128.0 (pe-uk#2119) moves a family off a legacy benefit DWP has closed (tax credits from 2025-26) and takes its other legacy awards away; the family then claims Universal Credit if would_claim_uc or would_claim_uc_at_legacy_closure is true, and the engine's default for the second, true, put every such family on Universal Credit. The stage runs after uc_capital_coherence, the last writer of would_claim_uc and universal_credit_reported, and before pension_credit_take_up and CGT cloning, so every SPI benefit unit draws on its own final receipts and every clone carries its source's draw. A benefit unit with a member reporting Universal Credit, a unit whose would_claim_uc is true, and a unit reporting none of the six legacy means-tested benefits (child_tax_credit, working_tax_credit, housing_benefit, esa_income, income_support and jsa_income, each read as a member's <benefit>_reported above 0) is true, the engine's default. Every other unit is drawn at (r - p) / (1 - p), clipped to [0, 1], where r is DWP's claimed / (claimed + did not claim) for the unit's combination of legacy benefits (the all-households rate where DWP reports none; households still in progress are left out) and p is the combination's share of such units whose would_claim_uc is true, at the stage's household weights mapped to benefit units (uk-data#534's p is unweighted, as its draw precedes calibration; María's ruling of 2026-10-16); so the share claiming at the closure in each combination is DWP's rate. DWP's rates cover Great Britain, and Northern Ireland's units draw at the same rates. The uniform reads an identity-keyed stream on benunit_id."
+  },
+  {
    "stage": "pension_credit_take_up",
    "survey": "Family Resources Survey 2024-25",
    "source": "DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.",
