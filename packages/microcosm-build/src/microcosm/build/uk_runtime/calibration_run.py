@@ -80,6 +80,7 @@ UK_CALIBRATION_GATE_SCOPE = (
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
+    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",

@@ -1486,6 +1486,7 @@ class TestUKGatesManifest:
             "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
             "uk_local_geography_ladder_post_calibration",
+            "uk_local_brma_enum_domain",
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
@@ -1587,8 +1588,21 @@ class TestUKGatesManifest:
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
             "uk_cgt_projection_entrants",
+            "uk_local_brma_enum_domain",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
+
+    def test_brma_domain_is_checked_on_the_spine_and_local_candidate(
+        self, manifest
+    ) -> None:
+        entries = {gate.id: gate for gate in manifest.gates}
+        assembled = entries["uk_brma_enum_domain"]
+        local = entries["uk_local_brma_enum_domain"]
+        assert assembled.phase == "assembled"
+        assert local.phase == "terminal"
+        assert assembled.gate == local.gate == "enum_domain"
+        assert assembled.parameters == local.parameters == {"columns": ("brma",)}
+        assert local.evidence_absent_blocks is True
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:
         by_id = {gate.id: gate.gate for gate in manifest.gates}
