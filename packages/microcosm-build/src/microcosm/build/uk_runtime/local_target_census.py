@@ -246,7 +246,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "(microcosm.high_value_homes.*_by_region) bind on the local line "
             "only, as the cross-grain control for these cells, except the "
             "North East and Wales rows over £2m, which are signed out below "
-            "the 400-home floor (microcosm#1301)."
+            "the 400-home floor (microcosm#1301). The family covers "
+            "owner-occupiers' main residences only: second homes, let "
+            "property and homes owned by companies or non-residents are "
+            "outside it until the coverage decision of microcosm#1240 fix 6."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
