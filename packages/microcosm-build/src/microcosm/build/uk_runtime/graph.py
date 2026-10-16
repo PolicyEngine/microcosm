@@ -406,6 +406,21 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("benunit", "would_claim_uc"),
         }
     ),
+    # The Move to UC claim draw reads each unit's legacy and Universal Credit
+    # receipts and its would_claim_uc, after their last writers (uk-data#534,
+    # microcosm#1095).
+    "uc_legacy_closure_take_up": frozenset(
+        {
+            ("person", "child_tax_credit_reported"),
+            ("person", "working_tax_credit_reported"),
+            ("person", "housing_benefit_reported"),
+            ("person", "esa_income_reported"),
+            ("person", "income_support_reported"),
+            ("person", "jsa_income_reported"),
+            ("person", "universal_credit_reported"),
+            ("benunit", "would_claim_uc"),
+        }
+    ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
     # The support splits copy whole households, so their surfaces are open.
     "high_value_home_support": None,
@@ -977,6 +992,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
+    ),
+    "uc_legacy_closure_take_up": (
+        _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
     ),
     "pension_credit_take_up": (
         _Cell("benunit", "would_claim_pc", "bool"),

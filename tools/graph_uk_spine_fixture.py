@@ -114,6 +114,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
@@ -191,7 +194,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 44
+UK_FIXTURE_STAGE_COUNT = 45
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -2008,6 +2011,9 @@ def _build_implementations(
         ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
+        ),
+        "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+            stage=stages["uc_legacy_closure_take_up"]
         ),
         "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
             stage=stages["pension_credit_take_up"], engine=engine

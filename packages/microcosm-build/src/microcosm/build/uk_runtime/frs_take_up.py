@@ -64,8 +64,9 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # under the UC Regs 2013 reg 8 exceptions, whom the engine includes; mixed-age
 # couples on the Pension Credit route, whom it excludes; and, from 2.128.0, a
 # pension-age family moved onto Universal Credit when its legacy benefit
-# closes, whom it includes (SI 2014/1230 reg 60A; the build leaves
-# ``would_claim_uc_at_legacy_closure`` at the engine default). The stage
+# closes, whom it includes (SI 2014/1230 reg 60A; whether such a family
+# claims is ``would_claim_uc_at_legacy_closure``, which
+# ``uc_legacy_closure_take_up`` draws, microcosm#1095). The stage
 # manifest declares the same population on the ``would_claim_uc`` operation;
 # ``assert_take_up_stage_population_declaration`` refuses a manifest that stops
 # saying so, so the declaration and the code cannot drift apart.

@@ -1304,6 +1304,32 @@
       ]
     },
     {
+      "resource": "dwp_move_to_uc_facts.json",
+      "purpose": "DWP Stat-Xplore, households sent a Move to Universal Credit migration notice in Great Britain, notices July 2022 to June 2026, by the legacy benefits they received and their move status (claimed Universal Credit, did not claim as the legacy benefit closed, in progress), with the totals by combination and by status (uk-data#534, microcosm#1095): the uc_legacy_closure_take_up stage's claim rate for a combination is claimed / (claimed + did not claim). No value is derived here.",
+      "consumers": [
+        "uk_runtime.legacy_closure_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mtuc_households_by_legacy_benefit_and_move_status",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06"
+          },
+          "expected_row_count": 57
+        },
+        {
+          "label": "mtuc_households_totals",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06.total"
+          },
+          "expected_row_count": 23
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [

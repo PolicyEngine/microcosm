@@ -134,6 +134,9 @@ from microcosm.build.uk_runtime.high_value_home_support import (
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     write_uk_national_frame,
@@ -1703,6 +1706,12 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_legacy_closure_take_up" in stage_names:
+        implementations["uc_legacy_closure_take_up"] = (
+            UKLegacyClosureTakeUpStageTransform(
+                stage=stages_by_name["uc_legacy_closure_take_up"]
+            )
         )
     if "pension_credit_take_up" in stage_names:
         implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
