@@ -58,7 +58,11 @@ REPORTED_OUTSTANDING_TEST = (
 #: who repays started a course before Plan 5 existed: a repayer whose dates
 #: point to a course from 2023/24 takes Plan 2, and SLC's published zero of
 #: Plan 5 borrowers above the threshold in academic year 2024/25 holds
-#: (microcosm#868).
+#: (microcosm#868). The year is fixed, not derived from the cohort: with
+#: three-year courses a 2023/24 starter leaves in 2026 and first repays in
+#: April 2027, so a 2026 build would let a repayer take Plan 5 a year before
+#: the assumed cohort repays. Revisit it when the build year moves (Vahid's
+#: review of microcosm#1299).
 PLAN_5_REPAYMENTS_FROM = 2026
 PLAN_SALTS = {
     "PLAN_5": "student_loan_plan_5",
