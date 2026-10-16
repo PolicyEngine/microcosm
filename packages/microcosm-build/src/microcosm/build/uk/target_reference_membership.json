@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-abf0921-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1311,
-  "contract_target_count": 356,
-  "active_reference_count": 1291,
+  "candidate_count": 1341,
+  "contract_target_count": 359,
+  "active_reference_count": 1321,
   "status_counts": {
-    "active": 1291,
+    "active": 1321,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 15
   },
@@ -4271,6 +4271,138 @@
     "dwp.hb.amount_pension_age": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "microcosm.high_value_homes.over_1m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_1_5m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_2m_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        }
+      ]
     }
   },
   "genuine_sum_residue": [
@@ -29641,6 +29773,381 @@
           "resolved_fact_key": "ledger_aggregate_fact_v2_3631e3adc6a555d6845a1252"
         }
       ]
+    },
+    "microcosm.high_value_homes.over_1m_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 2508.423,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_b03a4ec52ec0c9565edac4b1"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 27590.583,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_9ce69fbe57a958c7261ab7cf"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 13978.44,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_e4d769248444769ade02aa6d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 14399.878,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_238503be7e78f1e937aef7b4"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 22286.116,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_5f9ed974b2ece753972365ca"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 87553.535,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_5707c15e495e807c1686cb94"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 272832.635,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_156bccd00e9cec62166a9e88"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 213894.568,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_7ef4386e72c69ccf5933a2e5"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 56970.627,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_bdf55c1f40906b6efbccd201"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 5536.777,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_d73dfb5397660cf66b81fb30"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_1_5m_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 561.168,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_2d562db0705dcfd7c711f22c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 7260.132,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_2afddad22f617acbef35a544"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 2749.871,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_0777959e037d4782d4fa100d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2969.626,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_b0d08c1ff159605d18eeeeca"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 4734.944,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_775e7d7af5c3617e40ccba90"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 25742.084,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c4cbe34b5816c8a000a9495b"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 117626.39,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_0f81618a69c84a40d82ae923"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 70261.709,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c91b82f5ac56254630cec320"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 15568.651,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_171c7a46883e0e63fb44887c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 898.854,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_334d2832ce44aabf02a0145c"
+        }
+      ]
+    },
+    "microcosm.high_value_homes.over_2m_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 202.945,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_d1bc01be0274a8fa5b533a31"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 2887.107,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_7ac98edba2bb6dd8d19f9a03"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 906.521,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_e50454cee6faf4012ed6dc88"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 962.333,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_37db545bad6d46c5d2c0248d"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 1482.074,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_15fa7ed31c8417531483ef28"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 9847.844,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_c903067e3b07e8637b8bd1e1"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 63281.388,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_65c2ba2daeadd9dac0afd229"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 29996.104,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_a5e976127890e285a7a39884"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 6354.494,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_dbbcaaaea62239c39f027c4c"
+        },
+        {
+          "name": "microcosm.high_value_homes.over_2m_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 262.486,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_86363151d716e7a8f94adecb"
+        }
+      ]
     }
   },
   "fanout_family_outcomes": [
@@ -29692,6 +30199,12 @@
       "status": "active_region_tier_fanout",
       "active_reference_count": 108,
       "signed_rationale": "The nine ONS population-by-age-band targets fan out over the twelve-area region tier (nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level), one reference per area, each scoped on the spine by a household-region predicate and placed at the region grain of the cross-grain rule (microcosm#905). The former single UK-wide row per band is retired: the tier sums to it within the same publication."
+    },
+    {
+      "family": "high_value_homes",
+      "status": "active_england_and_wales_region_tier_local_line_only",
+      "active_reference_count": 30,
+      "signed_rationale": "The three high-value homes region targets (owner-occupied homes over \u00a31m, \u00a31.5m and \u00a32m at April-2026 prices) fan out over the England-and-Wales part of the region tier, the nine English regions and Wales (area_scope: Price Paid covers neither Scotland nor Northern Ireland), and select the Microcosm-derived stock the constituency and local-authority cells bind, merged beside the feed from uk/high_value_home_stock_facts.json (microcosm#1240). Each row is the cross-grain control for its area cells. They bind on the local line only (calibration_lines): the national line and the release-cut certifier drop them after the compile, since the national spine's main_residence_value is the WAS donor's, not a Land Registry placement (microcosm#1301)."
     },
     {
       "family": "dwp_state_pension",
@@ -29764,5 +30277,13 @@
       "signed_rationale": "HMRC Table 2.1a's 0-2,999 row (3,000 taxpayers with a liability on gains at or below the 2024-25 annual exempt amount of GBP 3,000, from attributed gains and prior-year adjustments) lies below the AEA gate the taxpayer proxy measures, so the model cannot place anyone in it. Signed out; the twelve bands from 3,000 stay bound."
     }
   ],
-  "multi_fact_rationales": []
+  "multi_fact_rationales": [],
+  "derived_fact_resources": [
+    {
+      "resource": "high_value_home_stock_facts.json",
+      "rows": 5430,
+      "rows_sha256": "5bffb4044cab1c5c9dca4b7103c3b88b1f5390404786698fd050972e8f420450",
+      "inputs_sha256": "41c4f1595befe47a299aa03c803f8539e2406750ab8a312e469affdc7d4990fa"
+    }
+  ]
 }

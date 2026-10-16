@@ -853,7 +853,10 @@
       "dft.bus_journeys.west_midlands": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
       "dft.bus_journeys.east_of_england": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
       "dft.bus_journeys.south_east": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
-      "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207)."
+      "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "microcosm.high_value_homes.over_1m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_1_5m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1.5m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1243,7 +1246,10 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age"
+      "dwp.hb.amount_pension_age",
+      "microcosm.high_value_homes.over_1m_by_region",
+      "microcosm.high_value_homes.over_1_5m_by_region",
+      "microcosm.high_value_homes.over_2m_by_region"
     ]
   },
   "profile_parity": {

@@ -1674,19 +1674,22 @@ class TestPreflightBindings:
         # Great Britain, three rows), 1,040 of them compiled: the support
         # floor defers five, Orkney and Shetland's gas-connected cells are
         # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
-        # kWh row.
-        assert result.details["candidate_targets"] == 25_309
+        # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
+        # all 1,725 constituency cells, which the region rows now control,
+        # and the 598 authority cells under the 400-home floor.
+        assert result.details["candidate_targets"] == 22_986
         assert result.details["reference_targets"] == 27_115
-        # Only the 1,806 signed area deferrals and absences remain (2,100
+        # Only the 4,129 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
-        # higher-rate cells; microcosm#1207 the ten energy cells above); the
-        # 1,011 household rows are ordinary Chronicle-compiled references.
+        # higher-rate cells; microcosm#1207 the ten energy cells above;
+        # microcosm#1301 the 2,323 high-value homes cells above); the 1,011
+        # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_806
+        assert len(exclusions) == 4_129
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

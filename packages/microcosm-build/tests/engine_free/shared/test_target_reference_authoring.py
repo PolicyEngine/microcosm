@@ -370,14 +370,21 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     # The council-tax country masks refuse a local-authority roster that does
     # not carry the declared 32 Scottish, 11 Northern Irish, 22 Welsh, and
     # 296 English authorities
-    # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
-    # This test is about the *contract* refusal, so give it a roster those
-    # masks accept and let the missing target id be what fails.
+    # (covered by test_council_tax_country_masks_refuse_roster_count_drift),
+    # and the high-value homes constituency deferral one that does not carry
+    # the 575 England and Wales seats (microcosm#1301, covered in
+    # test_uk_high_value_homes_local_cells.py). This test is about the
+    # *contract* refusal, so give it a roster those masks accept and let the
+    # missing target id be what fails.
     crosswalk_path.write_text(
         json.dumps(
             {
                 "levels": {
-                    "constituency": {"area_ids": ["A1"]},
+                    "constituency": {
+                        "area_ids": ["A1"]
+                        + [f"E14{index:06d}" for index in range(543)]
+                        + [f"W07{index:06d}" for index in range(32)]
+                    },
                     "local_authority": {
                         "area_ids": [f"S{index:08d}" for index in range(32)]
                         + [f"N{index:08d}" for index in range(11)]

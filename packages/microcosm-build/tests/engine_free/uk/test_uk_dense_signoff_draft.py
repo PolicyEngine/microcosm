@@ -36,7 +36,6 @@ from microcosm.build.gates import (
     area_support_gate,
 )
 from microcosm.build.stage_evidence import encode_stage_evidence
-from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
     uk_full_gate_manifest,
@@ -464,29 +463,16 @@ def write_run(
 
 @pytest.fixture(autouse=True)
 def _synthetic_environment(monkeypatch):
-    """Sign with the test key, wire the local target-fit register, pin the live
-    dense digests, and keep the real registers' windows out of the national
-    review invariant (its own tests below exercise it)."""
-
-    from microcosm.build.uk_runtime import release_certification
-    from microcosm.data import contract
+    """Sign with the test key, wire the local target-fit register, and keep
+    the real registers' windows out of the national review invariant (its own
+    tests below exercise it). The signed reports carry the live dense digests,
+    so --verify checks them against the contract's committed pin."""
 
     monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     monkeypatch.setattr(
         TOOL, "register_wiring", lambda gates=None: dict.fromkeys(SPECS)
     )
     monkeypatch.setattr(TOOL, "_review_registers", list)
-    # The contract's reviewed digests move with gates.json and are re-pinned
-    # in their own commit; the tool's verify plumbing is under test here.
-    monkeypatch.setattr(
-        contract,
-        "_UK_DENSE_GATE_DIGESTS",
-        release_certification._scoped_digests(
-            frozenset(UK_LOCAL_GATE_SCOPE),
-            phases=("terminal",),
-            policy_suffix="local_candidate",
-        ),
-    )
 
 
 @pytest.fixture

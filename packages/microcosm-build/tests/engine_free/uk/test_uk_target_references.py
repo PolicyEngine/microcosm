@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1291
+ACTIVE_REFERENCE_COUNT = 1321
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -897,7 +897,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1291,
+        "active": 1321,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 15,
     }
@@ -1023,6 +1023,28 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "of the cross-grain rule (microcosm#905). The former single "
                 "UK-wide row per band is retired: the tier sums to it within "
                 "the same publication."
+            ),
+        },
+        {
+            "family": "high_value_homes",
+            "status": "active_england_and_wales_region_tier_local_line_only",
+            # Three thresholds over the nine English regions and Wales
+            # (microcosm#1301).
+            "active_reference_count": 30,
+            "signed_rationale": (
+                "The three high-value homes region targets (owner-occupied "
+                "homes over £1m, £1.5m and £2m at April-2026 prices) fan out "
+                "over the England-and-Wales part of the region tier, the nine "
+                "English regions and Wales (area_scope: Price Paid covers "
+                "neither Scotland nor Northern Ireland), and select the "
+                "Microcosm-derived stock the constituency and local-authority "
+                "cells bind, merged beside the feed from "
+                "uk/high_value_home_stock_facts.json (microcosm#1240). Each row "
+                "is the cross-grain control for its area cells. They bind on "
+                "the local line only (calibration_lines): the national line "
+                "and the release-cut certifier drop them after the compile, "
+                "since the national spine's main_residence_value is the WAS "
+                "donor's, not a Land Registry placement (microcosm#1301)."
             ),
         },
         {
@@ -1673,8 +1695,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
     # microcosm#1123 adds the LFS household estimates for England's regions
-    # and ITL Table 2.2's higher and additional rate taxpayers.
-    assert len(two_level) == 55
+    # and ITL Table 2.2's higher and additional rate taxpayers; microcosm#1301
+    # adds the three high-value homes region rows.
+    assert len(two_level) == 58
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1689,6 +1712,12 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
     ]
     assert len(itl_rate) == 2
+    high_value_homes = [
+        target_id
+        for target_id in two_level
+        if target_id.startswith("microcosm.high_value_homes.")
+    ]
+    assert len(high_value_homes) == 3
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1709,7 +1738,12 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
             or target_id in spi_region
             or target_id in itl_rate
         ) and target_id != "ons.households.english_regions"
-        assert cells == (tier_codes if uk_wide else english), target_id
+        if target_id in high_value_homes:
+            # Price Paid covers England and Wales only: area_scope keeps the
+            # English regions and Wales at country level (microcosm#1301).
+            assert cells == [*english, "W92000004"], target_id
+        else:
+            assert cells == (tier_codes if uk_wide else english), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
         for row in rows:
@@ -1762,8 +1796,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
     # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
-    # cells (microcosm#1123).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 624
+    # cells (microcosm#1123), and 30 high-value homes cells, three thresholds
+    # over England's regions and Wales (microcosm#1301).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 654
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
