@@ -4513,8 +4513,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     The rotated holdout and the incumbent comparison are
     opt-in diagnostics (microcosm#1301): the coverage says whether each ran,
     the incumbent files ship all together or not at all, and the manifest's
-    reviewed limitations must say what the release does not claim. Artifacts
-    pin to the release id or to one of its immutable per-cut tags.
+    reviewed limitations must say what the release does not claim. No
+    shipped JSON document carries a per-area support figure (microcosm#1301).
+    Artifacts pin to the release id or to one of its immutable per-cut tags.
     """
 
     failures: list[str] = []
@@ -4607,6 +4608,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
                 coverage, failures, incumbent_attached=incumbent_attached
             )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
+    _check_uk_dense_disclosure(release_dir, failures)
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -5050,6 +5052,105 @@ def _check_area_support_block(
             "release_manifest.json lists areas below the support floor without "
             f"a reviewed area_support_exclusion limitation: {unexcused}."
         )
+
+
+# Per-area support figures a dense release withholds (microcosm#1301): an
+# area's rows, Kish ESS and distinct source households, under each name the
+# support table, the support gate and the diagnostics have used for them.
+# Weights and per-cell estimates are not support figures and ship as they are.
+_UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
+    {
+        "rows",
+        "ess",
+        "sources",
+        "assigned_households",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    }
+)
+# An area key: a GSS code, bare or under its level ("local_authority/E06000053").
+_UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?[EKLMNSW]\d{8}$")
+# A minimum of a support figure over areas ("min_nonzero_households",
+# "minimum_effective_sample_size") is the weakest area's figure. Only the
+# declared floors, under a "floors" key, may use these names.
+_UK_SUPPORT_MINIMUM_KEY_RE = re.compile(
+    r"^min(?:imum)?_[a-z_]*(?:households|rows|sources|sample_size|ess)$"
+)
+# A shortfall worded with the area's measured value ("rows 7 < 50"); the gate
+# names only the floor it misses ("rows < 50").
+_UK_SUPPORT_FIGURE_TEXT_RE = re.compile(
+    r"\b(?:rows|ESS|distinct sources)\s+\d[\d.]*(?:e[+-]?\d+)?\s*<"
+)
+_UK_DISCLOSURE_PATHS_SHOWN = 5
+
+
+def _uk_dense_disclosure_failures(name: str, payload: object) -> list[str]:
+    """Per-area support figures in one shipped JSON document (microcosm#1301).
+
+    Three shapes are refused, wherever they sit, strings included:
+    a support figure in a per-area record (a mapping with an ``area_code``,
+    or the value under an area key), a minimum of a support figure outside
+    the declared floors, and a shortfall worded with the measured value. The
+    failures name where the figures are, never their values.
+    """
+
+    found: dict[str, list[str]] = {"figure": [], "minimum": [], "text": []}
+
+    def walk(value: object, path: str, parent_key: str, per_area: bool) -> None:
+        if isinstance(value, Mapping):
+            per_area = per_area or "area_code" in value
+            for raw_key, child in value.items():
+                key = str(raw_key)
+                child_path = f"{path}.{key}" if path else key
+                if isinstance(child, (int, float)) and not isinstance(child, bool):
+                    if per_area and key in _UK_AREA_SUPPORT_FIGURE_KEYS:
+                        found["figure"].append(child_path)
+                    elif (
+                        _UK_SUPPORT_MINIMUM_KEY_RE.fullmatch(key)
+                        and parent_key != "floors"
+                    ):
+                        found["minimum"].append(child_path)
+                walk(
+                    child,
+                    child_path,
+                    key,
+                    per_area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
+                )
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]", parent_key, per_area)
+        elif isinstance(value, str) and _UK_SUPPORT_FIGURE_TEXT_RE.search(value):
+            found["text"].append(path or "<document>")
+
+    walk(payload, "", "", False)
+    wording = {
+        "figure": "per-area support figure(s) (rows, ESS or distinct sources)",
+        "minimum": "minimum(s) of an area support figure outside the floors",
+        "text": "string(s) stating an area's measured support",
+    }
+    return [
+        f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
+        f"withholds (microcosm#1301); first at {paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
+        for kind, paths in found.items()
+        if paths
+    ]
+
+
+def _check_uk_dense_disclosure(release_dir: Path, failures: list[str]) -> None:
+    """No shipped JSON document carries a per-area support figure (microcosm#1301).
+
+    Every ``*.json`` in the release directory is walked, the signed gate
+    report and the release manifest's strings included. A document that does
+    not parse is reported by the check that owns it.
+    """
+
+    for path in sorted(release_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        failures.extend(_uk_dense_disclosure_failures(path.name, payload))
 
 
 def _check_local_area_release_manifest(

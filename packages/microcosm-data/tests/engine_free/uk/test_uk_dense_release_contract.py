@@ -33,7 +33,12 @@ def _sha(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _signed_report(*, blocking_status: str = "passed", release_candidate: bool = True):
+def _signed_report(
+    *,
+    blocking_status: str = "passed",
+    release_candidate: bool = True,
+    area_support_details: dict | None = None,
+):
     gates = {}
     for entry_id in sorted(dc._UK_DENSE_GATE_ENTRY_IDS):
         blocking = entry_id in dc._UK_DENSE_RELEASE_BLOCKING_IDS
@@ -43,7 +48,11 @@ def _signed_report(*, blocking_status: str = "passed", release_candidate: bool =
             "criticality": "release_blocking" if blocking else "diagnostic",
             "status": blocking_status if blocking else "failed",
             "failures": [] if blocking else ["diagnostic miss"],
-            "details": {},
+            "details": (
+                dict(area_support_details)
+                if entry_id == "uk_local_area_support" and area_support_details
+                else {}
+            ),
             "reason": None,
         }
     attestation = {
@@ -1376,6 +1385,118 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
     failures = _failures(release_dir)
     assert "original candidate approvals" in failures
     assert "expired 2026-10-03" in failures
+
+
+#: The area-support details a signed report may ship: the floors an excused
+#: area misses and its signed record, and area counts by level.
+_FLOOR_ONLY_DETAILS = {
+    "floors": {
+        "minimum_rows": 50,
+        "minimum_effective_sample_size": 50.0,
+        "minimum_distinct_sources": 50,
+    },
+    "by_geography_level": {
+        "local_authority": {"areas_checked": 2, "areas_below_floor": 1}
+    },
+    "reviewed_exclusions": {
+        "local_authority/E06000053": {
+            "shortfalls": ["rows < 50", "ESS < 50"],
+            "record": {"reason": "synthetic reviewed exclusion"},
+        }
+    },
+}
+
+
+def test_floor_only_area_support_details_ship(tmp_path: Path) -> None:
+    validate_release_dir(
+        write_dense_bundle(
+            tmp_path,
+            report=_signed_report(area_support_details=_FLOOR_ONLY_DETAILS),
+        )
+    )
+
+
+def _with_figures(details: dict) -> dict:
+    figures = json.loads(json.dumps(details))
+    figures["reviewed_exclusions"]["local_authority/E06000053"].update(
+        rows=37, ess=23.75, sources=29
+    )
+    return figures
+
+
+@pytest.mark.parametrize(
+    "inject,expected",
+    [
+        ("manifest_area_row", "per-area support figure(s)"),
+        ("manifest_minimum", "minimum(s) of an area support figure"),
+        ("summary_shortfall_text", "string(s) stating an area's measured support"),
+        ("signed_report_figures", "per-area support figure(s)"),
+    ],
+)
+def test_dense_release_refuses_per_area_support_figures(
+    tmp_path: Path, inject: str, expected: str
+) -> None:
+    """No shipped document may carry an area's rows, ESS or sources (microcosm#1301)."""
+
+    if inject == "signed_report_figures":
+        release_dir = write_dense_bundle(
+            tmp_path,
+            report=_signed_report(
+                area_support_details=_with_figures(_FLOOR_ONLY_DETAILS)
+            ),
+        )
+        name = "uk_local_gates.json"
+    else:
+        release_dir = write_dense_bundle(tmp_path)
+        if inject == "summary_shortfall_text":
+            name = "gate_summary.json"
+            path = release_dir / name
+            summary = json.loads(path.read_text())
+            summary["diagnostic_gates"]["uk_local_area_support"] = {
+                "failures": ["local_authority/E06000053: rows 37 < 50"]
+            }
+        else:
+            name = "release_manifest.json"
+            path = release_dir / name
+            summary = json.loads(path.read_text())
+            if inject == "manifest_area_row":
+                summary["reviewed_limitations"].append(
+                    {
+                        "id": "synthetic_area_note",
+                        "areas": [{"area_code": "E06000053", "sources": 29}],
+                    }
+                )
+            else:
+                summary["support"] = {"min_nonzero_households": 37}
+        path.write_text(json.dumps(summary))
+        _refresh_packaging_checksums(release_dir)
+
+    failures = _failures(release_dir)
+    assert expected in failures
+    assert name in failures
+    # The refusal names where the figure is, never its value.
+    for figure in ("37", "23.75", "29"):
+        assert figure not in failures
+
+
+def test_disclosure_walker_allows_floors_counts_and_weights() -> None:
+    shipped = {
+        "area_support": {
+            "floors": {"minimum_rows": 50, "minimum_distinct_sources": 50},
+            "below_floor": {"local_authority": ["E06000053"]},
+        },
+        "support": {"areas_checked": 2, "areas_below_floor": 1},
+        "weights": {"effective_sample_size": 3.5, "max_weight": 4.0},
+        "worst_areas": [
+            {
+                "area_code": "E06000053",
+                "worst_abs_relative_error": 0.4,
+                "support_below_floor": True,
+            }
+        ],
+        "failures": ["local_authority/E06000053: rows < 50, ESS < 50"],
+    }
+    assert dc._uk_dense_disclosure_failures("shipped.json", shipped) == []
 
 
 def test_the_area_support_block_names_only_excused_areas() -> None:

@@ -560,7 +560,8 @@ def _area_support_block(solve: Mapping[str, object]) -> dict[str, object]:
 
     The support gate blocks release, so an area of a released file sits below
     a floor only under a reviewed exclusion the gate stood on, and those
-    entries name the areas. The counts stay in the signed gate report.
+    entries name the areas. The areas' support figures stay in the run
+    directory's area-support table, which no release ships (microcosm#1301).
     """
     from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
 

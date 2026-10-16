@@ -1536,6 +1536,60 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
     ).is_file()
 
 
+def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
+    tmp_path, monkeypatch, capsys
+):
+    """A best-effort refresh that fails after read-back passed fails nothing.
+
+    Read-back's verdict owns the delivery's error code (microcosm#1301), so
+    the run closes as built: no failure receipt, the manifest gains its
+    verified staging delivery, and the Logbook row is spooled.
+    """
+
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    class RefreshFailsHub(_FakeHub):
+        read_back_started = False
+
+        def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
+            if filename.startswith("runs/"):
+                self.read_back_started = True
+            return super().hf_hub_download(
+                repo_id=repo_id, filename=filename, repo_type=repo_type, **kwargs
+            )
+
+        def upload_file(self, **kwargs):
+            if self.read_back_started:
+                raise RuntimeError("503 token=do-not-record")
+            super().upload_file(**kwargs)
+
+    hub = RefreshFailsHub()
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-upload-interval-seconds",
+        "0",
+        "--staging-read-back",
+        staging=None,
+    )
+
+    assert status == 0
+    assert hub.read_back_started
+    assert not (out / "failure.json").exists()
+    err = capsys.readouterr().err
+    assert "staging upload failed" in err and "do-not-record" not in err
+    delivery = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staging_delivery"]
+    assert delivery["read_back"] == "passed"
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_attempts"] > delivery["upload_successes"] > 0
+    rows = spool_rows(out)
+    assert len(rows) == 1 and rows[0].disposition == "iterating"
+
+
 def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
     tmp_path, monkeypatch
 ):

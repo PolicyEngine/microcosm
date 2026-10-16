@@ -157,9 +157,6 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
         "worst_target",
         "worst_abs_relative_error",
         "loss_contribution",
-        "nonzero_households",
-        "nonzero_source_households",
-        "effective_sample_size",
     }
     assert [row["country"] for row in areas["countries"]] == [
         "England",
@@ -176,6 +173,29 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert trimmed["limit"] == 1
     assert trimmed["n_areas_scored"] == 2
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
+
+    # The rows ship in a release, so they carry the area's floor flag, never
+    # its rows, ESS or sources (microcosm#1301).
+    flagged = uk_weakest_areas_by_fit(
+        rows, support.assign(support_below_floor=[True, False])
+    )
+    assert {
+        row["area_code"]: row["support_below_floor"] for row in flagged["bottom_by_fit"]
+    } == {"W07000041": True, "E09000001": False}
+    assert all(
+        type(row["support_below_floor"]) is bool for row in flagged["bottom_by_fit"]
+    )
+    for row in flagged["bottom_by_fit"]:
+        assert not {
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        } & set(row)
+    # Only the codes are required of the support table.
+    codes_only = uk_weakest_areas_by_fit(
+        rows, support.loc[:, ["geography_level", "area_code"]]
+    )
+    assert codes_only["bottom_by_fit"] == areas["bottom_by_fit"]
 
 
 def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
@@ -216,24 +236,35 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
         "share_failing_cells_in_bottom_ess_decile": 1.0,
         "spearman_worst_abs_relative_error_vs_ess": -1.0,
         "worst_areas": [
-            {
-                "area_code": "E14000001",
-                "worst_abs_relative_error": 0.3,
-                "rows": 2,
-                "ess": 1.0,
-                "sources": 1,
-            },
-            {
-                "area_code": "E14000002",
-                "worst_abs_relative_error": 0.05,
-                "rows": 20,
-                "ess": 20.0,
-                "sources": 20,
-            },
+            {"area_code": "E14000001", "worst_abs_relative_error": 0.3},
+            {"area_code": "E14000002", "worst_abs_relative_error": 0.05},
         ],
     }
     assert result["la"]["n_failing_cells"] == 1
     assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
+
+    # With the floor flag in the support table, each worst area carries it in
+    # place of its rows, ESS and sources (microcosm#1301).
+    flagged = uk_support_limited_misses(
+        diagnostics,
+        {
+            grain: frame.assign(support_below_floor=True)
+            for grain, frame in support.items()
+        },
+        max_abs_relative_error=0.25,
+    )
+    assert flagged["constituency"]["worst_areas"] == [
+        {
+            "area_code": "E14000001",
+            "worst_abs_relative_error": 0.3,
+            "support_below_floor": True,
+        },
+        {
+            "area_code": "E14000002",
+            "worst_abs_relative_error": 0.05,
+            "support_below_floor": True,
+        },
+    ]
 
     rows = [
         _local_target_row(

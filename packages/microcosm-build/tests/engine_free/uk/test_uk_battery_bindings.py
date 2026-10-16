@@ -1720,8 +1720,8 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
     binding = UK_GATE_REGISTRY["area_support"]
     # The committed register carries the two micro local authorities Maria
     # excluded on the measured K=4 shortfalls (microcosm#762 A4); the
-    # synthetic roster carries them below the floor so the committed entries
-    # apply instead of reading as unknown.
+    # synthetic roster carries them below the floor, at made-up figures, so
+    # the committed entries apply instead of reading as unknown.
     support = pd.DataFrame(
         {
             "geography_level": [
@@ -1731,10 +1731,10 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
                 "local_authority",
             ],
             "area_code": ["E14000001", "E06000001", "E06000053", "E09000001"],
-            "assigned_households": [50, 50, 7, 14],
-            "nonzero_households": [50, 50, 7, 14],
-            "effective_sample_size": [50.0, 50.0, 6.8, 12.1],
-            "nonzero_source_households": [50, 50, 7, 14],
+            "assigned_households": [50, 50, 30, 40],
+            "nonzero_households": [50, 50, 30, 40],
+            "effective_sample_size": [50.0, 50.0, 30.0, 40.0],
+            "nonzero_source_households": [50, 50, 30, 40],
         }
     )
     monkeypatch.setattr(

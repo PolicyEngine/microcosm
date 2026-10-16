@@ -1067,16 +1067,45 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     rotated holdout nor the incumbent comparison (microcosm#1301); the
     ``diagnostics`` case opts into both, supplying the incumbent-surface
     companions as the scoring step supplies them.
+
+    The area-support gate reports the real gate's details over the synthetic
+    support table, whose every area sits below the floors under a reviewed
+    exclusion: no shipped file may carry those areas' support figures
+    (microcosm#1301).
     """
 
     pytest.importorskip("tables")
+    import io
+
+    import pandas as pd
+
+    from microcosm.build.gates import area_support_gate
     from microcosm.build.logbook import load_spool_rows
     from microcosm.build.uk_runtime import full_build_cli as cli
+    from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
+    from test_support.microcosm_build import uk_full_build_cli as harness
     from test_support.microcosm_build.uk_full_build_cli import (
         STEM,
         graph_dense_bundle,
     )
 
+    support = pd.read_csv(io.BytesIO(harness.SUPPORT_CSV))
+    excused = {
+        f"{row.geography_level}/{row.area_code}": {"reason": "synthetic review"}
+        for row in support.itertuples(index=False)
+    }
+    support_gate = area_support_gate(
+        support,
+        area_roster={
+            level: tuple(rows["area_code"])
+            for level, rows in support.groupby("geography_level")
+        },
+        geography_levels=("constituency", "local_authority"),
+        reviewed_exclusions=excused,
+        **uk_area_support_floors(),
+    )
+    assert support_gate.passed
+    monkeypatch.setattr(harness, "AREA_SUPPORT_DETAILS", dict(support_gate.details))
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     monkeypatch.setattr(cli, "git_commit", lambda: "b" * 40)
     monkeypatch.setattr(cli, "git_dirty", lambda: False)
@@ -1196,3 +1225,35 @@ def test_assembler_stages_a_graph_built_dense_candidate(
         assert coverage["incumbent"] == {"compared": False}
         assert {"no_out_of_sample_claim", "no_incumbent_comparison"} <= set(limitations)
     dc.validate_release_dir(release_dir)
+
+    # Disclosure (microcosm#1301): every area is below the floors, yet no
+    # shipped document carries an area's rows, ESS or sources. The signed
+    # report names the floors each excused area misses; the manifest counts
+    # areas; the release manifest names the areas by code.
+    for path in sorted(release_dir.glob("*.json")):
+        payload = json.loads(path.read_text())
+        assert dc._uk_dense_disclosure_failures(path.name, payload) == [], path.name
+    signed = json.loads((release_dir / "uk_local_gates.json").read_text())
+    shipped_exclusions = signed["gates"]["uk_local_area_support"]["details"][
+        "reviewed_exclusions"
+    ]
+    assert set(shipped_exclusions) == set(excused)
+    assert all(
+        set(entry) == {"shortfalls", "record"} for entry in shipped_exclusions.values()
+    )
+    shipped_manifest = json.loads(
+        (release_dir / "rowwise_candidate_manifest.json").read_text()
+    )
+    assert shipped_manifest["support"] == {
+        "areas_checked": 4,
+        "areas_below_floor": 4,
+        "by_geography_level": {
+            level: {"areas_checked": 2, "areas_below_floor": 2}
+            for level in ("constituency", "local_authority")
+        },
+    }
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert release_manifest["area_support"]["below_floor"] == {
+        "constituency": ["E14000001", "E14000002"],
+        "local_authority": ["E07000008", "E09000001"],
+    }

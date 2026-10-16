@@ -284,6 +284,12 @@ def failure_lines(failed) -> dict[str, str]:
     return {str(gate_id): str(line) for gate_id, line in failed}
 
 
+#: The ``uk_local_area_support`` details the synthetic evidence nodes report,
+#: when a test sets them (the real gate's details over a synthetic table, say);
+#: otherwise every gate reports empty details.
+AREA_SUPPORT_DETAILS: dict | None = None
+
+
 def gate_payload(phase, failed=None, release_candidate=False):
     gates = uk_full_gate_manifest(SELECTION)
     lines = failure_lines(failed)
@@ -296,7 +302,12 @@ def gate_payload(phase, failed=None, release_candidate=False):
                 GateResult(
                     name=entry.id,
                     passed=entry.id not in lines,
-                    details={},
+                    details=(
+                        dict(AREA_SUPPORT_DETAILS)
+                        if entry.id == "uk_local_area_support"
+                        and AREA_SUPPORT_DETAILS is not None
+                        else {}
+                    ),
                     failures=(lines[entry.id],) if entry.id in lines else (),
                 ),
             )

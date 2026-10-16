@@ -715,13 +715,17 @@ class UKFullGateKernel(KernelBase):
         self.engine_identity = engine_identity
 
     def implementation_hash(self) -> str:
-        from .. import gate_battery
+        # The gate evaluators (``gates``) and the register loaders
+        # (``terminal_gates``) decide the report as much as the bindings do,
+        # so an edit to either re-keys the gate nodes (microcosm#1301).
+        from .. import gate_battery, gates
         from ..country_spec import load_country_spec
         from . import (
             battery_bindings,
             diagnostics,
             full_gates,
             local_rowwise,
+            terminal_gates,
             weighted_integrity,
         )
 
@@ -731,9 +735,11 @@ class UKFullGateKernel(KernelBase):
                     "code": source_hash(
                         sys.modules[__name__],
                         gate_battery,
+                        gates,
                         battery_bindings,
                         full_gates,
                         local_rowwise,
+                        terminal_gates,
                         weighted_integrity,
                         diagnostics,
                     ),
@@ -1459,6 +1465,7 @@ def rowwise_candidate_manifest_from_graph(
     """
     from microcosm.calibrate.artifacts import decode_problem
 
+    from .battery_bindings import uk_area_support_below_floor
     from .calibration_run import UK_LOCAL_GATE_SCOPE
     from .diagnostics import uk_fit_by_family, uk_support_limited_misses
     from .graph_targets import registry_from_payload
@@ -1504,6 +1511,11 @@ def rowwise_candidate_manifest_from_graph(
             )
         )
     )
+    # The gate node writes each area's floor flag (microcosm#1278); a table
+    # without one is flagged here under the same floors.
+    if "support_below_floor" not in support.columns:
+        support["support_below_floor"] = uk_area_support_below_floor(support)
+    support["support_below_floor"] = support["support_below_floor"].astype(bool)
     holdout = json.loads(
         _graph_payload(final_manifest, store, "uk.full.holdout", "holdout")
     )
@@ -1811,20 +1823,16 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
         },
+        # Area counts only: the manifest ships in a release, and a level's
+        # minima would be one area's support figures (microcosm#1301). The
+        # figures stay in the area-support table.
         "support": {
-            "min_assigned_households": int(support["assigned_households"].min()),
-            "min_nonzero_households": int(support["nonzero_households"].min()),
-            "min_effective_sample_size": float(support["effective_sample_size"].min()),
+            "areas_checked": int(len(support)),
+            "areas_below_floor": int(support["support_below_floor"].sum()),
             "by_geography_level": {
                 str(level): {
-                    "min_assigned_households": int(rows["assigned_households"].min()),
-                    "min_nonzero_households": int(rows["nonzero_households"].min()),
-                    "min_effective_sample_size": float(
-                        rows["effective_sample_size"].min()
-                    ),
-                    "min_nonzero_source_households": int(
-                        rows["nonzero_source_households"].min()
-                    ),
+                    "areas_checked": int(len(rows)),
+                    "areas_below_floor": int(rows["support_below_floor"].sum()),
                 }
                 for level, rows in support.groupby("geography_level", sort=True)
             },
