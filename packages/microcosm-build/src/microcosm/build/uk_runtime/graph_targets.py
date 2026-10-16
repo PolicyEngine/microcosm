@@ -53,6 +53,7 @@ from . import (
     local_doctrine,
     local_rowwise,
     national_doctrine,
+    support_floor,
     target_weights,
 )
 from .full_measure import resolve_uk_full_national_problem
@@ -229,6 +230,7 @@ class _TargetKernel(KernelBase):
             ladder_targets,
             ledger_targets,
             local_doctrine,
+            support_floor,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -345,6 +347,7 @@ def compile_uk_full_target_surface(
         "household_dispersion": dispersion,
         "ladder_provenance": ladder_provenance,
         "measure_exclusions": inputs["measure_exclusions"],
+        "support_floor": inputs.get("support_floor"),
         "reviewed_unbound_higher_targets": inputs["reviewed_unbound_higher_targets"],
         "source_validation": {
             "national_source_pin": inputs["national_source_pin"],
@@ -459,6 +462,25 @@ class UKFullMeasureKernel(_TargetKernel):
                     local_grains=grains,
                 )
             )
+        floor_document = full.get("support_floor")
+        floor_evidence = None
+        if national_problem is not None and floor_document is not None:
+            # microcosm#1095 U3: the pool's clones share their spine
+            # household's source id, so support counts spine households.
+            applied = support_floor.apply_uk_support_floor(
+                national,
+                national_problem,
+                source_ids=lambda: support_floor.uk_household_source_ids(frame),
+                floor=support_floor.uk_support_floor_from_payload(
+                    floor_document["declaration"]
+                ),
+                evaluated_on=date.fromisoformat(str(floor_document["evaluated_on"])),
+            )
+            national_problem = applied.problem
+            floor_evidence = {
+                "exclusions": applied.exclusions,
+                "receipt": applied.receipt,
+            }
         arrays = {
             f"metrics_{grain}": metrics[grain].to_numpy(dtype=np.float64)
             for grain in grains
@@ -477,6 +499,7 @@ class UKFullMeasureKernel(_TargetKernel):
             "grains": {grain: metrics[grain].columns.tolist() for grain in grains},
             "has_national": national_problem is not None,
             "evidence": evidence,
+            "support_floor": floor_evidence,
         }
         return KernelResult(artifacts={"measures": _pack(metadata, arrays)})
 
@@ -534,6 +557,14 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
     ]
     metadata, arrays = decode_measures(
         context.artifacts["measures"].payload, selected=selected
+    )
+    floor_document = full.get("support_floor")
+    national = support_floor.narrow_uk_registry_by_support_floor(
+        national,
+        (metadata.get("support_floor") or {}).get("exclusions", {}),
+        None
+        if floor_document is None
+        else support_floor.uk_support_floor_from_payload(floor_document["declaration"]),
     )
     ids = frame.table("household")["household_id"].tolist()
     if ids != metadata["household_ids"]:
@@ -679,7 +710,11 @@ class UKFullProblemKernel(_TargetKernel):
                 "bound_families": list(bound_families),
                 "measure_resolution": metadata["evidence"],
                 "cross_geography": cross,
-                "measure_exclusions": full["measure_exclusions"],
+                "measure_exclusions": {
+                    **full["measure_exclusions"],
+                    **(metadata.get("support_floor") or {}).get("exclusions", {}),
+                },
+                "support_floor": (metadata.get("support_floor") or {}).get("receipt"),
                 "calibration_year": full["calibration_year"],
                 **weight_receipt,
             },

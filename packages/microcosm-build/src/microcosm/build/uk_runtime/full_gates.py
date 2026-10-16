@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
+from microcosm.build.uk_runtime.support_floor import uk_support_floor_names
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.artifacts import OrderedProblem, OrderedSolution
@@ -239,8 +240,14 @@ def build_full_gate_context(
         raise ValueError(
             "Full-build gates require the complete approved national reference registry."
         )
+    # The support floor's drops (microcosm#1095 U3) left the problem after
+    # selection; the problem binds them, and the reference side and the
+    # activated count lose them too.
+    floor_drops = uk_support_floor_names(bindings.get("measure_exclusions") or {})
     selected = {
-        (str(row["name"]), row["period"]) for row in selection_receipt["included"]
+        (str(row["name"]), row["period"])
+        for row in selection_receipt["included"]
+        if str(row["name"]) not in floor_drops
     }
     national_reference = {
         spec.to_target().row_name
@@ -270,7 +277,7 @@ def build_full_gate_context(
             "stage_evidence": dict(stage_evidence),
             "build_stage_names": tuple(stage_evidence),
             "national_calibration": {
-                "activated_reference_count": len(selection_receipt["included"]),
+                "activated_reference_count": len(selected),
                 "resolved_reference_count": len(problem.targets),
                 "matrix_target_count": len(problem.names),
             },

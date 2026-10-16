@@ -78,6 +78,9 @@ def prepared(monkeypatch):
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
     )
+    # Nor a support floor (#1095 U3, tested in test_uk_support_floor): the
+    # packaged one is signed after these tests' evaluation date.
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
     # The national reconciliation (#1123) has its own tests; these registers
     # carry no geography, so it passes them through here.
     monkeypatch.setattr(

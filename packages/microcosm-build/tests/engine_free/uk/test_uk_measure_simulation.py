@@ -597,7 +597,12 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
-    "dwp/uc_payment_dist/": 21,
+    # microcosm#1095 U3 (2026-10-16): the sparse-band support floor drops
+    # every band below ten source households, so the nine entries it covers
+    # on the head spine retire (seven uk-data#452, the two microcosm#736
+    # zero-support bands); twelve well-supported bands remain held out per
+    # row, each on its own renewal.
+    "dwp/uc_payment_dist/": 12,
     "obr.universal_credit_": 2,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
@@ -665,7 +670,8 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 65
+    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3).
+    assert len(names) == len(set(names)) == 56
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -706,8 +712,9 @@ def test_packaged_exclusions_load():
     # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
     # signed out of the reference surface and the cars receipts bind instead.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement.
-    assert len(tranche) == 32
+    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement, and
+    # three payment bands retired 2026-10-16 under the support floor.
+    assert len(tranche) == 29
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
@@ -728,39 +735,13 @@ def test_packaged_exclusions_load():
         "dwp.jsa_claimants": "microcosm#869",
     }
     assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
-    today = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
-    # The single-row UC payment cell joined the uk-data#452 class on the
-    # #1063 stack arm (one supporting household, lost to a draw reshuffle).
-    thin = [
-        e
-        for e in today
-        if e["name"]
-        in (
-            "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
-            "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
-        )
-    ]
-    assert len(thin) == 2
-    for entry in thin:
-        assert entry["tracking"] == "uk-data#452"
-        assert entry["expires_on"] == "2026-11-26"
-        assert "support" in entry["reason"]
-    renewed = [e for e in today if e not in thin]
+    renewed = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
+    # The two thin UC payment cells that joined the uk-data#452 class on the
+    # #1063 stack arm retired 2026-10-16: the support floor drops them.
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
-    # The engine bump of microcosm#1095 (policyengine-uk 2.122.2) moves every
-    # supporting award out of two more payment bands: the published LHA rates,
-    # the 2019 mixed-age couple saving and Carer Support Payment as unearned
-    # income. They join the class with its expiry.
-    engine_moved = [e for e in exclusions if e["approved_on"] == "2026-10-07"]
-    assert sorted(e["name"] for e in engine_moved) == [
-        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
-        "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
-    ]
-    for entry in engine_moved:
-        assert entry["tracking"] == "uk-data#452"
-        assert entry["expires_on"] == "2026-11-26"
-        assert "microcosm#1095" in entry["adjudication"]
-        assert "policyengine-uk 2.122.2" in entry["reason"]
+    # So did the two bands the engine bump of microcosm#1095 (policyengine-uk
+    # 2.122.2) emptied, the 2026-10-07 entries.
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-07"] == []
     # The 2026-10-08 consumption-tax tranche (microcosm#1113, #1123 item 3):
     # VAT's level is an engine factor (policyengine-uk#1996) and the two ONS
     # energy rows are a published-source residual against the stage's DESNZ

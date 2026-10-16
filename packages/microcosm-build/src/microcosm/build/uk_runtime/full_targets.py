@@ -42,6 +42,10 @@ from microcosm.build.uk_runtime.national_reconciliation import (
     assert_uk_subset_relations,
     reconcile_uk_national_registry,
 )
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+    uk_support_floor_from_payload,
+)
 from microcosm.build.uk_runtime.uprating_holds import (
     assert_uk_uprating_holds_declared,
 )
@@ -94,6 +98,24 @@ def _unsupported_names(unsupported: object) -> tuple[str, ...]:
         name = item.get("name") if isinstance(item, Mapping) else None
         names.append(str(name if name is not None else item))
     return tuple(names)
+
+
+def _support_floor_input(
+    measure_exclusions: str | Path | None, evaluated_on: date
+) -> dict[str, Any] | None:
+    """The register's signed support floor and the date it is evaluated on.
+
+    The problem nodes apply it to the compiled matrix (microcosm#1095 U3); a
+    floor outside its window refuses here, before any engine runs.
+    """
+
+    declaration = load_uk_support_floor_declaration(
+        None if measure_exclusions is None else Path(measure_exclusions)
+    )
+    if declaration is None:
+        return None
+    uk_support_floor_from_payload(declaration).assert_in_force(evaluated_on)
+    return {"declaration": declaration, "evaluated_on": evaluated_on.isoformat()}
 
 
 def load_uk_full_target_inputs(
@@ -278,6 +300,7 @@ def load_uk_full_target_inputs(
         "uprating_holds": uprating_holds,
         "local_registry": local_registries[year],
         "measure_exclusions": exclusion_receipt,
+        "support_floor": _support_floor_input(measure_exclusions, evaluated_on),
         "reviewed_unbound_higher_targets": reviewed_unbound,
         "national_source_pin": pin.to_dict(),
         "local_source_pin": local_pin,
@@ -411,6 +434,7 @@ def load_uk_national_target_inputs(
         "national_reconciliation": national_reconciliation,
         "uprating_holds": uprating_holds,
         "measure_exclusions": exclusion_receipt,
+        "support_floor": _support_floor_input(measure_exclusions, evaluated_on),
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
         "ledger_provenance": _ledger_provenance(artifact),

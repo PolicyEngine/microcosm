@@ -179,6 +179,51 @@ def test_gate_diagnostics_use_bound_matrix_and_row_identity(evidence):
     assert context.artifacts["rules_engine"] is context.artifacts["coverage_engine"]
 
 
+def test_gate_context_subtracts_the_support_floor_drops(evidence):
+    """A national row the support floor dropped (microcosm#1095 U3) was
+    selected but never solved: the reference side and the activated count
+    lose it, as the problem's bound measure exclusions record."""
+
+    frame, ordered, solution, supporting = evidence
+    selection = _selection()
+    selection["included"].append(
+        {"name": "thin", "period": 2024, "geography_level": "country"}
+    )
+    thin = TargetSpec(
+        name="thin",
+        entity="household",
+        value=0.1,
+        measure="income",
+        period=2024,
+        source="test",
+        family="income",
+    )
+    ordered = replace(
+        ordered,
+        bindings={
+            "target_selection": selection,
+            "measure_exclusions": {"thin": {"kind": "support_floor"}},
+        },
+    )
+    context = runtime.build_full_gate_context(
+        frame,
+        ordered_problem=ordered,
+        solution=solution,
+        selection_receipt=selection,
+        stage_evidence={"frs_spine": {}},
+        supporting_evidence={
+            **supporting,
+            "reference_registry": TargetRegistry(
+                [*supporting["reference_registry"].specs, thin], country="uk"
+            ),
+        },
+    )
+    assert context.artifacts["parity_evidence"].reference_targets == {"national@2024"}
+    coverage = context.artifacts["national_calibration"]
+    assert coverage["activated_reference_count"] == 2
+    assert coverage["resolved_reference_count"] == 2
+
+
 def _completed_result(evidence):
     frame, ordered, solution, _ = evidence
     problem = ordered.problem
