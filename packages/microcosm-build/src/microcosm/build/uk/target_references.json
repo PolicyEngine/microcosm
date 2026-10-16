@@ -346,7 +346,6 @@
       "dwp.uc.households_children_2": "dwp.universal_credit",
       "dwp.uc.households_children_3": "dwp.universal_credit",
       "dwp.uc.households_children_4": "dwp.universal_credit",
-      "dwp.uc.households_children_5_or_more": "dwp.universal_credit",
       "dwp.uc.households_couple_no_children": "dwp.universal_credit",
       "dwp.uc.households_couple_with_children": "dwp.universal_credit",
       "dwp.uc.households_housing_element": "dwp.universal_credit",
@@ -693,7 +692,6 @@
       "dwp.uc.households_children_2": "Households children 2",
       "dwp.uc.households_children_3": "Households children 3",
       "dwp.uc.households_children_4": "Households children 4",
-      "dwp.uc.households_children_5_or_more": "Households children 5 or more",
       "dwp.uc.households_couple_no_children": "Households couple no children",
       "dwp.uc.households_couple_with_children": "Households couple with children",
       "dwp.uc.households_housing_element": "Households with housing entitlement",
@@ -5813,53 +5811,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.uc.households_children_4",
-        "measure_kind": "prepared_column",
-        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_average"
-    },
-    {
-      "name": "dwp.uc.households_children_5_or_more",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "groupby_dimension": "dwp.uc_number_of_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator",
-          "child_entitlement"
-        ],
-        "dimension_values": {
-          "number_of_children": "5 or more",
-          "payment_indicator": "Yes",
-          "child_entitlement": "all"
-        },
-        "source_measure_id": "total_benefit_units",
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ],
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "benunit",
-      "measure": "dwp/uc/claimants_with_5+_children",
-      "family": "dwp_universal_credit",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.uc.households_children_5_or_more",
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },

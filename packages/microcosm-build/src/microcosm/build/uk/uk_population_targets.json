@@ -25,8 +25,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 620,
-    "excluded_rows": 32,
+    "mapped_rows": 619,
+    "excluded_rows": 33,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -42,7 +42,6 @@
       "dwp/uc/claimants_with_2_children": "dwp.uc.households_children_2",
       "dwp/uc/claimants_with_3_children": "dwp.uc.households_children_3",
       "dwp/uc/claimants_with_4_children": "dwp.uc.households_children_4",
-      "dwp/uc/claimants_with_5+_children": "dwp.uc.households_children_5_or_more",
       "dwp/uc/households": "dwp.uc.households",
       "dwp/uc/two_child_limit/3_children_households": "dwp.uc.two_child_limit.households_3_children",
       "dwp/uc/two_child_limit/3_children_households_total_children": "dwp.uc.two_child_limit.children_in_3_children_households",
@@ -681,7 +680,8 @@
       "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows takes the calibration over the uk_weight_ratio fence. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
       "ons/female_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.female_15, female_16_17 and female_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
-      "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition."
+      "ons/male_15_19": "Split, not dropped (María's ruling of 2026-10-13 (microcosm#1095, uk-data#563)): a fit to the five-year band leaves the ages inside it free to drift, so the contract binds ages 15, 16-17 and 18-19 instead (ons.population.male_15, male_16_17 and male_18_19). The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single contract row has this row's definition.",
+      "dwp/uc/claimants_with_5+_children": "Diagnostic only (María's ruling of 2026-10-16, microcosm#1095): DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception, and the bound two-child-limit rows leave them out. Fewer than 10 FRS source households carry that difference, so the row cannot be fitted beside the limit rows. The April 2025 figure is retained only as diagnostic provenance on dwp.uc.two_child_limit.households_5_children; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -945,7 +945,6 @@
       "dwp.uc.households_children_2",
       "dwp.uc.households_children_3",
       "dwp.uc.households_children_4",
-      "dwp.uc.households_children_5_or_more",
       "dwp.uc.households_single_no_children",
       "dwp.uc.households_single_with_children",
       "dwp.uc.households_couple_no_children",
@@ -5310,125 +5309,6 @@
       "period_match_policy": "source_window",
       "category_id": "dwp.universal_credit",
       "label": "Households children 4"
-    },
-    {
-      "target_id": "dwp.uc.households_children_5_or_more",
-      "family": "dwp_universal_credit",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefit_unit.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.universal_credit.amount",
-            "operator": ">",
-            "value": 0
-          },
-          {
-            "concept": "uk.benefit_unit.children",
-            "operator": ">=",
-            "value": 5
-          }
-        ],
-        "source_months": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/uc/claimants_with_5+_children",
-          "value_variable": "benunit_count",
-          "from_entity": "benunit",
-          "filters": [
-            {
-              "variable": "universal_credit",
-              "operator": ">",
-              "value": 0
-            },
-            {
-              "variable": "uc_calibration_child_count",
-              "operator": ">=",
-              "value": 5
-            }
-          ],
-          "notes": "Mean monthly paid GB benefit units over the exact twelve months of calendar 2025. Use the publisher Child Entitlement Total within each child-count/payment category, not the sum of perturbed Yes/No detail cells; no child-entitlement filter is added to the model. Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/252",
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "benunit"
-            }
-          ]
-        },
-        "axiom": {
-          "metric_name": "dwp/uc/claimants_with_5+_children",
-          "status": "pending",
-          "value_rule": "uk.benefit_unit.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "groupby_dimension": "dwp.uc_number_of_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator",
-          "child_entitlement"
-        ],
-        "dimension_values": {
-          "number_of_children": "5 or more",
-          "payment_indicator": "Yes",
-          "child_entitlement": "all"
-        },
-        "source_measure_id": "total_benefit_units",
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ]
-      },
-      "value_operation": "monthly_window_average",
-      "period_match_policy": "source_window",
-      "category_id": "dwp.universal_credit",
-      "label": "Households children 5 or more"
     },
     {
       "target_id": "dwp.uc.households_single_no_children",
@@ -32146,6 +32026,46 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:8d850c8ffb6eae8f4c71e611"
       },
       "notes": "DWP FOI2025/24990: PIP daily living enhanced-rate claimants in England and Wales at the end of January 2025 (1.608m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
+    },
+    "dwp.uc.households_children_5_or_more": {
+      "attach_to_target": "dwp.uc.two_child_limit.households_5_children",
+      "metadata_prefix": "dwp_uc_children_5_or_more_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.uc.households_children_5_or_more",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
+          "entity_name": "benefit_unit",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "groupby_dimension": "dwp.uc_number_of_children",
+          "dimensions": [
+            "number_of_children",
+            "payment_indicator",
+            "child_entitlement"
+          ],
+          "dimension_values": {
+            "number_of_children": "5 or more",
+            "payment_indicator": "Yes",
+            "child_entitlement": "all"
+          },
+          "source_measure_id": "total_benefit_units"
+        },
+        "entity": "benunit",
+        "measure": "dwp/uc/claimants_with_5+_children",
+        "family": "dwp_universal_credit",
+        "period": "2025-04",
+        "metadata": {
+          "diagnostic_role": "count_with_families_outside_the_limit"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:a195486577cc8d0200ff837b"
+      },
+      "notes": "DWP Stat-Xplore: Universal Credit households (paid benefit units) with five or more children in Great Britain in April 2025 (76,885), the month of the two-child-limit publication it sits beside. Retained as diagnostic provenance beside dwp.uc.two_child_limit.households_5_children (María's ruling of 2026-10-16, microcosm#1095). The count includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception; DWP's two-child-limit counts of households with five and with six or more children leave them out, 21,605 households fewer in April 2025. Fewer than 10 FRS source households carry that difference, so the calibration could reach the row only through the two-child-limit rows; it was held out from 2026-10-14 (microcosm#1271) and now leaves the fit. Rebind it as a target when the frame can carry large families outside the limit. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

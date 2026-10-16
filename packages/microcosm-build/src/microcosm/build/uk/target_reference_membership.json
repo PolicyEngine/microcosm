@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-735820c-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1312,
-  "contract_target_count": 357,
-  "active_reference_count": 1292,
+  "candidate_count": 1311,
+  "contract_target_count": 356,
+  "active_reference_count": 1291,
   "status_counts": {
-    "active": 1292,
+    "active": 1291,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 15
   },
@@ -235,10 +235,6 @@
       "geography_id": "K03000001"
     },
     "dwp.uc.households_children_4": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "dwp.uc.households_children_5_or_more": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -13702,22 +13698,6 @@
           "resolved_value": 170713.66666666666,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_33541aafa05a63dcae4fc144"
-        }
-      ]
-    },
-    "dwp.uc.households_children_5_or_more": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "dwp.uc.households_children_5_or_more",
-          "status": "active",
-          "matched_fact_count_overall": 12,
-          "matched_fact_count_at_or_before_period": 12,
-          "matched_fact_count_in_source_window": 12,
-          "resolved_period": 2025,
-          "resolved_value": 76320.08333333333,
-          "resolved_fact_period": "2025-12",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_33d99593d166153ca2d0adec"
         }
       ]
     },

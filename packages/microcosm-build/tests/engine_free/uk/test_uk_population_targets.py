@@ -227,8 +227,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1240 adds the three Microcosm-derived high-value homes local
     # targets; microcosm#1207 adds the three DESNZ local-authority energy
     # targets and DfT BUS01a journeys for London and the eight other English
-    # regions.
-    assert len(resource["targets"]) == 415
+    # regions; microcosm#1095 keeps DWP's five-or-more-children count as a
+    # diagnostic beside the two-child-limit rows.
+    assert len(resource["targets"]) == 414
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -242,10 +243,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 357
+    assert len(registry_scope) == 356
     assert len(profile_scope) == 58
-    assert target_ids[:357] == registry_scope
-    assert target_ids[357:] == profile_scope
+    assert target_ids[:356] == registry_scope
+    assert target_ids[356:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -258,11 +259,12 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
-    # the mapped rows for diagnostics, and the two incumbent 15_19 sex bands
-    # leave them for the six rows that partition them; microcosm#1207's nine
-    # BUS01a journey rows have no uk-data metric.
-    assert len(mapped_target_ids) == 187
+    # microcosm#1095: obr/ni, the two PIP daily-living caseload rows and the
+    # five-or-more-children UC count leave the mapped rows for diagnostics,
+    # and the two incumbent 15_19 sex bands leave them for the six rows that
+    # partition them; microcosm#1207's nine BUS01a journey rows have no
+    # uk-data metric.
+    assert len(mapped_target_ids) == 186
     assert len(unmapped_declarations) == 170
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
@@ -434,7 +436,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 415
+    assert len(target_ids) == 414
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -780,7 +782,6 @@ def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None
         "dwp.uc.households_children_2",
         "dwp.uc.households_children_3",
         "dwp.uc.households_children_4",
-        "dwp.uc.households_children_5_or_more",
         "dwp.uc.households_single_no_children",
         "dwp.uc.households_single_with_children",
         "dwp.uc.households_couple_no_children",
@@ -844,7 +845,9 @@ def test_paid_uc_targets_preserve_entitlement_margins_and_exact_calendar_months(
             "dwp.uc.households_couple_with_children",
         }
     ]
-    assert len(paid_targets) == 10
+    # microcosm#1095: the five-or-more-children count is a diagnostic, not a
+    # target.
+    assert len(paid_targets) == 9
     for target in paid_targets:
         selector = target["ledger_selector"]
         assert target["measurement"]["source_months"] == months
@@ -915,7 +918,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 415
+    assert len(targets) == 414
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -937,7 +940,7 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
         if row["metadata"]["contract_target_id"].startswith("dwp.uc.")
         and row["ledger_selector"]["geography_id"] == "K03000001"
     }
-    assert len(gb_ids) == 36
+    assert len(gb_ids) == 35
     for target_id in gb_ids:
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
         geographic = [

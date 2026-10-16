@@ -585,15 +585,6 @@
       "adjudication": "María's approval of 2026-10-08 of the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D2, with the binding confirmed on 2026-10-09: the stage sets the household road-fuel level and incidence, and the household-scope ONS 07.2.2 row is bound in place of the OBR cars receipts, which include business fuel. The reason's figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
       "expires_on": "2027-01-08"
-    },
-    {
-      "name": "dwp.uc.households_children_5_or_more",
-      "reason": "Two DWP counts the frame cannot both meet once dependants in approved training qualify as young people (microcosm#1271, uk-data#561). DWP's count of Universal Credit households with five or more children includes families outside the two-child limit, whose third and later children were all born before 6 April 2017 or who meet an exception; DWP's own two-child-limit counts of households with five and with six or more children leave them out, about 21,000 households fewer in DWP's published figures. Fewer than 10 FRS source households have five or more children on Universal Credit and sit outside the limit, so the frame has no real support for that difference and the calibration can reach this row only through the two-child-limit rows, which carry six times its loss weight and are kept. Before the fix the row passed the fit gate through an artefact: a dependant aged 16 to 19 in training counted as a child in this row but failed the engine's qualifying-young-person test, so the two-child-limit rows counted one child fewer in that family. Held out, the row is neither fitted nor gated, and the two-child-limit rows are. Rebind it when the frame can carry large families outside the limit.",
-      "tracking": "microcosm#1095",
-      "approved_by": "juaristi22",
-      "adjudication": "María's ruling of 2026-10-14 on microcosm#1271 (item 4 of Vahid's review, issue comment 6168355102): hold the row out with an expiry rather than keep a fit that rested on fewer than 10 source households",
-      "approved_on": "2026-10-14",
-      "expires_on": "2026-11-26"
     }
   ]
 }

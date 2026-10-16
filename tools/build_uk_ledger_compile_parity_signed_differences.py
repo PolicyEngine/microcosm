@@ -168,6 +168,15 @@ _DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE = (
     "retained as diagnostic provenance on obr.pip, so the frozen fixture's "
     "fitted rows are fixture-only on the current surface."
 )
+_DWP_UC_FIVE_OR_MORE_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-16) keeps DWP's count of Universal "
+    "Credit households with five or more children out of the fit: it includes "
+    "families outside the two-child limit, which the bound two-child-limit rows "
+    "leave out and too few FRS source households carry. The April 2025 figure is "
+    "retained as diagnostic provenance on "
+    "dwp.uc.two_child_limit.households_5_children, so the frozen fixture's fitted "
+    "row is fixture-only on the current surface."
+)
 _STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
 _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
@@ -647,7 +656,12 @@ def _add_signed_rationale_notes(
         if not isinstance(row, dict):
             continue
         name = str(row.get("name", ""))
-        if name in _UC_PAID_WINDOW_NAMES:
+        if (
+            name == "dwp.uc.households_children_5_or_more"
+            and row.get("kind") == "fixture_only"
+        ):
+            row["reason"] = _DWP_UC_FIVE_OR_MORE_DIAGNOSTIC_RATIONALE
+        elif name in _UC_PAID_WINDOW_NAMES:
             inherited_change = (
                 "PR #891 contract with #892 source-window averaging"
                 if name.startswith("dwp.uc.households_children_")

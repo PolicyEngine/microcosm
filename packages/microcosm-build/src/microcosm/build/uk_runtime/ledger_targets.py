@@ -779,6 +779,13 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
             "dwp.pip.daily_living_standard_claimants",
             "dwp.pip.daily_living_enhanced_claimants",
         ),
+        # microcosm#1095 (María, 2026-10-16): DWP's count of UC households
+        # with five or more children carries the families outside the
+        # two-child limit, which the frame cannot hold; it sits beside the
+        # bound limit row of the same month.
+        "dwp.uc.two_child_limit.households_5_children": (
+            "dwp.uc.households_children_5_or_more",
+        ),
     }
 )
 #: A diagnostic is one exactly dated publisher figure; a caseload snapshot is

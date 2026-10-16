@@ -1,8 +1,8 @@
 {
- "compiled_count": 1292,
+ "compiled_count": 1291,
  "counts_by_kind": {
-  "calibration_drift": 566,
-  "fixture_only": 45,
+  "calibration_drift": 565,
+  "fixture_only": 46,
   "ledger_only": 700
  },
  "difference_count": 1311,
@@ -20,6 +20,13 @@
    "name": "dwp.pip.daily_living_standard_claimants",
    "period": 2025,
    "reason": "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) out of the fit: the two rows resolve and fit, but they push the heaviest support family's weight over the uk_weight_ratio fence. The exact figures are retained as diagnostic provenance on obr.pip, so the frozen fixture's fitted rows are fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 75910.0,
+   "kind": "fixture_only",
+   "name": "dwp.uc.households_children_5_or_more",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-16) keeps DWP's count of Universal Credit households with five or more children out of the fit: it includes families outside the two-child limit, which the bound two-child-limit rows leave out and too few FRS source households carry. The April 2025 figure is retained as diagnostic provenance on dwp.uc.two_child_limit.households_5_children, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 320866000.0,
@@ -5283,14 +5290,6 @@
    "kind": "calibration_drift",
    "ledger_value": 170713.66666666666,
    "name": "dwp.uc.households_children_4",
-   "period": 2025,
-   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
-  },
-  {
-   "fixture_value": 75910.0,
-   "kind": "calibration_drift",
-   "ledger_value": 76320.08333333333,
-   "name": "dwp.uc.households_children_5_or_more",
    "period": 2025,
    "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
