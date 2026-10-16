@@ -50,6 +50,7 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+    FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_HMRC_EMPLOYED_INCOME_COLUMN,
@@ -1128,6 +1129,7 @@ def impute_uk_spi_income_support(
         dtype=np.float64, copy=True
     )
     stage2_outputs, reviewed_absent = _stage2_outputs(person)
+    person = _owner_manager_flags_as_numbers(person)
     if (
         state_pension_age_guard is not None
         and state_pension_age_guard.base_channel_columns
@@ -1213,6 +1215,7 @@ def impute_uk_spi_income_support(
         raise ValueError("FRS-only stage-2 produced negative non-negative outputs.")
     for column in stage2_outputs:
         person.loc[spi_people, column] = stage2_draws[column].to_numpy()
+    person = _owner_manager_flags_from_draws(person, spi_people=spi_people)
     if (
         state_pension_age_guard is not None
         and state_pension_age_guard.spi_channel_columns
@@ -2606,6 +2609,61 @@ def _refresh_carer_take_up_input(
     _assign_spi_values(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
     )
+    return person
+
+
+def _owner_manager_flags_as_numbers(person: pd.DataFrame) -> pd.DataFrame:
+    """Hold the owner-manager flags as 0 or 1 for the FRS-only fill to draw."""
+
+    for column in FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS:
+        if column in person.columns:
+            person[column] = person[column].astype(bool).astype(np.float64)
+    return person
+
+
+def _owner_manager_flags_from_draws(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Store the drawn owner-manager inputs as the root stage does.
+
+    The fill's zero regime gate draws each flag as 0 or 1 on a redrawn row. The
+    root stage's rules then hold on every row: the person who stands as an
+    owner works in the company, its other inputs need an owner, and a company
+    carries on a trade or a property business, never both (microcosm#1095).
+    """
+
+    present = [c for c in FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS if c in person]
+    if not present:
+        return person
+    if len(present) != len(FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS):
+        raise ValueError(
+            "The owner-manager inputs are set together; the frame carries "
+            f"only {present}."
+        )
+    flags = {
+        column: pd.to_numeric(person[column], errors="coerce").to_numpy() > 0.5
+        for column in present
+    }
+    redrawn = spi_people.to_numpy(dtype=bool)
+    owner = flags["stands_as_sole_owner_or_partner_of_company"]
+    main = flags["owned_company_is_main_employment"] & owner
+    property_business = flags["owned_company_carries_on_property_business"] & main
+    trade = flags["owned_company_carries_on_trade"] & main & ~property_business
+    held = {
+        "stands_as_sole_owner_or_partner_of_company": owner,
+        "is_engaged_in_owned_company_trade": owner,
+        "owned_company_is_main_employment": main,
+        "owned_company_carries_on_trade": trade,
+        "owned_company_carries_on_property_business": property_business,
+    }
+    for column, values in held.items():
+        # FRS rows keep their root-stage answers; only redrawn rows move.
+        person[column] = np.where(redrawn, values, flags[column])
+    if "owned_company_income_share" in person:
+        share = pd.to_numeric(
+            person["owned_company_income_share"], errors="coerce"
+        ).to_numpy(dtype=float)
+        person["owned_company_income_share"] = np.where(redrawn & ~owner, 0.0, share)
     return person
 
 

@@ -184,6 +184,16 @@ FRS_CARE_HOURS_BY_BAND = {
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
 FRS_RENTPROF_LOSS = 2
 
+#: The six owned-company inputs the root stage sets from the FRS job tab
+#: (microcosm#1095); see frs_owner_manager_inputs.
+OWNER_MANAGER_COLUMNS = (
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
+)
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -214,6 +224,7 @@ OUTPUT_COLUMNS = (
     "tax_free_savings_income",
     "savings_interest_income",
     "dividend_income",
+    *OWNER_MANAGER_COLUMNS,
     "property_income",
     "reports_rent_from_other_property",
     "maintenance_income",
@@ -555,6 +566,9 @@ def _assemble_frame(
     pe_person["ni_class_4_losses_brought_forward"] = 0.0
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
+    owner_managers = frs_owner_manager_inputs(person, frs["job"])
+    for column in OWNER_MANAGER_COLUMNS:
+        pe_person[column] = owner_managers[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
@@ -679,6 +693,72 @@ def _add_accounts(
     pe_person["tax_free_savings_income"] = np.maximum(0, tax_free)
     pe_person["savings_interest_income"] = np.maximum(0, taxable + tax_free)
     pe_person["dividend_income"] = np.maximum(0, dividends)
+
+
+#: FRS job-table answers that make a person like a sole owner or partner of a
+#: company, which Universal Credit treats as self-employed (UC Regs 2013 reg
+#: 77, policyengine-uk's owned-company inputs from pe-uk#1965): a director
+#: (DIRECTOR 1, or NATURE 1 "Director") who owns at least half of the company
+#: (DIRPERC 1 "100%", 2 "More than 50% but not 100%", 3 "50%"; María's
+#: ruling of 2026-10-16, microcosm#1095).
+OWNER_MANAGER_DIRPERC_CODES = (1, 2, 3)
+#: JOBTYPE 1, the first (main) job.
+FRS_MAIN_JOB_JOBTYPE = 1
+#: SIC 2007 division 68, real estate activities. ADULT.SIC codes the main job
+#: only, so it says whether an owned company held as the main job carries on
+#: a property business or a trade; another job's company carries on neither
+#: on this release, which leaves the engine's company-owner rules off for it.
+PROPERTY_BUSINESS_SIC_DIVISION = 68
+OWNER_MANAGER_JOB_COLUMNS = ("director", "nature", "dirperc", "jobtype", "dividend")
+
+
+def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
+    """Six of policyengine-uk's eleven owned-company inputs, from the job tab.
+
+    A director owning at least half of a company stands as its sole owner or
+    partner and works in it. The company is their main employment when the job
+    is their first. Its income share is the dividends the job records (DIVIDEND,
+    the last 12 months, after tax): the engine reads the company's profit,
+    which the FRS does not ask, and the dividends paid out of it are its part
+    the survey sees. The stocks and the intermediaries inputs keep the engine's
+    defaults.
+    """
+
+    missing = [column for column in OWNER_MANAGER_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so owner-managers "
+            "cannot be set."
+        )
+    if "sic" not in person:
+        raise KeyError("The FRS adult tab has no SIC column.")
+    job_person = job["person_id"]
+    director = (_number(job, "director") == 1) | (_number(job, "nature") == 1)
+    owner = director & _number(job, "dirperc").isin(OWNER_MANAGER_DIRPERC_CODES)
+    main = owner & (_number(job, "jobtype") == FRS_MAIN_JOB_JOBTYPE)
+    persons = person["person_id"]
+    stands = _sum_to_entity(owner.astype(float), job_person, persons) > 0
+    main_employment = _sum_to_entity(main.astype(float), job_person, persons) > 0
+    property_division = (
+        _number(person, "sic").to_numpy() == PROPERTY_BUSINESS_SIC_DIVISION
+    )
+    return pd.DataFrame(
+        {
+            "stands_as_sole_owner_or_partner_of_company": stands,
+            "is_engaged_in_owned_company_trade": stands,
+            "owned_company_is_main_employment": main_employment,
+            "owned_company_carries_on_trade": main_employment & ~property_division,
+            "owned_company_carries_on_property_business": (
+                main_employment & property_division
+            ),
+            "owned_company_income_share": _sum_to_entity(
+                np.maximum(_number(job, "dividend"), 0) * owner,
+                job_person,
+                persons,
+            ),
+        },
+        index=person.index,
+    )
 
 
 def _add_person_income(

@@ -537,6 +537,11 @@ _ROOT_PERSON_BOOL = {
     "uc_is_in_startup_period",
     "uc_is_in_gainful_self_employment",
     "reports_rent_from_other_property",
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -1046,6 +1051,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "trading_loss",
     "loss_relief",
     "ni_class_4_losses_brought_forward",
+    "owned_company_income_share",
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income",
@@ -1076,6 +1082,13 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",
+    # The stage-2 fill draws a redrawn row's owner-manager flags beside its
+    # incomes (microcosm#1095).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

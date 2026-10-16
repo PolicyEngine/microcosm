@@ -249,6 +249,13 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     # The tape's losses brought forward, moved out of the profit (microcosm#1095).
     "loss_relief",
     "ni_class_4_losses_brought_forward",
+    # The stage-2 fill's owner-manager inputs (microcosm#1095).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,

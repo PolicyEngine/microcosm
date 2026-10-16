@@ -193,6 +193,25 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     # uk-data#528: the year's trading loss, which the SPI tape does not
     # carry; a redrawn row with a positive profit keeps none (microcosm#1095).
     "trading_loss",
+    # The owner-manager inputs the root stage reads from the FRS job tab, which
+    # the tape does not carry: drawn last, in this order, so each flag follows
+    # the drawn incomes and the ones before it, then held to the root stage's
+    # rules (microcosm#1095; María's ruling of 2026-10-16).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
+)
+#: The owner-manager flags among the FRS-only fill's outputs: drawn as 0 or 1
+#: (the fill's zero regime gate) and stored as booleans again.
+FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS = (
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
 )
 
 _PERSON_ID_COLUMNS = (
@@ -1281,6 +1300,7 @@ __all__ = [
     "DEFAULT_SPI_PRIOR_MASS_SHARE",
     "DEFAULT_SPI_SUPPORT_HOUSEHOLDS",
     "FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS",
+    "FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS",
     "FRS_ONLY_SPI_FILL_PERSON_COLUMNS",
     "FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS",
     "HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN",

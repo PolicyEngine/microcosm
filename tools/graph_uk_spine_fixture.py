@@ -576,6 +576,12 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 if household_id % 8 in (2, 3)
                 else "",
                 "JOBBUS": 2 if household_id % 2 else 1,
+                # Every tenth adult directs a company they own more than half
+                # of, as their first job (microcosm#1095).
+                "DIRECTOR": 1 if household_id % 10 == 0 else 2,
+                "NATURE": 4,
+                "DIRPERC": 2 if household_id % 10 == 0 else -1,
+                "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
             }
         )
         pensions.append(

@@ -42,6 +42,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
+    OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
     UC_CAPITAL_UNAVAILABLE,
@@ -426,6 +427,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "SEEND": "",
                 "SEJBLONG": "",
                 "JOBBUS": 1,
+                # Not a director: the owner-manager inputs keep their defaults.
+                "DIRECTOR": 2,
+                "NATURE": 4,
+                "DIRPERC": -1,
+                "DIVIDEND": 0.0,
             }
         ],
         "benefits": [
@@ -1286,6 +1292,71 @@ def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path, tables)
 
     with pytest.raises(KeyError, match="no SPPADJ column"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+@pytest.mark.parametrize(
+    ("job", "sic", "expected"),
+    [
+        # A director owning more than half of the company, as their first job,
+        # in a trade: like a sole owner, main employment, trading.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 2, "JOBTYPE": 1},
+            84,
+            (True, True, True, True, False, 900.0),
+        ),
+        # NATURE 1 names a director too; SIC division 68 is real estate.
+        (
+            {"DIRECTOR": 2, "NATURE": 1, "DIRPERC": 3, "JOBTYPE": 1},
+            68,
+            (True, True, True, False, True, 900.0),
+        ),
+        # A second job's company: no SIC, so neither trade nor property.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 1, "JOBTYPE": 2},
+            84,
+            (True, True, False, False, False, 900.0),
+        ),
+        # Less than half of the company: an investor, not an owner.
+        (
+            {"DIRECTOR": 1, "NATURE": 4, "DIRPERC": 4, "JOBTYPE": 1},
+            84,
+            (False, False, False, False, False, 0.0),
+        ),
+    ],
+)
+def test_owner_managers_come_from_the_job_tab(
+    tmp_path: Path, job: dict, sic: int, expected: tuple
+) -> None:
+    """A director owning at least half of a company stands as its sole owner
+    or partner (María's ruling of 2026-10-16, microcosm#1095)."""
+
+    tables = _fixture_tables()
+    tables["job"][0].update({**job, "DIVIDEND": 900.0})
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_1["SIC"] = sic
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+    person = frame.table("person")
+    adult = person.loc[person["person_id"] == 1001].iloc[0]
+
+    assert tuple(adult[column] for column in OWNER_MANAGER_COLUMNS) == expected
+    # Nobody else in the fixture holds a job: the inputs keep their defaults.
+    others = person.loc[person["person_id"] != 1001, list(OWNER_MANAGER_COLUMNS)]
+    assert not others.iloc[:, :5].to_numpy().any()
+    assert (others["owned_company_income_share"] == 0).all()
+
+
+def test_frs_spine_refuses_a_job_tab_without_the_director_answers(
+    tmp_path: Path,
+) -> None:
+    tables = _fixture_tables()
+    tables["job"] = [
+        {key: value for key, value in row.items() if key != "DIRPERC"}
+        for row in tables["job"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(KeyError, match="owner-managers cannot be set"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 

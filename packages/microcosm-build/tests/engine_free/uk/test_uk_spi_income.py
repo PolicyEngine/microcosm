@@ -151,6 +151,69 @@ def test_a_redrawn_row_with_a_profit_keeps_no_drawn_trading_loss() -> None:
     )
 
 
+def test_drawn_owner_manager_inputs_keep_the_root_stages_rules() -> None:
+    """The fill draws the flags as 0 or 1; the root stage's rules then hold on
+    the redrawn rows, and the FRS rows keep their answers (microcosm#1095)."""
+
+    person = pd.DataFrame(
+        {
+            # Row 10 (FRS) keeps an inconsistent answer as the root gave it.
+            # Row 20 drew an owner in a property business and a trade: the
+            # property business wins. Row 30 drew main employment and income
+            # without an owner: both go. Row 40 drew an owner in another job.
+            "stands_as_sole_owner_or_partner_of_company": [0.0, 1.0, 0.0, 1.0],
+            "is_engaged_in_owned_company_trade": [1.0, 0.0, 1.0, 1.0],
+            "owned_company_is_main_employment": [1.0, 1.0, 1.0, 0.0],
+            "owned_company_carries_on_trade": [1.0, 1.0, 1.0, 1.0],
+            "owned_company_carries_on_property_business": [0.0, 1.0, 0.0, 0.0],
+            "owned_company_income_share": [5.0, 700.0, 300.0, 50.0],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, True], index=person.index)
+
+    result = spi_income._owner_manager_flags_from_draws(person, spi_people=spi_people)
+
+    assert result["stands_as_sole_owner_or_partner_of_company"].tolist() == [
+        False,
+        True,
+        False,
+        True,
+    ]
+    assert result["is_engaged_in_owned_company_trade"].tolist() == [
+        True,
+        True,
+        False,
+        True,
+    ]
+    assert result["owned_company_is_main_employment"].tolist() == [
+        True,
+        True,
+        False,
+        False,
+    ]
+    assert result["owned_company_carries_on_trade"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert result["owned_company_carries_on_property_business"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert result["owned_company_income_share"].tolist() == [5.0, 700.0, 0.0, 50.0]
+    assert result["stands_as_sole_owner_or_partner_of_company"].dtype == bool
+    # The inputs are set together: a frame with only some of them refuses.
+    with pytest.raises(ValueError, match="set together"):
+        spi_income._owner_manager_flags_from_draws(
+            person[["stands_as_sole_owner_or_partner_of_company"]],
+            spi_people=spi_people,
+        )
+
+
 def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None:
     """A drawn row's gainful self-employment takes the root's whole rule."""
 
