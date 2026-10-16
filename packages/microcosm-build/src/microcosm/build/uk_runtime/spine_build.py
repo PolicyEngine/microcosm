@@ -156,6 +156,9 @@ from microcosm.build.uk_runtime.private_school_attendance import (
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
 )
+from microcosm.build.uk_runtime.property_purchases import (
+    UKPropertyPurchasesStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -1627,6 +1630,10 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["property_components"],
                 spi_tab_path=sources["spi"],
             )
+        )
+    if "property_purchases" in stage_names:
+        implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
+            stage=stages_by_name["property_purchases"],
         )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(

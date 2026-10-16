@@ -52,6 +52,8 @@ from . import (
     frs_hmrc_source,
     frs_take_up,
     hmrc_property_rental,
+    ledger_fact_vendoring,
+    rowwise_geography,
     spi_income,
     spi_support,
     uc_capital_coherence,
@@ -93,6 +95,7 @@ _STAGE_MODULES = {
     "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
     "property_components": "property_components",
+    "property_purchases": "property_purchases",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
@@ -136,6 +139,9 @@ _STAGE_HELPER_MODULES = {
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
     "property_components": (hmrc_property_rental, spi_income, spi_support),
+    # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
+    # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
+    "property_purchases": (ledger_fact_vendoring, rowwise_geography),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     "lcfs_consumption": (uk_engine_adapter,),
     "etb_vat": (uk_engine_adapter,),
@@ -487,6 +493,10 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
+    from .property_purchases import (
+        UKPropertyPurchasesStageTransform,
+        UKPropertyPurchaseTargets,
+    )
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -554,6 +564,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     property_rental_facts = _fixture_property_rental_facts(
         _fixture_input(source, inputs, "property_rental_facts")
+    )
+    property_purchase_targets = UKPropertyPurchaseTargets.from_payload(
+        _json_mapping(
+            _fixture_input(source, inputs, "property_purchase_targets"),
+            label="property purchase targets",
+        )
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -633,6 +649,10 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 spi_tab_path=spi_path,
                 donor_table=spi_donor,
                 facts=property_rental_facts,
+            ),
+            "property_purchases": UKPropertyPurchasesStageTransform(
+                stage=stages["property_purchases"],
+                targets=property_purchase_targets,
             ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],

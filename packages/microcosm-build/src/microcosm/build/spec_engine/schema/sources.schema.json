@@ -9651,6 +9651,103 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "outputs",
+      "stocks",
+      "port_of",
+      "minimum_price",
+      "eligibility",
+      "fit_regions",
+      "hazard",
+      "event_score",
+      "threshold",
+      "price",
+      "weights",
+      "streams",
+      "additional_residential_targets",
+      "non_residential_targets"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_annual_property_purchases"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "stocks": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "port_of": {
+       "type": "string"
+      },
+      "minimum_price": {
+       "type": "number"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "fit_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "hazard": {
+       "type": "string"
+      },
+      "event_score": {
+       "type": "string"
+      },
+      "threshold": {
+       "type": "string"
+      },
+      "price": {
+       "type": "string"
+      },
+      "weights": {
+       "type": "string"
+      },
+      "streams": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "event_salt",
+         "price_salt",
+         "seed"
+        ],
+        "properties": {
+         "event_salt": {
+          "type": "string"
+         },
+         "price_salt": {
+          "type": "string"
+         },
+         "seed": {
+          "type": "integer"
+         }
+        }
+       }
+      },
+      "additional_residential_targets": {
+       "type": "string"
+      },
+      "non_residential_targets": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "role",
       "filename",
       "locator",
