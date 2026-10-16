@@ -1676,9 +1676,10 @@ class TestPreflightBindings:
         # Great Britain, three rows), 1,040 of them compiled: the support
         # floor defers five, Orkney and Shetland's gas-connected cells are
         # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
-        # kWh row.
-        assert result.details["candidate_targets"] == 25_309
-        assert result.details["reference_targets"] == 27_115
+        # kWh row. microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all
+        # compiled.
+        assert result.details["candidate_targets"] == 25_327
+        assert result.details["reference_targets"] == 27_133
         # Only the 1,806 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123

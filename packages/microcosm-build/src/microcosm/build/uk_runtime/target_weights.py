@@ -373,15 +373,23 @@ def uk_target_value_basis(rows: UKTargetRows) -> tuple[str, ...]:
     return tuple(bases)
 
 
+#: The grain a local row's loss share is taken in, where it is not its own.
+#: Scotland's 18 BRMA rent rows weigh inside the local-authority grain, in
+#: its private-rent family: a grain of their own would take a fifth of the
+#: loss for 18 rows and dilute the local energy and bus families below their
+#: floors (microcosm#1262).
+UK_LOCAL_WEIGHT_GRAIN: Mapping[str, str] = MappingProxyType({"brma": "la"})
+
+
 def _rule_grains(rows: UKTargetRows, *, nation: bool) -> tuple[str, ...]:
     if not nation:
-        return rows.grain
+        return tuple(UK_LOCAL_WEIGHT_GRAIN.get(grain, grain) for grain in rows.grain)
     grains = []
     for name, grain, geography in zip(
         rows.names, rows.grain, rows.geography, strict=True
     ):
         if grain != NATIONAL_GRAIN:
-            grains.append(grain)
+            grains.append(UK_LOCAL_WEIGHT_GRAIN.get(grain, grain))
             continue
         if not geography:
             raise ValueError(

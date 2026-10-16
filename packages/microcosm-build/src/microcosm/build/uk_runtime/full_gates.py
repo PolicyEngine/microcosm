@@ -37,7 +37,7 @@ from microcosm.graph.canonical import canonical_json
 _LOCAL_FIT_GATES = frozenset(
     {"uk_local_target_fit", "uk_local_per_family_fit", "uk_local_area_support"}
 )
-_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
+_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 
 def _scope(selection_receipt: Mapping[str, Any] | None) -> tuple[bool, dict[str, str]]:

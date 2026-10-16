@@ -246,10 +246,11 @@ def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
     # register_completeness.compiled_local_reference_count 20,885 -> 21,804;
     # microcosm#1240 adds the high-value homes cells, microcosm#1278's
     # signed small-cell rules defer 208 cells, and microcosm#1207's DESNZ
-    # energy rows add 1,040 authority cells.
-    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 25_309
+    # energy rows add 1,040 authority cells, and microcosm#1262 Scotland's 18
+    # PIPR BRMA cells.
+    assert _load_scorer().UK_LOCAL_ACTIVE_REFERENCE_COUNT == 25_327
     membership = load_uk_local_target_reference_membership()
-    assert membership["active_reference_count"] == 25_309
+    assert membership["active_reference_count"] == 25_327
 
 
 def test_a_graph_target_selection_scores_its_local_rows(tmp_path) -> None:

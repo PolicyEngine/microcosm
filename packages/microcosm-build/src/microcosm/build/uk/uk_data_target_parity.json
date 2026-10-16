@@ -169,19 +169,13 @@
       "status": "ported_national"
     },
     {
-      "classification": "cross_grain_grain_gap",
+      "classification": "local_registry_family",
       "concern_id": "cross_grain_private_rent_scotland_brma",
       "covers": [
         "policyengine_uk_data.targets.sources.local_la_extras"
       ],
-      "evidence": "Pinned feed has PIPR's 18 Scottish statistical_scope BRMA rows for every month of 2025 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs (microcosm#1090).",
-      "fence": {
-        "origin": "PIPR publishes Scottish rent levels at BRMA grain.",
-        "purpose": "Preserve source geography without allocating BRMA averages over local authorities.",
-        "verdict_basis": "Keep all 32 Scottish LA cells signed deferred until a source-backed BRMA-to-LA bridge with an explicit aggregation rule exists."
-      },
-      "reason": "CrossGrainBridge cannot express an overlapping BRMA-to-LA geography translation and no signed crosswalk is available.",
-      "status": "routed"
+      "evidence": "Microcosm ons.rent.private_rent_brma binds PIPR's 18 Scottish BRMA rows at their own grain (statistical_scope, microcosm#1090, #1262): each row is 12 x the calendar-2025 mean x the BRMA's private renters, the councils' reconciled private renters in Census 2022's council shares of each BRMA's renters (uk/scotland_brma_la_overlap.json, UV404 by output area), and the model side sums each Scottish household's rent by the BRMA of its assigned output area. No BRMA average is allocated over councils: the 32 Scottish council cells stay signed deferred, councils having no published rent.",
+      "status": "ported_local_declared"
     },
     {
       "classification": "imputation_anchor",
@@ -950,7 +944,7 @@
         "policyengine_uk_data.targets.sources.local_la_extras",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
       ],
-      "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (the PIPR September 2026 edition in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts (microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
+      "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (the PIPR September 2026 edition in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts, which bind at BRMA grain (ons.rent.private_rent_brma, microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
       "status": "ported_local_declared"
     },
     {

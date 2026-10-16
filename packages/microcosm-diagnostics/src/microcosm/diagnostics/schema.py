@@ -230,12 +230,16 @@ class TargetLossBasis(DiagnosticsModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, where ONS publishes
+#: its Scottish private rents (microcosm#1262); its rows have no area
+#: rollups, so it is not a local rollup level.
 UKGeographyLevel = Literal[
     "national",
     "region",
     "country",
     "local_authority",
     "constituency",
+    "brma",
 ]
 UKLocalGeographyLevel = Literal["local_authority", "constituency"]
 UKCountry = Literal["England", "Northern Ireland", "Scotland", "Wales"]
@@ -245,6 +249,12 @@ UK_TARGET_GEOGRAPHY_LEVELS: Final[tuple[UKGeographyLevel, ...]] = (
     "country",
     "local_authority",
     "constituency",
+    "brma",
+)
+#: Levels a report may leave out: reports written before the level existed
+#: carry no row for it. Current builds always write every level.
+UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS: Final[frozenset[UKGeographyLevel]] = frozenset(
+    {"brma"}
 )
 
 
@@ -604,7 +614,9 @@ class UKDiagnosticsV1(DiagnosticsModel):
         if len(levels) != len(set(levels)):
             raise ValueError("UK geography pass-rate levels must be unique")
         expected_levels = set(UK_TARGET_GEOGRAPHY_LEVELS)
-        missing = sorted(expected_levels - set(levels))
+        missing = sorted(
+            expected_levels - set(levels) - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+        )
         unexpected = sorted(set(levels) - expected_levels)
         if missing or unexpected:
             raise ValueError(

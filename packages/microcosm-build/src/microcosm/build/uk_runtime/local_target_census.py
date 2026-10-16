@@ -141,6 +141,8 @@ _ENERGY_SOURCES_VERIFIED_ON = "2026-10-14"
 _EXACT_FAMILY_RULES: dict[str, str] = {
     "uc_households": "uc_households",
     "rent/private_rent": "private_rent",
+    # Scotland's PIPR rents at BRMA grain are the same family (microcosm#1262).
+    "rent/private_rent_brma": "private_rent",
 }
 
 #: Metric-name prefixes mapping to a census family. Every prefix ends at a
@@ -224,8 +226,8 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "private_rent",
         "description": (
-            "Private rent paid by privately renting households "
-            "(local-authority metric)."
+            "Private rent paid by privately renting households (local-authority "
+            "cells, and Scotland's BRMA cells, where PIPR publishes Scottish rents)."
         ),
         "sources": ["ons_pipr_private_rents"],
         "adjudications": [],
@@ -586,29 +588,31 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/"
             "priceindexofprivaterentsukmonthlypricestatistics"
         ),
-        "geographies": ["la"],
+        "geographies": ["la", "brma"],
         "latest_vintage": "release of 2026-07-22 at verification",
         "status": SOURCE_STATUS_SIGNED_DEFERRED,
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
         "signed_rationale": (
-            "The pinned Ledger fact feed carries 2025 PIPR months; compiled "
-            "rows resolve at 2025-12 with 36 facts at or before the target "
-            "period. Four English crosswalk authorities are absent, Scotland "
-            "has no LA rows, and Northern Ireland has no rows at any grain. "
-            "The bound price level is composed as 12 months times the mean "
-            "times A17-uprated private-renter households under microcosm#355 "
-            "(ruling 2026-09-08)."
+            "The pinned Ledger fact feed carries the 2025 PIPR months, and each "
+            "cell binds the calendar-2025 mean of its monthly price levels. Two "
+            "English crosswalk authorities are not published, Scotland is "
+            "published for its 18 BRMAs only and binds at that grain, and "
+            "Northern Ireland as a country mean only. The bound price level is "
+            "composed as 12 months times the mean times the private-renter "
+            "households, SPREE-drifted in England and reconciled to the nation "
+            "household controls, under microcosm#355 (ruling 2026-09-08)."
         ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "PIPR publishes average rent price levels, not additive rent "
             "totals; a bound cell composes the level into a total (see the "
-            "signed rationale). Of the 361 local-authority cells, 314 bind "
-            "for the 2025 compile and 47 remain signed deferred: four English "
-            "cells have no matching LA id, 32 Scottish cells are represented "
-            "only at BRMA grain without a signed translation, and 11 Northern "
-            "Ireland cells are absent."
+            "signed rationale). Of the 361 local-authority cells, 316 bind for "
+            "the 2025 compile and 45 remain signed deferred: two English cells "
+            "are not published, 11 Northern Ireland cells have a country mean "
+            "only, and 32 Scottish cells are represented at BRMA grain, where "
+            "the 18 BRMA cells bind with each BRMA's private renters derived "
+            "from the councils' through Census 2022 (microcosm#1090, #1262)."
         ),
     },
     {

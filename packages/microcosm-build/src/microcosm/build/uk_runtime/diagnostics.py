@@ -801,15 +801,20 @@ def uk_zero_weight_strata(
     return rows
 
 
+#: Adapter and Ledger spellings of a diagnostics level: the rowwise area
+#: type ``la``, and ``statistical_scope``, the Ledger level of PIPR's Scottish
+#: BRMA rows, the only targets the contract binds at it (microcosm#1262).
+_GEOGRAPHY_LEVEL_ALIASES = {"la": "local_authority", "statistical_scope": "brma"}
+
+
 def _normalize_geography_level(value: object) -> str:
     raw = getattr(value, "value", value)
     level = str(raw).strip().lower()
-    if level == "la":
-        level = "local_authority"
+    level = _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
     if level not in UK_TARGET_GEOGRAPHY_LEVELS:
         raise ValueError(
             f"Unknown UK target geography level {raw!r}; expected one of "
-            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or adapter alias 'la')."
+            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or alias 'la' or 'statistical_scope')."
         )
     return level
 
