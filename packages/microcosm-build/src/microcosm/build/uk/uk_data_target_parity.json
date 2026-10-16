@@ -31,20 +31,14 @@
       "status": "routed"
     },
     {
-      "classification": "validation_check",
+      "classification": "compile_contract",
       "concern_id": "credibility_local_council_tax_outliers",
       "covers": [
         "policyengine_uk_data.tests.test_la_council_tax_targets",
         "policyengine_uk_data.tests.test_la_loss_council_tax"
       ],
-      "evidence": "uk-data LA council-tax outlier test and uk-data#371; Microcosm council-tax LA surface.",
-      "fence": {
-        "origin": "uk-data LA target test.",
-        "purpose": "Catch implausible band-count/rate joins.",
-        "verdict_basis": "Route to local validation once council-tax references compile; do not modify target values to satisfy the check."
-      },
-      "reason": "The Scilly 2000\u00d7 leak guard belongs to post-compile local validation.",
-      "status": "routed"
+      "evidence": "uk-data LA council-tax outlier test and uk-data#371 guard band-count/rate joins such as the Scilly 2000x leak. Microcosm binds dwelling counts by band, never a Band D amount, and compiles each authority's cells from that authority's own taxbase row with no fallback join; a cell with no fact is a signed deferral, and the Isles of Scilly and the City of London stand under the local-authority support floor. The release-blocking uk_ledger_compile_parity_local_incumbent_2025 preflight pins every compiled council-tax cell's ledger value (microcosm#929, microcosm#1278).",
+      "status": "ported_local_declared"
     },
     {
       "classification": "compile_contract",
@@ -890,7 +884,7 @@
       ],
       "evidence": "uk-data targets/sources/la_council_tax.py module doctrine; no Microcosm contract row.",
       "fence": {
-        "origin": "uk-data published Band D rates but did not wire them into the additive LA loss matrix.",
+        "origin": "uk-data emitted each authority's Band D amount as a registry target but never as a column of the additive LA loss; Band D entered that loss only as the multiplier in England's housing/council_tax_net proxy (MHCLG taxbase after support times Band D).",
         "purpose": "Avoid treating a rate as an additive target.",
         "verdict_basis": "Keep excluded until a rate-aware non-linear objective exists."
       },
@@ -973,6 +967,39 @@
     },
     {
       "classification": "national_registry_family",
+      "concern_id": "national_dwp_housing_benefit_pension_age",
+      "covers": [
+        "policyengine_uk_data.targets.sources.dwp_housing_benefit"
+      ],
+      "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490): Housing Benefit spending and claims over Pension Credit qualifying age, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026); Microcosm binds the same DWP line as dwp.hb.amount_pension_age and the pension-age caseloads dwp.hb.households_pension_age (all tenures, social and private rented) from Stat-Xplore.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "adjudication_pending",
+      "concern_id": "national_dwp_housing_benefit_working_age",
+      "covers": [
+        "policyengine_uk_data.targets.sources.dwp_housing_benefit"
+      ],
+      "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490; policyengine-uk#1911 for the unmodelled accommodation); Microcosm obr.housing_benefit and the all-age dwp.hb.households rows are measure exclusions tracking microcosm#867.",
+      "fence": {
+        "origin": "uk-data split DWP's Housing Benefit line by age and netted supported and temporary accommodation out of the working-age part.",
+        "purpose": "Anchor working-age Housing Benefit without asking the frame for claims it cannot hold.",
+        "verdict_basis": "Never bind the full working-age line; route with microcosm#867, which decides whether the accommodation part is a declared reconciliation."
+      },
+      "reason": "uk-data binds working-age Housing Benefit net of supported and temporary accommodation, which neither the frame nor policyengine-uk carries; Microcosm holds working-age Housing Benefit out of the objective while microcosm#867 decides how the accommodation part is declared.",
+      "status": "routed"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_dwp_pension_credit",
+      "covers": [
+        "policyengine_uk_data.targets.sources.dwp_pension_credit"
+      ],
+      "evidence": "uk-data targets/sources/dwp_pension_credit.py (uk-data#510): Pension Credit spending and claims, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026), replacing OBR table 4.9's same GB series; Microcosm binds obr.pension_credit (stamped Great Britain since microcosm#1300) and dwp.pension_credit.benefit_units with its type, couple and age splits, beside dfc_ni.pension_credit.benefit_units for Northern Ireland.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
       "concern_id": "national_hmrc_cgt_size_bands",
       "covers": [
         "policyengine_uk_data.targets.sources.hmrc_cgt"
@@ -1035,7 +1062,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax (OBR table 4.1 row 15, England, Scotland and Wales receipts over Great Britain's households, microcosm#1095) and country legs obr.council_tax_{england,scotland,wales}.",
+      "evidence": "uk-data targets/sources/obr.py:302 (_parse_council_tax); Microcosm target ids obr.council_tax (OBR table 4.1 row 15, England, Scotland and Wales receipts over Great Britain's households, microcosm#1095) and country legs obr.council_tax_{england,scotland,wales}.",
       "status": "ported_national"
     },
     {
@@ -1044,7 +1071,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni_employee, obr.ni_employer, and obr.ni_self_employed; OBR's cash total obr.ni is a diagnostic on obr.ni_employee (microcosm#1095).",
+      "evidence": "uk-data targets/sources/obr.py:366 (_parse_nics); Microcosm target ids obr.ni_employee, obr.ni_employer, and obr.ni_self_employed; OBR's cash total obr.ni is a diagnostic on obr.ni_employee (microcosm#1095).",
       "status": "ported_national"
     },
     {
@@ -1053,7 +1080,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:402-409 and uk-data#88.",
+      "evidence": "uk-data targets/sources/obr.py:420-427 (the Class 3 note in _parse_nics) and uk-data#88.",
       "fence": {
         "origin": "uk-data skipped the Class 3 OBR row pending uk-data#88.",
         "purpose": "Avoid pretending voluntary Class 3 contributions are represented by another NIC variable.",
@@ -1077,7 +1104,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:458 welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets.",
+      "evidence": "uk-data targets/sources/obr.py:502 (_parse_welfare) welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets. Since uk-data a43e8c5 the Housing Benefit and Pension Credit lines come from DWP's benefit expenditure and caseload tables (targets/sources/dwp_housing_benefit.py, uk-data#490; dwp_pension_credit.py, uk-data#510) and Universal Credit is one Great Britain total (uk-data#530).",
       "status": "ported_national"
     },
     {
@@ -1123,6 +1150,21 @@
       "status": "ported_national"
     },
     {
+      "classification": "awaiting_facts",
+      "concern_id": "national_ons_lfs_employment",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_labour_market"
+      ],
+      "evidence": "uk-data targets/sources/ons_labour_market.py (uk-data#529): LFS employees and self-employed, UK, four-quarter averages, bound on the FRS employment_status; no Chronicle ONS labour-market package.",
+      "fence": {
+        "origin": "uk-data tied the counts of employees and the self-employed to the LFS because HMRC's annual counts of employment-income taxpayers include part-year earners.",
+        "purpose": "Anchor the stock of employed people at a point in time, not only annual taxpayer counts.",
+        "verdict_basis": "Request the LFS series from Chronicle before any binding; do not derive an employment control from HMRC taxpayer counts."
+      },
+      "reason": "The pinned Chronicle feed carries no ONS Labour Force Survey employment series (MGRN employees, MGRQ self-employed).",
+      "status": "blocked_source"
+    },
+    {
       "classification": "national_registry_family",
       "concern_id": "national_ons_public_sector_employment",
       "covers": [
@@ -1165,7 +1207,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:617-728; Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
+      "evidence": "uk-data targets/sources/obr.py:667-756 (_parse_tv_licence and the static rows before get_targets); Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
       "status": "ported_national"
     },
     {
@@ -1186,11 +1228,11 @@
   ],
   "reference": {
     "governing_rule": "Every late uk-data target family, dataset-level anchor, and credibility check has a Microcosm home or an explicit Chesterton fence.",
-    "incumbent_commit": "8629dbb",
+    "incumbent_commit": "a43e8c5",
     "incumbent_inventory": "uk_data_target_inventory.json",
     "inventory_nature": "A sha-stamped snapshot of the incumbent's target-bearing modules, re-extracted manually against a local checkout and committed. CI checks the parity concerns against the committed snapshot; the recorded per-file hashes are re-verified against a tree only by verify_uk_data_target_inventory_against_tree (env-gated test or by hand), so 'uk-data moved' is caught on re-extraction, not continuously.",
     "issue_citation_rule": "Incumbent issues are cited as uk-data#NNN.",
-    "verified_on": "2026-09-01"
+    "verified_on": "2026-10-16"
   },
   "register_kind": "uk_data_target_parity",
   "schema_version": 1,
