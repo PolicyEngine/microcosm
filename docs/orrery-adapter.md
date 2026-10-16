@@ -268,6 +268,129 @@ mismatches, missing required bytes and corrupt files refuse export. Unavailable
 gate-blocked outputs, omitted operations and unconfigured summary providers are
 explicit. Earlier phases not supplied to the exporter remain unknown.
 
+## Reconstructed declarations
+
+A build from before #1144 recorded its graph declaration, but not the run
+binding that execution export validates, so its execution cannot be shown.
+`microcosm.graph.reconstruction` rebuilds that build's schema from the recorded
+declaration alone and marks it as reconstructed:
+
+```python
+from microcosm.graph.reconstruction import reconstructed_schema, reconstruction_marker
+
+marker = reconstruction_marker(
+    git_commit=recorded_commit,
+    git_dirty=False,
+    revision_origin="recorded",
+    inputs=inputs,  # one {name, role, sha256, bytes, verification} per file read
+)
+schema = reconstructed_schema(declaration_bytes, marker)
+```
+
+The marker is the producer extension `microcosm.reconstruction`:
+
+```json
+{
+  "protocol": "microcosm.graph.reconstruction.v1",
+  "reconstructed": true,
+  "basis": "declaration_only",
+  "source_revision": {
+    "git_commit": "<full lowercase commit>",
+    "git_dirty": false,
+    "origin": "recorded"
+  },
+  "inputs": [
+    {"name": "graph.json", "role": "declaration", "sha256": "<hex>",
+     "bytes": 4096, "verification": "no_recorded_digest"},
+    {"name": "rowwise_candidate_manifest.json", "role": "code_pin",
+     "sha256": "<hex>", "bytes": 2048, "verification": "recorded_digest_matched"}
+  ],
+  "scope": "Rebuilt after the build from its recorded graph declaration. ..."
+}
+```
+
+- **`source_revision`:** `origin` is `recorded` when the build wrote the
+  revision itself, and `caller_asserted` when the build recorded none and the
+  caller supplied one. `git_dirty` is `null` when the build did not record it.
+- **`inputs`:** every file the reconstruction read, in name order, by digest
+  and size. `verification` is `recorded_digest_matched` when a digest the build
+  itself recorded for that file matched, and `no_recorded_digest` when the
+  build recorded none. Exactly one input is the declaration, and its digest
+  equals the schema's `graph_sha256`.
+- **Exact bytes:** `reconstructed_schema` refuses a declaration that the
+  current serializer would not write byte for byte. The schema therefore
+  describes the recorded file, not a reinterpretation of it.
+- **Where it travels:** the marker is saved in `graph.schema.json`, so any
+  later projection of the saved schema keeps it. Orrery documents show it at
+  `metadata.microcosm.extensions["microcosm.reconstruction"]`.
+  `validate_reconstruction(schema)` returns the marker, or `None` for a schema
+  that was not reconstructed.
+- **No execution claims:** a reconstructed document has no activities,
+  artifacts, statuses or `metadata.execution`. No operation appears as
+  executed, cached or gated. CI parses one with Orrery's public parser
+  (`tools/orrery-contract/verify-reconstruction.mjs`).
+
+### UK builds before #1144
+
+UK dense and national builds from before #1144 wrote `graph.json` beside their
+outputs, and recorded their code revision in `rowwise_candidate_manifest.json`.
+This command turns such a build's output directory into a reconstructed
+publication:
+
+```sh
+uv run python -m microcosm.build.uk_runtime.orrery_reconstruction \
+  --build path/to/past-build \
+  --output path/to/reconstructed-publication
+```
+
+The declaration is the build's own `graph.json`, never one re-derived from
+current code. The declaration format has not changed since the UK graph driver,
+so a recorded file reproduces byte for byte; one that does not is refused.
+
+The build directory is only read. The command:
+
+- **Reads:** `graph.json`, which is required, and also `build.json`,
+  `rowwise_candidate_manifest.json` and `sha256sums.txt` where present. Links,
+  devices and inputs over 32 MiB are refused.
+- **Checks recorded digests:** a file whose bytes disagree with a digest the
+  build recorded for it is refused. `build.json` binds the candidate manifest,
+  and `sha256sums.txt` binds the files it lists.
+- **Resolves the revision:** it takes the candidate manifest's `git_commit`
+  and `git_dirty`, which must agree with the copy under `identity.code`.
+  `--revision` must match that commit, or supplies one when the build recorded
+  none; that revision is marked `caller_asserted`. With neither, it refuses.
+- **Refuses later builds:** a build that records Orrery evidence
+  (`graph.schema.json` or `execution.evidence.json`) is exported with
+  `python -m microcosm.graph.orrery` instead.
+- **Refuses missing declarations:** a directory without `graph.json` is refused,
+  and the refusal names the build records that were found. Staged bundles never
+  carried `graph.json`, and builds from before the UK graph driver never wrote
+  it.
+
+It writes a new directory with the layout of a normal publication, and moves the
+directory into place only after every file is written:
+
+| File | Contents |
+| --- | --- |
+| `graph.schema.json` | Compiler schema of the recorded declaration, with the reconstruction marker |
+| `graph.orrery.json` | Orrery document, titled `UK · reconstructed declaration (<commit>)` |
+| `orrery.upload.json` | Publication inventory (roles `graph` and `schema`); its publication ID is derived from the files' digests |
+| `orrery.reconstruction.json` | Summary report; not in the inventory |
+
+The summary report, of which the command prints a short version, lists:
+
+- the inputs and how each was verified;
+- the expected files that are missing;
+- evidence found but not bound to operations: run manifests,
+  `evidence-index.json`, `operations.json` and the content store;
+- warnings, for a dirty or unrecorded working tree, a caller-asserted revision,
+  or a declaration the build recorded no digest for. Before #1144, the last one
+  applies to every build.
+
+Output is deterministic: reconstructing the same build twice gives identical
+bytes and the same publication ID. The command uploads nothing and starts no
+emitter service, so publishing the directory remains a separate step.
+
 ## Orrery evidence panels
 
 | Surface | Exported evidence |
