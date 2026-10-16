@@ -389,3 +389,125 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
         "national": {"2025": ["obr.income_tax"]},
         "local": {},
     }
+
+
+_REGION_ROW = "microcosm.high_value_homes.over_2m_by_region"
+
+
+def _with_region_rows(*names):
+    """A compiled register carrying local-line-only region rows (#1301)."""
+
+    region = _registry(f"{_REGION_ROW}@E12000007", f"{_REGION_ROW}@W92000004")
+    region = TargetRegistry(
+        [
+            replace(spec, metadata={"contract_target_id": _REGION_ROW})
+            for spec in region.specs
+        ],
+        country="uk",
+    )
+    plain = _registry(*names)
+    return TargetRegistry([*plain.specs, *region.specs], country="uk"), plain
+
+
+def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypatch):
+    compiled, plain = _with_region_rows("retained", "excluded")
+    artifact = SimpleNamespace(
+        facts=({"feed": True},),
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        provenance=lambda: {"artifact_id": "synthetic"},
+    )
+    monkeypatch.setattr(
+        runtime, "load_ledger_consumer_artifact", lambda *a, **kw: artifact
+    )
+    monkeypatch.setattr(
+        runtime,
+        "require_committed_uk_chronicle_feed_pin",
+        lambda facts_sha256, **kwargs: SimpleNamespace(to_dict=lambda: {}),
+    )
+    compiled_facts = []
+
+    def compile_national(facts, *, target_period):
+        compiled_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(runtime, "uk_cross_grain_coverage_receipt", lambda: {})
+    monkeypatch.setattr(runtime, "assert_uk_subset_relations", lambda registry: [])
+    monkeypatch.setattr(
+        runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
+    monkeypatch.setattr(runtime, "_ledger_provenance", lambda artifact: {})
+
+    result = runtime.load_uk_national_target_inputs(
+        "facts.jsonl",
+        calibration_year=2025,
+        exclusions_evaluated_on=date(2026, 10, 16),
+    )
+
+    # Every reference compiles, on the feed and the derived facts together.
+    derived = runtime.load_uk_high_value_home_stock_facts()
+    assert compiled_facts == [({"feed": True}, *derived.rows)]
+    # The region rows leave before reconciliation: the national surface and
+    # its version are the ones it had without them.
+    (reconciled,) = reconciled_from
+    assert [spec.name for spec in reconciled.specs] == ["retained", "excluded"]
+    assert result["national_registry"].version == plain.version
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == plain.version
+    assert completeness["compiled_reference_count"] == 2
+    assert completeness["calibration_line"] == {
+        "line": "national",
+        "all_lines_registry_version": compiled.version,
+        "all_lines_reference_count": 4,
+        "dropped_reference_count": 2,
+        "dropped_target_ids": [_REGION_ROW],
+    }
+    assert result["derived_fact_provenance"]["high_value_home_stock_facts"][
+        "rows_sha256"
+    ] == (derived.rows_sha256)
+
+
+def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
+    national, approved, local, artifact, calls = prepared
+    compiled, _plain = _with_region_rows("retained", "excluded")
+    seen_facts = []
+
+    def compile_national(facts, *, target_period):
+        seen_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (registry, {}),
+    )
+    result = _load()
+    derived = runtime.load_uk_high_value_home_stock_facts()
+    assert all(facts == (*artifact.facts, *derived.rows) for facts in seen_facts)
+    # The local line binds every row: nothing leaves, the registry is the
+    # compiled object itself.
+    assert reconciled_from == [compiled]
+    assert result["national_registry"] is compiled
+    line = result["register_completeness"]["calibration_line"]
+    assert line["line"] == "local"
+    assert line["dropped_reference_count"] == 0

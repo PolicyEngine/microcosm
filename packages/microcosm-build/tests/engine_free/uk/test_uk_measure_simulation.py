@@ -1657,3 +1657,130 @@ def test_the_resolver_routes_bus_boardings_to_households(monkeypatch, tmp_path: 
         assert resolver.entity_for(name) == "household"
         assert resolver.knows("household", name)
         assert not resolver.knows("person", name)
+
+
+#: microcosm#1301: the three high-value homes region measures and the
+#: threshold each reads.
+_HIGH_VALUE_HOME_MEASURES = {
+    "owner_occupied_home_over_gbp_1m": "over_gbp_1m",
+    "owner_occupied_home_over_gbp_1_5m": "over_gbp_1_5m",
+    "owner_occupied_home_over_gbp_2m": "over_gbp_2m",
+}
+
+
+def _high_value_home_frame() -> FrameStub:
+    """Synthetic households straddling the frame-basis thresholds."""
+
+    from microcosm.build.uk_runtime.high_value_homes import (
+        uk_high_value_home_thresholds,
+    )
+
+    basis = {
+        threshold.threshold_id: threshold.basis_gbp
+        for threshold in uk_high_value_home_thresholds()
+    }
+    frame = FrameStub()
+    frame._tables["person"] = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            "person_benunit_id": [10, 20, 30, 40, 50],
+            "person_household_id": [100, 200, 300, 400, 500],
+        }
+    )
+    frame._tables["household"] = pd.DataFrame(
+        {
+            "household_id": [100, 200, 300, 400, 500],
+            "main_residence_value": [
+                basis["over_gbp_2m"] + 1.0,  # owner over every threshold
+                basis["over_gbp_1m"] + 1.0,  # owner over the lowest only
+                basis["over_gbp_1m"],  # owner exactly at the threshold
+                basis["over_gbp_2m"] + 1.0,  # private renter: never counted
+                np.nan,  # owner without a stored value
+            ],
+            "tenure_type": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE",
+                "OWNED_OUTRIGHT",
+                "RENT_PRIVATELY",
+                "OWNED_OUTRIGHT",
+            ],
+        }
+    )
+    return frame
+
+
+def test_high_value_home_measures_mask_stored_owner_values_by_threshold():
+    """Each measure is the shared mask on the stored value and tenure (#1301)."""
+
+    frame = _high_value_home_frame()
+    expected = {
+        "owner_occupied_home_over_gbp_1m": [1.0, 1.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_1_5m": [1.0, 0.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_2m": [1.0, 0.0, 0.0, 0.0, 0.0],
+    }
+    for variable, threshold_id in _HIGH_VALUE_HOME_MEASURES.items():
+        # No engine: the stored columns are read off the frame, never uprated.
+        values, route = compute_uk_measure_input(
+            frame, None, "household", variable, 2025
+        )
+        assert values.tolist() == expected[variable], variable
+        assert route == f"frame_columns:high_value_home_mask:{threshold_id}"
+    assert measure_simulation._HIGH_VALUE_HOME_MEASURES == _HIGH_VALUE_HOME_MEASURES
+    with pytest.raises(KeyError, match="household-only"):
+        compute_uk_measure_input(
+            frame, None, "person", "owner_occupied_home_over_gbp_1m", 2025
+        )
+
+
+def test_high_value_home_measures_need_the_stored_columns():
+    frame = _high_value_home_frame()
+    frame._tables["household"] = frame._tables["household"].drop(
+        columns=["tenure_type"]
+    )
+    with pytest.raises(ValueError, match=r"\['tenure_type'\]"):
+        compute_uk_measure_input(
+            frame, None, "household", "owner_occupied_home_over_gbp_2m", 2025
+        )
+
+
+def test_the_contract_binds_each_region_row_on_its_threshold_measure():
+    """The bound value variables are the measures, threshold for threshold."""
+
+    targets = measure_simulation._uk_contract_targets()
+    bound = {
+        target_id: target["bindings"]["policyengine"]["value_variable"]
+        for target_id, target in targets.items()
+        if target_id.startswith("microcosm.high_value_homes.")
+    }
+    assert set(bound.values()) == set(_HIGH_VALUE_HOME_MEASURES)
+    for target_id, variable in bound.items():
+        threshold_id = _HIGH_VALUE_HOME_MEASURES[variable]
+        selector = targets[target_id]["ledger_selector"]
+        assert selector["record_set_spec_id"].endswith(f".{threshold_id}.v1")
+
+
+def test_a_persisted_high_value_home_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = _high_value_home_frame()
+    frame._tables["household"]["owner_occupied_home_over_gbp_1m"] = [1.0] * 5
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def test_the_resolver_routes_high_value_home_measures_to_households(
+    monkeypatch, tmp_path: Path
+):
+    resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
+    for name in _HIGH_VALUE_HOME_MEASURES:
+        assert resolver.entity_for(name) == "household"
+        assert resolver.knows("household", name)
+        assert not resolver.knows("person", name)

@@ -645,6 +645,25 @@ _REGION_TIER_ONS_DRIFT_RATIONALE = (
 )
 
 
+#: microcosm#1301: the region rows of the high-value homes family (the high
+#: value council tax surcharge, HVCTS) bind the same Microcosm-derived estimate
+#: as its local cells, on the local line only, so the incumbent national
+#: register has nothing to compare them with either.
+_HIGH_VALUE_HOMES_REGION_PREFIX = "microcosm.high_value_homes."
+_HIGH_VALUE_HOMES_REGION_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: the row is a Microcosm-derived estimate of "
+    "the owner-occupied dwelling stock above a high value council tax "
+    "surcharge (HVCTS) threshold in an English region or Wales "
+    "(uk/high_value_home_stock_facts.json, fence "
+    "high_value_home_stock_derived_estimate), compiled beside the Chronicle "
+    "feed. No publisher counts such dwellings by region and the incumbent "
+    "registry carries no row to compare, so the difference is the derived "
+    "target itself. The row is the cross-grain control for the family's "
+    "constituency and local-authority cells and binds on the local line only "
+    "(calibration_lines; microcosm#1301)."
+)
+
+
 def _add_signed_rationale_notes(
     report: dict[str, object],
     *,
@@ -661,6 +680,11 @@ def _add_signed_rationale_notes(
             and row.get("kind") == "fixture_only"
         ):
             row["reason"] = _DWP_UC_FIVE_OR_MORE_DIAGNOSTIC_RATIONALE
+        elif (
+            name.startswith(_HIGH_VALUE_HOMES_REGION_PREFIX)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _HIGH_VALUE_HOMES_REGION_LEDGER_ONLY_RATIONALE
         elif name in _UC_PAID_WINDOW_NAMES:
             inherited_change = (
                 "PR #891 contract with #892 source-window averaging"
@@ -839,8 +863,10 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
 
 def _compile_for_receipt(spec: ParityReceiptSpec, facts: list[dict]):
     if spec.surface == "national":
+        # The high-value homes region rows (microcosm#1301) select the
+        # derived facts too; the national compile carries every reference.
         return compile_uk_target_registry(
-            facts,
+            (*facts, *load_uk_high_value_home_stock_facts().rows),
             target_period=spec.target_period,
         )
     if spec.surface == "local":

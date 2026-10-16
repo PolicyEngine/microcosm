@@ -217,7 +217,7 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets, high_value_homes
+        from . import full_targets, high_value_homes, measure_simulation
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -230,6 +230,10 @@ class _TargetKernel(KernelBase):
             ladder_targets,
             ledger_targets,
             local_doctrine,
+            # The measures full_measure and full_targets resolve, the high-value
+            # homes region rows among them (microcosm#1301): an edit there
+            # alone must re-key the measures and everything they feed.
+            measure_simulation,
             support_floor,
             *uk_target_compile_modules(),
         )

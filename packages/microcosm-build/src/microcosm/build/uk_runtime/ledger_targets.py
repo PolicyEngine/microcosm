@@ -1782,6 +1782,96 @@ def _uk_contract_targets(
     }
 
 
+#: The lines a UK contract target can bind on (microcosm#1301): the national
+#: line (``load_uk_national_target_inputs``, the release-cut certifier) and the
+#: local line (the full dense build, whose solve binds the national rows beside
+#: the local surface).
+UK_CALIBRATION_LINES: tuple[str, ...] = ("national", "local")
+
+
+def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset[str]:
+    """The lines a contract target binds on.
+
+    A target binds on every line unless it declares ``calibration_lines``: a
+    non-empty list of distinct lines from :data:`UK_CALIBRATION_LINES`. The
+    high-value homes region rows declare ``["local"]``, because their measure
+    reads the Land Registry placement of ``main_residence_value`` that only the
+    local line's pool clones carry; on the national spine the value is the WAS
+    donor's (microcosm#1301).
+    """
+
+    declared = target.get("calibration_lines")
+    if declared is None:
+        return frozenset(UK_CALIBRATION_LINES)
+    target_id = target.get("target_id", "<unknown>")
+    if isinstance(declared, (str, bytes)) or not isinstance(declared, Sequence):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must be a list of lines, "
+            f"got {declared!r}."
+        )
+    lines = [str(line) for line in declared]
+    if not lines or len(set(lines)) != len(lines):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must name at least one "
+            f"line, each once; got {lines!r}."
+        )
+    unknown = sorted(set(lines) - set(UK_CALIBRATION_LINES))
+    if unknown:
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines names unknown line(s) "
+            f"{unknown!r}; the lines are {list(UK_CALIBRATION_LINES)!r}."
+        )
+    return frozenset(lines)
+
+
+def uk_registry_on_calibration_line(
+    registry: TargetRegistry, *, line: str
+) -> tuple[TargetRegistry, dict[str, Any]]:
+    """The compiled registry less the references ``line`` does not bind.
+
+    Every committed reference compiles on every line, so the compile-parity
+    registries stay complete; a line's solve surface drops the references
+    whose contract target's ``calibration_lines`` leave ``line`` out, right
+    after the compile and before reconciliation, the measure exclusions and the
+    frozen-register check. A line no declaration narrows keeps its registry
+    (the same object, so the same version). The receipt names the line, the
+    all-lines registry version and count, and the dropped contract targets.
+    """
+
+    if line not in UK_CALIBRATION_LINES:
+        raise ValueError(
+            f"unknown UK calibration line {line!r}; the lines are "
+            f"{list(UK_CALIBRATION_LINES)!r}."
+        )
+    off_line = frozenset(
+        target_id
+        for target_id, target in _uk_contract_targets(national_only=False).items()
+        if line not in uk_contract_target_calibration_lines(target)
+    )
+    kept: list[TargetSpec] = []
+    dropped: list[TargetSpec] = []
+    dropped_target_ids: set[str] = set()
+    for spec in registry.specs:
+        target_id = str(
+            spec.metadata.get("contract_target_id") or spec.name.split("@", 1)[0]
+        )
+        if target_id in off_line:
+            dropped.append(spec)
+            dropped_target_ids.add(target_id)
+        else:
+            kept.append(spec)
+    receipt: dict[str, Any] = {
+        "line": line,
+        "all_lines_registry_version": registry.version,
+        "all_lines_reference_count": len(registry.specs),
+        "dropped_reference_count": len(dropped),
+        "dropped_target_ids": sorted(dropped_target_ids),
+    }
+    if not dropped:
+        return registry, receipt
+    return TargetRegistry(kept, country=registry.country), receipt
+
+
 def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
     """Resolve one compiled target's local or Ledger geography spelling."""
 

@@ -622,18 +622,6 @@
       "route": "no_higher_control",
       "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
     },
-    "microcosm.high_value_homes.over_1m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
-    },
-    "microcosm.high_value_homes.over_1_5m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1.5m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
-    },
-    "microcosm.high_value_homes.over_2m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £2m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
-    },
     "desnz.subnational.electricity_kwh": {
       "route": "no_higher_control",
       "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."

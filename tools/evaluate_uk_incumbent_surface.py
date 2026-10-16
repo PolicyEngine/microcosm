@@ -29,6 +29,9 @@ import pandas as pd
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.full_measure import resolve_uk_full_measures
+from microcosm.build.uk_runtime.high_value_homes import (
+    load_uk_high_value_home_stock_facts,
+)
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     GSS_REGION_CODES,
     classify_local_rows,
@@ -140,7 +143,12 @@ def main(argv=None) -> int:
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
     period = int(load_uk_frs_release().calibration_year)
-    compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+    # The dense candidate's own line binds the high-value homes region rows,
+    # which select the Microcosm-derived facts beside the feed (microcosm#1301).
+    compilation = compile_uk_target_registry(
+        (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+        target_period=period,
+    )
     if compilation.unsupported:
         raise SystemExit(
             f"{len(compilation.unsupported)} national references failed to compile"

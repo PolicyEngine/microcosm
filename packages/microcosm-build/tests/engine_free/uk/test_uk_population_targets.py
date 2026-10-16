@@ -62,6 +62,9 @@ NATIONAL_SELECTOR_KEYS = {
     "period_value",
     "layout_groupby_value_id",
     "source_measure_id_by_opening_year",
+    # microcosm#1301: the high-value homes region rows select the derived
+    # stock's record set, as its local cells do.
+    "record_set_spec_id",
 }
 LOCAL_SELECTOR_KEYS = {
     "source_name",

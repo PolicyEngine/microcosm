@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
@@ -263,12 +264,15 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     # full build, which refuses an unresolved calibration-year reference, this
     # producer keeps the partial registry and leaves the verdict to the gates.
     ledger_unsupported = {}
+    # The high-value homes family binds Microcosm-derived facts beside the feed:
+    # its local cells (microcosm#1240) and its region rows (microcosm#1301).
+    facts = (*artifact.facts, *load_uk_high_value_home_stock_facts().rows)
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+        compilation = compile_uk_target_registry(facts, target_period=period)
         ledger_registries[period] = compilation.registry
         ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
-        (*artifact.facts, *load_uk_high_value_home_stock_facts().rows),
+        facts,
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )
@@ -281,8 +285,14 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         reference_compiled = ledger_registries[calibration_year]
     else:
         reference_compiled = compile_uk_target_registry(
-            artifact.facts, target_period=calibration_year
+            facts, target_period=calibration_year
         ).registry
+    # The calibration reference is the national line's surface: the rows that
+    # bind on the local line only leave it as they leave the national solve
+    # (calibration_lines, microcosm#1301); compile parity keeps them.
+    reference_compiled, _line_receipt = uk_registry_on_calibration_line(
+        reference_compiled, line="national"
+    )
     evaluated_on = exclusion_evaluation_date(None)
     exclusions = load_uk_calibration_measure_exclusions()
     reference_registry, _receipt = apply_uk_calibration_measure_exclusions(

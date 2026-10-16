@@ -7,7 +7,12 @@ import importlib
 from pathlib import Path
 
 from microcosm.build import ledger_targets as shared_ledger_targets
-from microcosm.build.uk_runtime import graph_national, graph_targets, hmrc_uprating
+from microcosm.build.uk_runtime import (
+    graph_national,
+    graph_targets,
+    hmrc_uprating,
+    measure_simulation,
+)
 from microcosm.build.uk_runtime.target_compile_modules import (
     EXCLUDED_DIRECT_IMPORTS,
     UK_TARGET_COMPILE_MODULE_NAMES,
@@ -88,6 +93,17 @@ def test_full_target_kernel_hashes_the_shared_resolver_and_the_appliers(
     assert shared_ledger_targets in hashed
     assert hmrc_uprating in hashed
     assert set(uk_target_compile_modules()) <= set(hashed)
+
+
+def test_full_target_kernels_hash_the_measure_simulation(monkeypatch):
+    """full_measure and full_targets resolve their measures in
+    measure_simulation, the high-value homes region rows among them
+    (microcosm#1301), so an edit there alone re-keys the measures node."""
+    for kernel in (
+        graph_targets.UKFullTargetCompilationKernel(),
+        graph_targets.UKFullMeasureKernel(),
+    ):
+        assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_targets)
 
 
 def test_national_target_kernel_hashes_the_same_compile_modules(monkeypatch):
