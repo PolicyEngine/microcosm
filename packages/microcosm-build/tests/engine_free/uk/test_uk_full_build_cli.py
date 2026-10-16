@@ -2396,3 +2396,170 @@ def test_the_doctrine_is_k15_2000_epochs_nation_grain():
         "nation_grain_family_equal_sqrt_count"
     )
     assert doctrine.UK_LOCAL_MAX_WEIGHT_RATIO == 10.0
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1301: the gate clock and the solve-reuse guard of a second build
+# ---------------------------------------------------------------------------
+
+
+def test_the_gate_clock_lies_between_the_solve_clock_and_today(tmp_path):
+    from datetime import date, timedelta
+
+    today = date.today()
+    solve = (today - timedelta(days=3)).isoformat()
+    args = arguments(
+        tmp_path, "--review-date", solve, "--gate-review-date", today.isoformat()
+    )
+    cli.validate_cli_args(args)
+    assert cli._gate_review_date(args) == today
+    unsplit = arguments(tmp_path, "--review-date", solve)
+    cli.validate_cli_args(unsplit)
+    assert cli._gate_review_date(unsplit) == date.fromisoformat(solve)
+    early = (today - timedelta(days=4)).isoformat()
+    with pytest.raises(ValueError, match=f"--gate-review-date {early} precedes"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--review-date", solve, "--gate-review-date", early)
+        )
+    future = (today + timedelta(days=1)).isoformat()
+    with pytest.raises(ValueError, match="later than today"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--review-date", solve, "--gate-review-date", future)
+        )
+    # A future solve clock on its own stays admitted: a build that does not
+    # split the clocks may still evaluate on a planned sign-off date.
+    cli.validate_cli_args(arguments(tmp_path, "--review-date", future))
+
+
+def test_solve_reuse_is_refused_with_resume_forbid(tmp_path):
+    for extra in ((), ("--resume", "require")):
+        args = arguments(tmp_path, "--require-solve-reuse", *extra)
+        cli.validate_cli_args(args)
+        assert args.require_solve_reuse is True
+    assert arguments(tmp_path).require_solve_reuse is False
+    with pytest.raises(ValueError, match="--resume forbid"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--require-solve-reuse", "--resume", "forbid")
+        )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [("--gate-review-date", "today"), ("--require-solve-reuse",)],
+)
+def test_national_role_refuses_the_gate_clock_and_the_reuse_guard(tmp_path, extra):
+    from datetime import date
+
+    extra = tuple(date.today().isoformat() if x == "today" else x for x in extra)
+    national = cli.parse_args(_national_argv(tmp_path, *extra))
+    with pytest.raises(ValueError, match=extra[0]):
+        cli.validate_cli_args(national)
+
+
+def _with_calibrated_params(build, **params):
+    """The synthetic build with the calibrated gate node re-parameterised."""
+    graph = build.full.graph
+    nodes = tuple(
+        replace(node, params={**node.params, **params})
+        if node.id == "uk.full.gates.calibrated"
+        else node
+        for node in graph.nodes
+    )
+    return replace(build, full=replace(build.full, graph=replace(graph, nodes=nodes)))
+
+
+def test_the_solve_subgraph_is_every_strict_ancestor_of_the_calibrated_gates(
+    tmp_path,
+):
+    graph = prepared(tmp_path, size_households=2).full.graph
+    solve = {node.id for node in cli._solve_subgraph(graph).nodes}
+    assert solve == {
+        node.id for node in cli._through(graph, "uk.full.gates.calibrated").nodes
+    } - {"uk.full.gates.calibrated"}
+    assert {
+        "uk.full.calibrated",
+        "uk.full.gates.preflight",
+        "uk.full.holdout",
+        "uk.full.problem",
+    } <= solve
+    assert not solve & {"uk.full.export.prepare", "uk.full.gates.calibrated"}
+
+
+def test_required_solve_reuse_reruns_only_the_calibrated_gates(tmp_path, monkeypatch):
+    """A second build at a gate-only sign-off: the gates re-run on a later
+    clock while every solve node replays from the store (microcosm#1301)."""
+    pytest.importorskip("tables")
+    args = arguments(tmp_path, "--dataset-households", "2")
+    assert cli.execute_full_build(prepared(tmp_path, size_households=2), args) == 0
+    for path in args.out.iterdir():
+        if path.is_file():
+            path.unlink()
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay recomputed a solve node")
+
+    for kernel in (Fixture, Holdout, Targets, Population, SizeReceipt):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    evaluated = []
+    original = Evidence.run
+
+    def gates_only(self, context):
+        evaluated.append(context.params["phase"])
+        return original(self, context)
+
+    monkeypatch.setattr(Evidence, "run", gates_only)
+    args.require_solve_reuse = True
+    second = _with_calibrated_params(
+        prepared(tmp_path, size_households=2), review_date="2026-10-16"
+    )
+    assert cli.execute_full_build(second, args) == 0
+    assert evaluated == ["terminal"]
+    assert (args.out / "build.json").is_file()
+    execution = json.loads((args.out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert execution["nodes_reused"] > 0 and execution["nodes_computed"] > 0
+
+
+def test_required_solve_reuse_fails_before_the_gates_on_a_store_miss(
+    tmp_path, monkeypatch
+):
+    """The preflight is stored but the solve is not: the build stops with a
+    SolveReuseError naming what is missing, and neither solves nor gates."""
+    build = prepared(tmp_path)
+    graph = build.full.graph
+    cli.run_graph(
+        cli.compile_graph(cli._through(graph, "uk.full.gates.preflight")),
+        sources=build.sources,
+        store=cli.ContentStore(tmp_path / "out" / ".graph-store"),
+        kernels=build.kernels,
+    )
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, "--require-solve-reuse", build=build
+    )
+    assert status == 1
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "SolveReuseError"
+    assert "'uk.full.holdout'" in failure["message"]
+    assert "'uk.full.gates.calibrated'" not in failure["message"]
+    assert "target_fit_reviewed_exclusions.json" in failure["message"]
+    assert not (out / cli.FULL_GATE_REPORT_FILENAME).exists()
+
+
+def test_required_solve_reuse_on_an_empty_store_fails_at_the_preflight(
+    tmp_path, monkeypatch
+):
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    status, out = run_dense_main(tmp_path, monkeypatch, "--require-solve-reuse")
+    assert status == 1
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "SolveReuseError"
+    assert "'uk.full.gates.preflight'" in failure["message"]

@@ -128,6 +128,25 @@ size receipt and its search bracket. The release records the size, the
 selected penalty and the bracket in its coverage (`size`) and a
 `size_doctrine` limitation. The release identity is unchanged.
 
+### Second build: reuse the first build's solve (microcosm#1301)
+
+When build 1 is blocked only by failures signed in gate-only registers, build
+2 runs at the sign-off's head with build 1's arguments, its `--graph-store`
+and its `--review-date`, a new `--out`, and:
+
+```bash
+  --gate-review-date <on or after the sign-off's latest approved_on> \
+  --require-solve-reuse
+```
+
+The calibrated gates evaluate their reviewed exclusions on the gate clock,
+which may not precede `--review-date` or be later than today. Every node
+before the calibrated gates is required from the store, and a miss stops the
+build with `SolveReuseError` naming the missing nodes before anything
+computes. A miss means something that keys the solve changed between the
+builds; [the graph doc](uk-full-build-graph.md#a-second-build-that-reuses-the-solve)
+lists what. Expect about 1–2 hours instead of a full build.
+
 ## 3. Pre-flight the finished run
 
 ```bash

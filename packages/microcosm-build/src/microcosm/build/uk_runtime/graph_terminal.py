@@ -702,7 +702,16 @@ def _source_gate_evidence(context: KernelContext, engine):
 
 
 class UKFullGateKernel(KernelBase):
+    """The calibrated gate battery: every terminal gate, on the final weights.
+
+    Its terminal gates read the gate-only registers, so it keys on the full
+    country fingerprint and a sign-off re-keys it. The source preflight runs
+    under :class:`UKFullPreflightGateKernel` (microcosm#1301).
+    """
+
     ref = "uk.full-gates@1"
+    #: The battery phases this kernel evaluates; any other is refused.
+    phases: tuple[str, ...] = ("terminal",)
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -715,12 +724,17 @@ class UKFullGateKernel(KernelBase):
         self.engine = coverage_engine
         self.engine_identity = engine_identity
 
+    def _country_resources(self) -> str:
+        """Every packaged UK resource, the gate-only registers included."""
+        from ..country_spec import load_country_spec
+
+        return load_country_spec("uk").fingerprint
+
     def implementation_hash(self) -> str:
         # The gate evaluators (``gates``) and the register loaders
         # (``terminal_gates``) decide the report as much as the bindings do,
         # so an edit to either re-keys the gate nodes (microcosm#1301).
         from .. import gate_battery, gates
-        from ..country_spec import load_country_spec
         from . import (
             battery_bindings,
             diagnostics,
@@ -744,13 +758,22 @@ class UKFullGateKernel(KernelBase):
                         weighted_integrity,
                         diagnostics,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    "country_resources": self._country_resources(),
                 }
             )
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         from microcosm.calibrate.artifacts import decode_problem, decode_solution
+
+        phase = str(context.params["phase"])
+        if phase not in self.phases:
+            # Each phase keys on its own country resources (microcosm#1301):
+            # a node bound to the other kernel would be keyed on the wrong set.
+            raise ValueError(
+                f"{type(self).__name__} evaluates the {', '.join(self.phases)} "
+                f"phase only, not {phase!r}."
+            )
 
         from ..gate_battery import (
             EvidenceContext,
@@ -793,7 +816,6 @@ class UKFullGateKernel(KernelBase):
                     MassChangeRecord(**record) for record in state["mass_log"]
                 ),
             )
-        phase = str(context.params["phase"])
         diagnostics = []
         support = []
         output_artifacts = {}
@@ -977,6 +999,26 @@ class UKFullGateKernel(KernelBase):
         )
 
 
+class UKFullPreflightGateKernel(UKFullGateKernel):
+    """The source preflight, keyed on the solve's country resources.
+
+    The dense solve takes the preflight report as an input, so the
+    preflight's key is part of the solve's. Its gates read no gate-only
+    register (``solve_scope``), so it keys on the solve fingerprint: a
+    sign-off between the two release builds leaves it, and so the solve, a
+    cache hit (microcosm#1301). The code it runs is the calibrated kernel's.
+    """
+
+    ref = "uk.full-gates.preflight@1"
+    phases = ("preflight",)
+
+    def _country_resources(self) -> str:
+        """Every packaged UK resource but the gate-only registers."""
+        from .solve_scope import uk_solve_fingerprint
+
+        return uk_solve_fingerprint()
+
+
 def append_uk_full_gate_nodes(
     graph: Graph,
     *,
@@ -984,13 +1026,24 @@ def append_uk_full_gate_nodes(
     spine_stage_names: tuple[str, ...],
     engine_identity: str,
     review_date,
+    gate_review_date=None,
     sample_fraction: float = 1.0,
     release_candidate: bool = False,
     spine_provenance: ArtifactInput | None = None,
     input_population: str = "uk.full.pool",
     skip_holdout: bool = True,
 ) -> Graph:
-    """Own source preflight before solve and final diagnostics after installation."""
+    """Own source preflight before solve and final diagnostics after installation.
+
+    ``review_date`` is the solve clock: target compilation and the source
+    preflight evaluate reviewed entries on it. ``gate_review_date`` (default:
+    the solve clock) is the calibrated gates' clock, the date their reviewed
+    exclusions are evaluated on (microcosm#1301). It may not precede the
+    solve clock, and only the calibrated node carries it, so a later gate
+    clock re-keys the calibrated gates and what follows them, never the solve.
+    """
+    from datetime import date
+
     from microcosm.calibrate.artifacts import PROBLEM_TYPE, RESULT_TYPE, SOLUTION_TYPE
 
     from ..gate_battery import _gates_manifest_payload
@@ -1013,6 +1066,19 @@ def append_uk_full_gate_nodes(
             _gates_manifest_payload(uk_full_gate_manifest())
         ).decode(),
     }
+    # The calibrated gates' own clock; absent or equal to the solve clock, the
+    # calibrated node's parameters are the shared ones, byte for byte.
+    gate_params = params
+    if gate_review_date is not None:
+        gate_clock = str(gate_review_date)
+        if date.fromisoformat(gate_clock) < date.fromisoformat(params["review_date"]):
+            raise ValueError(
+                f"The gate review date {gate_clock} precedes the solve review "
+                f"date {params['review_date']}: the calibrated gates may not "
+                "evaluate reviewed exclusions before the solve's own clock."
+            )
+        if gate_clock != params["review_date"]:
+            gate_params = {**params, "review_date": gate_clock}
     provenance = (
         (replace(spine_provenance, name="spine_provenance"),)
         if spine_provenance
@@ -1047,7 +1113,7 @@ def append_uk_full_gate_nodes(
     )
     preflight = Node(
         "uk.full.gates.preflight",
-        UKFullGateKernel.ref,
+        UKFullPreflightGateKernel.ref,
         population=input_population,
         params={**params, "phase": "preflight"},
         artifact_inputs=common,
@@ -1094,7 +1160,7 @@ def append_uk_full_gate_nodes(
         population=calibration.population,
         inputs=population_slices(population_columns(graph, calibration.population)),
         sources=sources,
-        params={**params, "phase": "terminal"},
+        params={**gate_params, "phase": "terminal"},
         artifact_inputs=(
             *common,
             *build_state,
@@ -1141,11 +1207,10 @@ def append_uk_full_gate_nodes(
 def register_uk_full_gate_kernels(
     registry: KernelRegistry, *, coverage_engine, engine_identity: str
 ) -> None:
-    registry.register(
-        UKFullGateKernel(
-            coverage_engine=coverage_engine, engine_identity=engine_identity
+    for kernel in (UKFullPreflightGateKernel, UKFullGateKernel):
+        registry.register(
+            kernel(coverage_engine=coverage_engine, engine_identity=engine_identity)
         )
-    )
 
     registry.register(UKFullHoldoutKernel())
 
@@ -1164,7 +1229,6 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from ..country_spec import load_country_spec
         from . import (
             dataset_size,
             graph_targets,
@@ -1173,6 +1237,7 @@ class UKFullHoldoutKernel(KernelBase):
             national_doctrine,
             target_weights,
         )
+        from .solve_scope import uk_solve_fingerprint
 
         return hashlib.sha256(
             canonical_json(
@@ -1187,7 +1252,9 @@ class UKFullHoldoutKernel(KernelBase):
                         target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    # The holdout repeats the solve: it keys on the solve
+                    # fingerprint, as the target kernels do (microcosm#1301).
+                    "country_resources": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()

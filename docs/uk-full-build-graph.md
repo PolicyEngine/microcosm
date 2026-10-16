@@ -100,7 +100,7 @@ The full target compiler preserves the unreduced band-edge register, reference-p
 
 ## Replay and outputs
 
-The shared store defaults to `<out>/.graph-store`. `--graph-store` can reuse another store. `--resume require` requires completed numerical nodes and evidence to be available; output materialization and byte readback still verify the recreated files. `--resume-size-checkpoint` imports a legacy size-search checkpoint only after validating invocation identity, ordered target/household axes, initial weights and recomputed losses. It skips the saved dense solve and search. New runs persist their intermediates as graph artifacts before drawing.
+The shared store defaults to `<out>/.graph-store`. `--graph-store` can reuse another store. `--resume require` requires completed numerical nodes and evidence to be available; output materialization and byte readback still verify the recreated files. `--require-solve-reuse` requires only the solve, so a second release build can re-run the calibrated gates on it (see [a second build that reuses the solve](#a-second-build-that-reuses-the-solve)). `--resume-size-checkpoint` imports a legacy size-search checkpoint only after validating invocation identity, ordered target/household axes, initial weights and recomputed losses. It skips the saved dense solve and search. New runs persist their intermediates as graph artifacts before drawing.
 
 Each attempt also keeps its checkpoint manifests and small stage, gate and provenance reports under `<graph-store>/uk-full-attempts/<attempt-id>`. Its `request.json` carries the request bindings and the attempt's Logbook build id and staging run id (`attempt`). The rowwise manifest's `execution` block records the graph store, the attempt directory, how many graph nodes the attempt reused from the store rather than computed (the first run to reach a node decides), and the earlier attempts on the same store that ran the same request (their directories and ids, the twenty most recent, beside counts of every earlier attempt on the store and of the matching ones), so a resumed build names the attempts whose work it reused; the same counts reach the staging run as a `graph_execution` stage event. The block sits outside the run parameters, so it does not change the candidate identity. A failed run's `failure.json` links to this evidence, including a persisted spine gate verdict before downstream admission stops execution. A previously completed output bundle remains intact.
 
@@ -116,6 +116,37 @@ Structural failures stop export. The maintained local statistical failure policy
 
 `tools/build_uk_rowwise_dataset.py` stays the separate driver it was (its tests load it by path, and it still serves `--candidate-clone-counts`). `tools/calibrate_uk_national_dataset.py` was retired by microcosm#823 and does not forward.
 
+## A second build that reuses the solve
+
+A local release is built at most twice (microcosm#1301). Build 1's failing cells and below-floor areas are signed in gate-only registers, and build 2, at the sign-off's head, reuses build 1's solve and recomputes only the calibrated gates, the export, the package and certification: about 1–2 hours rather than 10–16.
+
+**What keys the solve.** Every node keys on its kernel's implementation hash, and the UK kernels' hashes bind the country spec. The nodes the solve depends on bind the *solve fingerprint* (`ResolvedCountrySpec.fingerprint_excluding`, through `uk_runtime.solve_scope.uk_solve_fingerprint`): every packaged UK resource except `UK_GATE_ONLY_RESOURCES`. These are:
+
+- `target_fit_reviewed_exclusions.json` (`uk_target_fit`);
+- `local_target_fit_reviewed_exclusions.json` (`uk_local_target_fit`);
+- `input_mass_reviewed_exclusions.json` (`uk_input_mass_parity`);
+- `local_area_support_exclusions.json` (`uk_local_area_support`), both blocks. The reference generator keeps its own deferred areas and bound families.
+
+The kernels on the solve fingerprint are the target compilation, selection, measures and problem kernels (and the compilation node's `country_contract_sha256`), the source preflight (`uk.full.gates.preflight`, its own kernel `uk.full-gates.preflight@1`), the rotated holdout and the spine gates. The calibrated gates (`uk.full-gates@1`) keep the full fingerprint, so a sign-off re-keys them and everything after them, and nothing before. The degenerate register is solve-scoped, because the release contract pins its digest. `tests/engine_free/uk/test_uk_solve_scope.py` holds the claim from both sides: no target-compile, solve, spine or generator module names a gate-only register, every gate that reads one is a terminal gate, and editing each one leaves every solve kernel's hash unchanged while the calibrated gates' moves. The national graph keeps the full fingerprint.
+
+**Two clocks.** `--review-date` is the solve clock: target compilation and the source preflight evaluate reviewed entries on it, and build 2 repeats build 1's. `--gate-review-date` (default: the solve clock) is the calibrated gates' clock, the date their reviewed exclusions are evaluated on. It may not precede the solve clock and, when given, may not be later than today; it should be on or after the latest `approved_on` of the sign-off. Only `uk.full.gates.calibrated` carries it, and only when it differs from the solve clock. The export bindings record both (`review_date`, `gate_review_date`). Every register a calibrated gate reads is evaluated on the gate clock, so an entry of a solve-scoped register that a terminal gate also reads must still be in force then.
+
+**The guard.** `--require-solve-reuse` replays the spine and preflight phases, and then the whole solve sub-graph (every strict ancestor of `uk.full.gates.calibrated`: spine, targets, preflight, dense solve, size search, draw and refit, the installed population and the holdout), with `resume="require"` before calibration starts. A miss raises `SolveReuseError` naming the missing nodes, before any of them computes; `failure.json` records it. The calibrated gates and everything after them then run as usual. The flag is refused with `--resume forbid`, and the national role refuses it and `--gate-review-date`. The replay loads the stored pool once more, which costs minutes and memory at K=15.
+
+A solve is reused only when everything that keys it matches build 1:
+
+- the solve code at the commit (build 2 runs at the sign-off's head, whose parent is build 1's commit, and the sign-off changes register data and test pins only);
+- `--review-date`, `--release-candidate`, the size, seed, epoch and `--selection-initial-lambda` arguments and `--engine-blocks`;
+- every solve-scoped resource;
+- the virtual environment (the engine identity and dependency versions) and the platform;
+- `--graph-store`, which must be build 1's store.
+
+Build 2 is build 1's command with a new `--out`, plus:
+
+```bash
+  --gate-review-date <on or after the sign-off's latest approved_on> --require-solve-reuse
+```
+
 ## Known behaviour changes
 
 Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
@@ -128,7 +159,7 @@ Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
 
 Recorded at the review of the national line's move onto the graph (`experiments/901-uk-national-graph-path-receipts.md`):
 
-- The measure-exclusion windows and the target-fit deferral register are evaluated at `--review-date` (default today) on the national line, as the dense graph already did; the retired seam evaluated both at the run clock. A back-dated review date therefore keeps expired exclusions and deferrals in force, which the seam never allowed; the date is a node parameter (`uk.full.national_targets`, `uk.full.gates.calibrated`) and is recorded in the request bindings.
+- The measure-exclusion windows and the target-fit deferral register are evaluated at `--review-date` (default today) on the national line, as the dense graph already did; the retired seam evaluated both at the run clock. A back-dated review date therefore keeps expired exclusions and deferrals in force, which the seam never allowed; the date is a node parameter (`uk.full.national_targets`, `uk.full.gates.calibrated`) and is recorded in the request bindings. The national line keeps one clock: it refuses the dense line's `--gate-review-date` (microcosm#1301).
 - An occupied `--out` is refused on the national line with the other argument refusals, before the attempt opens (the seam's `FileExistsError`), so a repeated run never replaces a candidate under the Logbook row that names it and writes nothing into its directory. A `KeyboardInterrupt` records a `discarded` row on both lines and re-raises, as the seam did.
 - `build.json` is re-issued after the close step on both lines: the staging receipts are appended to the rowwise manifest and, on the national line, the delivery summary to the build record (the release assembler reads it there), and the completion marker then carries those files' final digests rather than the note that receipts follow.
 - The measure receipt records a scratch-mode resolver's `source_path` relative to the per-run scratch root (`simulation-input.h5`), so the measure and national problem nodes are deterministic between identical runs; the receipt no longer carries a temporary directory.

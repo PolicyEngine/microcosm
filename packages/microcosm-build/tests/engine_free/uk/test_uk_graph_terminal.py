@@ -369,6 +369,10 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
         item.name for item in preflight.artifact_inputs
     }
     final = graph.node("uk.full.gates.calibrated")
+    # microcosm#1301: the preflight feeds the solve and keys on the solve
+    # fingerprint under its own kernel; the calibrated gates keep the full one.
+    assert preflight.kernel == "uk.full-gates.preflight@1"
+    assert final.kernel == "uk.full-gates@1"
     assert final.population == full.calibration.population
     inputs = {item.name: item for item in final.artifact_inputs}
     assert inputs["problem"].producer == full.calibration.problem_producer
@@ -392,7 +396,7 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates
     from microcosm.build.uk_runtime.graph_terminal import (
-        UKFullGateKernel,
+        UKFullPreflightGateKernel,
         decode_full_gate_report,
     )
     from microcosm.graph.canonical import canonical_json
@@ -446,9 +450,9 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
         )
 
     monkeypatch.setattr(full_gates, "build_full_gate_context", forbidden)
-    result = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
-        context
-    )
+    result = UKFullPreflightGateKernel(
+        coverage_engine=object(), engine_identity="fixture"
+    ).run(context)
     report, enforcement = decode_full_gate_report(result.artifacts["gate_report"])
     assert report.phase == "preflight"
     assert len(report.outcomes) == 5
@@ -687,6 +691,101 @@ def test_full_gate_nodes_skip_the_holdout_unless_requested():
     assert requested.node("uk.full.holdout").description.startswith(
         "Optional (--rotated-holdout)"
     )
+
+
+def _gate_nodes(**extra):
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
+    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+
+    raw = uk_spine_graph(source_mode="split")
+    config = UKFullBuildConfig(calibration_year=2025)
+    full = uk_full_graph(
+        config,
+        spine=raw,
+        review_date="2026-09-10",
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    )
+    return append_uk_full_gate_nodes(
+        full.graph,
+        calibration=full.calibration,
+        spine_stage_names=uk_spine_endpoint(raw).stage_names,
+        engine_identity="fixture-engine",
+        review_date="2026-09-10",
+        **extra,
+    )
+
+
+def test_only_the_calibrated_gates_take_the_gate_clock():
+    """microcosm#1301: the solve clock keys the solve; the gate clock only the
+    calibrated gates, so a later sign-off date re-runs the gates alone."""
+    default = _gate_nodes()
+    same = _gate_nodes(gate_review_date="2026-09-10")
+    later = _gate_nodes(gate_review_date="2026-10-02")
+    # Absent, or equal to the solve clock, the calibrated parameters are
+    # byte-identical to a build that never named a gate clock.
+    assert default == same
+    assert default.node("uk.full.gates.calibrated").params["review_date"] == (
+        "2026-09-10"
+    )
+    assert later.node("uk.full.gates.calibrated").params == {
+        **default.node("uk.full.gates.calibrated").params,
+        "review_date": "2026-10-02",
+    }
+    changed = {node.id for node in later.nodes if node != default.node(node.id)}
+    assert changed == {"uk.full.gates.calibrated"}
+    for node in ("uk.full.gates.preflight", "uk.full.target_compilation"):
+        assert later.node(node).params["review_date"] == "2026-09-10", node
+
+
+def test_a_gate_clock_before_the_solve_clock_is_refused():
+    with pytest.raises(ValueError, match="precedes the solve review date"):
+        _gate_nodes(gate_review_date="2026-09-09")
+
+
+@pytest.mark.parametrize("phase", ["preflight", "terminal"])
+def test_each_gate_kernel_refuses_the_other_phase(phase):
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import (
+        UKFullGateKernel,
+        UKFullPreflightGateKernel,
+    )
+
+    kernel = (UKFullGateKernel if phase == "preflight" else UKFullPreflightGateKernel)(
+        coverage_engine=object(), engine_identity="fixture"
+    )
+    context = SimpleNamespace(params={"phase": phase, "engine_identity": "fixture"})
+    with pytest.raises(ValueError, match=f"phase only, not '{phase}'"):
+        kernel.run(context)
+
+
+def test_both_gate_kernels_are_registered():
+    from microcosm.build.uk_runtime.graph_terminal import (
+        UKFullGateKernel,
+        UKFullHoldoutKernel,
+        UKFullPreflightGateKernel,
+        register_uk_full_gate_kernels,
+    )
+    from microcosm.graph import KernelRegistry
+
+    registry = KernelRegistry()
+    register_uk_full_gate_kernels(
+        registry, coverage_engine=object(), engine_identity="fixture"
+    )
+    assert type(registry.get(UKFullPreflightGateKernel.ref)) is (
+        UKFullPreflightGateKernel
+    )
+    assert type(registry.get(UKFullGateKernel.ref)) is UKFullGateKernel
+    assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
 def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(

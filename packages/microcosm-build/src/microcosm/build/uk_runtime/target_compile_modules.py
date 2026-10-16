@@ -53,8 +53,10 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
     {
         "microcosm.build.country_spec": (
-            "the kernels hash the UK country-spec fingerprint, which covers "
-            "every packaged resource the spec loads"
+            "the full graph's kernels hash the UK solve fingerprint, every "
+            "packaged resource but the gate-only registers, which "
+            "test_uk_solve_scope pins that no compile module reads "
+            "(microcosm#1301); the national graph's hash the full fingerprint"
         ),
         "microcosm.build.uk_runtime.frs_relationships": (
             "imported only for the ons_household_type value domain, which "

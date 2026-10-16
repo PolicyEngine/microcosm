@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build import cross_grain
-from microcosm.build.country_spec import load_country_spec
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
@@ -78,6 +77,7 @@ from .ledger_targets import (
     uk_small_cell_deferred_cells,
 )
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
+from .solve_scope import uk_solve_fingerprint
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
 TARGET_SELECTION_TYPE = ArtifactType("microcosm.uk.full-target-selection", 1)
@@ -237,11 +237,14 @@ class _TargetKernel(KernelBase):
             support_floor,
             *uk_target_compile_modules(),
         )
+        # The solve fingerprint: every packaged resource but the gate-only
+        # registers, which no compile module reads (microcosm#1301), so a
+        # sign-off between two release builds leaves the surface a cache hit.
         return hashlib.sha256(
             canonical_json(
                 {
                     "implementation": implementation,
-                    "country_spec": load_country_spec("uk").fingerprint,
+                    "country_spec": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()
@@ -752,7 +755,8 @@ def append_uk_target_nodes(
     common = {"time_period": time_period}
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
-    contract_identity = load_country_spec("uk").fingerprint
+    # The solve fingerprint, as the target kernels hash it (microcosm#1301).
+    contract_identity = uk_solve_fingerprint()
     surface = ArtifactInput(
         "surface", "uk.full.target_compilation", "surface", TARGET_SURFACE_TYPE
     )

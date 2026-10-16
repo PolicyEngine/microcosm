@@ -22,7 +22,7 @@ import json
 import subprocess
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +86,7 @@ __all__ = [
     "UK_CANDIDATE_PIPELINE",
     "candidate_clone_counts_argument",
     "candidate_identity_digest",
+    "check_solve_reuse_arguments",
     "doctrine_bounds",
     "git_commit",
     "git_dirty",
@@ -553,6 +554,42 @@ def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
     return drift
 
 
+def check_solve_reuse_arguments(
+    args: argparse.Namespace, *, today: date | None = None
+) -> None:
+    """Refuse a gate clock or a reuse guard the build cannot honour (microcosm#1301).
+
+    ``--gate-review-date`` may not precede ``--review-date``: the calibrated
+    gates never evaluate reviewed exclusions before the solve's own clock.
+    Given explicitly, it may not be later than ``today`` either, since it
+    names the day a sign-off is in force; a future ``--review-date`` alone
+    stays admitted. ``--require-solve-reuse`` needs the solve from the graph
+    store, which ``--resume forbid`` refuses to read.
+    """
+
+    gate_clock = getattr(args, "gate_review_date", None)
+    if gate_clock is not None:
+        today = date.today() if today is None else today
+        if gate_clock < args.review_date:
+            raise ValueError(
+                f"--gate-review-date {gate_clock.isoformat()} precedes "
+                f"--review-date {args.review_date.isoformat()}: the calibrated "
+                "gates may not evaluate reviewed exclusions before the solve's "
+                "own clock."
+            )
+        if gate_clock > today:
+            raise ValueError(
+                f"--gate-review-date {gate_clock.isoformat()} is later than "
+                f"today ({today.isoformat()}): the gate clock is a date the "
+                "sign-off is already in force on."
+            )
+    if getattr(args, "require_solve_reuse", False) and args.resume == "forbid":
+        raise ValueError(
+            "--require-solve-reuse reads the solve from the graph store, which "
+            "--resume forbid refuses to do."
+        )
+
+
 def validate_cli_args(args: argparse.Namespace) -> None:
     posture = posture_of(args)
     # The declared role is checked against the parameters first: the other
@@ -561,6 +598,7 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         refuse_dense_role_arguments(args, posture)
     else:
         refuse_national_role_arguments(args, posture)
+    check_solve_reuse_arguments(args)
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
     initial_lambda = getattr(args, "selection_initial_lambda", None)
@@ -818,6 +856,12 @@ def refuse_dense_role_arguments(
         refused.append("--households-only")
     if getattr(args, "rotated_holdout", False):
         refused.append("--rotated-holdout")
+    # The gate clock and the solve-reuse guard are the dense line's two-build
+    # release (microcosm#1301); the national graph keeps one clock.
+    if getattr(args, "gate_review_date", None) is not None:
+        refused.append("--gate-review-date")
+    if getattr(args, "require_solve_reuse", False):
+        refused.append("--require-solve-reuse")
     if args.dataset_households is not None:
         refused.append("--dataset-households")
     if args.selection_seed is not None:

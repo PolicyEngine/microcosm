@@ -66,6 +66,7 @@ from microcosm.graph import (
     Graph,
     KernelRegistry,
     SourceRef,
+    StoreMiss,
     compile_graph,
     graph_to_json,
     run_graph,
@@ -230,6 +231,7 @@ from .rowwise_staging import (
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
+from .solve_scope import UK_GATE_ONLY_RESOURCES
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -243,6 +245,7 @@ __all__ = [
     "UK_ROWWISE_DENSE_POSTURE",
     "PreparedUKFullBuild",
     "PreparedUKNationalBuild",
+    "SolveReuseError",
     "execute_full_build",
     "execute_national_build",
     "main",
@@ -691,7 +694,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--release-candidate", action="store_true")
-    parser.add_argument("--review-date", type=date.fromisoformat, default=date.today())
+    parser.add_argument(
+        "--review-date",
+        type=date.fromisoformat,
+        default=date.today(),
+        help=(
+            "The solve clock (default today): the date target compilation and "
+            "the source preflight evaluate reviewed entries on, and the "
+            "calibrated gates too unless --gate-review-date is given. A build "
+            "that reuses an earlier build's solve repeats its review date."
+        ),
+    )
+    parser.add_argument(
+        "--gate-review-date",
+        type=date.fromisoformat,
+        default=None,
+        help=(
+            "Dense only: the calibrated gates' clock, the date they evaluate "
+            "their reviewed exclusions on (microcosm#1301); defaults to "
+            "--review-date. Never earlier than it, nor later than today. Only "
+            "the calibrated gate node and what follows it re-key, so a second "
+            "build at a gate-only sign-off reuses the first build's solve."
+        ),
+    )
     parser.add_argument(
         "--resume-size-checkpoint",
         type=Path,
@@ -738,6 +763,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--resume", choices=("auto", "require", "forbid"), default="auto"
+    )
+    parser.add_argument(
+        "--require-solve-reuse",
+        action="store_true",
+        help=(
+            "Dense only: before calibrating, require every node the calibrated "
+            "gates depend on (the spine, targets, preflight, solve, size stages "
+            "and holdout) from --graph-store, and fail with SolveReuseError "
+            "naming the missing nodes rather than re-solve (microcosm#1301). "
+            "The calibrated gates, export and certification still run. Refused "
+            "with --resume forbid."
+        ),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
@@ -1188,6 +1225,7 @@ def prepare_full_build(
         spine_stage_names=stages,
         engine_identity=engine_identity,
         review_date=args.review_date,
+        gate_review_date=getattr(args, "gate_review_date", None),
         sample_fraction=config.effective_sample_fraction,
         release_candidate=args.release_candidate,
         spine_provenance=provenance,
@@ -1200,7 +1238,10 @@ def prepare_full_build(
         "target_scope": "all"
         if config.geography_levels is None
         else list(config.geography_levels),
+        # Both clocks (microcosm#1301): the solve's, and the calibrated
+        # gates' (the solve's unless --gate-review-date moved it).
         "review_date": args.review_date.isoformat(),
+        "gate_review_date": _gate_review_date(args).isoformat(),
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
@@ -1283,6 +1324,59 @@ def _through(graph: Graph, endpoint: str) -> Graph:
     return replace(
         graph, nodes=tuple(node for node in graph.nodes if node.id in needed)
     )
+
+
+def _gate_review_date(args: argparse.Namespace) -> date:
+    """The calibrated gates' clock: ``--gate-review-date``, else the solve's."""
+    gate_clock = getattr(args, "gate_review_date", None)
+    return args.review_date if gate_clock is None else gate_clock
+
+
+#: The node the solve sub-graph ends before: its strict ancestors are the
+#: solve, and it and its descendants are what a gate-only sign-off re-runs.
+_SOLVE_BOUNDARY = "uk.full.gates.calibrated"
+
+
+def _solve_subgraph(graph: Graph) -> Graph:
+    """The solve: every strict ancestor of the calibrated gates (microcosm#1301).
+
+    The spine, the target surface, the source preflight, the dense solve,
+    the size search, draw and refit, the installed population and the
+    holdout: everything a second build at a gate-only sign-off must find in
+    the graph store rather than compute.
+    """
+    through = _through(graph, _SOLVE_BOUNDARY)
+    return replace(
+        through,
+        nodes=tuple(node for node in through.nodes if node.id != _SOLVE_BOUNDARY),
+    )
+
+
+class SolveReuseError(RuntimeError):
+    """``--require-solve-reuse`` found the solve absent from the graph store."""
+
+
+def _solve_reuse_failure(miss: StoreMiss) -> SolveReuseError:
+    return SolveReuseError(
+        "--require-solve-reuse: the graph store does not hold the solve this "
+        f"build would reuse ({miss}). A solve is reused only when everything "
+        "that keys it matches the earlier build: the solve code at this "
+        "commit; --review-date, --release-candidate, the size, seed, epoch "
+        "and --selection-initial-lambda arguments and --engine-blocks; every "
+        "packaged UK resource but the gate-only registers "
+        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}); the virtual "
+        "environment and platform; and --graph-store."
+    )
+
+
+def _run_solve_phase(compiled, *, required: bool, **kwargs):
+    """Run a phase of the solve, as a cache replay when reuse is required."""
+    if not required:
+        return _run_graph_with_progress(compiled, **kwargs)
+    try:
+        return _run_graph_with_progress(compiled, **{**kwargs, "resume": "require"})
+    except StoreMiss as miss:
+        raise _solve_reuse_failure(miss) from miss
 
 
 def _payload(manifest, store, node: str, artifact: str) -> bytes:
@@ -1927,6 +2021,10 @@ def _execute_full_build(
     # Preserve source evidence before downstream transforms can raise. Each is
     # an ancestor-closed checkpoint of this graph, with the same node keys/RNG.
     resume = args.resume
+    # microcosm#1301: with --require-solve-reuse every phase up to the
+    # calibrated gates is a cache replay, and a miss stops the build before
+    # any node computes.
+    reuse = bool(getattr(args, "require_solve_reuse", False))
     node_ids = {node.id for node in graph.nodes}
     for endpoint in (
         "spine.gates.assembled",
@@ -1935,8 +2033,9 @@ def _execute_full_build(
     ):
         if endpoint not in node_ids:
             continue
-        checkpoint = _run_graph_with_progress(
+        checkpoint = _run_solve_phase(
             compile_graph(_through(graph, endpoint)),
+            required=reuse,
             sources=sources,
             store=store,
             kernels=kernels,
@@ -1950,8 +2049,9 @@ def _execute_full_build(
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
     preflight_graph = _through(graph, "uk.full.gates.preflight")
-    preflight = _run_graph_with_progress(
+    preflight = _run_solve_phase(
         compile_graph(preflight_graph),
+        required=reuse,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2001,6 +2101,19 @@ def _execute_full_build(
             blocking_failure_count=len(blocking),
         )
         return 1
+    if reuse:
+        # The whole solve sub-graph, required from the store before the
+        # calibrated gates run on it; the manifest is dropped at once, since
+        # the numerical phase below replays the same nodes as hits.
+        _run_solve_phase(
+            compile_graph(_solve_subgraph(graph)),
+            required=True,
+            sources=sources,
+            store=store,
+            kernels=kernels,
+            resume="require",
+            execution=execution,
+        )
     stage(
         telemetry,
         "calibration",
