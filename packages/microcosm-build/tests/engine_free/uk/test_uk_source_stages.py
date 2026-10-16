@@ -48,6 +48,9 @@ E5_STAGE_NAMES = [
     # #1106: landlords' receipts and finance costs follow the uprated rental
     # property values their coherence receipt reads.
     "property_components",
+    # microcosm#1095: annual purchases from the uprated stocks, after the
+    # support copies (uk-data#573).
+    "property_purchases",
 ]
 E6_STAGE_NAMES = [
     "nts_bus_travel",
@@ -246,6 +249,7 @@ class TestUKSourceStagesManifest:
                     "regional_property_uprating": _identity,
                     "high_value_home_support": _identity,
                     "property_components": _identity,
+                    "property_purchases": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
                     "etb_services": _identity,

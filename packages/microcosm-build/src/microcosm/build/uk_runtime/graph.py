@@ -278,6 +278,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "non_residential_property_value"),
         }
     ),
+    # Engine-free: each kind's stock, the region that marks where SDLT
+    # applies and the source household the receipt counts distinct support by
+    # (uk-data#573, microcosm#1095).
+    "property_purchases": frozenset(
+        {
+            ("household", "region"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
+            ("household", "household_source_id"),
+        }
+    ),
     # The NTS band model materializes an engine predictor (household gross
     # income) over the whole frame, an open surface like the LCFS QRF.
     "nts_bus_travel": None,
@@ -782,6 +793,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "property_components": _cells(
         "person",
         ("property_income", "property_finance_costs", "property_rental_income"),
+    ),
+    # Annual purchases from each kind of property stock (uk-data#573).
+    "property_purchases": _cells(
+        "household",
+        (
+            "additional_residential_property_purchased",
+            "non_residential_property_purchased",
+        ),
     ),
     "lcfs_consumption": (
         *_cells(

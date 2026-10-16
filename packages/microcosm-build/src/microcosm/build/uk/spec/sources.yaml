@@ -2690,6 +2690,81 @@ stages:
   nonnegative_outputs:
   - property_rental_income
   notes: 'Fills the two landlord inputs policyengine-uk 2.123.0 adds beside property_income (microcosm#1106; PolicyEngine/policyengine-uk#2172). FRS landlords report ROYYR1 after show card K6, which nets mortgage payments and loan interest, so their profit sits below the SPI concept; the stage draws their restricted finance costs from the SPI 2022-23 tape at build-period prices (incidence by band of profit after finance costs, amount from the regime-gated QRF on the analog landlords with costs, both keyed on person_id) and adds them back to property_income, so the engine relieves the interest once as a tax reduction (decision 6, to be confirmed with Max before merge). The SPI channel keeps the costs the income stage drew. Receipts for every landlord come from PRIS 2024-25: ranked by profit, walked into Table 13''s bands at their shares of the individuals-basis landlords times the spine''s landlord weight, linear within a band, never below profit, the open top band proportional to profit with the multiplier solved to the individuals'' receipts per landlord, or held at 1 with the overshoot recorded where the floor at profit already exceeds them; receipts less profit are the deductible expenses (PRIS allowable expenses other than residential finance costs). Sub-letting rent keeps equal receipts and no expenses until Rent a Room is released. Household weights are unchanged; the receipt records the tape incidence and its realisation, the band fit, the totals against PRIS, the channel split, the residuals and the share of landlords whose household holds rental property.'
+- stage: property_purchases
+  survey: HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), Tables 6b, 8a and 8b
+  source: https://www.gov.uk/government/statistics/uk-stamp-tax-statistics
+  grain: household
+  artifacts:
+  - role: stamp_tax_facts
+    kind: public_aggregate_reference
+    resource: hmrc_stamp_tax_facts.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: stamp_tax_facts
+    resource: hmrc_stamp_tax_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - hmrc.stamp_taxes_2024_25.table_6b.hrad.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8a.other_buyers.fy2024
+    - hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024
+    source_vintage: 2024-25
+    mapped_build_period: 2024
+    period_mapping: published_tax_year_equals_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: impute_annual_property_purchases
+    outputs:
+    - additional_residential_property_purchased
+    - non_residential_property_purchased
+    stocks:
+    - other_residential_property_value
+    - non_residential_property_value
+    port_of: uk-data#573 at 07f6b460f
+    minimum_price: 40000.0
+    eligibility: stock at least minimum_price, the chargeable consideration HMRC's Stamp Tax tables cover, and positive weight; at most one purchase of each kind a year
+    fit_regions:
+    - NORTH_EAST
+    - NORTH_WEST
+    - YORKSHIRE
+    - EAST_MIDLANDS
+    - WEST_MIDLANDS
+    - EAST_OF_ENGLAND
+    - LONDON
+    - SOUTH_EAST
+    - SOUTH_WEST
+    - NORTHERN_IRELAND
+    hazard: (max(stock, minimum) / weighted mean eligible stock) ** 1
+    event_score: -log1p(-u) / hazard
+    threshold: the score threshold whose weighted count of purchasers in the fit regions is closest to the transactions target, applied everywhere
+    price: min(stock, max(minimum, scale * band mean)), band drawn at the band shares, scale bisected to the value target
+    weights: spine_design_weights
+    streams:
+      additional_residential_property_purchased:
+        event_salt: additional_residential_property_purchased
+        price_salt: additional_residential_property_purchased_price
+        seed: 0
+      non_residential_property_purchased:
+        event_salt: non_residential_property_purchased
+        price_salt: non_residential_property_purchased_price
+        seed: 0
+    additional_residential_targets: Table 6b HRAD transactions and value, 2024-25, times individuals' shares of Table 8a residential transactions and value; Table 6b bands with the five above GBP 2m combined
+    non_residential_targets: Table 8b individuals' transactions, value and bands, 2024-25
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Annual property purchases imputed on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - additional_residential_property_purchased
+  - non_residential_property_purchased
+  nonnegative_outputs:
+  - additional_residential_property_purchased
+  - non_residential_property_purchased
+  notes: 'Ports uk-data#573 (a draft, at 07f6b460f; uk-data#556) at the spine''s design weights, after the regional uprating and the high-value support copies, so every copy draws on its own (microcosm#1095). policyengine-uk 2.134.1 (pe-uk#2241) makes both purchases inputs that default to nil, so without them a purchasing household pays SDLT on its main home only. A household whose stock of a kind is at least HMRC''s GBP 40,000 coverage floor, at positive weight, can buy once a year. The purchase hazard is proportional to the stock over the weighted mean eligible stock in England and Northern Ireland, where SDLT applies; each household''s exponential event score reads its own identity-keyed uniform, and the threshold whose weighted count of England-and-Northern-Ireland purchasers is closest to HMRC''s transactions applies everywhere, Scotland and Wales included, which have no target here. Prices are band means drawn at HMRC''s band shares on a second identity-keyed stream, times one scale bisected so the weighted England-and-Northern-Ireland value equals HMRC''s, never below GBP 40,000 and never above the stock. Targets, vendored from the pinned Chronicle feed: additional dwellings are Table 6b''s 2024-25 HRAD transactions and value (every buyer) times individuals'' shares of Table 8a''s residential transactions and value, with Table 6b''s bands and the five above GBP 2m combined; non-residential purchases are Table 8b''s 2024-25 individuals. Receipts are checked, never fitted. The draws differ from uk-data''s, which read positional seeded streams; the method is the same.'
 - stage: nts_bus_travel
   survey: National Travel Survey 2002-2024
   source: Department for Transport National Travel Survey, UK Data Service SN 5340 (End User Licence, 19th edition, November 2025), DOI 10.5255/UKDA-SN-5340-19; local licensed tab files (household, individual, trip); England residents only from 2013.

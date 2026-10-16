@@ -1262,6 +1262,48 @@
       ]
     },
     {
+      "resource": "hmrc_stamp_tax_facts.json",
+      "purpose": "HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), the 2024-25 rows the property purchases stage fits households' additional-dwelling and non-residential purchases to (uk-data#573, microcosm#1095): Table 6b transactions paying the higher rates on additional dwellings, every buyer, by price band (the HRAD transactions, value and receipts); Table 8a residential transactions, value and receipts for individuals and for other buyers (the individuals' shares that allocate HRAD to households); and Table 8b non-residential transactions, value and receipts for individuals, by price band. Every fact covers England and Northern Ireland and transactions of GBP 40,000 or above. No value is derived here.",
+      "consumers": [
+        "uk_runtime.property_purchases"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table6b_fy2024_hrad",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_6b.hrad.fy2024"
+          },
+          "expected_row_count": 44
+        },
+        {
+          "label": "table8a_fy2024_residential_individuals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024"
+          },
+          "expected_row_count": 21
+        },
+        {
+          "label": "table8a_fy2024_residential_other_buyers",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8a.other_buyers.fy2024"
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table8b_fy2024_non_residential_individuals",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024"
+          },
+          "expected_row_count": 21
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [

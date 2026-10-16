@@ -469,6 +469,7 @@ class TestUKManifest:
                 "regional_property_uprating",
                 "high_value_home_support",
                 "property_components",
+                "property_purchases",
                 "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",

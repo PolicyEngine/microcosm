@@ -56,7 +56,7 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
     # microcosm#1106 property_components after the regional uprating, and
     # microcosm#1240 high_value_home_support between those two.
-    assert len(expected) == 42
+    assert len(expected) == 43
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

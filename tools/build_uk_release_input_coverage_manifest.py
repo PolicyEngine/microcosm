@@ -928,6 +928,10 @@ def build_manifest(
                 stage_name="property_components",
                 candidate_source=candidate_source,
             ),
+            "property_purchases": _source_stage_family_coverage_contract(
+                stage_name="property_purchases",
+                candidate_source=candidate_source,
+            ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
                 stage_name="lcfs_consumption",
                 candidate_source=candidate_source,
