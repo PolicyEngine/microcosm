@@ -6557,7 +6557,7 @@ _UK_DENSE_SURFACE_INVENTORIES = {
     },
     "local": {
         "rows": 23545,
-        "sha256": "1d783e5933ca632250a9e38f8ddd00223f8be93e4878973b148fb72620cf1e23",
+        "sha256": "0663375b80dbed14d1a6d2d6015bcdd5cc45c5e8af4dbe62dd2f393b2811578a",
     },
 }
 _UK_DENSE_SURFACE_FILE = "incumbent_surface_evaluation.json"
