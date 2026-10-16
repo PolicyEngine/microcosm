@@ -786,6 +786,65 @@ def _ons_annual_value(
     return float(rows[0]["value"]), str(rows[0].get("source_record_id", ""))
 
 
+#: The top shares of each division's spend the capture receipt reports, on
+#: the frame and on its donor (microcosm#1278: whether a division's over-draw
+#: sits in the tail).
+UK_LCFS_DIVISION_TAIL_FRACTIONS = (0.01, 0.10)
+
+
+def weighted_top_share(
+    values: Sequence[float], weights: Sequence[float], *, fraction: float
+) -> float | str | None:
+    """The share of the weighted total held by the top spenders.
+
+    The highest-spending households are taken in order until they carry
+    ``fraction`` of the weight. The share is ``"<10"`` when fewer than ten
+    households carry it (UKDS disclosure control, as every receipt count),
+    and ``None`` when the total is not positive.
+    """
+
+    if not 0.0 < fraction <= 1.0:
+        raise ValueError(f"a top fraction must lie in (0, 1]: {fraction}.")
+    value = np.asarray(values, dtype=float)
+    weight = np.asarray(weights, dtype=float)
+    positive = weight > 0
+    value, weight = value[positive], weight[positive]
+    total = float(np.dot(weight, value))
+    if not len(value) or total <= 0:
+        return None
+    order = np.argsort(-value, kind="stable")
+    cumulative = np.cumsum(weight[order])
+    households = (
+        int(np.searchsorted(cumulative, fraction * cumulative[-1], side="left")) + 1
+    )
+    top = order[:households]
+    share = float(np.dot(weight[top], value[top]) / total)
+    return small_cell_share(share, households)
+
+
+def division_tail(
+    frame_values: Sequence[float],
+    frame_weights: Sequence[float],
+    donor_values: Sequence[float],
+    donor_weights: Sequence[float],
+) -> dict[str, dict[str, float | str | None]]:
+    """Top-1% and top-10% spend shares on the frame and its donor, and their ratio."""
+
+    tail: dict[str, dict[str, float | str | None]] = {}
+    for fraction in UK_LCFS_DIVISION_TAIL_FRACTIONS:
+        frame_share = weighted_top_share(frame_values, frame_weights, fraction=fraction)
+        donor_share = weighted_top_share(donor_values, donor_weights, fraction=fraction)
+        both = isinstance(frame_share, float) and isinstance(donor_share, float)
+        tail[f"top_{round(fraction * 100)}_percent"] = {
+            "frame": frame_share,
+            "donor": donor_share,
+            "frame_over_donor": (
+                frame_share / donor_share if both and donor_share > 0 else None
+            ),
+        }
+    return tail
+
+
 def division_capture(
     household_draws: pd.DataFrame,
     *,
@@ -808,6 +867,9 @@ def division_capture(
     total and the frame's over it, in all and per household: whether the chain
     draws a division above its own donor, as microcosm#1167 found it did for
     the transport remainder (microcosm#1207's furnishings and health item).
+    Each division also records the share of its spend held by the top 1% and
+    10% of households on both sides (:func:`division_tail`), so an over-draw
+    can be placed in the tail or the body (microcosm#1278).
     """
 
     weight = np.asarray(weights, dtype=float)
@@ -864,11 +926,16 @@ def division_capture(
             "capture": frame / survey_scope if survey_scope > 0 else None,
         }
         if donor_weight is not None:
-            donor_total = float(
-                np.dot(donor_weight, _numeric(donor[column]).to_numpy(dtype=float))
-            )
+            donor_values = _numeric(donor[column]).to_numpy(dtype=float)
+            donor_total = float(np.dot(donor_weight, donor_values))
             donor_grand_total += donor_total
             divisions[column].update(beside_donor(frame, donor_total))
+            divisions[column]["tail"] = division_tail(
+                household_draws[column].to_numpy(dtype=float),
+                weight,
+                donor_values,
+                donor_weight,
+            )
     domestic, _ = _ons_annual_value(
         "0",
         source_sheet="0CN",
