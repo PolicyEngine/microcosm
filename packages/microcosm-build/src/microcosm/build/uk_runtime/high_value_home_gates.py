@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.high_value_homes import (
 )
 
 __all__ = [
+    "HIGH_VALUE_HOME_SCOPE",
     "HVCTS_BANDS_2026",
     "HighValueHomeEvidence",
     "high_value_home_benchmarks_gate",
@@ -73,6 +74,19 @@ REQUIRED_COLUMNS = (
     "main_residence_value",
     "source_household_id",
 )
+#: What the family and its evidence cover until the coverage decision of
+#: microcosm#1240 fix 6: carried in the evidence summary and both gates'
+#: details, so every reading of these figures names its scope.
+HIGH_VALUE_HOME_SCOPE: Mapping[str, str] = {
+    "label": "owner_occupied_main_residences_only",
+    "note": (
+        "The frame values each owner-occupier household's main residence. "
+        "Second homes, let property and homes owned by companies or "
+        "non-residents are outside this family and this evidence; the OBR "
+        "costing note puts the properties in scope that are not owner-occupied "
+        "at 40 per cent (microcosm#1240 fix 6)."
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -491,6 +505,7 @@ def uk_high_value_home_evidence(
 
     summary = {
         "schema": "microcosm.build.uk.high-value-home-evidence.v1",
+        "scope": dict(HIGH_VALUE_HOME_SCOPE),
         "frame_basis_deflator": deflator,
         "households": int(len(household)),
         "owner_occupied_rows": int(owner.sum()),
@@ -551,6 +566,7 @@ def high_value_home_support_gate(
         raise ValueError("dominance_share must be in (0, 1].")
     failures: list[str] = []
     details: dict[str, Any] = {
+        "scope": dict(HIGH_VALUE_HOME_SCOPE),
         "minimum_distinct_sources": minimum_distinct_sources,
         "minimum_target_homes": minimum_target_homes,
         "dominance_share": dominance_share,
@@ -663,6 +679,7 @@ def high_value_home_benchmarks_gate(
         passed=not failures,
         failures=tuple(failures),
         details={
+            "scope": dict(HIGH_VALUE_HOME_SCOPE),
             "minimum_rank_correlation": minimum_rank_correlation,
             "maximum_regional_share_gap": maximum_regional_share_gap,
             "seat_rank_correlation": reported,

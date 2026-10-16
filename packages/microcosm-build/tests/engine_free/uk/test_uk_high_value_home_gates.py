@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_local_gate_scope_exclusions,
 )
 from microcosm.build.uk_runtime.high_value_home_gates import (
+    HIGH_VALUE_HOME_SCOPE,
     high_value_home_benchmarks_gate,
     high_value_home_support_gate,
     uk_high_value_home_evidence,
@@ -409,3 +410,23 @@ def test_benchmarks_gate_outcome_does_not_depend_on_the_obr_leg() -> None:
             high_value_home_benchmarks_gate(with_obr, **parameters).passed
             == high_value_home_benchmarks_gate(without_obr, **parameters).passed
         )
+
+
+def test_evidence_and_both_gates_name_the_main_residence_scope() -> None:
+    # Until microcosm#1240 fix 6's coverage decision, every reading of these
+    # figures says they cover owner-occupiers' main residences only.
+    facts = _facts(
+        {"E14000001": 500.0, "E14000002": 200.0, "E14000003": 0.0},
+        {"E12000007": 500.0, "E12000008": 200.0},
+    )
+    summary = uk_high_value_home_evidence(
+        _household(), weights=np.ones(12), facts=facts
+    ).summary
+    assert HIGH_VALUE_HOME_SCOPE["label"] == "owner_occupied_main_residences_only"
+    assert summary["scope"] == dict(HIGH_VALUE_HOME_SCOPE)
+    assert high_value_home_support_gate(summary).details["scope"] == dict(
+        HIGH_VALUE_HOME_SCOPE
+    )
+    assert high_value_home_benchmarks_gate(summary).details["scope"] == dict(
+        HIGH_VALUE_HOME_SCOPE
+    )

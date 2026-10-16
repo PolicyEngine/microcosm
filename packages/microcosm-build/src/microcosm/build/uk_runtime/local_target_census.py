@@ -241,7 +241,10 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "from raw-only Chronicle registrations, carried in the committed "
             "derived-facts resource; the frame measures the stored "
             "main_residence_value of owner households at the dataset period "
-            "against thresholds deflated to the same price basis."
+            "against thresholds deflated to the same price basis. The family "
+            "covers owner-occupiers' main residences only: second homes, let "
+            "property and homes owned by companies or non-residents are "
+            "outside it until the coverage decision of microcosm#1240 fix 6."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
