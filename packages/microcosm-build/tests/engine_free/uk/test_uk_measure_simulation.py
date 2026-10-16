@@ -916,7 +916,7 @@ def test_employer_nics_are_a_measured_diagnostic():
 
     exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
     entry = exclusions["obr.ni_employer"]
-    assert entry["tracking"] == "policyengine-uk#1918"
+    assert entry["tracking"] == "policyengine-uk#2459"
     assert entry["approved_by"] == "juaristi22"
     assert entry["approved_on"] == "2026-10-16"
     # Three months, the window of the 2026-10-08 engine-factor diagnostic.
@@ -937,7 +937,7 @@ def test_employer_nics_are_a_measured_diagnostic():
     ):
         assert phrase in entry["reason"], phrase
     assert "microcosm#1301" in entry["adjudication"]
-    assert "policyengine-uk#1918" in entry["adjudication"]
+    assert "policyengine-uk#2459" in entry["adjudication"]
     assert "obr.ni_employee" not in exclusions
     assert "obr.ni_self_employed" not in exclusions
 
