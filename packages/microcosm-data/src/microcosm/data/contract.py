@@ -447,13 +447,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "921806343e97f2ce2cc246cd417fd8a3ca2b69110e42d2c2877814e3e6477eb2"
+    "a326d26c249b8b359284f739fe4327180a7c86b9c21b8994cf270b9c0e27787f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c354c874a2d3b6801b04b4cf4e186384c3da5e3382f6b61d2a56638e3b0efdab"
+    "5bed933d2e261e3c4f0bfaa3ae949e9623a5a70c968eaaf4194e70b72df0b728"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "aac722c4e22ad8ea2c5b055669e8e7647d712cf1eda0377752dd9ba6598b0b64"
+    "2009911edabae63ab2b31d9d50588754fc40129aac952d4a2be6f17e1a8a736b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -472,6 +472,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_local_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_council_tax_band_domain": "enum_domain",
@@ -586,6 +587,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "spine_agreement",
         "terminal",
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_local_area_support": ("area_support", "terminal"),
     "uk_local_target_fit": ("target_fit", "terminal"),
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
@@ -757,6 +759,7 @@ _UK_DENSE_INCUMBENT_FILES = (
 _UK_DENSE_GATE_ENTRY_IDS = frozenset(
     {
         "uk_local_area_support",
+        "uk_local_brma_enum_domain",
         "uk_local_geography_ladder_post_calibration",
         "uk_local_per_family_fit",
         "uk_local_target_fit",
@@ -767,9 +770,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "fb7379f99142943f55a05247821454320585fa6fd7d375a516d6a2a786d375d1",
-    "policy_sha256": "6d5f12892a04d1b99b86d0c9a4c4d108243aab1a024444bb679e99b2a8acb0f4",
-    "spec_fingerprint": "8f180bca1ad1f757821b0df47e2f37d4c6a1c48b7a4b344854f91b58f9aa72b5",
+    "gates_manifest_sha256": "c15b8de06a90598732c03091ee942dfa8a4eb9e41dc1e9ea3f2bd7986e3e7e99",
+    "policy_sha256": "7b97d72a15756b983ecf32a7b4155e0558533044408eb02e6a2d8be52ebe55d4",
+    "spec_fingerprint": "cc56158ad88d9c92d4b98392a9e6eb7199b69458fbf0abbe7c9e5648c4bb6ed5",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -827,6 +830,7 @@ _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
