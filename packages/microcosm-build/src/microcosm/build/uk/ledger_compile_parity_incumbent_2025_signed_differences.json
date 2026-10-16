@@ -1,11 +1,11 @@
 {
  "compiled_count": 1291,
  "counts_by_kind": {
-  "calibration_drift": 565,
+  "calibration_drift": 561,
   "fixture_only": 46,
   "ledger_only": 700
  },
- "difference_count": 1311,
+ "difference_count": 1307,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -9578,38 +9578,6 @@
    "kind": "calibration_drift",
    "ledger_value": 6176000.0,
    "name": "ons.public_sector_employment",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 3985000.0,
-   "kind": "calibration_drift",
-   "ledger_value": 4460000.0,
-   "name": "slc.borrowers.plan_2_above_threshold",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 8940000.0,
-   "kind": "calibration_drift",
-   "ledger_value": 9710000.0,
-   "name": "slc.borrowers.plan_2_liable",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 0.0,
-   "kind": "calibration_drift",
-   "ledger_value": 35000.0,
-   "name": "slc.borrowers.plan_5_above_threshold",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 10000.0,
-   "kind": "calibration_drift",
-   "ledger_value": 230000.0,
-   "name": "slc.borrowers.plan_5_liable",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

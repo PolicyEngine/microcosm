@@ -23314,6 +23314,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23325,7 +23327,9 @@
         "contract_target_id": "slc.borrowers.plan_2_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_2_liable",
@@ -23337,6 +23341,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23348,7 +23354,9 @@
         "contract_target_id": "slc.borrowers.plan_2_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_above_threshold",
@@ -23360,6 +23368,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23371,7 +23381,9 @@
         "contract_target_id": "slc.borrowers.plan_5_above_threshold",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.borrowers.plan_5_liable",
@@ -23383,6 +23395,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
         },
+        "period_type": "academic_year",
+        "period_value": 2024,
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -23394,7 +23408,9 @@
         "contract_target_id": "slc.borrowers.plan_5_liable",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "slc.support.maintenance_loan_recipients",

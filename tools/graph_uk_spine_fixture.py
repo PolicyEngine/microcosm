@@ -448,6 +448,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
+            # SLOS ("outstanding student loan?") follows a no to SLREPAY, so a
+            # repayer answers no; EDUCLEFT dates each adult's course
+            # (microcosm#868).
+            "SLOS": 2,
+            "EDUCLEFT": 16 + household_id % 8,
             "SSPADJ": 1.0,
             "SMPADJ": 0.5,
             "SPPADJ": 0.25,

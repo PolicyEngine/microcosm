@@ -14366,7 +14366,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_above_threshold",
@@ -14382,7 +14382,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 2 above threshold"
@@ -14414,7 +14416,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_liable",
@@ -14430,7 +14432,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 2 liable"
@@ -14467,7 +14471,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_above_threshold",
@@ -14483,7 +14487,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 5 above threshold"
@@ -14515,7 +14521,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113). Bound at SLC academic year 2024/25, whose reference date falls inside calendar 2025, the stock the student_loans stage tops up to; Chronicle stores the academic year under its opening year, 2024 (María's ruling of 2026-10-16, microcosm#868)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_liable",
@@ -14531,7 +14537,9 @@
           "row_group": "Higher education total",
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
-        }
+        },
+        "period_type": "academic_year",
+        "period_value": 2024
       },
       "category_id": "slc.borrowers",
       "label": "Plan 5 liable"

@@ -486,6 +486,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "student_loan_repayments"),
             ("person", "current_education"),
             ("person", "highest_education"),
+            ("person", "reports_outstanding_student_loan"),
+            ("person", "age_left_full_time_education"),
             ("household", "region"),
         }
     ),
@@ -670,6 +672,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "adult_ema", "float64"),
         _Cell("person", "child_ema", "float64"),
         _Cell("person", "receives_benefits_in_own_right", "bool"),
+        _Cell("person", "reports_outstanding_student_loan", "bool"),
+        _Cell("person", "age_left_full_time_education", "int64"),
     ),
     "frs_legacy_proxies": _cells(
         "person",

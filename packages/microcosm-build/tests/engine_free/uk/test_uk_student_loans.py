@@ -24,6 +24,85 @@ def test_reported_cohort_boundaries_and_country_independence() -> None:
     ]
 
 
+def test_course_start_dates_from_the_age_full_time_education_ended() -> None:
+    """Three years before leaving full-time education; at 18 without an answer
+    (microcosm#868)."""
+
+    starts = course_start_year(
+        year=2025,
+        age=np.array([30.0, 30.0, 40.0, 30.0]),
+        age_left=np.array([21, 25, 18, 0]),
+    )
+    # Left at 21 in 2016: started 2013. Left at 25 in 2020: started 2017, a
+    # Plan 2 course the age rule (2013) would also place, unlike the 40-year-old
+    # who left at 18 in 2003 and started in 2000. No answer: the age rule.
+    assert starts.tolist() == [2013.0, 2017.0, 2000.0, 2013.0]
+
+
+def test_an_outstanding_loan_reports_a_borrower_in_england_and_wales_only() -> None:
+    reported = has_reported_student_loan(
+        repayments=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 100.0]),
+        reports_outstanding=np.array([True, True, True, True, False, False]),
+        in_education=np.array([False, False, False, True, False, False]),
+        region_names=np.array(
+            ["LONDON", "WALES", "SCOTLAND", "LONDON", "LONDON", "SCOTLAND"],
+            dtype=object,
+        ),
+    )
+    # A student is not liable; Scotland (Plan 4) and Northern Ireland take no
+    # plan from the answer, and a repayer is reported anywhere, as before.
+    assert reported.tolist() == [True, True, False, False, False, True]
+
+
+def test_reported_borrowers_below_the_threshold_take_their_course_plan() -> None:
+    result = assign_student_loan_plans(
+        _frame(
+            ages=[30, 30, 40, 30, 30],
+            repayments=[0.0] * 5,
+            regions=["LONDON", "WALES", "LONDON", "LONDON", "SCOTLAND"],
+            reports_outstanding=[True, True, True, True, True],
+            current_education=[
+                "NOT_IN_EDUCATION",
+                "NOT_IN_EDUCATION",
+                "NOT_IN_EDUCATION",
+                "TERTIARY",
+                "NOT_IN_EDUCATION",
+            ],
+            age_left=[21, 25, 18, 21, 21],
+        ),
+        stocks=_stocks(plan_2=0, plan_5=0),
+        year=2025,
+    )
+    assert result.frame.table("person")["student_loan_plan"].tolist() == [
+        "PLAN_2",
+        "PLAN_2",
+        "PLAN_1",
+        "NONE",
+        "NONE",
+    ]
+    receipt = result.plans["PLAN_2"]
+    assert receipt.reported_count == 2.0 and receipt.reported_england_count == 1.0
+
+
+def test_plan_2_walk_takes_nobody_in_full_time_education() -> None:
+    result = assign_student_loan_plans(
+        _frame(
+            ages=[30, 30],
+            repayments=[0.0, 0.0],
+            current_education=["TERTIARY", "NOT_IN_EDUCATION"],
+            age_left=[21, 21],
+        ),
+        stocks=_stocks(plan_2=2, plan_5=0),
+        year=2025,
+    )
+    assert result.frame.table("person")["student_loan_plan"].tolist() == [
+        "NONE",
+        "PLAN_2",
+    ]
+    assert result.plans["PLAN_2"].eligible_rows == 1
+    assert result.plans["PLAN_2"].pool_exhausted
+
+
 def test_topups_apply_eligibility_gates_and_plan5_priority() -> None:
     result = assign_student_loan_plans(
         _frame(
@@ -195,6 +274,8 @@ def test_committed_stocks_pin_full_2025_to_2030_series() -> None:
                 "start_year_formula",
                 "reported_repayment_test",
                 "reported_country_gate",
+                "reported_outstanding_test",
+                "reported_outstanding_region_exclusions",
                 "plan_1_before",
                 "plan_5_from",
                 "enum_domain",
@@ -210,6 +291,7 @@ def test_committed_stocks_pin_full_2025_to_2030_series() -> None:
                 "year_rule",
                 "age_min",
                 "age_max",
+                "cohort_start_formula",
                 "cohort_start_min",
                 "eligible_region_exclusions",
                 "highest_education",
@@ -228,6 +310,8 @@ def test_committed_stocks_pin_full_2025_to_2030_series() -> None:
                 "year_rule",
                 "age_min",
                 "age_max",
+                "cohort_start_formula",
+                "current_education",
                 "cohort_start_min",
                 "cohort_start_max_exclusive",
                 "eligible_region_exclusions",

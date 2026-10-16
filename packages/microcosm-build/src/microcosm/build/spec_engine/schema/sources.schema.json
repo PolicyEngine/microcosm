@@ -9473,7 +9473,9 @@
       "plan_1_before",
       "plan_5_from",
       "enum_domain",
-      "plan_4_imputation"
+      "plan_4_imputation",
+      "reported_outstanding_test",
+      "reported_outstanding_region_exclusions"
      ],
      "properties": {
       "kind": {
@@ -9509,6 +9511,15 @@
       },
       "plan_4_imputation": {
        "type": "boolean"
+      },
+      "reported_outstanding_test": {
+       "type": "string"
+      },
+      "reported_outstanding_region_exclusions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       }
      }
     },
@@ -9589,6 +9600,12 @@
        "type": "string"
       },
       "realization_bound": {
+       "type": "string"
+      },
+      "cohort_start_formula": {
+       "type": "string"
+      },
+      "current_education": {
        "type": "string"
       }
      }

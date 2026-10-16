@@ -300,6 +300,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "PAREAMT": 13.0,
         "REDAMT": 100.0,
         "SLREPAMT": 2.0,
+        # A repayer answers no to SLOS; EDUCLEFT dates the course (#868).
+        "SLOS": 2,
+        "EDUCLEFT": 21,
         "SSPADJ": 1.0,
         "SMPADJ": 0.5,
         "SPPADJ": 0.25,

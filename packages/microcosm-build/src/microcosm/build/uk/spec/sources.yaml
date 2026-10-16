@@ -833,11 +833,14 @@ stages:
   - adult_ema
   - child_ema
   - receives_benefits_in_own_right
+  - reports_outstanding_student_loan
+  - age_left_full_time_education
   nonnegative_outputs:
   - adult_ema
   - child_ema
   - age_started_or_accepted_current_education_or_training
-  notes: 'Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant. is_in_approved_training is TRAINEE = 1 (whether on a government scheme for employment training; adult and child tables) on a child-table record: the FRS counts a 16- to 19-year-old as a dependent child only in full-time non-advanced education or unwaged government training, so such a record is a dependant in approved training (uk-data#560, uk-data#561). No adult-table record is flagged, since the FRS has already decided it is not a dependant and TRAINEE does not say the training is unwaged (UC Regs 2013 reg 5(3)); the adult-table TRAIN2 scheme codes, which microcosm#1063 read, name DWP employment schemes and are no longer read. A tab without TRAINEE refuses the build.'
+  - age_left_full_time_education
+  notes: 'Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant. is_in_approved_training is TRAINEE = 1 (whether on a government scheme for employment training; adult and child tables) on a child-table record: the FRS counts a 16- to 19-year-old as a dependent child only in full-time non-advanced education or unwaged government training, so such a record is a dependant in approved training (uk-data#560, uk-data#561). No adult-table record is flagged, since the FRS has already decided it is not a dependant and TRAINEE does not say the training is unwaged (UC Regs 2013 reg 5(3)); the adult-table TRAIN2 scheme codes, which microcosm#1063 read, name DWP employment schemes and are no longer read. A tab without TRAINEE refuses the build. reports_outstanding_student_loan is SLOS = 1 (Do you have an outstanding student loan?) on an adult-table record, answered by adults not making repayments, and age_left_full_time_education is EDUCLEFT (Age completed full-time education) where it lies between 10 and 90, else 0; the student_loans stage reads both (microcosm#868). A tab without SLOS or EDUCLEFT refuses the build.'
 - stage: frs_legacy_proxies
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.
@@ -4929,9 +4932,13 @@ stages:
   operations:
   - kind: assign_student_loan_plan_cohorts
     year_rule: calibration_year
-    start_year_formula: year - age + 18
+    start_year_formula: year - age + age_left_full_time_education - 3 where age_left_full_time_education > 0, else year - age + 18
     reported_repayment_test: student_loan_repayments > 0
     reported_country_gate: false
+    reported_outstanding_test: reports_outstanding_student_loan and current_education == NOT_IN_EDUCATION
+    reported_outstanding_region_exclusions:
+    - SCOTLAND
+    - NORTHERN_IRELAND
     plan_1_before: 2012
     plan_5_from: 2023
     enum_domain:
@@ -4948,6 +4955,7 @@ stages:
     year_rule: calibration_year
     age_min: 18
     age_max: 25
+    cohort_start_formula: year - age + 18
     cohort_start_min: 2023
     eligible_region_exclusions:
     - SCOTLAND
@@ -4966,6 +4974,8 @@ stages:
     year_rule: calibration_year
     age_min: 21
     age_max: 55
+    cohort_start_formula: year - age + age_left_full_time_education - 3 where age_left_full_time_education > 0, else year - age + 18
+    current_education: NOT_IN_EDUCATION
     cohort_start_min: 2012
     cohort_start_max_exclusive: 2023
     eligible_region_exclusions:
@@ -4983,4 +4993,4 @@ stages:
   - student_loan_plan
   rewrites:
   - student_loan_plan
-  notes: Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed.
+  notes: 'Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan.'

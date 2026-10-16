@@ -420,13 +420,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "95e51c26e03180e972150271327cde967a886e0803fb692521e47482adf7c606"
+    "967d93abe4b48eaa7c62492b7ef37faf37f13d914d78e26e7f295f72b716e27f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4bac867aafc06252b75de4a44bf20ba7aa22774db7426f483e0ba96db78b20ad"
+    "d01dfd74a9c127bb7794165892d42147de035bd01a068d638b24d76390e1c191"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a4530c493787943f601c97d057fffb5653a30119c35170aac688482e0e8fd7cb"
+    "8daa04da3b93bb9015ef8917830aa79c75bb06022787b23ee95beb0d4bd9eda1"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -892,10 +892,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "ff44e7448f69f554207f6a7080b9c9f55d68bc84c569a979de9ccb10504a3e61"
+            "365101698145ccb7a1ed3813683228d48983a449def721bf4fe74a0297787d66"
         ),
         "policy_sha256": (
-            "f7fcf40372b22ac49565a2cf5908dc0f425b3ff24dfdc31fbdaea3a05c9bd831"
+            "754487c59b3c3f37cd1b502b8040cd4a2d263ba1feaa79646d1a9f4f4b9d6c83"
         ),
     },
 }
