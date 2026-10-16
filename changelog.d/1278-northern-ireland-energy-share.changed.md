@@ -1,0 +1,5 @@
+The UK local energy rows take Northern Ireland's part of the Energy Trends level from DESNZ's own Northern Ireland consumption (microcosm#1278; María's ruling of 2026-10-16). Great Britain's share of UK households had stood in as an interim.
+
+- **The factor.** Great Britain's part of the UK level is now its share of DESNZ's sub-national domestic consumption with Northern Ireland's row added (all domestic meters, 2024). Each fuel's factor is therefore the UK level over the UK sub-national total. Northern Ireland's electricity runs on financial years from April and its gas on DESNZ's Northern Ireland gas years; the year labelled 2024 pairs with Great Britain's 2024. DESNZ calls these figures not directly comparable with Great Britain's, and the basis text and receipt say so.
+- **The vendored resource.** `desnz_local_energy_facts.json` vendors the two Northern Ireland rows in place of the four ONS LFS household totals.
+- **The fence.** The `desnz_northern_ireland_interim_share` adjudication and its census fence retire, and the two energy contract rows' notes say how Northern Ireland is taken out.
