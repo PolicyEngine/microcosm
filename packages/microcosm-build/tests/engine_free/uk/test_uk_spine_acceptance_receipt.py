@@ -117,6 +117,10 @@ def _apply_pending_roster_transformations(
     # follow the uprated rental property values.
     assert "property_components" not in roster
     roster.insert(roster.index("high_value_home_support") + 1, "property_components")
+    # microcosm#1112 re-mint pending: the regions' home values replace the
+    # owners' values after the support copies, before the components.
+    assert "regional_home_values" not in roster
+    roster.insert(roster.index("high_value_home_support") + 1, "regional_home_values")
     # microcosm#1095 re-mint pending: the annual property purchases read the
     # uprated stocks after the support copies (uk-data#573).
     assert "property_purchases" not in roster

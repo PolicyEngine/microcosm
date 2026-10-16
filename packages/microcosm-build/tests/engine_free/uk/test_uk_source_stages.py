@@ -45,6 +45,9 @@ E5_STAGE_NAMES = [
     "was_lisa",
     "regional_property_uprating",
     "high_value_home_support",
+    # microcosm#1112: the regions' Land Registry home values on the spine, on
+    # the uprated values and the support copies.
+    "regional_home_values",
     # #1106: landlords' receipts and finance costs follow the uprated rental
     # property values their coherence receipt reads.
     "property_components",
@@ -248,6 +251,7 @@ class TestUKSourceStagesManifest:
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "high_value_home_support": _identity,
+                    "regional_home_values": _identity,
                     "property_components": _identity,
                     "property_purchases": _identity,
                     "lcfs_consumption": _identity,

@@ -278,6 +278,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "non_residential_property_value"),
         }
     ),
+    # Engine-free: the owners' region, tenure, value and wealth, and the support
+    # copies the ranking spreads (microcosm#1112).
+    "regional_home_values": frozenset(
+        {
+            ("household", "region"),
+            ("household", "tenure_type"),
+            ("household", "main_residence_value"),
+            ("household", "property_wealth"),
+            ("household", "household_is_high_value_support_copy"),
+        }
+    ),
     # Engine-free: each kind's stock, the region that marks where SDLT
     # applies and the source household the receipt counts distinct support by
     # (uk-data#573, microcosm#1095).
@@ -793,6 +804,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "property_components": _cells(
         "person",
         ("property_income", "property_finance_costs", "property_rental_income"),
+    ),
+    # The region's Land Registry values on the spine, and the value they
+    # replace for the dense node to rank on (microcosm#1112).
+    "regional_home_values": _cells(
+        "household",
+        (
+            "main_residence_value",
+            "property_wealth",
+            "main_residence_value_rank_basis",
+        ),
     ),
     # Annual purchases from each kind of property stock (uk-data#573).
     "property_purchases": _cells(

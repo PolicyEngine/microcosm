@@ -126,6 +126,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "gate_zero_weight_strata",
         "head_carry",
         "impute_annual_property_purchases",
+        "assign_regional_home_values",
         "impute_bus_use_band",
         "impute_frs_property_finance_costs",
         "impute_lifetime_isa_balance",

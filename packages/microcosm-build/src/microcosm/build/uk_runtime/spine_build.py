@@ -159,6 +159,9 @@ from microcosm.build.uk_runtime.property_components import (
 from microcosm.build.uk_runtime.property_purchases import (
     UKPropertyPurchasesStageTransform,
 )
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -1630,6 +1633,10 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["property_components"],
                 spi_tab_path=sources["spi"],
             )
+        )
+    if "regional_home_values" in stage_names:
+        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
+            stage=stages_by_name["regional_home_values"],
         )
     if "property_purchases" in stage_names:
         implementations["property_purchases"] = UKPropertyPurchasesStageTransform(

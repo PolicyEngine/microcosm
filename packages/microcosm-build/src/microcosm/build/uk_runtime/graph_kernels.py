@@ -53,6 +53,7 @@ from . import (
     frs_take_up,
     hmrc_property_rental,
     ledger_fact_vendoring,
+    property_localisation,
     rowwise_geography,
     spi_income,
     spi_support,
@@ -111,6 +112,7 @@ _STAGE_MODULES = {
     "child_benefit_take_up": "child_benefit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
+    "regional_home_values": "regional_home_values",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
@@ -139,6 +141,9 @@ _STAGE_HELPER_MODULES = {
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
     "property_components": (hmrc_property_rental, spi_income, spi_support),
+    # The regional values rank as the dense node does and read its knots
+    # (microcosm#1112).
+    "regional_home_values": (property_localisation, rowwise_geography),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (ledger_fact_vendoring, rowwise_geography),
@@ -497,6 +502,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKPropertyPurchasesStageTransform,
         UKPropertyPurchaseTargets,
     )
+    from .regional_home_values import UKRegionalHomeValuesStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -653,6 +659,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "property_purchases": UKPropertyPurchasesStageTransform(
                 stage=stages["property_purchases"],
                 targets=property_purchase_targets,
+            ),
+            "regional_home_values": UKRegionalHomeValuesStageTransform(
+                stage=stages["regional_home_values"]
             ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],
