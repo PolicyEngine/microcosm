@@ -5,7 +5,9 @@ from test_support.microcosm_build.uk_student_loans import *
 
 
 def test_reported_cohort_boundaries_and_country_independence() -> None:
-    # At 2025: these ages imply start years 2011, 2012, 2022, and 2023.
+    # At 2025: these ages imply start years 2011, 2012, 2022, and 2023. The
+    # last repays, and nobody repays a Plan 5 loan before April 2026, so its
+    # course started before Plan 5 existed (microcosm#868).
     result = assign_student_loan_plans(
         _frame(
             ages=[32, 31, 21, 20],
@@ -20,6 +22,33 @@ def test_reported_cohort_boundaries_and_country_independence() -> None:
         "PLAN_1",
         "PLAN_2",
         "PLAN_2",
+        "PLAN_2",
+    ]
+
+
+def test_no_repayer_holds_plan_5_before_its_first_repayments() -> None:
+    """SLC counts no Plan 5 borrower above the threshold in academic year
+    2024/25: Plan 5 repayments start in April 2026 (microcosm#868)."""
+
+    frame = _frame(
+        ages=[20, 20],
+        repayments=[100.0, 0.0],
+        reports_outstanding=[False, True],
+    )
+    # Both courses date from 2023 at 2025 (no leaving age: started at 18).
+    at_2025 = assign_student_loan_plans(
+        frame, stocks=_stocks(plan_2=0, plan_5=0), year=2025
+    )
+    assert at_2025.frame.table("person")["student_loan_plan"].tolist() == [
+        "PLAN_2",
+        "PLAN_5",
+    ]
+    # From 2026 a repayer may hold Plan 5 (both courses then date from 2024).
+    at_2026 = assign_student_loan_plans(
+        frame, stocks=_stocks(plan_2=0, plan_5=0, year=2026), year=2026
+    )
+    assert at_2026.frame.table("person")["student_loan_plan"].tolist() == [
+        "PLAN_5",
         "PLAN_5",
     ]
 

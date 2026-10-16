@@ -54,6 +54,12 @@ START_YEAR_FORMULA = (
 REPORTED_OUTSTANDING_TEST = (
     "reports_outstanding_student_loan and current_education == NOT_IN_EDUCATION"
 )
+#: No Plan 5 loan is repaid before April 2026 (SLC), so before then a borrower
+#: who repays started a course before Plan 5 existed: a repayer whose dates
+#: point to a course from 2023/24 takes Plan 2, and SLC's published zero of
+#: Plan 5 borrowers above the threshold in academic year 2024/25 holds
+#: (microcosm#868).
+PLAN_5_REPAYMENTS_FROM = 2026
 PLAN_SALTS = {
     "PLAN_5": "student_loan_plan_5",
     "PLAN_2": "student_loan_plan_2",
@@ -202,7 +208,9 @@ def assign_student_loan_plans(
     A reported borrower repays (``student_loan_repayments > 0``) or, in
     England or Wales, reports an outstanding loan and is not in full-time
     education; their course starts :data:`ASSUMED_COURSE_YEARS` before they
-    left full-time education (microcosm#868). Each top-up realises the plan's
+    left full-time education (microcosm#868). Before
+    :data:`PLAN_5_REPAYMENTS_FROM` a repayer never takes Plan 5, which nobody
+    repays before April 2026. Each top-up realises the plan's
     shortfall against the SLC liable stock by the identity-keyed greedy walk
     in :func:`_walk_top_up`, so the realised mass sits within one skipped
     person's weight of the shortfall rather than being a Bernoulli draw whose
@@ -275,7 +283,10 @@ def assign_student_loan_plans(
     )
     plan = np.full(len(person), "NONE", dtype=object)
     plan[reported & (start_year < PLAN_1_BEFORE)] = "PLAN_1"
-    plan[reported & (start_year >= PLAN_5_FROM)] = "PLAN_5"
+    may_repay_plan_5 = year >= PLAN_5_REPAYMENTS_FROM
+    plan[
+        reported & (start_year >= PLAN_5_FROM) & (may_repay_plan_5 | ~(repayments > 0))
+    ] = "PLAN_5"
     plan[reported & (plan == "NONE")] = "PLAN_2"
     reported_plan = plan.copy()
     receipts: dict[str, UKStudentLoanPlanReceipt] = {}
@@ -586,6 +597,7 @@ def _assert_student_loans_stage_parameters(
                     ),
                     "plan_1_before": PLAN_1_BEFORE,
                     "plan_5_from": PLAN_5_FROM,
+                    "plan_5_repayments_from": PLAN_5_REPAYMENTS_FROM,
                     "enum_domain": list(STUDENT_LOAN_ENUM_DOMAIN),
                     "plan_4_imputation": False,
                 },

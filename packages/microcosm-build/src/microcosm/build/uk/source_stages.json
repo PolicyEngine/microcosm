@@ -6137,6 +6137,7 @@
      ],
      "plan_1_before": 2012,
      "plan_5_from": 2023,
+     "plan_5_repayments_from": 2026,
      "enum_domain": [
       "NONE",
       "PLAN_1",
@@ -6199,7 +6200,7 @@
    "rewrites": [
     "student_loan_plan"
    ],
-   "notes": "Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan."
+   "notes": "Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan, except that before 2026 a repayer never takes PLAN_5: nobody repays a Plan 5 loan before April 2026, so SLC counts no Plan 5 borrower above the threshold in academic year 2024/25. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan."
   },
   {
    "stage": "private_school_attendance",

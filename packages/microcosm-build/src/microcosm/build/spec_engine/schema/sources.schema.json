@@ -9472,6 +9472,7 @@
       "reported_country_gate",
       "plan_1_before",
       "plan_5_from",
+      "plan_5_repayments_from",
       "enum_domain",
       "plan_4_imputation",
       "reported_outstanding_test",
@@ -9501,6 +9502,9 @@
        "type": "integer"
       },
       "plan_5_from": {
+       "type": "integer"
+      },
+      "plan_5_repayments_from": {
        "type": "integer"
       },
       "enum_domain": {
