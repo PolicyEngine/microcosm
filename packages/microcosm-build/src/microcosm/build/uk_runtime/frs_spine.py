@@ -1226,6 +1226,10 @@ def _esa_includes_support_component(
 
     An ESA row (BENEFIT 16) records the group in VAR3 (ESAGROUP): 1 the
     work-related activity group, 2 the support group, 3 the assessment phase.
+    The FRS 2024-25 variable listing gives the codes (UK Data Service SN 9563,
+    ``9563_frs2425_variable_listing_eul.xlsx``, sheet BENEFITS_table): on an
+    ESA row VAR3 holds the questionnaire's ESAGroup, formatted 1
+    Work-related activity group, 2 Support group, 3 Assessment phase.
     A stored column replaces policyengine-uk's default for everyone, which
     assumes the support group for anyone with an ESA award of their own
     (2.129.0), so the column is false only where the survey records a group
