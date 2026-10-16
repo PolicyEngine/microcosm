@@ -8,6 +8,15 @@ group by difference. A count a gate must read exactly, such as the zero a
 check requires, stays a count of zero. A share follows the same rule: an
 unweighted share is floored to two decimals, since an exact one gives back
 its count, and a weighted share carried by one to nine records is "<10".
+
+Ten is CD171's working minimum, and no study the build reads sets a higher
+one. The UK Data Service catalogue entries were read for conditions beyond
+the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none
+(checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
+(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
+2026-10-16) adds two: no attempt may be made to attribute a record to a named
+individual, and material that includes analyses of the tape goes to HMRC at
+least ten working days before it is distributed or published.
 """
 
 from __future__ import annotations
