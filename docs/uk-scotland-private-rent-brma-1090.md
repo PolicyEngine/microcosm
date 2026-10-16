@@ -137,5 +137,33 @@ at BRMA grain, which is where the facts should bind.
   cell, which the boundary-frame gate added in #795 refuses by design, so it
   needs a maintainer's ruling rather than a translation rule.
 
-microcosm#1262 takes the first route: placed households now carry the BRMA of
-their assigned output area, so the model side needs no overlap shares.
+microcosm#1262 takes the first route.
+
+## BRMA target rows (microcosm#1262)
+
+`ons.rent.private_rent_brma` binds PIPR's 18 Scottish BRMA rows at their own
+grain: the `statistical_scope` level of `uk/local_area_crosswalk.json` (the
+layer's 18 codes and each one's BRMA) and the local surface's `brma` area type.
+
+- **The target.** Each row is 12 × the BRMA's calendar-2025 mean × its private
+  renters. A BRMA's renters are not a bound cell, so
+  `uk_private_rent_brma_mean_to_total` derives them after the councils'
+  tenure cells are reconciled: the sum over councils of the council's share of
+  the BRMA's private renters in the overlap table, times the council's
+  `tenure/private_rent` cell. Every council's renters land in its BRMAs exactly
+  once, so the counts add up to Scotland's reconciled renters.
+- **The model side.** A placed household reads its BRMA off its assigned
+  output area, and its BRMA's code places it on the grain; households outside
+  Scotland belong to no BRMA area. The metric is the household's private rent,
+  the quantity the local-authority rows read.
+- **Weights and reconciliation.** The 18 rows weigh inside the
+  local-authority grain, in its private-rent family: a grain of their own would
+  take a fifth of the loss and dilute the energy and bus families below their
+  floors. They are declared signature-incomplete with the local-authority rent
+  rows and route as `no_higher_control`: BRMAs overlap the councils, so neither
+  set reconciles the other.
+
+The 32 council cells stay signed deferred, as councils have no published rent.
+`test_scotland_binds_at_brma_grain_and_its_councils_stay_deferred` fails if a
+bridge, a council translation or a different grain arrives, so the decision is
+revisited then.

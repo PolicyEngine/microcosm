@@ -192,7 +192,7 @@ LOCAL_LINE = "local"
 NATIONAL_LINE = "national"
 #: The geography levels whose targets the local surface materializes
 #: (``full_gates._LOCAL_LEVELS``); every other row is a national row.
-LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
+LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 FIT_WINDOW_DAYS = 28
 AREA_WINDOW_MONTHS = 3

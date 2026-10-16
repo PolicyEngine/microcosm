@@ -1680,8 +1680,9 @@ class TestPreflightBindings:
         # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
         # all 1,725 constituency cells, which the region rows now control,
         # and the 598 authority cells under the 400-home floor.
-        assert result.details["candidate_targets"] == 22_986
-        assert result.details["reference_targets"] == 27_115
+        # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
+        assert result.details["candidate_targets"] == 23_004
+        assert result.details["reference_targets"] == 27_133
         # Only the 4,129 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123

@@ -121,7 +121,7 @@ def target_geography(spec: TargetSpec) -> str:
     if local and ledger and local != ledger:
         raise ValueError(f"Target {spec.name!r} has contradictory geography levels.")
     level = local or ledger
-    if level not in {"country", "region", "constituency", "la"}:
+    if level not in {"country", "region", "constituency", "la", "brma"}:
         raise ValueError(
             f"Target {spec.name!r} has unsupported geography level {level!r}."
         )

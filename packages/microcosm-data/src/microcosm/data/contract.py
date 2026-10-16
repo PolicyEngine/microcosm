@@ -63,6 +63,7 @@ from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS,
     UK_TARGET_GEOGRAPHY_LEVELS,
     parse_calibration_diagnostics,
 )
@@ -4021,7 +4022,11 @@ def _check_legacy_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
+    missing_levels = sorted(
+        set(UK_TARGET_GEOGRAPHY_LEVELS)
+        - seen_levels
+        - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+    )
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "

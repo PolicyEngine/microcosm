@@ -635,6 +635,15 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
+        # Every level is written; Scotland's BRMA rows bind no target here.
+        {
+            "geography_level": "brma",
+            "n_targets": 0,
+            "n_scored": 0,
+            "n_skipped": 0,
+            "n_within_10pct": 0,
+            "pass_rate": None,
+        },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
 
@@ -1048,6 +1057,7 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "country",
         "local_authority",
         "constituency",
+        "brma",
     )
 
 

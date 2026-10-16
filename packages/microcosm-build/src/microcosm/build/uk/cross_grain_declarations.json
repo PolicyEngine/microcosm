@@ -6,7 +6,8 @@
     "nation",
     "region",
     "constituency",
-    "la"
+    "la",
+    "brma"
   ],
   "control_grains": [
     "country",
@@ -608,7 +609,7 @@
   "local_routes": {
     "ons.rent.private_rent": {
       "route": "no_higher_control",
-      "reason": "ONS PIPR publishes area means, not a national private-rent total the frame binds; the local-authority rows are 12 x mean x reconciled private renters (uk_private_rent_mean_to_total), so they follow the tenure cells' reconciliation. Area-placed rents are PR B (microcosm#1123 item 4)."
+      "reason": "ONS PIPR publishes area means, not a national private-rent total the frame binds; the local-authority rows are 12 x mean x reconciled private renters (uk_private_rent_mean_to_total), so they follow the tenure cells' reconciliation. Placed renters' rents come from their BRMA's rent-officer list of rents at their region's FRS level (microcosm#1262); PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation."
     },
     "ons.equiv_net_income_bhc": {
       "route": "no_higher_control",
@@ -629,6 +630,10 @@
     "desnz.subnational.gas_kwh": {
       "route": "no_higher_control",
       "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The gas cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207, local-authority grain only)."
+    },
+    "ons.rent.private_rent_brma": {
+      "route": "no_higher_control",
+      "reason": "ONS PIPR publishes Scotland's rents as means over its 18 Broad Rental Market Areas, which overlap the councils, and no national private-rent total the frame binds. Each row is 12 x the BRMA mean x the BRMA's private renters, derived from the councils' reconciled tenure cells through Census 2022's council shares of each BRMA's renters (uk_private_rent_mean_to_total), so the rows follow the tenure reconciliation and no BRMA cell is a parent or a leg of any other (microcosm#1090, #1262). Placed renters' rents come from their BRMA's rent-officer list of rents at their region's FRS level (microcosm#1262); PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation."
     }
   },
   "relations": [
@@ -986,9 +991,10 @@
     },
     {
       "targets": [
-        "ons.rent.private_rent"
+        "ons.rent.private_rent",
+        "ons.rent.private_rent_brma"
       ],
-      "reason": "The private-renter condition is in the binding; local-only (see local_routes)."
+      "reason": "The private-renter condition is in the binding; local-only (see local_routes). The local-authority and Scottish BRMA rows measure the same quantity over overlapping areas, so neither reconciles the other."
     },
     {
       "targets": [

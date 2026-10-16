@@ -282,6 +282,74 @@ def test_surface_builder_refuses_roster_coverage_and_unreachable_rows() -> None:
         )
 
 
+def test_a_partial_grain_leaves_households_outside_its_areas_unplaced() -> None:
+    """Scotland's BRMA grain (microcosm#1262): only Scottish households carry
+    an area, and only they support its cells."""
+
+    metrics = _metrics()
+    rents = pd.DataFrame(
+        {"rent/private_rent_brma": [500.0, 0.0, 900.0]}, index=metrics.index
+    )
+    surface = pd.DataFrame(
+        [
+            {
+                "area_type": "constituency",
+                "area_code": code,
+                "metric": "households",
+                "value": value,
+                "target_name": f"households@{code}",
+                "family": "census_households",
+            }
+            for code, value in (("E001", 3.0), ("S001", 3.0))
+        ]
+        + [
+            {
+                "area_type": "brma",
+                "area_code": "S33000001",
+                "metric": "rent/private_rent_brma",
+                "value": 1_000.0,
+                "target_name": "rent@S33000001",
+                "family": "private_rent",
+            }
+        ]
+    )
+    brma = pd.Series(["", "", "S33000001"], index=metrics.index)
+    problem = build_uk_rowwise_local_surface_matrix(
+        {"constituency": metrics, "brma": rents},
+        {"constituency": _assigned(), "brma": brma},
+        surface,
+        area_codes_by_grain={
+            "constituency": ("E001", "S001"),
+            "brma": ("S33000001",),
+        },
+    )
+    rent_row = problem.target_frame.index[problem.target_frame["area_type"] == "brma"][
+        0
+    ]
+    # The English household's rent supports no BRMA cell.
+    assert problem.matrix[rent_row].toarray().tolist() == [[0.0, 0.0, 900.0]]
+    assert problem.assigned_areas_by_grain["brma"] == ("", "", "S33000001")
+
+    with pytest.raises(ValueError, match="blank code"):
+        build_uk_rowwise_local_surface_matrix(
+            {"constituency": metrics},
+            {"constituency": _assigned().replace("E001", "")},
+            surface.loc[surface["area_type"] == "constituency"],
+            area_codes_by_grain={"constituency": ("E001", "S001")},
+            require_every_assigned_area_covered=False,
+        )
+    with pytest.raises(ValueError, match="assigns no household"):
+        build_uk_rowwise_local_surface_matrix(
+            {"constituency": metrics, "brma": rents},
+            {"constituency": _assigned(), "brma": brma.replace("S33000001", "")},
+            surface,
+            area_codes_by_grain={
+                "constituency": ("E001", "S001"),
+                "brma": ("S33000001",),
+            },
+        )
+
+
 def test_registry_surface_names_periods_and_lazy_masks_match_sparse_matrix() -> None:
     import microcosm.build.uk_runtime.local_rowwise as local_rowwise
 

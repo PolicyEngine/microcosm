@@ -464,3 +464,67 @@ def test_rent_dispersion_receipt_backs_the_decision() -> None:
     for council, (share, brma) in main.items():
         assert by_code[council]["main_brma"] == brma
         assert by_code[council]["share_of_council_in_main_brma"] == round(share, 4)
+
+
+# --- the binding: BRMA rows, deferred councils, no bridge -----------------
+
+
+def test_scotland_binds_at_brma_grain_and_its_councils_stay_deferred() -> None:
+    """Tripwire for the arrangement microcosm#1262 settles (#1090).
+
+    PIPR's Scottish rents bind at their own grain; the 32 council cells stay
+    signed deferred, since councils have no published rent; and no bridge
+    relates the rent rows, which would allocate BRMA averages over councils.
+    Changing any of the three needs the decision note revisited.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_CROSS_GRAIN_BRIDGES,
+        UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
+    )
+    from microcosm.build.uk_runtime.local_targets import (
+        AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
+        load_uk_population_contract,
+        uk_brma_area_roster,
+    )
+
+    assert AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL["brma"] == "statistical_scope"
+    assert UK_CROSS_GRAIN_GRAIN_PRECEDENCE[-1] == "brma"
+    assert not any(
+        "ons.rent." in side
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        for side in (*bridge.higher_target_ids, bridge.lower_side)
+    )
+    targets = {
+        row["target_id"]: row for row in load_uk_population_contract()["targets"]
+    }
+    assert targets["ons.rent.private_rent"]["geography_levels"] == ["local_authority"]
+    assert targets["ons.rent.private_rent_brma"]["geography_levels"] == [
+        "statistical_scope"
+    ]
+
+    resource = _resource()
+    codes = {entry["pipr_area_code"]: brma for brma, entry in resource["brmas"].items()}
+    crosswalk = _packaged("local_area_crosswalk.json")["levels"]["statistical_scope"]
+    assert crosswalk["brma_name_by_area"] == codes
+    assert tuple(sorted(codes)) == uk_brma_area_roster()
+
+    membership = _packaged("local_target_reference_membership.json")
+    brma_rows = membership["targets"]["ons.rent.private_rent_brma"]["geography_levels"][
+        "statistical_scope"
+    ]["candidates"]
+    assert {row["geography_id"] for row in brma_rows} == set(codes)
+    assert {row["status"] for row in brma_rows} == {"active"}
+    council_rows = membership["targets"]["ons.rent.private_rent"]["geography_levels"][
+        "local_authority"
+    ]["candidates"]
+    scottish = [row for row in council_rows if row["geography_id"].startswith("S")]
+    assert len(scottish) == 32
+    assert {row["status"] for row in scottish} == {"no_fact_for_area"}
+    deferral = next(
+        row
+        for row in membership["signed_deferrals"]
+        if row["reason_id"] == "private_rent_pipr_scotland_brma_grain"
+    )
+    assert "ons.rent.private_rent_brma" in deferral["rationale"]
+    assert deferral["area_ids"] == sorted(_scottish_roster())

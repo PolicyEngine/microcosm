@@ -1568,6 +1568,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):

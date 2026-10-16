@@ -249,10 +249,11 @@ def test_the_frozen_count_is_the_committed_active_reference_count() -> None:
     # candidate_targets pin of the committed local references in
     # test_uk_battery_bindings.py
     # (test_local_default_target_surface_uses_metric_names_and_signed_deferrals),
-    # since the generator writes both files in one run.
+    # since the generator writes both files in one run. microcosm#1262 adds
+    # Scotland's 18 PIPR BRMA cells.
     membership = load_uk_local_target_reference_membership()
-    assert membership["active_reference_count"] == 22_986
-    assert _load_scorer().uk_local_active_reference_count() == 22_986
+    assert membership["active_reference_count"] == 23_004
+    assert _load_scorer().uk_local_active_reference_count() == 23_004
 
 
 @pytest.mark.parametrize("bad", [0, -1, True, "25", None])
