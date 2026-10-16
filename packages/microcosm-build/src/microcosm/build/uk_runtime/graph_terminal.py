@@ -721,6 +721,8 @@ class UKFullGateKernel(KernelBase):
             battery_bindings,
             diagnostics,
             full_gates,
+            high_value_home_gates,
+            high_value_homes,
             local_rowwise,
             weighted_integrity,
         )
@@ -736,6 +738,8 @@ class UKFullGateKernel(KernelBase):
                         local_rowwise,
                         weighted_integrity,
                         diagnostics,
+                        high_value_home_gates,
+                        high_value_homes,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }

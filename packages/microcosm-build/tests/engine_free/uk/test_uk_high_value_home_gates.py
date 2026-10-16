@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 
 import numpy as np
@@ -51,7 +52,6 @@ def _facts(
             },
             "basis_year": 2024,
             "stock_date": "2025-12-31",
-            "obr_non_owner_occupied_share": 0.4,
         },
         inputs={},
         generator={},
@@ -275,3 +275,137 @@ def test_gates_are_declared_diagnostic_bound_and_outside_the_release_contract() 
         }
         assert gate_id in UK_CERTIFICATION_EXCLUDED_GATE_IDS
         assert gate_id in uk_local_gate_scope_exclusions()
+
+
+# The OBR leg reads the vendored costing rows (microcosm#1278: it had looked
+# for an older row shape and reported awaiting facts on every build).
+
+
+def _evidence_with_obr(obr_rows, **kwargs):
+    household = _household()
+    return uk_high_value_home_evidence(
+        household,
+        weights=np.ones(len(household)),
+        facts=high_value_homes.load_uk_high_value_home_stock_facts(),
+        obr_rows=obr_rows,
+        **kwargs,
+    )
+
+
+def test_obr_leg_reads_the_vendored_costing_rows() -> None:
+    rows = high_value_homes.load_vendored_obr_hvcts_facts()
+    assert rows
+    facts = high_value_homes.load_uk_high_value_home_stock_facts()
+    summary = _evidence_with_obr(rows).summary
+    obr = summary["obr"]
+    assert obr["status"] == "available"
+    assert (obr["period"], obr["basis"]) == ("2028", "static")
+    # OBR Table 1.1, static, 2028-29, at April-2026 valuations.
+    assert obr["all_properties"] == {
+        "gbp_2m_to_2_5m": 71_000.0,
+        "gbp_2_5m_to_3_5m": 54_000.0,
+        "gbp_3_5m_to_5m": 25_000.0,
+        "over_gbp_5m": 15_000.0,
+        "total": 165_000.0,
+    }
+    assert obr["non_owner_occupied_share"] == pytest.approx(0.4)
+    assert obr["owner_occupied_sensitivity_total"] == pytest.approx(99_000.0)
+    assert obr["frame_over_owner_occupied_sensitivity"] == pytest.approx(
+        summary["england_owner_occupied_by_band_2026"]["total"] / 99_000.0
+    )
+    england = {
+        measure: facts.rows_at(
+            level="country", measure_id=measure, threshold_id="over_gbp_2m"
+        )["E92000001"]
+        for measure in ("private_sector_dwellings", "owner_occupied_homes")
+    }
+    derived = obr["derived_stock_england_over_2m"]
+    assert derived["private_sector_over_obr_all_properties"] == pytest.approx(
+        england["private_sector_dwellings"] / 165_000.0
+    )
+    assert derived["owner_occupied_over_obr_owner_occupied"] == pytest.approx(
+        england["owner_occupied_homes"] / 99_000.0
+    )
+
+
+@pytest.mark.parametrize(
+    ("period", "basis", "total"),
+    [("2028", "post_behaviour", 156_000.0), ("2030", "static", 167_000.0)],
+)
+def test_obr_leg_selects_the_year_and_the_behaviour_basis(
+    period: str, basis: str, total: float
+) -> None:
+    obr = _evidence_with_obr(
+        high_value_homes.load_vendored_obr_hvcts_facts(),
+        obr_period=period,
+        obr_basis=basis,
+    ).summary["obr"]
+    assert obr["status"] == "available"
+    assert obr["all_properties"]["total"] == pytest.approx(total)
+
+
+def test_obr_leg_names_rows_that_match_no_year() -> None:
+    obr = _evidence_with_obr(
+        high_value_homes.load_vendored_obr_hvcts_facts(), obr_period="2031"
+    ).summary["obr"]
+    assert obr == {"status": "no_matching_rows", "period": "2031", "basis": "static"}
+    assert _evidence_with_obr(None).summary["obr"] == {
+        "status": "awaiting_vendored_facts"
+    }
+
+
+def _matching_row(rows: list[dict], band: str) -> dict:
+    return next(
+        row
+        for row in rows
+        if row["concept"] == "obr.hvcts_costing.properties_in_scope"
+        and row["period"]["value"] == 2028
+        and row["dimensions"].get("behaviour_basis") == "static"
+        and row["dimensions"].get("property_value_band") == band
+    )
+
+
+@pytest.mark.parametrize("defect", ["unit", "band", "duplicate", "share"])
+def test_obr_leg_refuses_malformed_rows(defect: str) -> None:
+    rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
+    row = _matching_row(rows, "over_gbp_5m")
+    if defect == "unit":
+        row["unit"] = "thousand"
+    elif defect == "band":
+        row["dimensions"]["property_value_band"] = "over_gbp_10m"
+    elif defect == "duplicate":
+        rows.append(copy.deepcopy(row))
+    else:
+        share = next(
+            r
+            for r in rows
+            if r["concept"] == "obr.hvcts_costing.non_owner_occupied_share"
+        )
+        rows.append(copy.deepcopy(share))
+    with pytest.raises(ValueError, match="OBR HVCTS"):
+        _evidence_with_obr(rows)
+
+
+def test_benchmarks_gate_outcome_does_not_depend_on_the_obr_leg() -> None:
+    facts = _facts(
+        {"E14000001": 500.0, "E14000002": 200.0, "E14000003": 0.0},
+        {"E12000007": 500.0, "E12000008": 200.0},
+    )
+    household = _household()
+    rows = high_value_homes.load_vendored_obr_hvcts_facts()
+    with_obr = uk_high_value_home_evidence(
+        household, weights=np.ones(len(household)), facts=facts, obr_rows=rows
+    ).summary
+    without_obr = uk_high_value_home_evidence(
+        household, weights=np.ones(len(household)), facts=facts
+    ).summary
+    assert with_obr["obr"]["status"] == "available"
+    # A ratio to a public count would give back a suppressed band, so the
+    # suppressed toy bands carry no ratio.
+    ratios = with_obr["obr"]["frame_over_all_properties_ratio"]
+    assert ratios["gbp_2m_to_2_5m"] is None and ratios["gbp_2_5m_to_3_5m"] is None
+    for parameters in ({}, {"minimum_rank_correlation": 1.1}):
+        assert (
+            high_value_home_benchmarks_gate(with_obr, **parameters).passed
+            == high_value_home_benchmarks_gate(without_obr, **parameters).passed
+        )

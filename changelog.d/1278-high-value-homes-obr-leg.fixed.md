@@ -1,0 +1,5 @@
+The high-value homes benchmarks gate reads the vendored OBR costing rows (`uk/obr_hvcts_costing_facts.json`) by concept, fiscal year, behaviour basis and England, so its OBR leg reports Table 1.1 (or 1.2) beside the frame's owner-occupied bands and the derived Land Registry stock. It had looked for an older row shape and reported `awaiting_vendored_facts` on every build (microcosm#1278).
+
+- The non-owner-occupied share comes from the note's own row (40 per cent), not from a stock-facts parameter that was never set, so the owner-occupied sensitivity (99,000 for 2028-29, static) and the derived stock's ratio to it are reported.
+- The leg adds the frame's England total over that sensitivity, and reports `no_matching_rows` when the rows carry no year or basis it asks for. A matching row with an unknown band or unit, or a repeated band, is refused.
+- The leg stays informational: the gate's outcome does not depend on it. The full-gates kernel now hashes both high-value modules, so a resumed graph store recomputes the evidence.
