@@ -67,6 +67,41 @@ def test_post_ebf733c_additions_are_named() -> None:
     assert "uk-data#474" in education["reason"]
 
 
+def test_a43e8c5_additions_are_named() -> None:
+    """The re-pin to uk-data a43e8c5 (microcosm#1278): the three new sources
+    have homes, and the Band D and outlier verdicts say what Microcosm does."""
+
+    parity = build_uk_data_target_parity()
+    assert parity["reference"]["incumbent_commit"] == "a43e8c5"
+    rows = {row["concern_id"]: row for row in parity["concerns"]}
+
+    def covers(concern_id: str) -> list[str]:
+        return [cover.rsplit(".", 1)[-1] for cover in rows[concern_id]["covers"]]
+
+    assert rows["national_dwp_housing_benefit_pension_age"]["status"] == (
+        "ported_national"
+    )
+    assert covers("national_dwp_housing_benefit_pension_age") == ["dwp_housing_benefit"]
+    working_age = rows["national_dwp_housing_benefit_working_age"]
+    assert working_age["status"] == "routed"
+    assert "microcosm#867" in working_age["fence"]["verdict_basis"]
+    assert rows["national_dwp_pension_credit"]["status"] == "ported_national"
+    assert covers("national_dwp_pension_credit") == ["dwp_pension_credit"]
+    lfs = rows["national_ons_lfs_employment"]
+    assert (lfs["status"], lfs["classification"]) == (
+        "blocked_source",
+        "awaiting_facts",
+    )
+    assert covers("national_ons_lfs_employment") == ["ons_labour_market"]
+    band_d = rows["local_council_tax_band_d_rate"]["fence"]["origin"]
+    assert "housing/council_tax_net" in band_d
+    outliers = rows["credibility_local_council_tax_outliers"]
+    assert (outliers["status"], outliers["classification"]) == (
+        "ported_local_declared",
+        "compile_contract",
+    )
+
+
 def test_inventory_and_concern_coverage_form_a_bijection() -> None:
     rows = build_uk_data_target_parity()["concerns"]
     inventory = data_target_parity._load_uk_data_target_inventory()
