@@ -183,10 +183,46 @@ def test_infeasible_targets_refuse() -> None:
     inputs = _inputs()
     with pytest.raises(ValueError, match="less weight than the purchase target"):
         pp.impute_property_purchase_prices(**inputs, target=_target(transactions=1e9))
-    with pytest.raises(ValueError, match="cannot support the purchase value"):
+    with pytest.raises(ValueError, match="carries less than 80%"):
         pp.impute_property_purchase_prices(**inputs, target=_target(value=1e15))
     with pytest.raises(ValueError, match="below the minimum transaction price"):
         pp.impute_property_purchase_prices(**inputs, target=_target(value=1.0))
+
+
+def test_a_short_stock_buys_at_the_stock_and_records_the_shortfall() -> None:
+    # María's ruling of 2026-10-16: where the purchasers' stock cannot carry
+    # HMRC's value, each buys at its stock and the shortfall is recorded; the
+    # stage refuses only below PURCHASE_MINIMUM_VALUE_SHARE of the value.
+    inputs = _inputs()
+    mask, _ = pp.select_property_purchasers(
+        stock=inputs["stock"],
+        weights=inputs["weights"],
+        sdlt_mask=inputs["sdlt_mask"],
+        event_uniforms=inputs["event_uniforms"],
+        transactions=30.0,
+        minimum_price=40_000.0,
+        property_type="additional_residential",
+    )
+    fitted = mask & inputs["sdlt_mask"]
+    capacity = float(np.dot(inputs["stock"], inputs["weights"] * fitted))
+    result = pp.impute_property_purchase_prices(
+        **inputs, target=_target(transactions=30.0, value=capacity / 0.9)
+    )
+    np.testing.assert_allclose(result.prices[mask], inputs["stock"][mask])
+    assert not result.prices[~mask].any()
+    receipt = result.receipt
+    assert receipt["value_fit"] == "stock_cap"
+    assert receipt["price_scale"] is None
+    assert receipt["fitted_value"] == pytest.approx(capacity)
+    assert receipt["value_shortfall_share"] == pytest.approx(0.1)
+    assert receipt["weighted_share_at_stock_cap"] == pytest.approx(1.0)
+    with pytest.raises(ValueError, match="carries less than 80%"):
+        pp.impute_property_purchase_prices(
+            **inputs, target=_target(transactions=30.0, value=capacity / 0.75)
+        )
+    fitted_in_full = pp.impute_property_purchase_prices(**inputs, target=_target())
+    assert fitted_in_full.receipt["value_fit"] == "scaled_band_draws"
+    assert fitted_in_full.receipt["value_shortfall_share"] == pytest.approx(0.0)
 
 
 def _frame(n: int = 300, seed: int = 3):

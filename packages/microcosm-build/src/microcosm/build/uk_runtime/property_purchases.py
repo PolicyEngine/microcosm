@@ -72,6 +72,7 @@ __all__ = [
     "PROPERTY_PURCHASES_RECORD_SETS",
     "PROPERTY_PURCHASES_RESOURCE",
     "PROPERTY_PURCHASES_STAGE_NAME",
+    "PURCHASE_MINIMUM_VALUE_SHARE",
     "SDLT_REGIONS",
     "UKPropertyPurchaseImputation",
     "UKPropertyPurchaseKind",
@@ -117,6 +118,11 @@ SDLT_REGIONS = tuple(
 )
 #: Larger portfolios are taken to trade more often (uk-data#573's assumption).
 PURCHASE_STOCK_EXPONENT = 1.0
+#: Where the purchasers' stock cannot carry HMRC's purchase value, every
+#: purchaser buys at its stock and the receipt records the shortfall (María's
+#: ruling of 2026-10-16, microcosm#1095); below this share of the value the
+#: stage refuses, as uk-data#573 refuses any shortfall.
+PURCHASE_MINIMUM_VALUE_SHARE = 0.8
 #: Table 6b's bands above GBP 2m, combined into one as uk-data#573 does.
 _HRAD_TOP_BANDS = (
     "gbp_2m_to_3m",
@@ -587,10 +593,10 @@ def impute_property_purchase_prices(
     fitted = purchased & sdlt_mask
     fitted_weights = weights * fitted
     capacity = float(np.dot(stock, fitted_weights))
-    if capacity < target.value:
+    if capacity < PURCHASE_MINIMUM_VALUE_SHARE * target.value:
         raise ValueError(
-            f"{target.property_type}: the purchasers' stock cannot support the "
-            "purchase value target."
+            f"{target.property_type}: the purchasers' stock carries less than "
+            f"{PURCHASE_MINIMUM_VALUE_SHARE:.0%} of the purchase value target."
         )
     if minimum * fitted_weights.sum() > target.value:
         raise ValueError(
@@ -611,29 +617,41 @@ def impute_property_purchase_prices(
     def weighted_value(scale: float) -> float:
         return float(np.dot(capped(scale), fitted_weights))
 
-    lower, upper = 0.0, 1.0
-    while weighted_value(upper) < target.value:
-        upper *= 2.0
-    for _ in range(_BISECTION_STEPS):
-        midpoint = (lower + upper) / 2.0
-        if weighted_value(midpoint) < target.value:
-            lower = midpoint
-        else:
-            upper = midpoint
-    final = capped(upper)
+    scale: float | None
+    if capacity < target.value:
+        # The stock cannot carry the value: every purchaser buys at its
+        # stock, the most the cap allows, and the receipt records the
+        # shortfall (María's ruling of 2026-10-16).
+        scale = None
+        final = stock.copy()
+    else:
+        lower, upper = 0.0, 1.0
+        while weighted_value(upper) < target.value:
+            upper *= 2.0
+        for _ in range(_BISECTION_STEPS):
+            midpoint = (lower + upper) / 2.0
+            if weighted_value(midpoint) < target.value:
+                lower = midpoint
+            else:
+                upper = midpoint
+        scale = upper
+        final = capped(upper)
     prices = np.where(purchased, final, 0.0)
     fitted_count = float(fitted_weights.sum())
     at_cap = fitted & (final >= stock)
     ids = np.asarray(source_ids) if source_ids is not None else None
+    fitted_value = float(np.dot(prices, weights * sdlt_mask))
     receipt: dict[str, object] = {
         "property_type": target.property_type,
         "target_transactions": float(target.transactions),
         "target_value": float(target.value),
         "fitted_transactions": fitted_count,
-        "fitted_value": float(np.dot(prices, weights * sdlt_mask)),
+        "fitted_value": fitted_value,
+        "value_fit": "scaled_band_draws" if scale is not None else "stock_cap",
+        "value_shortfall_share": max(0.0, 1.0 - fitted_value / target.value),
         "eligible_owner_weight": eligible_weight,
         "event_rate": fitted_count / eligible_weight,
-        "price_scale": float(upper),
+        "price_scale": scale,
         "weighted_share_at_stock_cap": (
             float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
         ),
@@ -690,8 +708,11 @@ def property_purchases_operation_parameters() -> tuple[
                 ),
                 "price": (
                     "min(stock, max(minimum, scale * band mean)), band drawn at "
-                    "the band shares, scale bisected to the value target"
+                    "the band shares, scale bisected to the value target; where "
+                    "the purchasers' stock cannot carry the value, every "
+                    "purchaser buys at its stock and the shortfall is recorded"
                 ),
+                "minimum_value_share": PURCHASE_MINIMUM_VALUE_SHARE,
                 "weights": "spine_design_weights",
                 "streams": {
                     kind.output: {

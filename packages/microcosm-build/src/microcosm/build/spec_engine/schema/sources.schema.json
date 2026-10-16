@@ -9661,6 +9661,7 @@
       "event_score",
       "threshold",
       "price",
+      "minimum_value_share",
       "weights",
       "streams",
       "additional_residential_targets",
@@ -9708,6 +9709,9 @@
       },
       "price": {
        "type": "string"
+      },
+      "minimum_value_share": {
+       "type": "number"
       },
       "weights": {
        "type": "string"
