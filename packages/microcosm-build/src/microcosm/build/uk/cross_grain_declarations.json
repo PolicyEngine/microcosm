@@ -557,6 +557,53 @@
       "reason": "The ten LFS household-composition rows partition all UK households; the nations' official estimates sum to a different total than the LFS UK figure (about 29.09m against 29.003m), and the nations win, so the national reconciliation scales the composition by one factor onto the nations' sum, keeping its shares."
     }
   ],
+  "household_basis_partitions": [
+    {
+      "partition_id": "council_tax_stock_on_household_controls",
+      "control_target_ids": [
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland"
+      ],
+      "parent_target_ids": [
+        "mhclg.council_tax_stock.total",
+        "welshgov.council_tax_stock.total",
+        "scotgov.council_tax_stock.total"
+      ],
+      "member_target_ids": [
+        "mhclg.council_tax_stock.band_a",
+        "mhclg.council_tax_stock.band_b",
+        "mhclg.council_tax_stock.band_c",
+        "mhclg.council_tax_stock.band_d",
+        "mhclg.council_tax_stock.band_e",
+        "mhclg.council_tax_stock.band_f",
+        "mhclg.council_tax_stock.band_g",
+        "mhclg.council_tax_stock.band_h",
+        "welshgov.council_tax_stock.band_a",
+        "welshgov.council_tax_stock.band_b",
+        "welshgov.council_tax_stock.band_c",
+        "welshgov.council_tax_stock.band_d",
+        "welshgov.council_tax_stock.band_e",
+        "welshgov.council_tax_stock.band_f",
+        "welshgov.council_tax_stock.band_g",
+        "welshgov.council_tax_stock.band_h",
+        "welshgov.council_tax_stock.band_i",
+        "scotgov.council_tax_stock.band_a",
+        "scotgov.council_tax_stock.band_b",
+        "scotgov.council_tax_stock.band_c",
+        "scotgov.council_tax_stock.band_d",
+        "scotgov.council_tax_stock.band_e",
+        "scotgov.council_tax_stock.band_f",
+        "scotgov.council_tax_stock.band_g",
+        "scotgov.council_tax_stock.band_h"
+      ],
+      "max_factor_shift": 0.035,
+      "reason": "The council-tax dwelling stock (MHCLG and StatsWales taxbase lines, Scotland's CTAXBASE chargeable dwellings) and each nation's official household estimate bind the same weighted household count of an area at two published levels, so the solve traded one against the other (microcosm#1284). Each English region's, Wales's and Scotland's dwelling total takes its household control and its bands move by the same factor, the area's published households per chargeable dwelling: 0.980 to 1.023 across the eleven areas on the 735820c feed. The signed assumption is that households per chargeable dwelling are the same in every band of an area. They are not exactly: multi-household dwellings concentrate in lower bands, and second homes, where still counted, in particular areas. The bands therefore bind their area's band mix and the level follows the household estimate. The tripwire refuses a factor further than 0.035 from one, the measured 0.023 with a margin. Northern Ireland has no council-tax rows. National register only: the local band cells follow the national rows by signature.",
+      "tracking": "microcosm#1284",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-16"
+    }
+  ],
   "local_routes": {
     "ons.rent.private_rent": {
       "route": "no_higher_control",
