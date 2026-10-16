@@ -287,8 +287,13 @@ class ChildcareExpectationBasis:
     + (1 - r_own) * r_e * sum(allocated)``, linear in the own rate and
     bilinear with the extended rate, and the extended row is
     ``r_e * sum(with_ext)``. The universal row counts universal-only children,
-    so every side leaves out a child who receives extended hours, and its
-    allocated term is zero. The expectation is the quantity a take-up *rate*
+    so every side leaves out a child who receives extended hours. Its
+    allocated term is computed like the others' and is near zero, not zero: a
+    child whose family takes no universal hours on their own and who uses 15
+    hours or fewer gets the base hours from the allocation and no extended
+    hours, so counts as universal-only, which is rare at the DfE usage mean of
+    31.141 hours (Vahid's review of microcosm#1299). The expectation is the
+    quantity a take-up *rate*
     controls: the spine's persisted flags are one draw from it, and later
     stages clone and re-key rows, so no re-drawn realisation can sit on the
     build's own; the expectation can.
