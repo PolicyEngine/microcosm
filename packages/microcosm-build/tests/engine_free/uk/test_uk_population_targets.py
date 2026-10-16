@@ -204,6 +204,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "linear_combination",
         "scaled_by_ratio",
         "calendar_year_window",
+        "calendar_year_window_scaled_by_ratio",
         "rolled_forward_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
