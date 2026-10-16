@@ -125,7 +125,7 @@ def test_layer_names_are_the_engine_names_outside_northern_ireland() -> None:
 
 
 def test_each_region_holds_every_brma_the_count_table_rents_in() -> None:
-    """One method: the layer places areas where policyengine-uk-data#516 counted renters."""
+    """One method: the layer places areas where uk-data#516 counted renters."""
 
     layer = bal.load_brma_area_layer(_payload())
     for region, categories in _count_table()["cells"].items():
