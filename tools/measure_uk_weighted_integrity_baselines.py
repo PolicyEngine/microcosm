@@ -23,8 +23,9 @@ reported from fewer cases than the minimum count. Per-column weighted totals
 are population aggregates and pass those rules; the tail statistics are the
 (n, k) dominance measure, so thin columns are suppressed. What the licence
 does *not* waive: citation and acknowledgement (clauses 11 and 12), and each
-study's Special Conditions (clause 3) — check whether a study requires a
-threshold of 30 before posting.
+study's Special Conditions (clause 3). No study the build reads sets a minimum
+above ten, and the SPI tape's analyses go to HMRC before distribution; see
+``microcosm.build.uk_runtime.receipt_counts``.
 
 Usage:
 
