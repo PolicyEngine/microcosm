@@ -11,7 +11,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -66,6 +66,28 @@ def _empty_support_exclusions_for_synthetic_rosters(
 
     monkeypatch.setattr(
         battery_bindings, "load_uk_local_area_support_exclusion_register", _loader
+    )
+
+
+@pytest.fixture(autouse=True)
+def _empty_local_target_fit_register_for_synthetic_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic candidates never stand on the committed local cell receipts.
+
+    ``local_target_fit_reviewed_exclusions.json`` signs real local cells
+    after a build (microcosm#1301); evaluated on a synthetic candidate at a
+    fixed clock, an entry could read as not yet in force and fail a test
+    about the machinery. The register is pinned empty here; its committed
+    form is covered by ``test_uk_terminal_gates.py``.
+    """
+
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "uk_default_local_target_fit_reviewed_exclusions",
+        lambda: MappingProxyType({}),
     )
 
 

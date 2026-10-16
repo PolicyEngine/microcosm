@@ -24,9 +24,6 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UK_UPRATING_APPLIERS,
     uk_small_cell_rule_is_signed,
 )
-from microcosm.build.uk_runtime.weighted_integrity import (
-    load_uk_local_area_support_exclusion_register,
-)
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
@@ -52,6 +49,17 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 UK_PACKAGE_ROOT = Path("packages/microcosm-build/src/microcosm/build/uk")
+# The local authorities whose own local-authority cells are signed-deferred
+# because they miss the support floor at every K measured: the Isles of Scilly
+# and the City of London (microcosm#762 A4, as amended by A14). These are
+# solve-scoped and live here, not in uk/local_area_support_exclusions.json,
+# which only the area-support gate reads since microcosm#1301, so signing an
+# area gate-only never changes the compiled problem. Lockstep tests hold them
+# inside that register's local_authority/* exclusion keys.
+SUPPORT_FLOOR_DEFERRED_AREA_IDS: tuple[str, ...] = ("E06000053", "E09000001")
+# The families that bind in those areas despite the floor (microcosm#887),
+# lockstep-tested equal to the register's bound_despite_support_floor block.
+SUPPORT_FLOOR_BOUND_FAMILIES: frozenset[str] = frozenset({"census_households"})
 
 
 def main() -> None:
@@ -629,22 +637,13 @@ def _area_signed_deferrals(
 
 
 def _support_floor_register_scope() -> tuple[tuple[str, ...], frozenset[str]]:
-    """Return generator masks from the signed local-area support register."""
+    """Return the support-floor deferral masks: the areas and bound families.
 
-    register = load_uk_local_area_support_exclusion_register(None)
-    area_ids: list[str] = []
-    for key in register["exclusions"]:
-        level, separator, area_id = key.partition("/")
-        if separator != "/" or level != "local_authority" or not area_id:
-            raise ValueError(
-                "local-area support exclusion keys used by the generator must "
-                f"have local_authority/<area_id> shape, got {key!r}."
-            )
-        area_ids.append(area_id)
-    return (
-        tuple(sorted(area_ids)),
-        frozenset(register["bound_despite_support_floor"]),
-    )
+    Both are this module's constants, never read from the gate-only
+    local-area support register (microcosm#1301).
+    """
+
+    return SUPPORT_FLOOR_DEFERRED_AREA_IDS, SUPPORT_FLOOR_BOUND_FAMILIES
 
 
 if __name__ == "__main__":

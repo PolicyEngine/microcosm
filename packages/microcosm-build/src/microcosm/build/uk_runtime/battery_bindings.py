@@ -100,6 +100,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _missing_fit_weight_evidence_gate,
     uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -113,6 +114,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -1306,31 +1308,48 @@ def _evaluate_area_support(
         None,
         resource=exclusions_resource,
     )
-    records = register["exclusions"]
+    # The exclusions are gate-only (microcosm#1301): an entry, keyed
+    # ``local_authority/<code>`` or ``constituency/<code>``, excuses its
+    # area's floor miss here and defers none of its cells. The Isles of
+    # Scilly and City of London cell deferrals are the local reference
+    # generator's own constants, lockstep-tested against this block. An
+    # entry scoped to another release line stands aside; the
+    # ``bound_despite_support_floor`` approvals stay window-checked whatever
+    # the line.
+    records, out_of_line = _in_line(register["exclusions"], context)
     clock = _exclusion_clock(context)
     invalid = {}
-    for block, entries in register.items():
+    for block, entries in (
+        ("exclusions", records),
+        ("bound_despite_support_floor", register["bound_despite_support_floor"]),
+    ):
         for key, record in entries.items():
             if record.expired(clock) or record.premature(clock):
                 invalid[f"{block}/{key}"] = record
     if invalid:
-        return GateResult(
-            name="area_support",
-            passed=False,
-            failures=tuple(
-                f"{key}: reviewed exclusion is outside its approval window "
-                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
-                for key, record in sorted(invalid.items())
+        return _with_out_of_line(
+            GateResult(
+                name="area_support",
+                passed=False,
+                failures=tuple(
+                    f"{key}: reviewed exclusion is outside its approval window "
+                    f"{record.approved_on}..{record.expires_on} at "
+                    f"{clock.isoformat()}."
+                    for key, record in sorted(invalid.items())
+                ),
+                details={"invalid_reviewed_exclusions": sorted(invalid)},
             ),
-            details={"invalid_reviewed_exclusions": sorted(invalid)},
+            context,
+            out_of_line,
         )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
-    return area_support_gate(
+    result = area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
 
 
 def uk_area_support_floors() -> dict[str, float | int]:
@@ -1652,12 +1671,29 @@ def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     kwargs = dict(parameters)
+    register = kwargs.pop("reviewed_exclusions_resource", None)
     if kwargs.pop("surface", None) == "local_candidate":
+        # The local cells have their own register, keyed by this gate's
+        # family/area_code/metric names (microcosm#1301). An entry lifts the
+        # fence for its cell only; the cell stays bound in the solve.
+        if register != UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+            raise ValueError(
+                f"uk/gates.json names local exclusion register {register!r} but "
+                f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+            )
         errors = dict(
             _local_target_error_items(context.artifacts["local_target_diagnostics"])
         )
-        return uk_target_fit_gate(errors, **kwargs)
-    register = kwargs.pop("reviewed_exclusions_resource", None)
+        exclusions, out_of_line = _in_line(
+            uk_default_local_target_fit_reviewed_exclusions(), context
+        )
+        result = uk_target_fit_gate(
+            errors,
+            reviewed_exclusions=exclusions,
+            now=_exclusion_clock(context),
+            **kwargs,
+        )
+        return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
@@ -1679,7 +1715,7 @@ def _target_fit_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
-        return frozenset({"local_target_diagnostics"})
+        return frozenset({"local_target_diagnostics", "exclusions_evaluated_on"})
     return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 

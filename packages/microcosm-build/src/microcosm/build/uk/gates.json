@@ -1398,7 +1398,7 @@
         "minimum_distinct_sources": 50,
         "exclusions_resource": "local_area_support_exclusions.json"
       },
-      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. Reviewed exclusions carry measured shortfalls; a stale exclusion fails and must be retired. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
+      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. A reviewed exclusion, keyed local_authority/<code> or constituency/<code>, excuses its area's floor miss and is gate-only (microcosm#1301): it defers none of the area's cells, so signing an area leaves the solve unchanged; the Isles of Scilly and City of London cell deferrals are the local reference generator's own constants, lockstep-tested against this register. An exclusion records the floors its area misses, never the area's figures; a stale, expired or not-yet-in-force exclusion fails and must be retired or renewed, and one scoped to another release line stands aside. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
     },
     {
       "id": "uk_local_target_fit",
@@ -1407,9 +1407,10 @@
       "criticality": "release_blocking",
       "parameters": {
         "surface": "local_candidate",
-        "max_abs_relative_error": 0.25
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "local_target_fit_reviewed_exclusions.json"
       },
-      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged. A breaching cell may stand on a reviewed exclusion in local_target_fit_reviewed_exclusions.json, keyed by the gate's family/area_code/metric cell name (microcosm#1301): the exclusion lifts this fence only, the cell stays bound in the solve, and a stale, expired or not-yet-in-force entry fails on the build's review date."
     },
     {
       "id": "uk_local_per_family_fit",

@@ -314,6 +314,31 @@ def _signed_exclusion_limitations(
     return limitations
 
 
+def _area_support_exclusion_limitations(
+    solve: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """The reviewed area-support exclusions the gate stood on, named by grain.
+
+    An exclusion is gate-only since microcosm#1301 and may excuse a
+    constituency as well as a local authority, so the summary names the
+    entry's own grain.
+    """
+
+    exclusions = solve.get("area_support_exclusions")
+    if not isinstance(exclusions, Mapping):
+        return []
+    limitations: list[dict[str, object]] = []
+    for area in exclusions.get("entries_stood_on") or []:
+        grain = str(area).partition("/")[0].replace("_", "-") or "local-area"
+        limitations.append(
+            {
+                "id": f"area_support_exclusion:{area}",
+                "summary": f"reviewed exclusion of the {grain} support floor.",
+            }
+        )
+    return limitations
+
+
 def _size_doctrine_record(
     parameters: Mapping[str, object], solve: Mapping[str, object]
 ) -> dict[str, object]:
@@ -365,15 +390,7 @@ def _reviewed_limitations(
                 }
             )
     solve = _mapping(manifest.get("solve"), "manifest.solve")
-    exclusions = solve.get("area_support_exclusions")
-    if isinstance(exclusions, Mapping):
-        for area in exclusions.get("entries_stood_on") or []:
-            limitations.append(
-                {
-                    "id": f"area_support_exclusion:{area}",
-                    "summary": "reviewed exclusion of the local-authority support floor.",
-                }
-            )
+    limitations.extend(_area_support_exclusion_limitations(solve))
     cross_grain = _mapping(manifest.get("cross_grain"), "manifest.cross_grain")
     for bridge in cross_grain.get("unbound_bridges") or []:
         if isinstance(bridge, Mapping):

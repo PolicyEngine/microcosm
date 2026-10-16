@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassReference,
     UKZeroWeightStratumDeclaration,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -574,6 +575,28 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
+    assert register == {}
+
+
+def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
+    # The local cells' register (microcosm#1301) starts empty; a sign-off after
+    # a build adds its entries and edits this pin in the same reviewed change.
+    # Whatever it holds must name a cell the uk_local_target_fit gate reports,
+    # family/area_code/metric over a crosswalk area, and its reasons carry no
+    # figures: no per-area support figure and no cell estimate.
+    from microcosm.build.uk_runtime.battery_bindings import _local_area_roster
+
+    register = uk_default_local_target_fit_reviewed_exclusions()
+    roster = _local_area_roster(
+        "local_area_crosswalk.json", ("constituency", "local_authority")
+    )
+    area_codes = {code for codes in roster.values() for code in codes}
+    for key, record in register.items():
+        pieces = key.split("/", 2)
+        assert len(pieces) == 3 and all(pieces), key
+        assert pieces[1] in area_codes, key
+        assert "%" not in record.reason, key
+    assert uk_default_local_target_fit_reviewed_exclusions() is register
     assert register == {}
 
 

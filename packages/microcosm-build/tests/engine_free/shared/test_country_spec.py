@@ -921,6 +921,7 @@ class TestUKCountryPackage:
         assert legacy_rows == (
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -1059,6 +1060,7 @@ class TestExistingPackagesGeneralize:
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",

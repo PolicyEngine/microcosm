@@ -1024,6 +1024,27 @@ def test_assembler_rejects_expired_or_missing_measure_approval(
         )
 
 
+def test_area_support_limitations_name_each_exclusion_by_its_grain() -> None:
+    # microcosm#1301: a gate-only exclusion may excuse a constituency too.
+    tool = _load("assemble_uk_dense_release_dir")
+    solve = {
+        "area_support_exclusions": {
+            "entries_stood_on": ["constituency/PCON_A", "local_authority/LA_A"]
+        }
+    }
+    assert tool._area_support_exclusion_limitations(solve) == [
+        {
+            "id": "area_support_exclusion:constituency/PCON_A",
+            "summary": "reviewed exclusion of the constituency support floor.",
+        },
+        {
+            "id": "area_support_exclusion:local_authority/LA_A",
+            "summary": "reviewed exclusion of the local-authority support floor.",
+        },
+    ]
+    assert tool._area_support_exclusion_limitations({}) == []
+
+
 def test_assembler_refuses_a_national_role_manifest(
     tmp_path: Path, monkeypatch
 ) -> None:

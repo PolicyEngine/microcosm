@@ -51,7 +51,14 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
     _compile_for_receipt,
     _fixture_for_receipt,
 )
-from tools.generate_uk_local_target_references import _support_floor_register_scope
+from tools.generate_uk_local_target_references import (
+    LOCAL_GEOGRAPHY_LEVELS,
+    SUPPORT_FLOOR_BOUND_FAMILIES,
+    SUPPORT_FLOOR_DEFERRED_AREA_IDS,
+    _area_signed_deferrals,
+    _filter_contract_by_geography_levels,
+    _support_floor_register_scope,
+)
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     TARGET_ID_GEOGRAPHY_PINS,
@@ -69,10 +76,95 @@ ACTIVE_REFERENCE_COUNT = 1291
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
-def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
+def test_local_generator_support_floor_scope_is_its_own_constants() -> None:
     area_ids, binding_families = _support_floor_register_scope()
-    assert area_ids == ("E06000053", "E09000001")
+    assert area_ids == SUPPORT_FLOOR_DEFERRED_AREA_IDS == ("E06000053", "E09000001")
+    assert binding_families == SUPPORT_FLOOR_BOUND_FAMILIES
     assert binding_families == frozenset({"census_households"})
+
+
+def test_local_generator_support_floor_constants_track_the_gate_register() -> None:
+    # Option C (microcosm#1301): the generator's cell deferrals and the gate's
+    # area exclusions live apart and are held in lockstep here. Every area
+    # whose cells the generator defers must stay excused at the gate, or the
+    # gate would fail an area the solve never fits; the bound families must
+    # match the approvals the gate window-checks, so a register edit there
+    # fails CI until the generator constant moves with it.
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        load_uk_local_area_support_exclusion_register,
+    )
+
+    register = load_uk_local_area_support_exclusion_register(None)
+    excused = {
+        key.partition("/")[2]
+        for key in register["exclusions"]
+        if key.startswith("local_authority/")
+    }
+    assert set(SUPPORT_FLOOR_DEFERRED_AREA_IDS) <= excused
+    assert SUPPORT_FLOOR_DEFERRED_AREA_IDS == tuple(
+        sorted(set(SUPPORT_FLOOR_DEFERRED_AREA_IDS))
+    )
+    assert SUPPORT_FLOOR_BOUND_FAMILIES == frozenset(
+        register["bound_despite_support_floor"]
+    )
+
+
+def test_local_generator_support_floor_deferrals_are_solve_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The area-support register is gate-only (microcosm#1301): signing an area
+    # there, at either grain, or editing its other block must leave the
+    # generator's signed deferrals, and so the local references, unchanged.
+    import microcosm.build.uk_runtime.weighted_integrity as weighted_integrity
+    import tools.generate_uk_local_target_references as generator
+
+    contract = _filter_contract_by_geography_levels(
+        _load_uk_resource("uk_population_targets.json"),
+        allowed_levels=LOCAL_GEOGRAPHY_LEVELS,
+    )
+    crosswalk = _load_uk_resource("local_area_crosswalk.json")
+    before = (
+        _support_floor_register_scope(),
+        _area_signed_deferrals(contract, crosswalk),
+    )
+    receipt = {
+        "reason": "synthetic gate-only sign-off",
+        "approved_by": "reviewer",
+        "adjudication": "microcosm#1301",
+        "approved_on": "2026-10-01",
+        "expires_on": "2027-01-01",
+        "release_lines": ["local"],
+    }
+    perturbed = {
+        "schema_version": 3,
+        "description": "synthetic perturbation",
+        "exclusions": {
+            "local_authority/S12000023": receipt,
+            "local_authority/S12000027": receipt,
+            "constituency/S14000051": receipt,
+        },
+        "bound_despite_support_floor": {},
+    }
+    real_reader = weighted_integrity._read_register_payload
+
+    def _reader(source, *, resource):
+        if source is None and resource == "local_area_support_exclusions.json":
+            return perturbed, resource
+        return real_reader(source, resource=resource)
+
+    monkeypatch.setattr(weighted_integrity, "_read_register_payload", _reader)
+    assert set(
+        weighted_integrity.load_uk_local_area_support_exclusion_register(None)[
+            "exclusions"
+        ]
+    ) == set(perturbed["exclusions"])
+    after = (
+        _support_floor_register_scope(),
+        _area_signed_deferrals(contract, crosswalk),
+    )
+    assert after == before
+    source = Path(generator.__file__).read_text(encoding="utf-8")
+    assert "load_uk_local_area_support_exclusion_register" not in source
 
 
 FIXTURE_REFERENCE_NAMES = {
