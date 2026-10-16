@@ -407,6 +407,50 @@ def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() 
     assert second.tolist() == first.tolist()
 
 
+def test_fuel_flag_draws_each_vehicle_at_the_zero_emission_share() -> None:
+    """microcosm#1278: a household with n vehicles buys fuel unless all n are
+    zero-emission, so it is flagged at 1 - (1 - rate) ** n against its keyed
+    uniform; one-vehicle households keep the draw of the per-household rule."""
+
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+
+    ids = np.arange(1, 4_001)
+    vehicles = np.tile([0, 1, 2, 3], 1_000)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.ones(len(ids)),
+                "num_vehicles": vehicles,
+            }
+        ),
+        time_period="2023",
+    )
+    rate = 0.6
+    flagged = assign_recipient_has_fuel(frame, rate=rate, seed=0)
+    draws = stable_identity_uniforms(ids, seed=0, salt="lcfs_has_fuel_consumption")
+    expected = (vehicles > 0) & (draws < 1.0 - (1.0 - rate) ** vehicles)
+    assert flagged.tolist() == expected.tolist()
+    assert not flagged[vehicles == 0].any()
+    # One vehicle: exactly the old per-household draw at the rate.
+    one = vehicles == 1
+    assert flagged[one].tolist() == (draws[one] < rate).tolist()
+    # More vehicles, more fuel buyers: about 1 - 0.4 ** n of each group.
+    for n in (1, 2, 3):
+        share = flagged[vehicles == n].mean()
+        assert share == pytest.approx(1.0 - (1.0 - rate) ** n, abs=0.05)
+    with pytest.raises(ValueError, match="fuel-buyer share"):
+        assign_recipient_has_fuel(frame, rate=0.0, seed=0)
+
+
 def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
     """microcosm#1063 c9: a diary spend netting refunds below zero is raised to
     the declared floor before the clip ranges and the imputation see it."""
@@ -559,7 +603,7 @@ def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
     ) / licensed("all")
     assert rate == expected
     assert 0.95 < rate < 0.97
-    assert receipt["rule"] == "one_minus_zero_emission_share"
+    assert receipt["rule"] == "per_car_zero_emission_share"
     assert receipt["period_value"] == 2024
     assert receipt["geography_id"] == "K03000001"
     assert set(receipt["zero_emission_licensed_cars"]) == {
@@ -740,6 +784,7 @@ def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
         "households": 3,
         "with_vehicles_share": 0.75,
         "flagged_share": 0.25,
+        "flagged_share_among_vehicle_households": pytest.approx(1 / 3),
     }
 
 
