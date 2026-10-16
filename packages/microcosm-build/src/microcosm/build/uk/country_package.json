@@ -228,6 +228,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "brma_rent_quantiles.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "scotland_brma_la_overlap.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
