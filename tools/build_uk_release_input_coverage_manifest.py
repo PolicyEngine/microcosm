@@ -928,6 +928,10 @@ def build_manifest(
                 stage_name="property_components",
                 candidate_source=candidate_source,
             ),
+            "regional_home_values": _source_stage_family_coverage_contract(
+                stage_name="regional_home_values",
+                candidate_source=candidate_source,
+            ),
             "property_purchases": _source_stage_family_coverage_contract(
                 stage_name="property_purchases",
                 candidate_source=candidate_source,

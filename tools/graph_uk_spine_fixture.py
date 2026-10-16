@@ -134,6 +134,9 @@ from microcosm.build.uk_runtime.property_purchases import (
     sdlt_region_mask,
     select_property_purchasers,
 )
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -188,7 +191,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 43
+UK_FIXTURE_STAGE_COUNT = 44
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -1951,6 +1954,9 @@ def _build_implementations(
             spi_tab_path=raw_dir.parent / "spi_donor.csv",
             donor_table=spi_donor,
             facts=property_rental_facts,
+        ),
+        "regional_home_values": UKRegionalHomeValuesStageTransform(
+            stage=stages["regional_home_values"]
         ),
         "property_purchases": UKPropertyPurchasesStageTransform(
             stage=stages["property_purchases"],
