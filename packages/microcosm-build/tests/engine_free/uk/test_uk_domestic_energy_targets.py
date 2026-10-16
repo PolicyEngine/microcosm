@@ -31,6 +31,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     ELECTRICITY_KWH,
     GAS_KWH,
     SUBNATIONAL_METER_CONCEPTS,
+    SUBNATIONAL_PERIOD_TYPES,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     published_energy_level,
 )
@@ -68,10 +69,12 @@ _HOUSEHOLDS = [
 
 
 def _meter_row(fuel: str, area: str, value: float) -> dict:
+    # Gas rows carry DESNZ's gas year and electricity rows the calendar year,
+    # as the feed stamps them (microcosm#1300).
     return {
         "concept": SUBNATIONAL_METER_CONCEPTS[fuel],
         "geography": {"id": area, "level": "local_authority"},
-        "period": {"type": "calendar_year", "value": 2024},
+        "period": {"type": SUBNATIONAL_PERIOD_TYPES[fuel], "value": 2024},
         "dimensions": {"fuel": fuel, "metric": "meter_count"},
         "unit": "count",
         "value": value,

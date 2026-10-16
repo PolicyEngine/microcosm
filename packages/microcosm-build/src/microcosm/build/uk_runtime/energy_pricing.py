@@ -98,6 +98,18 @@ SUBNATIONAL_METER_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.subnational.domestic_electricity_meter_count",
     GAS_FUEL: "desnz.subnational.domestic_gas_meter_count",
 }
+#: The period type of each fuel's sub-national statistics. DESNZ's gas runs on
+#: gas years (gas year Y, mid-May Y to mid-May Y+1, weather-corrected) and its
+#: electricity on calendar years. Microcosm pairs gas year Y with calendar year
+#: Y, the year each opens in (microcosm#1300; PolicyEngine/chronicle#356 left
+#: the alignment to Microcosm), so the meter ratio and the Great Britain level
+#: divide like-labelled years, as they did before Chronicle stamped the gas
+#: rows' own period type; every read names its type, so a re-stamped period
+#: fails by name.
+SUBNATIONAL_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "calendar_year",
+    GAS_FUEL: "gas_year",
+}
 _RELATIVE_FACT_TOLERANCE = 1e-9
 
 #: FRS categorical values -> NEED dimension ids. Categories absent here are
@@ -495,6 +507,7 @@ def published_gas_connected_shares(
                     resource,
                     concept=SUBNATIONAL_METER_CONCEPTS[fuel],
                     geography_id=str(area),
+                    period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
                     period_value=period_value,
                     dimensions={"metric": "meter_count", "fuel": fuel},
                 ),
@@ -524,6 +537,7 @@ def published_gas_connected_shares(
         "connection_rule": rule,
         "resource": resource,
         "period_value": period_value,
+        "period_types": dict(SUBNATIONAL_PERIOD_TYPES),
         "fallback": fallback,
         "fallback_regions": sorted(fallback_regions),
         "by_region": by_region,

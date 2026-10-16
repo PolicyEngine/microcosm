@@ -19,7 +19,13 @@ regeneration tests accept a `CHRONICLE_UK_FACTS` override and skip only when
 neither is present.
 
 Verify both SHA-256 digests and the manifest's `facts_sha256`, row count, and
-schema version, then update `uk/chronicle_feed.json` and regenerate. Vendor
+schema version, then update `uk/chronicle_feed.json` and the two tests that
+restate it: `tests/engine_free/uk/test_uk_chronicle_feed.py` (the pin and the
+consumer-fact schema digest) and `tests/engine_free/uk/test_uk_full_targets.py`
+(`test_current_national_and_local_pins_share_one_reviewed_identity`). A schema
+digest moves for every country whose feed is built after the Chronicle change,
+so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Then
+regenerate. Vendor
 the per-concern fact resources (step 5) before the national generator: the
 generator refuses to compile against a vendored resource whose feed identity
 differs from the pin, so on a fresh pin step 5 has to run first. The rest go in
@@ -171,3 +177,39 @@ Paid yearly files, the UK HPI full file and the NSPL) and are read by
 `tools/build_uk_high_value_home_stock.py` against the registered sha256 pins (950,242 rows, up
 23,003). No existing package moved, so no compiled target changed; one vendor selection
 (`obr_hvcts_costing_facts.json`) pins the OBR note for the benchmarks gate.
+
+The `abf0921` re-pin (microcosm#1300, PolicyEngine/chronicle#359 for chronicle#326, #339, #356, #357
+and #358, on top of `735820c`) brought Universal Credit households by area split by Stat-Xplore's
+Payment Indicator, HMRC stamp tax statistics, DWP's Move to UC claim rates, HBAI with its vintages,
+the DWP geography of OBR table 4.9's lines, DESNZ Northern Ireland and LSOA domestic energy,
+rural-urban lookups, the BUS04 country rows, Scotland's UV404 tenure by output area and census
+residence type by age (1,499,301 rows, up 549,059). The v4 schema digest moves to `d953306d…` for
+the new `gas_year` period type. Three selector families moved with the data, and one interim stays:
+
+- the UC area families bind `payment_indicator: Yes` (`dwp.uc.households_by_area` at both grains
+  and the four child bands, whose summed operands name it too), because Chronicle retired the
+  all-claims cells. The cells now count paid claims, as the GB caseload that controls them does, so
+  the bridge's factor moves from 0.921 to about 1.001, and the bridge refuses a factor more than 2%
+  from one (`max_factor_shift`);
+- twelve OBR table 4.9 lines are stamped Great Britain or England and Wales
+  (`TARGET_ID_GEOGRAPHY_PINS`), and the `obr.state_pension` diagnostic reads its Great Britain
+  fact; no value moved;
+- the DESNZ vendor selections pin Great Britain (Northern Ireland's rows share its concepts), the
+  local-authority one reads gas by `gas_year`, and every sub-national lookup names its period type
+  (`energy_pricing.SUBNATIONAL_PERIOD_TYPES`, gas year Y with calendar year Y), so the 56 regional
+  and 347 local-authority gas rows come back under new keys with the same values;
+- the local energy rows keep Great Britain's share of UK households as the interim for its share of
+  the Energy Trends level. The Northern Ireland facts are now in the feed, on a basis DESNZ calls
+  not directly comparable, and María ruled on 2026-10-16 that the interim stands until the change
+  stacked on this re-pin reads the share from them.
+
+Values move only for the UC area rows: each cell is its area's paid claims, where it was its
+all-claims count scaled by the GB paid share, so the cells keep the GB caseload's total and each
+takes its own area's paid share, as each child band takes its own. The membership reports show it:
+every national reference resolves the fact it resolved before except the twelve restamped OBR
+lines, and every local one except the 3,508 UC area cells and the 346 local-authority gas
+consumption cells, which Chronicle restamped as gas years with the same values. The vendored
+resources carry the same values, and the charter-H2 fixture moves twelve stage contract hashes. The
+full surface was not recompiled for this entry, and the local compile-parity receipt is
+regenerated with the next local surface change (microcosm#1262); until then its UC rows show the
+all-claims values.

@@ -73,6 +73,11 @@ def uk_cross_grain_bridges(
             higher_target_ids=tuple(str(value) for value in entry["higher_target_ids"]),
             lower_side=str(entry["lower_side"]),
             per_geography=bool(entry.get("per_geography", False)),
+            max_factor_shift=(
+                None
+                if entry.get("max_factor_shift") is None
+                else _fanout_bound(entry, "max_factor_shift")
+            ),
         )
         for entry in declared["bridges"]
     )

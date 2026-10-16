@@ -42,6 +42,9 @@ class CrossGrainBridge:
     ``per_geography`` declares instead that each higher target is the control
     of the geography it sits at (each nation's household estimate over its
     own legs, microcosm#1123): a geography then carries some of them only.
+    ``max_factor_shift``, when set, refuses a leg whose reconciliation factor
+    is further than that from one: the two sides would no longer measure one
+    quantity.
     """
 
     bridge_id: str
@@ -49,6 +52,7 @@ class CrossGrainBridge:
     higher_target_ids: tuple[str, ...]
     lower_side: str
     per_geography: bool = False
+    max_factor_shift: float | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +297,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     controls_without_lower_rows: list[dict[str, Any]] = []
     delegated_legs: list[dict[str, Any]] = []
     control_grains = _control_grains(rule)
+    bridges_by_id = {bridge.bridge_id: bridge for bridge in rule.bridges}
     # Rows already rescaled by a nearer control, per group identity and lower
     # grain, so a farther control never rescales them again; and the rows no
     # control has covered yet, checked once every pair has had its turn.
@@ -543,6 +548,18 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "cannot reconcile opposite-signed lower and control targets."
+                )
+            bridge = bridges_by_id.get(group.bridge_id or "")
+            if (
+                bridge is not None
+                and bridge.max_factor_shift is not None
+                and abs(factor - 1.0) > bridge.max_factor_shift
+            ):
+                raise ValueError(
+                    f"cross-grain bridge {bridge.bridge_id!r} would scale leg "
+                    f"{'+'.join(control['covered_legs'])!r} by {factor!r}, further "
+                    f"than its declared max_factor_shift {bridge.max_factor_shift} "
+                    "from one: the two sides no longer measure one quantity."
                 )
             reconciled.iloc[positions, reconciled.columns.get_loc(columns["value"])] = (
                 raw_values * factor

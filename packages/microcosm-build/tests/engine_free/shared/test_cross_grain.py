@@ -114,6 +114,41 @@ def test_bridge_sums_exhaustive_higher_partition_to_one_contract_control():
     ]
 
 
+@pytest.mark.parametrize(("shift", "refused"), [(0.5, False), (0.1, True)])
+def test_bridge_refuses_a_factor_further_than_its_declared_shift(shift, refused):
+    """microcosm#1300: a bridge whose two sides measure one quantity bounds its factor."""
+
+    bridge = CrossGrainBridge(
+        "partition_vs_contract",
+        concept="households",
+        higher_target_ids=("part_a", "part_b"),
+        lower_side="contract:census_households",
+        max_factor_shift=shift,
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "part_a", 30.0),
+            ("country", "UK", "part_b", 70.0),
+            ("constituency", "E1", "census_households", 50.0),
+            ("constituency", "W1", "census_households", 30.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    arguments = (
+        surface,
+        ("part_a", "part_b"),
+        {"part_a": _signature(), "part_b": _signature()},
+        _rule(bridges=(bridge,)),
+    )
+    if refused:
+        with pytest.raises(ValueError, match="max_factor_shift 0.1 from one"):
+            apply_cross_grain_reconciliation(*arguments)
+    else:
+        reconciled, _ = apply_cross_grain_reconciliation(*arguments)
+        # The legs sum to 80 against a control of 100: a factor of 1.25.
+        assert reconciled["value"].tolist() == [30.0, 70.0, 62.5, 37.5]
+
+
 def test_bridge_rescales_constituency_and_la_to_same_country_control():
     bridge = CrossGrainBridge(
         "national_age_vs_local_age",

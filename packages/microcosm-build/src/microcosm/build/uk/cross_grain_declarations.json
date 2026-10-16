@@ -56,7 +56,8 @@
         "dwp.uc.households"
       ],
       "lower_side": "contract:dwp.uc.households_by_area",
-      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). The sides differ in concept until the area series is re-extracted: the caseload counts paid claims and the area cells count every household on UC, nil awards included, so the bridge's factor (0.921 on the 942a1fa feed) is the GB paid share applied to every area alike (microcosm#1198 review, must-fix 1)."
+      "max_factor_shift": 0.02,
+      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). Both sides count paid claims since the abf0921 re-pin (PolicyEngine/chronicle#339 splits each area-month by Stat-Xplore's Payment Indicator and the area targets bind 'Yes', microcosm#1300), so the factor sits near one, the size of DWP's 'Unknown' area, which carries no area fact, where it was the GB paid share, 0.921, applied to every area alike (microcosm#1198 review, must-fix 1). A factor more than two per cent from one means the sides no longer measure one quantity and is refused."
     },
     {
       "bridge_id": "national_age_0_9_vs_local_age_0_10",

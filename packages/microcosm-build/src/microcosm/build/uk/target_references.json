@@ -1116,7 +1116,7 @@
         "source_concept": "obr.attendance_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/attendance_allowance",
@@ -1136,7 +1136,7 @@
         "source_concept": "obr.carers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/carers_allowance",
@@ -1195,7 +1195,7 @@
         "source_concept": "obr.incapacity_benefits",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "household",
       "measure": "obr/esa",
@@ -1215,7 +1215,7 @@
         "source_concept": "obr.housing_benefit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/housing_benefit",
@@ -1235,7 +1235,7 @@
         "source_concept": "obr.jobseekers_allowance",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/jobseekers_allowance",
@@ -1255,7 +1255,7 @@
         "source_concept": "obr.pension_credit",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/pension_credit",
@@ -1275,7 +1275,7 @@
         "source_concept": "obr.dla_and_pip",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "person",
       "measure": "obr/pip",
@@ -1295,7 +1295,7 @@
         "source_concept": "obr.statutory_maternity_pay",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "person",
       "measure": "obr/statutory_maternity_pay",
@@ -1335,7 +1335,7 @@
         "source_concept": "obr.universal_credit_in_cap",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit_in_cap",
@@ -1355,7 +1355,7 @@
         "source_concept": "obr.universal_credit_outside_cap",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit_outside_cap",
@@ -1375,7 +1375,7 @@
         "source_concept": "obr.winter_fuel_payment",
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K04000001"
       },
       "entity": "household",
       "measure": "obr/winter_fuel_allowance",
@@ -24719,7 +24719,7 @@
         ],
         "entity_name": "person",
         "geography_level": "country",
-        "geography_id": "K02000001"
+        "geography_id": "K03000001"
       },
       "entity": "benunit",
       "measure": "obr/universal_credit",

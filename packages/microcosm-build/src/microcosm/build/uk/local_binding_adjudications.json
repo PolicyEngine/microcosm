@@ -73,9 +73,9 @@
       "expires_on": "2026-12-15"
     },
     "desnz_northern_ireland_interim_share": {
-      "reason": "Accepted as an interim (microcosm#1207, plan ruling of 2026-10-14): Great Britain's part of the Energy Trends UK level is its share of UK households (ONS LFS) until PolicyEngine/chronicle#356 brings Northern Ireland's domestic consumption; the interim puts Great Britain's gas level about 1.5% low. Lapses when the Northern Ireland facts land or on its expiry, whichever comes first. Fence: uk_local_target_census.json#/binding_fences/desnz_northern_ireland_interim_share.",
+      "reason": "Accepted as an interim (microcosm#1207, plan ruling of 2026-10-14): Great Britain's part of the Energy Trends UK level is its share of UK households (ONS LFS); the interim puts Great Britain's gas level about 1.5% low. PolicyEngine/chronicle#356 brought Northern Ireland's domestic consumption at the abf0921 re-pin, on a basis DESNZ calls not directly comparable with Great Britain's, and María ruled on 2026-10-16 (microcosm#1300) that the interim stands past the re-pin until the change stacked on it reads the share from those facts. Lapses when that change lands or on its expiry, whichever comes first. Fence: uk_local_target_census.json#/binding_fences/desnz_northern_ireland_interim_share.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15",
+      "adjudication": "microcosm#1207 plan approved by María on 2026-10-14; fences approved 2026-10-15; continued past the abf0921 re-pin by María on 2026-10-16 (microcosm#1300)",
       "approved_on": "2026-10-15",
       "expires_on": "2026-12-15"
     }

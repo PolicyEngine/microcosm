@@ -484,6 +484,22 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # substring rule would read "scotland" in its concept (microcosm#1095).
     # The binding scopes the model column to Great Britain.
     "obr.council_tax": "uk",
+    # OBR table 4.9's DWP lines carry the geography DWP counts them over
+    # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
+    # caseload tables, Spring 2026): Great Britain for these eight, England and
+    # Wales for the four below; values are unchanged (microcosm#1300).
+    "obr.pension_credit": "great_britain",
+    "obr.esa": "great_britain",
+    "obr.jobseekers_allowance": "great_britain",
+    "obr.housing_benefit": "great_britain",
+    "obr.statutory_maternity_pay": "great_britain",
+    "obr.universal_credit": "great_britain",
+    "obr.universal_credit_in_cap": "great_britain",
+    "obr.universal_credit_outside_cap": "great_britain",
+    "obr.attendance_allowance": "england_and_wales",
+    "obr.carers_allowance": "england_and_wales",
+    "obr.pip": "england_and_wales",
+    "obr.winter_fuel_allowance": "england_and_wales",
 }
 
 
