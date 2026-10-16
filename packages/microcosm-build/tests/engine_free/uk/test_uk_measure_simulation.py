@@ -750,7 +750,8 @@ def test_packaged_exclusions_load():
     # re-solve with the four masked together left the other rows fitting no
     # worse, so they are held out of the objective and measured by the
     # diagnose tool. The PR that added them closes microcosm#1113, so the
-    # three that tracked it track its follow-up issue, microcosm#1207.
+    # three that tracked it tracked its follow-up issue, microcosm#1207, and
+    # since that closed into it, microcosm#1278.
     consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
     assert sorted(e["name"] for e in consumption_taxes) == [
         "obr.fuel_duties_cars",
@@ -770,9 +771,9 @@ def test_packaged_exclusions_load():
     trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
     assert trackings == {
         "obr.vat": "policyengine-uk#1996",
-        "obr.fuel_duties_cars": "microcosm#1207",
-        "ons.household_electricity_expenditure": "microcosm#1207",
-        "ons.household_gas_expenditure": "microcosm#1207",
+        "obr.fuel_duties_cars": "microcosm#1278",
+        "ons.household_electricity_expenditure": "microcosm#1278",
+        "ons.household_gas_expenditure": "microcosm#1278",
     }
     # microcosm#1095: the five-or-more children row held out on 2026-10-14
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
