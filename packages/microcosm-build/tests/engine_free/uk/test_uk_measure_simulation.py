@@ -645,6 +645,10 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "obr.fuel_duties_cars": 1,
     "ons.household_electricity_expenditure": 1,
     "ons.household_gas_expenditure": 1,
+    # microcosm#1301 (2026-10-16): employer NICs, gross of the Employment
+    # Allowance in the engine and priced on FY2025-26 rules over a window that
+    # takes a quarter of FY2024-25, held out as a measured diagnostic.
+    "obr.ni_employer": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -670,8 +674,9 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3).
-    assert len(names) == len(set(names)) == 56
+    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3),
+    # plus the employer NICs diagnostic (microcosm#1301).
+    assert len(names) == len(set(names)) == 57
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -778,6 +783,9 @@ def test_packaged_exclusions_load():
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
     # diagnostic beside the two-child-limit rows, so no exclusion names it and
     # only the housing-element renewal carries that date.
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-16"
+    ) == ["obr.ni_employer"]
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
     ) == sorted(_UC_ELEMENT_REGISTER_ROWS)
@@ -894,6 +902,44 @@ def test_packaged_exclusions_load():
         "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
     ):
         assert riding not in excluded, riding
+
+
+def test_employer_nics_are_a_measured_diagnostic():
+    # microcosm#1301 (María's ruling of 2026-10-16): the engine's ni_employer
+    # is gross of the Employment Allowance, which OBR's receipts are net of,
+    # and the row's calendar-2025 window takes a quarter of FY2024-25 that the
+    # engine prices on FY2025-26 rules. Modelling the allowance alone would
+    # close only part of the gap, so the row leaves the objective as a
+    # diagnostic until a locked engine nets the allowance out. The other two
+    # class rows stay bound beside it.
+    from datetime import date
+
+    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    entry = exclusions["obr.ni_employer"]
+    assert entry["tracking"] == "policyengine-uk#1918"
+    assert entry["approved_by"] == "juaristi22"
+    assert entry["approved_on"] == "2026-10-16"
+    # Three months, the window of the 2026-10-08 engine-factor diagnostic.
+    assert entry["expires_on"] == "2027-01-16"
+    vat = exclusions["obr.vat"]
+    assert (
+        date.fromisoformat(entry["expires_on"])
+        - date.fromisoformat(entry["approved_on"])
+    ).days == (
+        date.fromisoformat(vat["expires_on"]) - date.fromisoformat(vat["approved_on"])
+    ).days
+    for phrase in (
+        "Employment Allowance",
+        "calendar-2025 window",
+        "FY2025-26 rules",
+        "diagnostic",
+        "never fitted",
+    ):
+        assert phrase in entry["reason"], phrase
+    assert "microcosm#1301" in entry["adjudication"]
+    assert "policyengine-uk#1918" in entry["adjudication"]
+    assert "obr.ni_employee" not in exclusions
+    assert "obr.ni_self_employed" not in exclusions
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):

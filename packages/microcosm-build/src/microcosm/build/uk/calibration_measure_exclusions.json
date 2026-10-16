@@ -522,6 +522,15 @@
       "adjudication": "María's approval of 2026-10-08 of the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D2, with the binding confirmed on 2026-10-09: the stage sets the household road-fuel level and incidence, and the household-scope ONS 07.2.2 row is bound in place of the OBR cars receipts, which include business fuel. The reason's figures were restated on 2026-10-11 after her review of PolicyEngine/microcosm#1167, which found bases mixed. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
       "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.ni_employer",
+      "reason": "Engine and period basis, not a weight question. policyengine-uk's ni_employer is the secondary Class 1 charge on each earner's pay above the secondary threshold, gross of the Employment Allowance, which employers offset against their secondary Class 1 liability through payroll, so OBR's receipts are net of it: HMRC's tax relief statistics (January 2026) put its cost at GBP 7.4bn for 2025-26 (a forecast), after the allowance rose to GBP 10,500 per employer and the GBP 100,000 eligibility restriction was removed from 6 April 2025. The row also binds the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), while the engine's 2025 period applies the FY2025-26 rules (the 15 percent rate and the GBP 5,000 secondary threshold) to the whole window, so its first quarter is overstated. On the K=15 local candidates measured for microcosm#1301 the row read about 20 percent above its target; the allowance accounts for about a quarter of that, the window for about a fifth and the under-21 zero rate, which the engine also omits, for under a tenth; the pay level, still under investigation, carries the rest. Bound, the row pulls pay down to close a gap the weights did not open. Held out of the objective as a diagnostic and never fitted; rebind when a locked policyengine-uk nets the allowance out of ni_employer and the window takes each fiscal year's own rules.",
+      "tracking": "policyengine-uk#1918",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-16 on the microcosm#1301 local release plan: unbind the row as a measured diagnostic, rather than bind the FY2025-26 value or sign it gate-only, because modelling the allowance alone would close only part of the gap. policyengine-uk#1918 lists the allowance with the under-21 and apprentice zero rates; an engine issue that splits the allowance out of it is drafted and posts on her OK, and tracking moves to it once it is open. The expiry gives the three-month window of the 2026-10-08 engine-factor diagnostic (obr.vat).",
+      "approved_on": "2026-10-16",
+      "expires_on": "2027-01-16"
     }
   ]
 }

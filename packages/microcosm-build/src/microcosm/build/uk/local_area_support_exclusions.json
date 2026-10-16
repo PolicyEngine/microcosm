@@ -15,6 +15,26 @@
       "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
       "approved_on": "2026-09-02",
       "expires_on": "2026-12-02"
+    },
+    "local_authority/S12000023": {
+      "reason": "Reviewed gate-only exclusion of the local-authority support floor for Orkney Islands (S12000023), signed before the first build of the microcosm#1301 local release: the authority missed the floor on the atomic-support builds at K=25 with 60,000 and 100,000 households and on the K=15 build with 95,000 households. Gate-only (microcosm#1301): its cells stay bound and none is deferred, so the entry does not change the solve. The area is flagged support_below_floor in the build's area-support table (the candidate manifest's area_support_summary) and named in the release manifest's area_support block; consumers must treat its estimates as unsupported. Scoped to the local line. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1301 plan approved by María on 2026-10-16: Orkney and Shetland are pre-signed gate-only before the first build",
+      "approved_on": "2026-10-16",
+      "expires_on": "2027-01-16",
+      "release_lines": [
+        "local"
+      ]
+    },
+    "local_authority/S12000027": {
+      "reason": "Reviewed gate-only exclusion of the local-authority support floor for Shetland Islands (S12000027), signed before the first build of the microcosm#1301 local release: the authority missed the floor on the atomic-support builds at K=25 with 60,000 and 100,000 households and on the K=15 build with 95,000 households. Gate-only (microcosm#1301): its cells stay bound and none is deferred, so the entry does not change the solve. The area is flagged support_below_floor in the build's area-support table (the candidate manifest's area_support_summary) and named in the release manifest's area_support block; consumers must treat its estimates as unsupported. Scoped to the local line. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1301 plan approved by María on 2026-10-16: Orkney and Shetland are pre-signed gate-only before the first build",
+      "approved_on": "2026-10-16",
+      "expires_on": "2027-01-16",
+      "release_lines": [
+        "local"
+      ]
     }
   },
   "bound_despite_support_floor": {

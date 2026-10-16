@@ -29,6 +29,19 @@
       "approved_on": "2026-10-14",
       "status": "approved",
       "expires_on": "2027-04-01"
+    },
+    {
+      "rule_id": "hvcts_la_household_floor",
+      "target_id_prefixes": [
+        "microcosm.high_value_homes."
+      ],
+      "absolute_floor": 400,
+      "reason": "A derived high-value homes cell of fewer than 400 homes, about two household weights at the ruled 150,000 households, rests on one or two sample households, so its fit is noise: the capped loss stops paying for it and one household's placement decides whether it passes (microcosm#1301). The rule reaches the local-authority cells only: the constituency cells are deferred level-wide in tools/generate_uk_local_target_references.py (high_value_homes_constituency_grain_deferred), so the rule finds no active constituency cell, and the region rows (microcosm.high_value_homes.over_*_by_region) are not local targets. It keeps 192 local-authority cells over £1m (97 percent of their derived stock), 101 over £1.5m (92 percent) and 57 over £2m (85 percent). A deferred cell's homes still count in its region row through reconciliation, and a region with no cell left is controlled by its region row alone.",
+      "tracking": "microcosm#1301",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-16",
+      "status": "approved",
+      "expires_on": "2027-04-01"
     }
   ]
 }
