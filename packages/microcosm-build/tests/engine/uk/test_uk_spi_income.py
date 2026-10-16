@@ -936,3 +936,43 @@ def test_stage1_queries_only_drawn_recipients_with_the_bridge(
     assert result.stage1_transport["identity_key"] == "person_source_id"
     assert result.stage1_transport["recipients"] == 3
     assert result.fit_weight_records[1].fit_name == "uk_frs_reference_conditional"
+
+
+def test_the_stage_resets_the_esa_group_and_clears_a_loss_beside_a_profit(
+    monkeypatch, tmp_path
+) -> None:
+    """The stage's output, not only its helpers (Vahid's review of
+    microcosm#1299): a redrawn row's ESA group returns to the engine's default,
+    and a redrawn row with a profit keeps no drawn trading loss. The fake
+    forests draw a positive value for every target, so each redrawn row draws
+    both a profit and a loss."""
+
+    from microcosm.build.uk_runtime.spi_income import SPI_INCOME_RECIPIENT_COLUMN
+
+    support = _dead_support()
+    support = replace(
+        support,
+        person=support.person.assign(esa_includes_support_component=False),
+    )
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    person = impute_uk_spi_income_support(
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+    ).person
+
+    drawn = person[SPI_INCOME_RECIPIENT_COLUMN].to_numpy(dtype=bool)
+    assert drawn.any() and (~drawn).any()
+    assert person.loc[drawn, "esa_includes_support_component"].all()
+    assert not person.loc[~drawn, "esa_includes_support_component"].any()
+    profit = person.loc[drawn, "self_employment_income"].to_numpy() > 0.0
+    assert profit.any()
+    assert (person.loc[drawn, "trading_loss"].to_numpy()[profit] == 0.0).all()

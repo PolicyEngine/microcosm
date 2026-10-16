@@ -1422,6 +1422,34 @@ def test_esa_support_group_is_read_from_the_esa_rows(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage)
 
 
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [(1, False), (2, True), (3, False), (0, True)],
+    ids=["work_related_activity", "support", "assessment", "no_group"],
+)
+def test_each_esa_group_code_sets_the_support_component_on_its_own(
+    tmp_path: Path, code: int, expected: bool
+) -> None:
+    """One ESA row with one ESAGROUP code, so each code is pinned on its own
+    (Vahid's review of microcosm#1299): the work-related activity group (1)
+    and the assessment phase (3) lie outside the support group (2), and any
+    other code records no group, which leaves the engine's default."""
+
+    tables = _fixture_tables()
+    esa_rows = [row for row in tables["benefits"] if row["BENEFIT"] == 16]
+    kept = esa_rows[0]
+    tables["benefits"] = [
+        row for row in tables["benefits"] if row["BENEFIT"] != 16 or row is kept
+    ]
+    kept["VAR3"] = code
+    stage = _write_fixture(tmp_path / f"code_{code}", tables)
+    person = build_uk_frs_spine_frame(tmp_path / f"code_{code}", stage=stage).table(
+        "person"
+    )
+    group = person.set_index("person_id")["esa_includes_support_component"]
+    assert group.to_dict() == {1001: expected, 1002: True, 2001: True}
+
+
 def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
     tmp_path: Path,
 ) -> None:
