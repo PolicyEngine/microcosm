@@ -1,7 +1,10 @@
 """The UK local rotated holdout runs five real training solves."""
 
+from datetime import date
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.holdout import rotated_folds
 from microcosm.build.uk_runtime import (
@@ -11,9 +14,10 @@ from microcosm.build.uk_runtime import (
     uk_national_frame,
 )
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_local_rowwise import COMMITTED_BINDING_NOW
 
 
-def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
+def _frame_and_problem():
     household_ids = [101, 102, 103, 104, 105]
     area_codes = ["E001", "W001", "S001", "N001", "E002"]
     frame = uk_national_frame(
@@ -39,12 +43,17 @@ def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
         pd.Series(area_codes, index=household_ids),
         pd.DataFrame({"code": area_codes, "households": [2.0] * 5}),
     )
+    return frame, problem
 
+
+def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
+    frame, problem = _frame_and_problem()
     payload = rotated_uk_local_holdout(
         frame,
         problem,
         epochs=2,
         solve_seed=17,
+        now=COMMITTED_BINDING_NOW,
     )
 
     expected_folds = rotated_folds(5, n_folds=5, seed=20260529)
@@ -64,3 +73,13 @@ def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
     # The cap the folds were actually measured under travels with them, so a
     # consumer can enforce the scale agreement instead of assuming it.
     assert payload["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP
+
+
+def test_rotated_local_holdout_reviews_every_fold_on_its_date() -> None:
+    # microcosm#1278: the holdout passes its review date to each fold's solve,
+    # so a date past the committed register's windows is refused there.
+    frame, problem = _frame_and_problem()
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        rotated_uk_local_holdout(
+            frame, problem, epochs=2, solve_seed=17, now=date(2099, 1, 1)
+        )
