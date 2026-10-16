@@ -12,8 +12,8 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.domestic_energy_targets import (
     GREAT_BRITAIN_GEOGRAPHY_ID,
-    LFS_NATION_HOUSEHOLDS_CONCEPT,
-    LFS_UK_HOUSEHOLDS_CONCEPT,
+    NORTHERN_IRELAND_GEOGRAPHY_ID,
+    NORTHERN_IRELAND_PERIOD_TYPES,
     SUBNATIONAL_CONSUMPTION_CONCEPTS,
     UK_ENERGY_LEVEL_HOLD,
     UK_ENERGY_LEVEL_INDEX_CONCEPT,
@@ -24,9 +24,9 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     align_energy_to_stage_level,
     declared_energy_pricing,
     gb_energy_level_factors,
-    great_britain_household_share,
     household_energy_kwh,
     household_energy_prices,
+    northern_ireland_consumption,
 )
 from microcosm.build.uk_runtime.energy_pricing import (
     ELECTRICITY_KWH,
@@ -50,22 +50,28 @@ ELECTRICITY_TARGET = "desnz.subnational.electricity_kwh"
 GAS_CONNECTED_TARGET = "desnz.subnational.gas_connected_households"
 
 
-def _household_row(concept: str, area: str, value: float) -> dict:
-    return {
-        "concept": concept,
-        "geography": {"id": area, "level": "country"},
-        "period": {"type": "calendar_year", "value": 2024},
-        "unit": "count",
+def _northern_ireland_row(column: str, value: float, **changes) -> dict:
+    fuel = "electricity" if column == ELECTRICITY_KWH else "gas"
+    row = {
+        "concept": SUBNATIONAL_CONSUMPTION_CONCEPTS[column],
+        "geography": {"id": NORTHERN_IRELAND_GEOGRAPHY_ID, "level": "country"},
+        "period": {"type": NORTHERN_IRELAND_PERIOD_TYPES[fuel], "value": 2024},
+        "dimensions": {
+            "metric": "consumption",
+            "fuel": fuel,
+            "domestic_scope": "all_domestic",
+        },
+        "unit": "kwh",
         "value": value,
     }
+    return {**row, **changes}
 
 
-# Great Britain holds 1,000 of the UK's 1,025 households.
-_HOUSEHOLDS = [
-    _household_row(LFS_NATION_HOUSEHOLDS_CONCEPT, "E92000001", 900.0),
-    _household_row(LFS_NATION_HOUSEHOLDS_CONCEPT, "W92000004", 40.0),
-    _household_row(LFS_NATION_HOUSEHOLDS_CONCEPT, "S92000003", 60.0),
-    _household_row(LFS_UK_HOUSEHOLDS_CONCEPT, "K02000001", 1025.0),
+# Northern Ireland's all-domestic consumption beside Great Britain's
+# vendored totals (synthetic values; the feed's rows are vendored).
+_NORTHERN_IRELAND = [
+    _northern_ireland_row(ELECTRICITY_KWH, 3.0e9),
+    _northern_ireland_row(GAS_KWH, 1.0e9),
 ]
 
 
@@ -164,9 +170,13 @@ def test_household_kwh_refuses_misaligned_columns():
 
 
 def test_the_level_factor_puts_great_britain_on_the_stage_level():
-    factors, receipt = gb_energy_level_factors(household_rows=_HOUSEHOLDS)
+    # microcosm#1278: Great Britain's part of the UK level is its share of the
+    # sub-national total with Northern Ireland's row added, so each factor is
+    # the UK level over the UK sub-national total.
+    factors, receipt = gb_energy_level_factors(local_rows=_NORTHERN_IRELAND)
 
     level, _ = published_energy_level(declared_energy_pricing())
+    northern_ireland = {ELECTRICITY_KWH: 3.0e9, GAS_KWH: 1.0e9}
     for column, concept in SUBNATIONAL_CONSUMPTION_CONCEPTS.items():
         (great_britain,) = vendored_rows(
             UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
@@ -174,27 +184,60 @@ def test_the_level_factor_puts_great_britain_on_the_stage_level():
             geography_id=GREAT_BRITAIN_GEOGRAPHY_ID,
             period_value=2024,
         )
-        assert factors[column] == pytest.approx(
-            level[column] * (1000.0 / 1025.0) / great_britain["value"]
+        united_kingdom = great_britain["value"] + northern_ireland[column]
+        assert factors[column] == pytest.approx(level[column] / united_kingdom)
+        fuel = receipt["by_fuel"][column]
+        assert fuel["great_britain_share"] == pytest.approx(
+            great_britain["value"] / united_kingdom
         )
-        assert receipt["by_fuel"][column]["great_britain_level_kwh"] == (
-            pytest.approx(level[column] * 1000.0 / 1025.0)
-        )
+        assert fuel["subnational_northern_ireland_kwh"] == northern_ireland[column]
     assert receipt["period_value"] == 2024
-    assert receipt["great_britain_household_share"]["great_britain_share"] == (
-        pytest.approx(1000.0 / 1025.0)
+    assert receipt["northern_ireland"]["periods"] == {
+        ELECTRICITY_KWH: {"period_type": "fiscal_year", "period_value": 2024},
+        GAS_KWH: {"period_type": "gas_year", "period_value": 2024},
+    }
+
+
+def test_the_vendored_resource_carries_northern_ireland_s_two_rows():
+    # The abf0921 feed's Northern Ireland row per fuel, all domestic meters:
+    # electricity on the 2024 financial year, gas on the 2024 gas year.
+    consumption, receipt = northern_ireland_consumption(2024)
+    assert set(consumption) == {ELECTRICITY_KWH, GAS_KWH}
+    assert all(value > 0 for value in consumption.values())
+    assert receipt["periods"][ELECTRICITY_KWH]["period_type"] == "fiscal_year"
+    assert receipt["periods"][GAS_KWH]["period_type"] == "gas_year"
+
+
+def test_northern_ireland_consumption_reads_one_all_domestic_row_per_fuel():
+    consumption, _ = northern_ireland_consumption(2024, rows=_NORTHERN_IRELAND)
+    assert consumption == {ELECTRICITY_KWH: 3.0e9, GAS_KWH: 1.0e9}
+    # Northern Ireland files electricity under three domestic scopes: only the
+    # all-domestic row counts, so a standard-meter row beside it changes nothing.
+    standard = _northern_ireland_row(
+        ELECTRICITY_KWH,
+        2.0e9,
+        dimensions={
+            "metric": "consumption",
+            "fuel": "electricity",
+            "domestic_scope": "domestic_standard",
+        },
     )
-
-
-def test_a_household_share_outside_the_unit_interval_is_refused():
-    rows = [
-        *_HOUSEHOLDS[:3],
-        _household_row(LFS_UK_HOUSEHOLDS_CONCEPT, "K02000001", 990.0),
-    ]
-    with pytest.raises(ValueError, match="exceed the UK row"):
-        great_britain_household_share(2024, rows=rows)
+    assert (
+        northern_ireland_consumption(2024, rows=[*_NORTHERN_IRELAND, standard])[0]
+        == consumption
+    )
     with pytest.raises(ValueError, match="expected one vendored row"):
-        great_britain_household_share(2024, rows=_HOUSEHOLDS[1:])
+        northern_ireland_consumption(2024, rows=_NORTHERN_IRELAND[1:])
+    with pytest.raises(ValueError, match="expected one vendored row"):
+        northern_ireland_consumption(
+            2024, rows=[*_NORTHERN_IRELAND, _NORTHERN_IRELAND[0]]
+        )
+    # Electricity stamped as a calendar year is not Northern Ireland's row.
+    calendar = _northern_ireland_row(
+        ELECTRICITY_KWH, 3.0e9, period={"type": "calendar_year", "value": 2024}
+    )
+    with pytest.raises(ValueError, match="expected one vendored row"):
+        northern_ireland_consumption(2024, rows=[calendar, _NORTHERN_IRELAND[1]])
 
 
 def test_each_authority_keeps_desnz_s_split_at_the_stage_level():
@@ -212,10 +255,10 @@ def test_each_authority_keeps_desnz_s_split_at_the_stage_level():
     )
 
     aligned = align_energy_to_stage_level(
-        reference, registry, household_rows=_HOUSEHOLDS
+        reference, registry, local_rows=_NORTHERN_IRELAND
     )
 
-    factor = gb_energy_level_factors(household_rows=_HOUSEHOLDS)[0][ELECTRICITY_KWH]
+    factor = gb_energy_level_factors(local_rows=_NORTHERN_IRELAND)[0][ELECTRICITY_KWH]
     assert [spec.value for spec in aligned.specs] == pytest.approx(
         [400.0 * factor, 100.0 * factor]
     )
@@ -240,7 +283,7 @@ def test_the_level_applier_refuses_a_reference_without_one_fuel():
         source_concept=sorted(SUBNATIONAL_CONSUMPTION_CONCEPTS.values()),
     )
     with pytest.raises(ValueError, match="one sub-national consumption concept"):
-        align_energy_to_stage_level(both, registry, household_rows=_HOUSEHOLDS)
+        align_energy_to_stage_level(both, registry, local_rows=_NORTHERN_IRELAND)
     other = _reference(ELECTRICITY_TARGET, UK_GAS_METER_SHARE_INDEX_CONCEPT)
     assert align_energy_to_stage_level(other, registry) is registry
 
@@ -258,7 +301,7 @@ def test_the_level_applier_refuses_a_row_from_another_year():
         source_concept=SUBNATIONAL_CONSUMPTION_CONCEPTS[ELECTRICITY_KWH],
     )
     with pytest.raises(ValueError, match="stage's level is calendar 2024"):
-        align_energy_to_stage_level(reference, registry, household_rows=_HOUSEHOLDS)
+        align_energy_to_stage_level(reference, registry, local_rows=_NORTHERN_IRELAND)
 
 
 _METERS = [
