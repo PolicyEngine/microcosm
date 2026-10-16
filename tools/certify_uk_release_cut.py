@@ -64,6 +64,11 @@ from microcosm.build.uk_runtime.release_certification import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+    narrow_uk_registry_by_support_floor,
+    uk_support_floor_from_payload,
+)
 from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
@@ -282,6 +287,17 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     exclusions = load_uk_calibration_measure_exclusions()
     reference_registry, _receipt = apply_uk_calibration_measure_exclusions(
         reference_compiled, exclusions, now=evaluated_on
+    )
+    # The support floor drops rows on the candidate's spine (microcosm#1095
+    # U3). The certifier cannot recompute support, so it reads the drops the
+    # run recorded and checks them against the declared floor.
+    floor_declaration = load_uk_support_floor_declaration()
+    reference_registry = narrow_uk_registry_by_support_floor(
+        reference_registry,
+        _nested(diagnostics, "build", "measure_exclusions") or {},
+        None
+        if floor_declaration is None
+        else uk_support_floor_from_payload(floor_declaration),
     )
     append_phase(state, "registries_compiled")
 

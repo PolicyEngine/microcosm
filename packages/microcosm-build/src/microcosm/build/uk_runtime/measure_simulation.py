@@ -17,6 +17,10 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
@@ -183,6 +187,25 @@ def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
     ).to_numpy(dtype=float)
 
 
+#: HMRC's statistics count the year's profit after losses brought forward,
+#: which policyengine-uk keeps apart in loss_relief: the self-employment rows
+#: read that profit, and every row on HMRC's total income (its bands, its
+#: amounts, its regional filters) reads total income with that profit
+#: (microcosm#1095). The engine's total_income adds the profit before the
+#: relief, so the total-income measure swaps the one for the other.
+UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
+UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
+_LOSS_RELIEF_MEASURES = (
+    UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF,
+    UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
+)
+_LOSS_RELIEF_MEASURE_COMPONENTS = (
+    "self_employment_income",
+    LOSS_RELIEF_COLUMN,
+    "total_income",
+)
+
+
 #: Every binding key that names a measured variable: a dated CGT measure in
 #: any of them must carry its own measurement period (microcosm#1014 bands
 #: and filters on dated measures, not only gates and values).
@@ -285,6 +308,45 @@ def compute_uk_measure_input(
         return (
             household_bus_boardings(frame, variable),
             f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
+        )
+
+    if variable in _LOSS_RELIEF_MEASURES:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        person = frame.table("person")
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF and (
+            "self_employment_income" in person
+        ):
+            # A binding on a stored column reads the frame's own value, as the
+            # rows read self_employment_income before the move; the profit
+            # after the relief is read the same way (microcosm#1095).
+            stored_relief = (
+                person[LOSS_RELIEF_COLUMN].to_numpy(dtype=float)
+                if LOSS_RELIEF_COLUMN in person
+                else np.zeros(len(person))
+            )
+            return (
+                self_employment_income_after_loss_relief(
+                    person["self_employment_income"].to_numpy(dtype=float),
+                    stored_relief,
+                ),
+                "frame_columns:self_employment_income_less_loss_relief",
+            )
+        profit = compute_uk_measure_input(
+            frame, simulation, "person", "self_employment_income", year
+        )[0]
+        relief = compute_uk_measure_input(
+            frame, simulation, "person", LOSS_RELIEF_COLUMN, year
+        )[0]
+        after = self_employment_income_after_loss_relief(profit, relief)
+        if variable == UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF:
+            return after, "engine_components:self_employment_income_less_loss_relief"
+        total = compute_uk_measure_input(
+            frame, simulation, "person", "total_income", year
+        )[0]
+        return (
+            np.asarray(total, dtype=float) - np.asarray(profit, dtype=float) + after,
+            "engine_components:total_income_with_profit_after_loss_relief",
         )
 
     if variable in UC_TARGET_VARIABLES:
@@ -773,6 +835,10 @@ class UKMeasureResolver:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
             )
+        if variable in _LOSS_RELIEF_MEASURES:
+            return entity == "person" and all(
+                self.knows("person", name) for name in _LOSS_RELIEF_MEASURE_COMPONENTS
+            )
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -792,6 +858,8 @@ class UKMeasureResolver:
         if variable in _BUS_BOARDING_MEASURES:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
+            return "person"
+        if variable in _LOSS_RELIEF_MEASURES:
             return "person"
         if (
             variable
@@ -1155,12 +1223,19 @@ def load_uk_calibration_measure_exclusions(
     else:
         text = Path(path).read_text(encoding="utf-8")
     payload = json.loads(text)
+    # Schema 3 adds the signed sparse-band support floor (microcosm#1095 U3),
+    # which ``support_floor.load_uk_support_floor_declaration`` reads.
+    schema_version = payload.get("schema_version")
     allowed_top = {"schema_version", "exclusions"}
+    if schema_version == 3:
+        allowed_top.add("support_floor")
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if payload.get("schema_version") != 2:
-        raise ValueError("UK calibration measure exclusions schema_version must be 2.")
+    if schema_version not in (2, 3):
+        raise ValueError(
+            "UK calibration measure exclusions schema_version must be 2 or 3."
+        )
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):
         raise ValueError("UK calibration measure exclusions must contain a list.")

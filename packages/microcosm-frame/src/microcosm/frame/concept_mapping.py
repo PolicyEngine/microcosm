@@ -90,6 +90,7 @@ __all__ = [
     "Role",
     "ScaledSum",
     "Share",
+    "SignedPart",
     "StateBinding",
     "StateTest",
     "Sum",
@@ -238,6 +239,30 @@ class ScaledSum:
         if not math.isfinite(factor) or factor <= 0:
             raise ValueError(f"A scale factor must be finite and positive: {factor}.")
         object.__setattr__(self, "factor", factor)
+
+
+_SIGNED_PART_SIGNS = ("positive", "negative")
+
+
+@dataclass(frozen=True)
+class SignedPart:
+    """One sign of the sum of annual-flow amount concepts, never negative.
+
+    A rule can split a signed amount between two inputs that are never
+    negative: policyengine-uk takes a trade's profit in
+    ``self_employment_income`` and its loss in ``trading_loss``. ``sign``
+    ``"positive"`` gives ``max(sum, 0)`` and ``"negative"`` gives
+    ``max(-sum, 0)``, so two bindings of the same concepts never both hold an
+    amount. Not invertible.
+    """
+
+    sign: str
+
+    def __post_init__(self) -> None:
+        if self.sign not in _SIGNED_PART_SIGNS:
+            raise ValueError(
+                f"A signed part is 'positive' or 'negative', not {self.sign!r}."
+            )
 
 
 @dataclass(frozen=True)
@@ -420,6 +445,7 @@ Transform = (
     | Sum
     | Product
     | ScaledSum
+    | SignedPart
     | AllocateToReferencePerson
     | Predicate
     | RelationshipRole
@@ -444,6 +470,7 @@ _TRANSFORM_KINDS: dict[str, type] = {
     "positive": Positive,
     "scale": Scale,
     "scaled_sum": ScaledSum,
+    "signed_part": SignedPart,
     "unit_composition": UnitComposition,
 }
 _KIND_BY_TRANSFORM: dict[type, str] = {
@@ -475,6 +502,8 @@ def transform_to_dict(transform: Transform) -> dict[str, object]:
         out["parameter"] = transform.parameter
     elif isinstance(transform, Scale | ScaledSum):
         out["factor"] = transform.factor
+    elif isinstance(transform, SignedPart):
+        out["sign"] = transform.sign
     elif isinstance(transform, UnitComposition):
         out["feature"] = transform.feature.value
     elif isinstance(transform, CoresidentChildCount) and transform.max_age is not None:
@@ -492,6 +521,7 @@ _TRANSFORM_FIELDS: dict[str, frozenset[str]] = {
     "fraction": frozenset({"parameter"}),
     "scale": frozenset({"factor"}),
     "scaled_sum": frozenset({"factor"}),
+    "signed_part": frozenset({"sign"}),
     "unit_composition": frozenset({"feature"}),
     "coresident_child_count": frozenset({"max_age"}),
     "take_up_threshold": frozenset({"program"}),
@@ -579,6 +609,8 @@ def _read_transform(data: object) -> Transform:
         if isinstance(factor, bool) or not isinstance(factor, int | float):
             raise ValueError("A scale factor must be a number.")
         return _TRANSFORM_KINDS[kind](factor=factor)
+    if kind == "signed_part":
+        return SignedPart(sign=text("sign"))
     if kind == "unit_composition":
         return UnitComposition(feature=UnitFeature(text("feature")))
     if kind == "coresident_child_count":
@@ -855,7 +887,7 @@ def bind(
 #: binding allocated to the reference unit also reads to place its value. A
 #: product is outside the rule: it multiplies a usual rate (weekly hours) by
 #: weeks.
-_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, Share, Fraction)
+_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
 
 
 def _check_transform_arity(binding: InputBinding) -> None:
@@ -891,7 +923,8 @@ def _check_transform_arity(binding: InputBinding) -> None:
                 f"concept's domain {list(domain)}."
             )
     if isinstance(
-        transform, Share | Fraction | Sum | ScaledSum | AllocateToReferencePerson
+        transform,
+        Share | Fraction | Sum | ScaledSum | SignedPart | AllocateToReferencePerson,
     ):
         for item in items:
             if item.monetary is None:
@@ -907,7 +940,10 @@ def _check_transform_arity(binding: InputBinding) -> None:
         )
     if isinstance(transform, Sum | ScaledSum) and len(items) < 2:
         raise ValueError(f"Binding for {name!r}: a sum reads two or more amounts.")
-    if isinstance(transform, ScaledSum) and len({item.entity for item in items}) != 1:
+    if (
+        isinstance(transform, ScaledSum | SignedPart)
+        and len({item.entity for item in items}) != 1
+    ):
         raise ValueError(f"Binding for {name!r}: a sum adds amounts on one entity.")
     if isinstance(transform, _FLOW_TRANSFORMS):
         for item in items:
@@ -2100,6 +2136,15 @@ def _apply(
             axis=0,
         )
         return total * transform.factor
+    if isinstance(transform, SignedPart):
+        total = np.sum(
+            [
+                context.values(concept_id).to_numpy(dtype=np.float64)
+                for concept_id in concepts
+            ],
+            axis=0,
+        )
+        return np.maximum(total if transform.sign == "positive" else -total, 0.0)
     if isinstance(transform, UnitComposition):
         raise ValueError(
             f"{binding.engine_input!r} tests unit composition; it needs unit "

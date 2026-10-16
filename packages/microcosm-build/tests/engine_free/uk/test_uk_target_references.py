@@ -65,7 +65,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1292
+ACTIVE_REFERENCE_COUNT = 1291
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -805,7 +805,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1292,
+        "active": 1291,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 15,
     }
@@ -1034,6 +1034,12 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         caseload = differences[f"dwp.pip.daily_living_{rate}_claimants"]
         assert caseload["kind"] == "fixture_only"
         assert "diagnostic provenance on obr.pip" in caseload["reason"]
+    five_or_more = differences["dwp.uc.households_children_5_or_more"]
+    assert five_or_more["kind"] == "fixture_only"
+    assert (
+        "diagnostic provenance on dwp.uc.two_child_limit.households_5_children"
+        in five_or_more["reason"]
+    )
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (
@@ -1123,7 +1129,9 @@ def test_paid_child_count_windows_remove_only_their_uprating_holds() -> None:
     """A complete 2025 mean needs no December-to-annual hold (#891 review)."""
     membership = _load_uk_resource("target_reference_membership.json")
     holds = {row["name"]: row for row in membership["uprating_holds"]}
-    for children in ("1", "2", "3", "4", "5_or_more"):
+    # The five-or-more count is a diagnostic since microcosm#1095.
+    assert "dwp.uc.households_children_5_or_more" not in membership["targets"]
+    for children in ("1", "2", "3", "4"):
         name = f"dwp.uc.households_children_{children}"
         assert name not in holds
         candidates = membership["targets"][name]["candidates"]
@@ -1152,8 +1160,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         "dwp.uc.households_couple_with_children",
     }
     monthly_average_ids = {
-        f"dwp.uc.households_children_{children}"
-        for children in ("1", "2", "3", "4", "5_or_more")
+        f"dwp.uc.households_children_{children}" for children in ("1", "2", "3", "4")
     } | {
         # #882 element rows: paid-claim crosses on declared month windows.
         "dwp.uc.households_lcwra_element",

@@ -118,6 +118,9 @@ from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransfo
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
 )
@@ -175,7 +178,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 41
+UK_FIXTURE_STAGE_COUNT = 42
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -448,6 +451,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "PAREAMT": 13.0,
             "REDAMT": 20.0,
             "SLREPAMT": 2.0,
+            # SLOS ("outstanding student loan?") follows a no to SLREPAY, so a
+            # repayer answers no; EDUCLEFT dates each adult's course
+            # (microcosm#868).
+            "SLOS": 2,
+            "EDUCLEFT": 16 + household_id % 8,
             "SSPADJ": 1.0,
             "SMPADJ": 0.5,
             "SPPADJ": 0.25,
@@ -521,6 +529,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PERSON": 1,
                 "BENEFIT": benefit,
                 "VAR2": variant,
+                # ESAGROUP on the ESA rows: the support group on odd households,
+                # the work-related activity group on even ones.
+                "VAR3": (2 if household_id % 2 else 1) if benefit == 16 else 0,
                 "BENAMT": amount,
                 "UCSTART": "",
                 "UCHOUSEL": "",
@@ -545,6 +556,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "PERSON": 1,
                     "BENEFIT": 95,
                     "VAR2": 0,
+                    "VAR3": 0,
                     "BENAMT": 8.0,
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",
@@ -567,6 +579,12 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 if household_id % 8 in (2, 3)
                 else "",
                 "JOBBUS": 2 if household_id % 2 else 1,
+                # Every tenth adult directs a company they own more than half
+                # of, as their first job (microcosm#1095).
+                "DIRECTOR": 1 if household_id % 10 == 0 else 2,
+                "NATURE": 4,
+                "DIRPERC": 2 if household_id % 10 == 0 else -1,
+                "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
             }
         )
         pensions.append(
@@ -1939,6 +1957,11 @@ def _build_implementations(
         ),
         "student_loans": UKStudentLoansStageTransform(
             stage=stages["student_loans"], calibration_year=2025
+        ),
+        "private_school_attendance": UKPrivateSchoolAttendanceStageTransform(
+            stage=stages["private_school_attendance"],
+            engine=engine,
+            calibration_year=2025,
         ),
         "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
     }

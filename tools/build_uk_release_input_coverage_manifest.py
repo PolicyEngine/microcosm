@@ -890,6 +890,10 @@ def build_manifest(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
             ),
+            "private_school_attendance": _source_stage_family_coverage_contract(
+                stage_name="private_school_attendance",
+                candidate_source=candidate_source,
+            ),
             "student_loans": _source_stage_family_coverage_contract(
                 stage_name="student_loans",
                 candidate_source=candidate_source,

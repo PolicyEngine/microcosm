@@ -94,6 +94,126 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
     )
 
 
+def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
+    """A redrawn row's ESA comes from another donor, so its group is reset."""
+
+    person = pd.DataFrame(
+        {
+            # Root-stage answers: rows 20 and 40 reported a group outside the
+            # support group; row 40 is a base row whose answer must survive.
+            "esa_includes_support_component": [True, False, True, False],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, False], index=person.index)
+
+    result = spi_income._refresh_esa_support_component(person, spi_people=spi_people)
+
+    assert result["esa_includes_support_component"].tolist() == [
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert result["esa_includes_support_component"].dtype == bool
+    # A frame without the flag (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"esa_income_reported": [1.0]}, index=[1])
+    assert "esa_includes_support_component" not in (
+        spi_income._refresh_esa_support_component(
+            bare, spi_people=pd.Series([True], index=[1])
+        )
+    )
+
+
+def test_a_redrawn_row_with_a_profit_keeps_no_drawn_trading_loss() -> None:
+    """Profit and loss never both hold an amount (uk-data#528, microcosm#1095)."""
+
+    person = pd.DataFrame(
+        {
+            # Row 20: the tape's profit beside a drawn loss, which goes. Row 30:
+            # no profit, so its drawn loss stays. Row 40 is a base row whose
+            # FRS values are left alone.
+            "self_employment_income": [0.0, 900.0, 0.0, 0.0],
+            "trading_loss": [0.0, 250.0, 400.0, 600.0],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, False], index=person.index)
+
+    result = spi_income._clear_trading_loss_beside_profit(person, spi_people=spi_people)
+
+    assert result["trading_loss"].tolist() == [0.0, 0.0, 400.0, 600.0]
+    assert result["self_employment_income"].tolist() == [0.0, 900.0, 0.0, 0.0]
+    # A frame without the column (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"self_employment_income": [1.0]}, index=[1])
+    assert "trading_loss" not in spi_income._clear_trading_loss_beside_profit(
+        bare, spi_people=pd.Series([True], index=[1])
+    )
+
+
+def test_drawn_owner_manager_inputs_keep_the_root_stages_rules() -> None:
+    """The fill draws the flags as 0 or 1; the root stage's rules then hold on
+    the redrawn rows, and the FRS rows keep their answers (microcosm#1095)."""
+
+    person = pd.DataFrame(
+        {
+            # Row 10 (FRS) keeps an inconsistent answer as the root gave it.
+            # Row 20 drew an owner in a property business and a trade: the
+            # property business wins. Row 30 drew main employment and income
+            # without an owner: both go. Row 40 drew an owner in another job.
+            "stands_as_sole_owner_or_partner_of_company": [0.0, 1.0, 0.0, 1.0],
+            "is_engaged_in_owned_company_trade": [1.0, 0.0, 1.0, 1.0],
+            "owned_company_is_main_employment": [1.0, 1.0, 1.0, 0.0],
+            "owned_company_carries_on_trade": [1.0, 1.0, 1.0, 1.0],
+            "owned_company_carries_on_property_business": [0.0, 1.0, 0.0, 0.0],
+            "owned_company_income_share": [5.0, 700.0, 300.0, 50.0],
+        },
+        index=[10, 20, 30, 40],
+    )
+    spi_people = pd.Series([False, True, True, True], index=person.index)
+
+    result = spi_income._owner_manager_flags_from_draws(person, spi_people=spi_people)
+
+    assert result["stands_as_sole_owner_or_partner_of_company"].tolist() == [
+        False,
+        True,
+        False,
+        True,
+    ]
+    assert result["is_engaged_in_owned_company_trade"].tolist() == [
+        True,
+        True,
+        False,
+        True,
+    ]
+    assert result["owned_company_is_main_employment"].tolist() == [
+        True,
+        True,
+        False,
+        False,
+    ]
+    assert result["owned_company_carries_on_trade"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert result["owned_company_carries_on_property_business"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert result["owned_company_income_share"].tolist() == [5.0, 700.0, 0.0, 50.0]
+    assert result["stands_as_sole_owner_or_partner_of_company"].dtype == bool
+    # The inputs are set together: a frame with only some of them refuses.
+    with pytest.raises(ValueError, match="set together"):
+        spi_income._owner_manager_flags_from_draws(
+            person[["stands_as_sole_owner_or_partner_of_company"]],
+            spi_people=spi_people,
+        )
+
+
 def test_spi_uc_gainful_self_employment_follows_the_rows_drawn_incomes() -> None:
     """A drawn row's gainful self-employment takes the root's whole rule."""
 
@@ -295,6 +415,105 @@ def test_spi_donor_keeps_narrow_pe_employment_and_broad_hmrc_measure(
     )
 
 
+def test_spi_donor_carries_the_profit_before_losses_and_the_losses(tmp_path) -> None:
+    """The chain's two last draws (uk-data#528, microcosm#1095)."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+
+    donor = spi_income._prepare_spi_donor(raw, seed=7)
+    profit = donor[spi_income.SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN]
+    losses = donor[spi_income.SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN]
+    np.testing.assert_array_equal(
+        profit, (raw["PROFITS"] - raw["CAPALL"]).clip(lower=0.0)
+    )
+    np.testing.assert_array_equal(losses, raw["LOSSBF"].clip(lower=0.0))
+    # The profit after the losses is the profit the chain draws.
+    np.testing.assert_array_equal(
+        (profit - losses).clip(lower=0.0), donor["self_employment_income"]
+    )
+    assert list(spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-2:]) == list(
+        spi_income.SPI_LOSS_DRAW_COLUMNS
+    )
+
+
+def test_losses_brought_forward_move_out_of_the_profit_into_loss_relief() -> None:
+    """The drawn rows' profit becomes the year's profit, its losses brought
+    forward go to both loss inputs, and the profit after the relief is the
+    one the chain drew (uk-data#528, microcosm#1095)."""
+
+    profit_draw = spi_income.SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN
+    loss_draw = spi_income.SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN
+    person = pd.DataFrame(
+        {
+            # Row 1: a profit left after its losses; row 2: losses larger than
+            # the profit; row 3: no losses; row 4: a base row.
+            "self_employment_income": [6_000.0, 0.0, 4_000.0, 500.0],
+            profit_draw: [9_000.0, 5_000.0, 4_000.0, 0.0],
+            loss_draw: [2_500.0, 8_000.0, 0.0, 0.0],
+            "loss_relief": [0.0, 0.0, 0.0, 0.0],
+            "ni_class_4_losses_brought_forward": [0.0, 0.0, 0.0, 0.0],
+        },
+        index=[1, 2, 3, 4],
+    )
+    spi_people = pd.Series([True, True, True, False], index=person.index)
+    net = person["self_employment_income"].copy()
+
+    moved = spi_income._move_losses_brought_forward_to_loss_relief(
+        person, spi_people=spi_people
+    )
+
+    assert moved["self_employment_income"].tolist() == [
+        9_000.0,
+        5_000.0,
+        4_000.0,
+        500.0,
+    ]
+    # Row 1's whole loss was relieved, so the relief is the gap to the drawn
+    # net profit; row 2 keeps its losses, at least the profit.
+    assert moved["loss_relief"].tolist() == [3_000.0, 8_000.0, 0.0, 0.0]
+    assert moved["ni_class_4_losses_brought_forward"].tolist() == [
+        3_000.0,
+        8_000.0,
+        0.0,
+        0.0,
+    ]
+    np.testing.assert_array_equal(
+        (moved["self_employment_income"] - moved["loss_relief"]).clip(lower=0.0), net
+    )
+    assert not set(spi_income.SPI_LOSS_DRAW_COLUMNS) & set(moved.columns)
+    # A frame without the draws (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"self_employment_income": [1.0]}, index=[1])
+    assert spi_income._move_losses_brought_forward_to_loss_relief(
+        bare, spi_people=pd.Series([True], index=[1])
+    ).equals(bare)
+
+
+def test_hmrc_earned_income_reads_the_profit_after_loss_relief(tmp_path) -> None:
+    """TEI and TI are the same before and after the move (microcosm#1095)."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    donor = spi_income._prepare_spi_donor(raw, seed=7).assign(
+        tax_free_savings_income=0.0, loss_relief=0.0
+    )
+    before = spi_income.derive_hmrc_income_auxiliaries(donor.copy())
+    moved = spi_income._move_losses_brought_forward_to_loss_relief(
+        donor.copy(), spi_people=pd.Series(True, index=donor.index)
+    )
+    assert (moved["loss_relief"] > 0).any()
+    after = spi_income.derive_hmrc_income_auxiliaries(moved)
+
+    for column in (
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+    ):
+        np.testing.assert_array_equal(after[column], before[column])
+
+
 def test_spi_donor_rejects_leaf_reconciliation_drift(tmp_path) -> None:
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -366,9 +585,13 @@ def test_spi_donor_carries_restricted_finance_costs_with_their_relief(
         3.0 * 200.0 + 4.0 * 300.0
     )
     assert check["median_relief_ratio"] == pytest.approx(0.2)
-    # The leaf is drawn last, so it conditions on every income leaf and moves
-    # no earlier draw.
-    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-1] == "property_finance_costs"
+    # The leaf is drawn after every income leaf, so it conditions on them all
+    # and moves no earlier draw; only the two loss draws, which the stage
+    # drops, come after it (microcosm#1095).
+    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-3] == "property_finance_costs"
+    assert spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS[-2:] == (
+        spi_income.SPI_LOSS_DRAW_COLUMNS
+    )
 
     wrong = raw.copy()
     wrong["TAX_CRED"] = wrong["LLIR_RESTRICT_AMT_TOT"] * 0.4

@@ -34,6 +34,7 @@ from microcosm.frame.concept_mapping import (
     Scale,
     ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
 )
@@ -172,6 +173,7 @@ def expected_input_dtypes(binding: InputBinding) -> set[str]:
         | Scale
         | Sum
         | ScaledSum
+        | SignedPart
         | Product
         | AllocateToReferencePerson,
     ):

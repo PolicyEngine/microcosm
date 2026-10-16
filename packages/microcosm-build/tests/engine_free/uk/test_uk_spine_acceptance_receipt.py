@@ -138,6 +138,10 @@ def _apply_pending_roster_transformations(
         "cgt_residential_split",
         "hmrc_cgt_asset_type_spine",
     ]
+    # microcosm#1095 re-mint pending: the stored private-school attendance is
+    # the last stage of the spine.
+    assert "private_school_attendance" not in roster
+    roster.append("private_school_attendance")
     return tuple(roster)
 
 

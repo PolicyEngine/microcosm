@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-735820c-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1312,
-  "contract_target_count": 357,
-  "active_reference_count": 1292,
+  "candidate_count": 1311,
+  "contract_target_count": 356,
+  "active_reference_count": 1291,
   "status_counts": {
-    "active": 1292,
+    "active": 1291,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 15
   },
@@ -235,10 +235,6 @@
       "geography_id": "K03000001"
     },
     "dwp.uc.households_children_4": {
-      "geography_level": "country",
-      "geography_id": "K03000001"
-    },
-    "dwp.uc.households_children_5_or_more": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -6788,6 +6784,26 @@
     {
       "name": "scotgov.council_tax_stock.total",
       "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_2_above_threshold",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_2_liable",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_5_above_threshold",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.borrowers.plan_5_liable",
+      "from": "2024",
       "to": "2025"
     },
     {
@@ -13705,22 +13721,6 @@
         }
       ]
     },
-    "dwp.uc.households_children_5_or_more": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "dwp.uc.households_children_5_or_more",
-          "status": "active",
-          "matched_fact_count_overall": 12,
-          "matched_fact_count_at_or_before_period": 12,
-          "matched_fact_count_in_source_window": 12,
-          "resolved_period": 2025,
-          "resolved_value": 76320.08333333333,
-          "resolved_fact_period": "2025-12",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_33d99593d166153ca2d0adec"
-        }
-      ]
-    },
     "dwp.uc.households_single_no_children": {
       "status": "active",
       "candidates": [
@@ -18869,12 +18869,12 @@
         {
           "name": "slc.borrowers.plan_2_above_threshold",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4460000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_02288c19caeae900fdaf1e0d"
+          "resolved_value": 3985000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_822c939c41011339709850be"
         }
       ]
     },
@@ -18884,12 +18884,12 @@
         {
           "name": "slc.borrowers.plan_2_liable",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 9710000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_37387933e73bcc8c1e04cf78"
+          "resolved_value": 8940000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1bc8691109e66f0dbaac8d1"
         }
       ]
     },
@@ -18899,12 +18899,12 @@
         {
           "name": "slc.borrowers.plan_5_above_threshold",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 35000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dd16b085f81ef7708a00511e"
+          "resolved_value": 0.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ce7713585cb33c638ad22a08"
         }
       ]
     },
@@ -18914,12 +18914,12 @@
         {
           "name": "slc.borrowers.plan_5_liable",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 230000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_73ff136d820950ea404ddb6b"
+          "resolved_value": 10000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_875af7565e64b25a3c6a7219"
         }
       ]
     },

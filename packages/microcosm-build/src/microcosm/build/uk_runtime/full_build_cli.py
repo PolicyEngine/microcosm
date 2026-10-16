@@ -138,6 +138,8 @@ from .graph_national import (
     register_uk_national_kernels,
     replay_uk_dense_gate_battery,
     replay_uk_national_gate_battery,
+    solved_national_measure_exclusions,
+    solved_national_registry,
     uk_national_graph,
 )
 from .graph_population import GEOGRAPHY_ASSIGNMENTS, PROPERTY_LOCALISATION_MODES
@@ -2710,7 +2712,17 @@ def _execute_national_build(
         append_phase(state, "national_calibration_solved")
     frame = manifest.population(national.population)
     result, problem = national_result_from_manifest(
-        manifest, store, frame=frame, registry=national_registry
+        manifest, store, frame=frame, registry_document=registry_document
+    )
+    # The support floor drops rows on the frame (microcosm#1095 U3): the
+    # diagnostics and the build record describe the rows the problem solved
+    # and every exclusion it bound; the written register stays the approved
+    # one, the scoring surface a frozen-register check re-derives.
+    inputs["measure_exclusions"] = solved_national_measure_exclusions(
+        registry_document, problem.bindings
+    )
+    solved_registry = solved_national_registry(
+        registry_document, inputs["measure_exclusions"]
     )
     evidence = json.loads(
         graph_payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
@@ -2722,7 +2734,7 @@ def _execute_national_build(
         telemetry,
         "calibration",
         "completed",
-        target_count=len(national_registry.specs),
+        target_count=len(solved_registry.specs),
         entity_row_counts={
             entity: int(len(frame.table(entity))) for entity in frame.entities
         },
@@ -2759,7 +2771,7 @@ def _execute_national_build(
         paths["calibration_diagnostics"],
         frame,
         target_geography_levels=evidence["target_geography_levels"],
-        target_registry=national_registry,
+        target_registry=solved_registry,
         build=build_block,
     )
     if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):

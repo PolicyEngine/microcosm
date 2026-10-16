@@ -44,6 +44,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     EnergyPrices,
     NeedMargins,
     declared_household_kwh_ceilings,
+    declared_zero_kwh_cells_at_need_mean,
     impose_gas_connection,
     kwh_to_spend,
     need_margins_from_facts,
@@ -57,6 +58,8 @@ from microcosm.build.uk_runtime.energy_pricing import (
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
     hbai_gross_income,
     household_level,
 )
@@ -356,7 +359,7 @@ UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
@@ -1863,6 +1866,7 @@ class LCFSEnergyPricing:
     connect_rule: str | None = None
     connect_salt: str | None = None
     connect_n_estimators: int | None = None
+    zero_kwh_cells_at_need_mean: Mapping[str, tuple[str, ...]] | None = None
 
 
 def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
@@ -1912,6 +1916,7 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             "integer seed."
         )
     ceilings = declared_household_kwh_ceilings(parameters)
+    held_cells = declared_zero_kwh_cells_at_need_mean(parameters)
     connect_rule = parameters.get("connect_rule")
     connect_salt = parameters.get("connect_salt")
     connect_trees = parameters.get("connect_n_estimators")
@@ -1939,6 +1944,7 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
         connect_rule=None if connect_rule is None else str(connect_rule),
         connect_salt=None if connect_rule is None else str(connect_salt),
         connect_n_estimators=None if connect_rule is None else int(connect_trees),
+        zero_kwh_cells_at_need_mean=held_cells,
         receipt={
             **prices_receipt,
             "need_margins": margins.receipt,
@@ -1946,6 +1952,9 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
             "gas_connection": connection_receipt,
             "household_kwh_ceiling": ceilings,
             "connect_rule": connect_rule,
+            "zero_kwh_cells_at_need_mean": None
+            if held_cells is None
+            else {margin: list(names) for margin, names in held_cells.items()},
         },
     )
 
@@ -2158,6 +2167,7 @@ def rake_recipient_energy(
         gas_connected=connected,
         level=energy.level,
         ceilings=energy.ceilings,
+        zero_kwh_cells_at_need_mean=energy.zero_kwh_cells_at_need_mean,
     )
     receipt["gas_connection"] = {"rule": energy.gas_connected, **connection_receipt}
     receipt["gas_connected_share"] = float(
@@ -2828,10 +2838,17 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     household = frame.table("household")
     person = frame.table("person")
     result = pd.DataFrame(index=household.index)
-    for predictor in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS:
-        if predictor not in UK_HBAI_GROSS_INCOME_DEDUCTIONS:
+    for variable in UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS:
+        if variable not in UK_HBAI_GROSS_INCOME_DEDUCTIONS:
+            # The HBAI net income is read before the reset to zero and keeps
+            # its predictor name, the donor's p389p column.
+            predictor = (
+                UK_HBAI_NET_INCOME_PREDICTOR
+                if variable == UK_HBAI_NET_INCOME_VARIABLE
+                else variable
+            )
             result[predictor] = household_level(
-                frame, engine, predictor, materialized[predictor]
+                frame, engine, variable, materialized[variable]
             )
     result["household_gross_income"] = hbai_gross_income(frame, engine, materialized)
     age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)

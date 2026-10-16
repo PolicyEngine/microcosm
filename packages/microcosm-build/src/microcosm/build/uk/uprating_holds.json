@@ -357,6 +357,22 @@
       "approved_on": "2026-10-15",
       "status": "approved",
       "expires_on": "2026-12-15"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "slc.borrowers.plan_2_above_threshold",
+        "slc.borrowers.plan_2_liable",
+        "slc.borrowers.plan_5_above_threshold",
+        "slc.borrowers.plan_5_liable"
+      ],
+      "reason": "SLC Student loan forecasts for England, Table 6a: borrowers liable to repay and earning above the repayment threshold in academic year 2024/25, the stock whose reference date falls inside the calibration year 2025, which Chronicle stores under the academic year's opening year 2024. A stock at a date inside the calibration year, not a lagged period; the student_loans stage tops up to the same stock.",
+      "tracking": "microcosm#868",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-16",
+      "status": "approved",
+      "expires_on": "2026-12-11"
     }
   ]
 }

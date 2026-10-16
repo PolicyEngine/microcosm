@@ -1028,7 +1028,7 @@ class TestUKCountryPackage:
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
         # microcosm#1106 property_components after the regional uprating;
         # microcosm#1240 high_value_home_support between them.
-        assert len(spec.sources.stages) == 41
+        assert len(spec.sources.stages) == 42
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1156,7 +1156,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1292
+            len(references) == 1291
         )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1184,7 +1184,9 @@ class TestExistingPackagesGeneralize:
         # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
         # total-income band, bound unscaled once the x1.9 exclusion retired;
         # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
-        # eight English regions outside London)
+        # eight English regions outside London); microcosm#1095: less DWP's
+        # five-or-more-children UC count, a diagnostic beside the two-child
+        # limit rows
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

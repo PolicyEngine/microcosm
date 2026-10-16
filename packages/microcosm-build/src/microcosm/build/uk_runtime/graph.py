@@ -479,6 +479,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "salary_sacrifice": None,
+    # One engine materialization of private-school attendance over the whole
+    # frame at its weights: an open surface (microcosm#1095).
+    "private_school_attendance": None,
     "student_loans": frozenset(
         {
             ("person", "age"),
@@ -486,6 +489,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "student_loan_repayments"),
             ("person", "current_education"),
             ("person", "highest_education"),
+            ("person", "reports_outstanding_student_loan"),
+            ("person", "age_left_full_time_education"),
             ("household", "region"),
         }
     ),
@@ -525,6 +530,7 @@ class _Cell:
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
+    "esa_includes_support_component",
     "is_benunit_head",
     "is_parent",
     "is_blind",
@@ -534,6 +540,11 @@ _ROOT_PERSON_BOOL = {
     "uc_is_in_startup_period",
     "uc_is_in_gainful_self_employment",
     "reports_rent_from_other_property",
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -669,6 +680,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "adult_ema", "float64"),
         _Cell("person", "child_ema", "float64"),
         _Cell("person", "receives_benefits_in_own_right", "bool"),
+        _Cell("person", "reports_outstanding_student_loan", "bool"),
+        _Cell("person", "age_left_full_time_education", "int64"),
     ),
     "frs_legacy_proxies": _cells(
         "person",
@@ -983,6 +996,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
     "age_tail": (_Cell("person", "age", "int64"),),
 }
 
@@ -1038,6 +1052,10 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    "trading_loss",
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
+    "owned_company_income_share",
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income",
@@ -1062,9 +1080,19 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#525: a redrawn row's gainful self-employment follows its drawn
     # incomes.
     "uc_is_in_gainful_self_employment",
+    # A redrawn row's ESA comes from another FRS donor, so its group returns
+    # to the engine's default for an award of one's own (microcosm#1095).
+    "esa_includes_support_component",
     # A redrawn row drops its FRS twin's landlord carrier: its property income
     # is an SPI donor's (microcosm#1095).
     "reports_rent_from_other_property",
+    # The stage-2 fill draws a redrawn row's owner-manager flags beside its
+    # incomes (microcosm#1095).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

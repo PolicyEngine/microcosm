@@ -19,7 +19,7 @@ from microcosm.frame.concept_mapping import (
     Recode,
     RelationshipRole,
     Role,
-    Sum,
+    SignedPart,
     TakeUpThreshold,
     bind,
 )
@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING", "UK_ENGINE_DEFAULT_TAKE_UP_INPUTS"
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.130.1. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.132.6. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -200,7 +200,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.130.1",
+    engine_version="2.132.6",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -258,12 +258,34 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
                 "fact:person.nonfarm_self_employment_income",
                 "fact:person.farm_self_employment_income",
             ),
-            Sum(),
-            AlignmentRelation.EXACT,
+            SignedPart("positive"),
+            AlignmentRelation.APPROXIMATE,
             (
                 "Engine documentation: 'Income from self-employment profits, "
-                "including gig work ... net of self-employment expenses'; it "
-                "has no farm split, so the two concepts sum into it."
+                "including gig work ... net of self-employment expenses', "
+                "never negative from 2.131.0, the year's losses going to "
+                "trading_loss (pe-uk#2085). It has no farm split, so the two "
+                "concepts sum and the profit is the positive part of the sum. "
+                "The concepts net each person's trades, so a profit beside "
+                "another trade's loss arrives net of that loss."
+            ),
+        ),
+        bind(
+            "trading_loss",
+            "person",
+            (
+                "fact:person.nonfarm_self_employment_income",
+                "fact:person.farm_self_employment_income",
+            ),
+            SignedPart("negative"),
+            AlignmentRelation.APPROXIMATE,
+            (
+                "Engine documentation: 'Losses made in the tax year by the "
+                "person's trades, professions or vocations, as a positive "
+                "amount' (pe-uk#2085, from 2.131.0): the negative part of the "
+                "two concepts' sum, so it and self_employment_income never "
+                "both hold an amount. The concepts net each person's trades, "
+                "so a loss beside another trade's profit arrives net of it."
             ),
         ),
         # --- Capital income -----------------------------------------------

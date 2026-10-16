@@ -48,6 +48,9 @@ from microcosm.build.uk_runtime.national_doctrine import (
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import write_uk_national_frame
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
@@ -194,6 +197,8 @@ def _review_date() -> str:
             uk_default_degenerate_reviewed_exclusions(),
             uk_default_input_mass_reviewed_exclusions(),
             load_uk_calibration_measure_exclusions(),
+            # The sparse-band support floor's signature (microcosm#1095 U3).
+            [load_uk_support_floor_declaration() or {}],
         )
         for record in records(register)
     ]

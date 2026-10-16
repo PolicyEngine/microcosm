@@ -78,6 +78,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.has_disability": [
@@ -100,6 +104,10 @@
    {
     "entity": "person",
     "name": "self_employment_income"
+   },
+   {
+    "entity": "person",
+    "name": "trading_loss"
    }
   ],
   "fact:person.parent_1_person_id": [
@@ -229,7 +237,7 @@
    }
   ]
  },
- "covered_count": 40,
+ "covered_count": 41,
  "covered_inputs": [
   {
    "entity": "person",
@@ -321,6 +329,10 @@
   },
   {
    "entity": "person",
+   "name": "trading_loss"
+  },
+  {
+   "entity": "person",
    "name": "would_claim_adult_dependants_grant"
   },
   {
@@ -393,8 +405,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.130.1",
- "input_count": 299,
+ "engine_version": "2.132.6",
+ "input_count": 300,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -944,6 +956,10 @@
    "name": "local_authority"
   },
   {
+   "entity": "person",
+   "name": "loss_relief"
+  },
+  {
    "entity": "household",
    "name": "lpg_kg"
   },
@@ -1330,10 +1346,6 @@
   {
    "entity": "person",
    "name": "tax_reported"
-  },
-  {
-   "entity": "person",
-   "name": "trading_loss"
   },
   {
    "entity": "household",
