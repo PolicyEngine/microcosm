@@ -1524,6 +1524,65 @@ def test_division_capture_reads_each_division_against_its_donor() -> None:
     )
 
 
+def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
+    """The top spenders' share of a weighted total (microcosm#1278); a share
+    resting on one to nine households is "<10", as every receipt count."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_share
+
+    values = np.array([100.0] * 20 + [1.0] * 180)
+    weights = np.ones(200)
+    assert weighted_top_share(values, weights, fraction=0.10) == pytest.approx(
+        2_000.0 / 2_180.0
+    )
+    assert weighted_top_share(values, weights, fraction=0.01) == "<10"
+    # Weight, not row count, sets the group: at double weight, eleven of the
+    # top twenty households carry exactly a tenth of the 220 weight.
+    heavy = np.where(values > 1.0, 2.0, 1.0)
+    assert weighted_top_share(values, heavy, fraction=0.10) == pytest.approx(
+        (11 * 2 * 100.0) / (20 * 2 * 100.0 + 180.0)
+    )
+    assert weighted_top_share(np.zeros(20), np.ones(20), fraction=0.5) is None
+    with pytest.raises(ValueError, match="top fraction"):
+        weighted_top_share(values, weights, fraction=0.0)
+
+
+def test_division_capture_places_an_over_draw_in_the_tail() -> None:
+    """The frame's top 10% hold far more of a division than the donor's do."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_capture,
+    )
+
+    frame_values = [100.0] * 20 + [1.0] * 180
+    donor_values = [2_180.0 / 200.0] * 200
+    draws = pd.DataFrame(
+        {column: frame_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    donor = pd.DataFrame(
+        {column: donor_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+        | {"household_weight": [1.0] * 200}
+    )
+
+    capture = division_capture(
+        draws, weights=np.ones(200), period_value=2024, donor=donor
+    )
+
+    tail = capture["divisions"]["food_and_non_alcoholic_beverages_consumption"]["tail"]
+    top_ten = tail["top_10_percent"]
+    assert top_ten["frame"] == pytest.approx(2_000.0 / 2_180.0)
+    assert top_ten["donor"] == pytest.approx(0.10)
+    assert top_ten["frame_over_donor"] == pytest.approx(2_000.0 / 2_180.0 / 0.10)
+    # Two households are the top 1% of two hundred: withheld on both sides.
+    assert tail["top_1_percent"] == {
+        "frame": "<10",
+        "donor": "<10",
+        "frame_over_donor": None,
+    }
+    assert "tail" not in capture["total"]
+
+
 def test_uncarried_spend_sits_beside_the_donors_other_fuels() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import uncarried_beside_donor
 
