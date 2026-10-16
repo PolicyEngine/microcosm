@@ -9615,6 +9615,38 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "draw",
+      "year_rule",
+      "weights"
+     ],
+     "properties": {
+      "kind": {
+       "const": "store_rules_engine_input"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
+      },
+      "weights": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "role",
       "filename",
       "locator",

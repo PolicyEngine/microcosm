@@ -181,6 +181,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "split_liable_gainers_by_residential_probability",
         "stack_income_band_donor_households",
         "stack_zero_weight_donors",
+        "store_rules_engine_input",
         "strict_read_private_table",
         "support_clip",
         "sub_aea_remainder",

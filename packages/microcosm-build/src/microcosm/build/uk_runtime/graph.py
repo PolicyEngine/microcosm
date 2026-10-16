@@ -479,6 +479,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "salary_sacrifice": None,
+    # One engine materialization of private-school attendance over the whole
+    # frame at its weights: an open surface (microcosm#1095).
+    "private_school_attendance": None,
     "student_loans": frozenset(
         {
             ("person", "age"),
@@ -993,6 +996,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
     "age_tail": (_Cell("person", "age", "int64"),),
 }
 

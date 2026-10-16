@@ -118,6 +118,9 @@ from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransfo
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
 )
@@ -175,7 +178,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 41
+UK_FIXTURE_STAGE_COUNT = 42
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -1954,6 +1957,11 @@ def _build_implementations(
         ),
         "student_loans": UKStudentLoansStageTransform(
             stage=stages["student_loans"], calibration_year=2025
+        ),
+        "private_school_attendance": UKPrivateSchoolAttendanceStageTransform(
+            stage=stages["private_school_attendance"],
+            engine=engine,
+            calibration_year=2025,
         ),
         "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
     }

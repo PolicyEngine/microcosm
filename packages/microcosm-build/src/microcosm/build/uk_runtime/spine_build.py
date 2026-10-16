@@ -150,6 +150,9 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
 )
@@ -1743,6 +1746,14 @@ def prepare_uk_spine_execution(
         implementations["student_loans"] = UKStudentLoansStageTransform(
             stage=stages_by_name["student_loans"],
             calibration_year=frs_release.calibration_year,
+        )
+    if "private_school_attendance" in stage_names:
+        implementations["private_school_attendance"] = (
+            UKPrivateSchoolAttendanceStageTransform(
+                stage=stages_by_name["private_school_attendance"],
+                engine=engine,
+                calibration_year=frs_release.calibration_year,
+            )
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

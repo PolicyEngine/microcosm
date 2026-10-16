@@ -4816,6 +4816,43 @@
       "stage": "pension_credit_take_up",
       "survey": "Family Resources Survey 2024-25"
     },
+    "private_school_attendance": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "frs_release.json",
+          "role": "frs_release",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "The last spine stage (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine.",
+      "operations": [
+        {
+          "draw": "attends_private_school_random_draw",
+          "kind": "store_rules_engine_input",
+          "output": "attends_private_school",
+          "weights": "spine_design_weights",
+          "year_rule": "calibration_year"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "Private-school attendance stored on the source spine: household weights pass through unchanged and total household mass is conserved."
+        }
+      ],
+      "outputs": [
+        "attends_private_school"
+      ],
+      "rewrites": [],
+      "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine",
+      "stage": "private_school_attendance",
+      "survey": "policyengine-uk private-school attendance imputation, stored at the spine's weights"
+    },
     "property_components": {
       "artifacts": [
         {

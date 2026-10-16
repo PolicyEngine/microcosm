@@ -93,6 +93,8 @@ E8_STAGE_NAMES = [
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
+    # microcosm#1095: the stored private-school attendance runs last.
+    "private_school_attendance",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -266,6 +268,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
+                    "private_school_attendance": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,
                     "hmrc_spi_income_fallback": _identity,

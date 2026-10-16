@@ -1028,7 +1028,7 @@ class TestUKCountryPackage:
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
         # microcosm#1106 property_components after the regional uprating;
         # microcosm#1240 high_value_home_support between them.
-        assert len(spec.sources.stages) == 41
+        assert len(spec.sources.stages) == 42
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )

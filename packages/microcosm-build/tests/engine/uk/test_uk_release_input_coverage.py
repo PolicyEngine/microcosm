@@ -463,6 +463,7 @@ class TestUKManifest:
                 "hmrc_cgt_asset_type_spine",
                 "salary_sacrifice",
                 "student_loans",
+                "private_school_attendance",
                 "was_wealth",
                 "was_lisa",
                 "regional_property_uprating",

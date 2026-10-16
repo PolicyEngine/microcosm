@@ -116,6 +116,7 @@ _STAGE_MODULES = {
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
+    "private_school_attendance": "private_school_attendance",
     "age_tail": "age_tail",
 }
 
@@ -157,6 +158,8 @@ _STAGE_HELPER_MODULES = {
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
     # The Child Benefit redraw shares the weight mapping and the adapter.
     "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The stored attendance is one engine materialization (microcosm#1095).
+    "private_school_attendance": (uk_engine_adapter,),
 }
 
 _COMPUTE = Capabilities(
@@ -482,6 +485,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
@@ -722,6 +726,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "student_loans": UKStudentLoansStageTransform(
                 stage=stages["student_loans"], calibration_year=calibration_year
+            ),
+            "private_school_attendance": UKPrivateSchoolAttendanceStageTransform(
+                stage=stages["private_school_attendance"],
+                engine=engine,
+                calibration_year=calibration_year,
             ),
             "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
         }
