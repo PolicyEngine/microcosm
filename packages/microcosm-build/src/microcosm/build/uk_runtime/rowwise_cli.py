@@ -38,7 +38,11 @@ from microcosm.build.logbook_adoption import (
     record_terminal_attempt,
     write_error_receipt,
 )
-from microcosm.build.uk_runtime.dataset_size import UKSizeL2, uk_size_l2
+from microcosm.build.uk_runtime.dataset_size import (
+    UKSizeL2,
+    _check_initial_lambda,
+    uk_size_l2,
+)
 from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SIZE_BASELINE_PI_FLOOR,
@@ -521,8 +525,9 @@ def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
     Empty when the build requests :data:`UK_LOCAL_DATASET_HOUSEHOLDS` with
     the doctrine's draw ceiling, refit floor and refit L2 penalty, no
     selection L2 penalty, draws with the solve seed and selects afresh rather
-    than resuming a size checkpoint (microcosm#1124, ruling of 2026-10-13).
-    Only such a sized build can be a release candidate, or be releasable.
+    than resuming a size checkpoint (microcosm#1124, ruling of 2026-10-13, as
+    amended for microcosm#1301: 150,000 households). Only such a sized build
+    can be a release candidate, or be releasable.
     """
 
     if args.dataset_households is None:
@@ -558,6 +563,18 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         refuse_national_role_arguments(args, posture)
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
+    initial_lambda = getattr(args, "selection_initial_lambda", None)
+    if initial_lambda is not None:
+        # microcosm#1301: refused here by name, before any input is read,
+        # rather than inside the size search hours into the build.
+        if args.dataset_households is None:
+            raise ValueError(
+                "--selection-initial-lambda requires --dataset-households."
+            )
+        try:
+            _check_initial_lambda(initial_lambda)
+        except ValueError as error:
+            raise ValueError(f"--selection-initial-lambda: {error}") from None
     if not (0.0 < args.selection_pi_hi <= 1.0):
         raise ValueError("--selection-pi-hi must be in (0, 1].")
     if args.selection_pi_hi != 1.0 and args.dataset_households is None:
@@ -597,7 +614,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if args.release_candidate and drift:
             raise ValueError(
                 "A sized --release-candidate must carry the local size "
-                "doctrine (microcosm#1124): " + "; ".join(drift) + "."
+                "doctrine (microcosm#1124, as amended for microcosm#1301): "
+                + "; ".join(drift)
+                + "."
             )
     # Size-selection arguments are validated first so their refusals name
     # the size flag at fault; the pinned Ledger inputs are then mandatory.
@@ -803,6 +822,8 @@ def refuse_dense_role_arguments(
         refused.append("--dataset-households")
     if args.selection_seed is not None:
         refused.append("--selection-seed")
+    if getattr(args, "selection_initial_lambda", None) is not None:
+        refused.append("--selection-initial-lambda")
     if args.selection_pi_hi != 1.0:
         refused.append("--selection-pi-hi")
     if args.baseline_pi_floor != 0.0:

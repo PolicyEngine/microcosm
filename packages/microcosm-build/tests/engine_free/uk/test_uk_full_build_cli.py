@@ -2360,7 +2360,9 @@ def test_sized_dense_builds_take_the_doctrine_size_defaults(tmp_path):
     assert unsized.refit_l2_lambda is None
     assert cli.cli_size_l2(unsized, "refit") is None
 
-    sized = arguments(tmp_path, "--dataset-households", "100000")
+    sized = arguments(
+        tmp_path, "--dataset-households", str(doctrine.UK_LOCAL_DATASET_HOUSEHOLDS)
+    )
     cli.validate_cli_args(sized)
     assert sized.selection_pi_hi == doctrine.UK_LOCAL_SIZE_SELECTION_PI_HI == 0.5
     assert sized.baseline_pi_floor == doctrine.UK_LOCAL_SIZE_BASELINE_PI_FLOOR == 0.5
@@ -2372,7 +2374,7 @@ def test_sized_dense_builds_take_the_doctrine_size_defaults(tmp_path):
     explicit = arguments(
         tmp_path,
         "--dataset-households",
-        "100000",
+        str(doctrine.UK_LOCAL_DATASET_HOUSEHOLDS),
         "--selection-pi-hi",
         "0.95",
         "--baseline-pi-floor",

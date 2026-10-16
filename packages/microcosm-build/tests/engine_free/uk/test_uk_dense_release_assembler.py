@@ -13,6 +13,7 @@ import pytest
 
 from microcosm.build.gate_battery import _canonical_json_bytes, _canonical_sha256
 from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_DATASET_HOUSEHOLDS
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data import contract as dc
 from test_support.microcosm_build.uk_full_build_cli import (
@@ -1109,7 +1110,7 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     monkeypatch.setattr(cli, "git_commit", lambda: "b" * 40)
     monkeypatch.setattr(cli, "git_dirty", lambda: False)
-    size = ("--dataset-households", "100000") if sized else ()
+    size = ("--dataset-households", str(UK_LOCAL_DATASET_HOUSEHOLDS)) if sized else ()
     rotated = ("--rotated-holdout",) if diagnostics else ()
     candidate = graph_dense_bundle(
         tmp_path,
@@ -1131,9 +1132,9 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     assert manifest["releasable"] is True
     assert manifest["parameters"]["skip_holdout"] is (not diagnostics)
     if sized:
-        assert manifest["parameters"]["dataset_households"] == 100_000
+        assert manifest["parameters"]["dataset_households"] == 150_000
         assert manifest["release_posture"]["size_doctrine"] is True
-        assert manifest["solve"]["dataset_size"]["realized_households"] == 100_000
+        assert manifest["solve"]["dataset_size"]["realized_households"] == 150_000
     else:
         assert manifest["solve"]["dataset_size"] is None
         assert "size_doctrine" not in manifest["release_posture"]
@@ -1214,6 +1215,13 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     limitations = _limitations(release_dir)
     assert "engine_measurement" in limitations
     assert ("size_doctrine" in limitations) is sized
+    if sized:
+        # microcosm#1301: the release names the L0 bracket its size search
+        # ran in, as the pre-flight checked it.
+        bracket = {"lower": 1e-10, "upper": 10.0}
+        assert limitations["size_doctrine"]["search_bracket"] == bracket
+        assert coverage["size"]["search_bracket"] == bracket
+        assert coverage["size"]["dataset_households"] == 150_000
     if diagnostics:
         assert coverage["holdout"]["n_folds"] == 5
         assert coverage["holdout"]["claim"] == "report_only"

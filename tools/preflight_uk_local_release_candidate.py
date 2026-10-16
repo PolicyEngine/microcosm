@@ -10,8 +10,9 @@ Two postures, both fail-closed and both printing every failure by name:
            posture attested, shippable, every release-blocking gate passed,
            an exact engine population (one block, or one block per clone
            whose identical copies are scaled to the pool), doctrine values
-           (and, for a sized run, the size doctrine: 100,000 households under
-           the doctrine's draw, floor and refit penalty), the A15 census household
+           (and, for a sized run, the size doctrine: 150,000 households under
+           the doctrine's draw, floor and refit penalty, selected by a size
+           search in the doctrine's L0 bracket), the A15 census household
            uprating and A17 tenure application and the
            measure exclusions receipted, the rotated holdout either not
            requested (an opt-in diagnostic, microcosm#1301) or measured
@@ -99,17 +100,28 @@ def check_env(
     try:
         from microcosm.build.uk_runtime.local_doctrine import (
             UK_LOCAL_CLONE_COUNT,
+            UK_LOCAL_DATASET_HOUSEHOLDS,
+            UK_LOCAL_L0_SEARCH_FLOOR,
             UK_LOCAL_MAX_WEIGHT_RATIO,
             UK_LOCAL_SOLVE_DOCTRINE,
             UK_LOCAL_SOLVE_EPOCHS,
         )
 
-        ruled = (10.0, "nation_grain_family_equal_sqrt_count", 15, 2000)
+        ruled = (
+            10.0,
+            "nation_grain_family_equal_sqrt_count",
+            15,
+            2000,
+            SIZE_DOCTRINE["dataset_households"],
+            SIZE_SEARCH_BRACKET["lower"],
+        )
         found = (
             float(UK_LOCAL_MAX_WEIGHT_RATIO),
             UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
             int(UK_LOCAL_CLONE_COUNT),
             int(UK_LOCAL_SOLVE_EPOCHS),
+            int(UK_LOCAL_DATASET_HOUSEHOLDS),
+            float(UK_LOCAL_L0_SEARCH_FLOOR),
         )
         if found != ruled:
             failures.append(f"doctrine constants {found} are not the ruled {ruled}.")
@@ -118,13 +130,14 @@ def check_env(
     return failures
 
 
-#: The local size doctrine (microcosm#1124, ruling of 2026-10-13): a sized
-#: release candidate ships this many households, drawn and refit under these
-#: settings, with no selection L2 penalty (refused for every run above).
-#: Restated here, like the solve doctrine, so the pre-flight checks the run
-#: against the ruling rather than against the code that ran it.
+#: The local size doctrine (microcosm#1124, ruling of 2026-10-13, as amended
+#: for microcosm#1301): a sized release candidate ships this many households,
+#: drawn and refit under these settings, with no selection L2 penalty
+#: (refused for every run above), selected by a size search over this L0
+#: bracket. Restated here, like the solve doctrine, so the pre-flight checks
+#: the run against the ruling rather than against the code that ran it.
 SIZE_DOCTRINE = {
-    "dataset_households": 100_000,
+    "dataset_households": 150_000,
     "selection_pi_hi": 0.5,
     "baseline_pi_floor": 0.5,
 }
@@ -133,6 +146,7 @@ REFIT_L2_DOCTRINE = {
     "anchor": "uniform",
     "basis": "chi_square",
 }
+SIZE_SEARCH_BRACKET = {"lower": 1e-10, "upper": 10.0}
 
 
 def _size_failures(manifest: dict, parameters: dict) -> list[str]:
@@ -168,6 +182,14 @@ def _size_failures(manifest: dict, parameters: dict) -> list[str]:
             "solve.dataset_size requested "
             f"{size.get('requested_households')!r} / realized "
             f"{size.get('realized_households')!r}, expected {requested!r}."
+        )
+    if isinstance(size, dict) and (
+        size.get("selection_search_bracket") != SIZE_SEARCH_BRACKET
+    ):
+        failures.append(
+            "solve.dataset_size.selection_search_bracket = "
+            f"{size.get('selection_search_bracket')!r}, expected the size "
+            f"doctrine's {SIZE_SEARCH_BRACKET!r}."
         )
     if manifest.get("release_posture", {}).get("size_doctrine") is not True:
         failures.append("release_posture.size_doctrine is not true.")

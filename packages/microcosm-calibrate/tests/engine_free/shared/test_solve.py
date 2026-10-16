@@ -741,6 +741,76 @@ def test_budget_search_default_preserves_legacy_optimizer_call(
     assert len(result) == 4
 
 
+def test_budget_search_stops_when_the_bracket_narrows_onto_a_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """microcosm#1301: a count that jumps across the budget between two
+    penalties never settles; the bisection narrows onto the jump and stops as
+    ``bracket_exhausted`` instead of re-probing a penalty it has measured."""
+
+    jump = 10.0**-3.3
+
+    def fake_optimize(*args, **kwargs):
+        count = 10 if kwargs["l0_lambda"] < jump else 0
+        return np.concatenate((np.ones(count), np.zeros(10 - count))), np.zeros(1)
+
+    monkeypatch.setattr(solve_module, "_optimize", fake_optimize)
+    receipt: dict[str, object] = {}
+    solve_module._search_l0_lambda_for_budget(
+        None,
+        None,
+        None,
+        None,
+        10.0,
+        np.ones(10),
+        target_records=5,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        max_weight_ratio=None,
+        l2_lambda=0.0,
+        init_mean=0.9,
+        temperature=0.25,
+        seed=0,
+        prune_atol=1e-6,
+        initial_lambda=None,
+        budget_iters=60,
+        search_receipt=receipt,
+    )
+
+    assert receipt["stopped_on"] == solve_module.BUDGET_STOP_BRACKET
+    assert receipt["search_bracket"] == {"lower": 1e-7, "upper": 10.0}
+    probed = np.log10([probe["l0_lambda"] for probe in receipt["probes"]])
+    assert receipt["evaluations"] == len(probed) < 60
+    gaps = np.abs(probed[:, None] - probed[None, :])[~np.eye(len(probed), dtype=bool)]
+    assert gaps.min() > solve_module._L0_SAME_PROBE_DECADES
+    assert abs(probed[-1] - np.log10(jump)) < 1e-5
+
+
+def test_open_mass_does_not_fall_as_the_penalty_falls_below_the_default_floor(
+    feasible_frame,
+) -> None:
+    """microcosm#1301 smoke: on the real optimizer the gates' open mass keeps
+    rising (or holds) as the fixed penalty goes from 1e-7 to 1e-10, so a
+    search bracket below the default floor still steers monotonically."""
+
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 0.9),
+            _income_target(truths["income"], 1.05),
+        )
+    )
+    masses = []
+    for penalty in (1e-7, 1e-8, 1e-9, 1e-10):
+        result = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=penalty)
+        assert result.gate_open_probabilities is not None
+        mass = float(np.sum(result.gate_open_probabilities))
+        assert np.isfinite(mass)
+        masses.append(mass)
+    assert np.all(np.diff(masses) >= -1e-3), masses
+
+
 def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> None:
     """Without ``target_records``, ``l0_lambda`` alone prunes monotonically.
 

@@ -422,7 +422,7 @@ def _sized(manifest: dict) -> None:
 
     manifest["parameters"].update(
         {
-            "dataset_households": 100_000,
+            "dataset_households": 150_000,
             "selection_pi_hi": 0.5,
             "baseline_pi_floor": 0.5,
             "refit_l2": {
@@ -433,10 +433,18 @@ def _sized(manifest: dict) -> None:
         }
     )
     manifest["solve"]["dataset_size"] = {
-        "requested_households": 100_000,
-        "realized_households": 100_000,
+        "requested_households": 150_000,
+        "realized_households": 150_000,
+        "selection_search_bracket": {"lower": 1e-10, "upper": 10.0},
     }
     manifest.setdefault("release_posture", {})["size_doctrine"] = True
+
+
+def _sized_at_the_old_doctrine(manifest: dict) -> None:
+    manifest["parameters"]["dataset_households"] = 100_000
+    manifest["solve"]["dataset_size"].update(
+        requested_households=100_000, realized_households=100_000
+    )
 
 
 @pytest.mark.parametrize(
@@ -454,9 +462,22 @@ def _sized(manifest: dict) -> None:
         (lambda m: m["parameters"].__setitem__("refit_l2", None), "refit_l2"),
         (
             lambda m: m["solve"]["dataset_size"].__setitem__(
-                "realized_households", 99_998
+                "realized_households", 149_998
             ),
             "realized",
+        ),
+        # microcosm#1301: a run consistently sized at the old doctrine fails.
+        (_sized_at_the_old_doctrine, "parameters.dataset_households"),
+        # The size search must have run in the doctrine's L0 bracket.
+        (
+            lambda m: m["solve"]["dataset_size"].pop("selection_search_bracket"),
+            "selection_search_bracket",
+        ),
+        (
+            lambda m: m["solve"]["dataset_size"].__setitem__(
+                "selection_search_bracket", {"lower": 1e-7, "upper": 10.0}
+            ),
+            "selection_search_bracket",
         ),
         (
             lambda m: m["release_posture"].__setitem__("size_doctrine", False),
@@ -488,6 +509,24 @@ def test_a_sized_run_passes_only_at_the_size_doctrine(
         assert failures == []
     else:
         assert any(needle in failure for failure in failures), failures
+
+
+def test_the_restated_size_doctrine_matches_the_ruled_one() -> None:
+    """The pre-flight restates the size doctrine rather than importing it; the
+    restatement and the doctrine module must agree (microcosm#1301)."""
+    from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
+    from microcosm.build.uk_runtime.local_doctrine import uk_local_size_doctrine
+
+    module = _load()
+    doctrine = uk_local_size_doctrine()
+    assert module.SIZE_DOCTRINE == {key: doctrine[key] for key in module.SIZE_DOCTRINE}
+    assert module.REFIT_L2_DOCTRINE == {
+        "lambda": doctrine["refit_l2_lambda"],
+        "anchor": doctrine["refit_l2_anchor"],
+        "basis": doctrine["refit_l2_basis"],
+    }
+    lower, upper = uk_size_search_bracket()
+    assert module.SIZE_SEARCH_BRACKET == {"lower": lower, "upper": upper}
 
 
 def test_an_unsized_run_carries_no_refit_penalty(tmp_path: Path) -> None:

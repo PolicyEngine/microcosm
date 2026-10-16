@@ -109,7 +109,11 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
-from .dataset_size import UK_SIZE_L2_ANCHORS, UK_SIZE_L2_BASES
+from .dataset_size import (
+    UK_SIZE_L2_ANCHORS,
+    UK_SIZE_L2_BASES,
+    uk_size_search_bracket,
+)
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -164,7 +168,7 @@ from .inspection_export import (
     register_uk_inspection_export_kernel,
     use_inspection_export,
 )
-from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
@@ -570,6 +574,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "doctrine's 0.5 with --dataset-households, 1.0 otherwise."
         ),
     )
+    size_bracket = "[{:g}, {:g}]".format(*uk_size_search_bracket())
     parser.add_argument(
         "--selection-initial-lambda",
         type=float,
@@ -581,7 +586,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "there when the draw is feasible and within tolerance; a stale "
             "value costs probes, not feasibility (a warm and a cold search may "
             "settle on different penalties inside the budget window). Requires "
-            "--dataset-households."
+            "--dataset-households, and must lie in the size search's L0 bracket "
+            f"{size_bracket} (microcosm#1301): refused outside it, never clamped."
         ),
     )
     parser.add_argument(
@@ -1098,6 +1104,9 @@ def prepare_full_build(
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
             selection_initial_lambda=args.selection_initial_lambda,
+            # microcosm#1301: the doctrine's L0 floor, which the warm start
+            # above is checked against; it has no command-line setting.
+            selection_l0_search_floor=UK_LOCAL_L0_SEARCH_FLOOR,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
             selection_l2=cli_size_l2(args, "selection"),

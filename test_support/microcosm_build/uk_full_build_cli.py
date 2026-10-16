@@ -28,6 +28,7 @@ from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.logbook_adoption import local_artifact_reference
 from microcosm.build.uk_runtime import full_build_cli as cli
 from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
 from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYPE
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
@@ -642,14 +643,20 @@ class SizeReceipt(Evidence):
 
 
 def size_receipt(households: int) -> dict:
-    """The stand-in size receipt of a build that realized its request."""
+    """The stand-in size receipt of a build that realized its request.
 
+    Its search ran in the doctrine's L0 bracket (microcosm#1301), which the
+    pre-flight checks on a sized release.
+    """
+
+    lower, upper = uk_size_search_bracket()
     return {
         "method": "exact_k_informed_l0",
         "requested_households": households,
         "realized_households": households,
         "selection_pi_hi": 0.5,
         "baseline_pi_floor": 0.5,
+        "selection_search_bracket": {"lower": lower, "upper": upper},
     }
 
 

@@ -60,6 +60,7 @@ from .high_value_homes import (
     load_uk_high_value_home_stock_facts,
     load_vendored_obr_hvcts_facts,
 )
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _read_uk_national_tables,
@@ -1211,6 +1212,16 @@ class UKFullHoldoutKernel(KernelBase):
                 "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
             }
         else:
+            # microcosm#1301: each fold's size search runs under the doctrine
+            # floor (select_uk_dataset_size's default); refuse a holdout that
+            # would measure folds under another floor than the build's search.
+            floor = context.params.get("selection_l0_search_floor")
+            if floor is not None and floor != UK_LOCAL_L0_SEARCH_FLOOR:
+                raise ValueError(
+                    f"The size search ran under an L0 floor of {floor!r}; the "
+                    "rotated holdout's fold searches run under the doctrine's "
+                    f"{UK_LOCAL_L0_SEARCH_FLOOR!r}."
+                )
             inputs = reconstruct_uk_full_problem_inputs(context)
             original = decode_problem(context.artifacts["problem"].payload)
             if original.entity_ids != tuple(
@@ -1289,6 +1300,10 @@ def uk_full_holdout_node(
             # search started, so five folds do not each search from zero.
             "selection_initial_lambda": (
                 None if size is None else size.params.get("initial_lambda")
+            ),
+            # microcosm#1301: and under the same L0 search floor.
+            "selection_l0_search_floor": (
+                None if size is None else size.params.get("l0_search_floor")
             ),
             # microcosm#1124: the size stages' L2 penalties, present only when on.
             **(

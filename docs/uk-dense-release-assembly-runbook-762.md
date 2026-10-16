@@ -10,9 +10,10 @@ on the **inspect lane only**: a constant release id, an immutable per-cut tag,
 `--no-latest` at publication, so it can never displace the default artifact.
 It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
-Since microcosm#1124 (ruling of 2026-10-13) the line may ship the
-100,000-household exact-k selection from that pool instead of the whole pool,
-under the same requirements; see [Sized release](#sized-release-microcosm1124).
+Since microcosm#1124 (ruling of 2026-10-13, amended for microcosm#1301) the
+line may ship the 150,000-household exact-k selection from that pool instead
+of the whole pool, under the same requirements; see
+[Sized release](#sized-release-microcosm1124).
 
 The R16/R17 release verdicts recorded in the historical receipts used the
 previous gate policy. They do not satisfy the current contract: four quality
@@ -96,19 +97,36 @@ declarations.
 
 ### Sized release (microcosm#1124)
 
-A release candidate may add `--dataset-households 100000` to ship the exact-k
+A release candidate may add `--dataset-households 150000` to ship the exact-k
 selection instead of the whole pool. It must carry the local size doctrine
-(`local_doctrine.uk_local_size_doctrine`): 100,000 households, an exact-count
+(`local_doctrine.uk_local_size_doctrine`): 150,000 households, an exact-count
 draw at π_hi 0.5, the refit baseline floored at 0.5 and a chi-square refit L2
 penalty toward uniform weights at λ 0.0216, drawn with the solve seed. The role
 fills those values when the request leaves them unset and refuses any other.
-`--selection-initial-lambda` warm-starts the budget search, and every holdout
-fold's search (when `--rotated-holdout` asks for one) starts from the same
-value. The requirements are the dense line's (ruling of 2026-10-13; no
-matched-size scorecard): every release-blocking gate passed and the
-pre-flight, which also checks the size receipt. The release records the size
-in its coverage (`size`) and a `size_doctrine` limitation. The release
-identity is unchanged.
+The microcosm#1301 amendment moved the size from 100,000, which K=15 could not
+reach under the solver's L0 floor of 1e-7 (the search's open mass there was
+about 94,500).
+
+The size search runs in its own L0 bracket, from
+`local_doctrine.UK_LOCAL_L0_SEARCH_FLOOR` (1e-10) up to the solver's ceiling
+of 10; the solver's default bracket, [1e-7, 10], is unchanged for every other
+caller. `--selection-initial-lambda` warm-starts the search and must lie in
+that bracket: a value outside it, or one given without `--dataset-households`,
+is refused when the command is parsed, never clamped. The microcosm#1301
+release builds warm-start at 2.5e-8, and a second build repeats the first
+build's warm start, not its selected penalty: the warm start keys the search,
+draw, refit and holdout nodes. The search never probes a
+penalty twice, and it stops with a named reason
+(`search_floor_reached`, `search_ceiling_reached` or `bracket_exhausted`) when
+a probe on a bound of the bracket asks to go past it; the size receipt records
+the bracket as `selection_search_bracket` and every probe under
+`selection_budget_search`. Every holdout fold's search (when
+`--rotated-holdout` asks for one) starts from the same warm start in the same
+bracket. The requirements are the dense line's (no matched-size scorecard):
+every release-blocking gate passed and the pre-flight, which also checks the
+size receipt and its search bracket. The release records the size, the
+selected penalty and the bracket in its coverage (`size`) and a
+`size_doctrine` limitation. The release identity is unchanged.
 
 ## 3. Pre-flight the finished run
 
@@ -120,7 +138,8 @@ The pre-flight checks the manifest and the signed gate report for everything
 the contract will demand: release posture attested, shippable, every
 release-blocking gate passed, an exact engine population (single block, or
 per-block with identical copies scaled to the pool), the doctrine values (for
-a sized run, the size doctrine and a realized count equal to the request), the
+a sized run, the size doctrine, a realized count equal to the request and the
+size search's L0 bracket), the
 A15 census household uprating and A17 tenure application, the measure
 exclusions and their windows, the holdout (recorded as not requested, or, when
 `--rotated-holdout` asked for it, measured with five folds and a finite mean,

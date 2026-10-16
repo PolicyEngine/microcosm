@@ -375,6 +375,12 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     assert inputs["solution"].artifact == (
         "solution" if households is None else "refit_solution"
     )
+    # microcosm#1301: the holdout's fold searches share the size search's
+    # warm start and L0 floor, both holdout parameters.
+    holdout = graph.node("uk.full.holdout").params
+    assert holdout["selection_l0_search_floor"] == (
+        None if households is None else 1e-10
+    )
 
 
 def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics(
@@ -592,6 +598,28 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         key: value for key, value in result.items() if key != "graph_binding"
     } == expected
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
+
+
+def test_holdout_kernel_refuses_a_floor_its_folds_cannot_honour():
+    """microcosm#1301: each fold's size search runs under the doctrine's L0
+    floor, so a holdout keyed on another floor refuses before any fold."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    context = SimpleNamespace(
+        params={"skip_holdout": False, "selection_l0_search_floor": 1e-7},
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64)
+        },
+    )
+    with pytest.raises(ValueError, match="L0 floor of 1e-07"):
+        UKFullHoldoutKernel().run(context)
 
 
 def test_holdout_kernel_records_an_unrequested_holdout(monkeypatch):
