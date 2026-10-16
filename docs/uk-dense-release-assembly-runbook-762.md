@@ -128,6 +128,93 @@ size receipt and its search bracket. The release records the size, the
 selected penalty and the bracket in its coverage (`size`) and a
 `size_doctrine` limitation. The release identity is unchanged.
 
+## Sign gate-only failures between builds (microcosm#1301)
+
+A release candidate blocked only by failures that can be signed without
+touching the solve is released by a second build at the sign-off's head.
+Three gate-only registers take those sign-offs:
+
+- national target rows (`uk_target_fit`, keys `name@2025`) in
+  `target_fit_reviewed_exclusions.json`;
+- local target cells (`uk_local_target_fit`, keys `family/area_code/metric`) in
+  `local_target_fit_reviewed_exclusions.json`;
+- areas below the support floor (`uk_local_area_support`) in the `exclusions`
+  block of `local_area_support_exclusions.json`.
+
+Any other release-blocking failure needs a solve change and a third build.
+That covers per-family fit, the weight gates and the geography ladder.
+Input-mass entries are the exception: they are signed by hand in the same PR,
+with the contract's `_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256` re-pin.
+
+Draft the sign-off from build 1's run directory. Use a checkout whose
+`gates.json` matches build 1, because the tool decodes the full gate report
+against it and refuses one that moved:
+
+```bash
+uv run --no-sync python tools/draft_uk_dense_signoff.py --run-dir <build-1> \
+  --approved-by <reviewer> --approved-on <YYYY-MM-DD> \
+  --gate-clock <planned build-2 gate clock> --out <outside-the-repo>/signoff
+```
+
+**What the tool checks.** It reads the full gate report, the signed
+`*.local_gates.json`, `*.targets.csv`, `*.area_support.csv` and the Logbook
+row, and refuses any of these:
+
+- inputs that disagree with one another;
+- a report bound to no attempt;
+- a development build (`--allow-dev-build` makes a dry run that signs nothing);
+- a signable gate that failed closed;
+- a window that leaves an entry premature or expired at the gate clock, or is
+  longer than 92 days;
+- a gate clock earlier than build 1's;
+- national entries that break the national graph test's review invariant.
+
+**What it drafts.** Every entry carries `release_lines: ["local"]`:
+
+- an entry for every signable failure;
+- a renewal for a failing row whose entry is out of its window at the gate
+  clock;
+- the removal of every entry build 2 would fail as stale, unknown or out of
+  its window, and of local entries that no row earns.
+
+Fit entries expire after 28 days and area entries after 3 months. Each reason
+cites the build-1 attempt id and the full gate report's sha256. The reasons
+carry no figures: the draft runs them through the release contract's
+disclosure walk, `--class-note` text included. The degenerate register is
+never touched.
+
+The local reference generator keeps its own support-floor constants,
+lockstep-tested against the area register. So the tool never edits the
+`bound_despite_support_floor` block, and it never retires or renews the
+exclusions of the areas whose cells the generator defers
+(`SUPPORT_FLOOR_DEFERRED_AREA_IDS`: the Isles of Scilly and the City of
+London). If build 2 would fail one of those entries, the area-support gate is
+unsignable:
+
+- a stale entry needs the generator to move, which changes the solve;
+- an entry out of its window, or a `bound_despite_support_floor` approval out
+  of its window, is renewed by hand, keeping its reviewed wording and lines.
+  Then draft again.
+
+**Outputs:**
+
+- `signoff.patch`: the registers, their key-set pins (the two target-fit
+  registers' in `test_uk_terminal_gates.py`, the area exclusions' in
+  `test_uk_weighted_integrity.py`) and a changelog fragment;
+- `signoff_draft.json`: the receipt;
+- `PR_BODY.md`: counts only;
+- `PRIVATE_review.csv`: mode 0600, holding per-row errors and per-area support
+  figures. Never commit or post it.
+
+The draft also counts stale-risk rows: signed rows within one point above the
+25% bound, which build 2 fails as stale unless it reproduces build 1 exactly.
+It prints the range of gate clocks build 2 may use.
+
+**The sign-off PR.** Branch from build 1's commit and `git apply` the patch.
+Run the tests `PR_BODY.md` lists and scan the body for disclosure before
+posting it. Merge with a merge commit, so that build 2's commit stays in
+main's history.
+
 ### Second build: reuse the first build's solve (microcosm#1301)
 
 When build 1 is blocked only by failures signed in gate-only registers, build
@@ -135,7 +222,7 @@ When build 1 is blocked only by failures signed in gate-only registers, build
 and its `--review-date`, a new `--out`, and:
 
 ```bash
-  --gate-review-date <on or after the sign-off's latest approved_on> \
+  --gate-review-date <inside the range the draft printed> \
   --require-solve-reuse
 ```
 
@@ -145,7 +232,33 @@ before the calibrated gates is required from the store, and a miss stops the
 build with `SolveReuseError` naming the missing nodes before anything
 computes. A miss means something that keys the solve changed between the
 builds; [the graph doc](uk-full-build-graph.md#a-second-build-that-reuses-the-solve)
-lists what. Expect about 1–2 hours instead of a full build.
+lists what. Expect about 1–2 hours instead of a full build. Without those two
+flags, build 1 must run with `--review-date` set to the planned approval date,
+and build 2 re-solves.
+
+### Verify build 2
+
+Verify build 2 from a checkout at the sign-off's head, with the signing
+key exported:
+
+```bash
+uv run --no-sync python tools/draft_uk_dense_signoff.py --verify <build-2> \
+  --build-1 <build-1> --draft-receipt <outside-the-repo>/signoff/signoff_draft.json
+```
+
+Verification fails unless all of these hold:
+
+- build 2 stood on every in-line entry at the checkout;
+- no entry was stale, premature, expired or unknown, and no local-only entry
+  was dormant;
+- every receipt matches its register entry;
+- no release-blocking gate failed;
+- the signed local report passes the dense release contract, including the
+  disclosure walk a release directory gets.
+
+It warns when build 2 did not reuse build 1's solve or its per-row errors
+differ. The entries expire: retire or renew them before `expires_on`, because
+engine-free tests evaluate the committed registers at today's date.
 
 ## 3. Pre-flight the finished run
 
