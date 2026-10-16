@@ -43,7 +43,11 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.calibrate.target import TargetSet
 from microcosm.frame import WeightKind
-from test_support.microcosm_build.uk_local_rowwise import _assigned, _clone_frame
+from test_support.microcosm_build.uk_local_rowwise import (
+    COMMITTED_BINDING_NOW,
+    _assigned,
+    _clone_frame,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -426,6 +430,7 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
         epochs=60,
         learning_rate=0.2,
         seed=1,
+        now=COMMITTED_BINDING_NOW,
     )
     # Rowwise initial weights ARE the frame's typed base weights, never
     # split across areas.
@@ -483,6 +488,25 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     assert seed["approved_on"] == "2026-10-14"
     assert seed["expires_on"] == "2027-01-14"
     assert receipt["stood_on"]["tenure/constituency"] == {}
+    # The review ran on the date the solve was given (microcosm#1278).
+    assert receipt["evaluated_on"] == COMMITTED_BINDING_NOW.isoformat()
+
+
+def test_rowwise_solve_reviews_the_binding_on_the_date_it_is_given() -> None:
+    # microcosm#1278: the doctrine solve passes its review date to the binding
+    # check, so a date past the committed register's windows is refused.
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        solve_uk_rowwise_weights_under_doctrine(
+            _clone_frame(),
+            problem,
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
+            epochs=2,
+            now=date(2099, 1, 1),
+        )
 
 
 def test_joint_doctrine_solve_compiles_local_then_national_once_and_restores() -> None:
@@ -549,6 +573,7 @@ def test_joint_doctrine_solve_compiles_local_then_national_once_and_restores() -
             national_rows=national,
             restore=restore,
             epochs=2,
+            now=COMMITTED_BINDING_NOW,
         )
     finally:
         local_rowwise.calibrate = real_calibrate
@@ -596,6 +621,7 @@ def test_joint_doctrine_solve_refuses_national_registry_misalignment() -> None:
             ],
             national_rows=national,
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -659,6 +685,7 @@ def test_rotated_holdout_keeps_national_rows_in_every_training_fold(
         l0_lambda=0.0,
         budget_iters=1,
         solve_seed=7,
+        now=COMMITTED_BINDING_NOW,
     )
 
     assert calls == [national] * 5
@@ -848,6 +875,7 @@ def test_rowwise_doctrine_solve_exposes_no_knobs() -> None:
                 "tenure/constituency",
             ],
             target_loss_weights=[1.0] * 4,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -871,6 +899,7 @@ def test_rowwise_doctrine_solve_refuses_duplicate_surface() -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -1006,6 +1035,7 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
     # The same households in a different order are refused with the ordering
@@ -1042,6 +1072,7 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
     # A frame whose household rows do not match the problem's households
@@ -1067,6 +1098,7 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -1123,6 +1155,7 @@ def test_doctrine_solve_forwards_declared_bounds_to_the_front_door(
             "tenure/constituency",
         ],
         seed=3,
+        now=COMMITTED_BINDING_NOW,
     )
 
     assert forwarded["epochs"] == 512
@@ -1166,6 +1199,7 @@ def test_doctrine_solve_refuses_reordered_diagnostics(monkeypatch) -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -1238,6 +1272,7 @@ def test_doctrine_solve_refuses_a_reordering_restore() -> None:
             bound_families=["census_households/constituency", "tenure/constituency"],
             restore=reordering_restore,
             epochs=2,
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -1311,6 +1346,7 @@ def test_size_solve_restores_full_prepared_tables_before_subsetting():
         epochs=2,
         seed=7,
         restore=restore,
+        now=COMMITTED_BINDING_NOW,
     )
     assert restored_counts == [3]
     assert result.frame.n("household") == 2
@@ -1332,7 +1368,12 @@ def test_progress_events_reach_the_event_sink_beside_the_line_sink():
     events: list[dict[str, object]] = []
     common = dict(bound_families=["census_households/constituency"], epochs=2, seed=7)
     dense = solve_uk_rowwise_weights_under_doctrine(
-        frame, problem, progress=lines.append, progress_events=events.append, **common
+        frame,
+        problem,
+        progress=lines.append,
+        progress_events=events.append,
+        **common,
+        now=COMMITTED_BINDING_NOW,
     )
     epochs = [event for event in events if event.get("kind") == "calibration_epoch"]
     # One raw dict per epoch, untagged on a dense solve; the line sink still
@@ -1348,6 +1389,7 @@ def test_progress_events_reach_the_event_sink_beside_the_line_sink():
         dataset_households=2,
         progress_events=only_events.append,
         **common,
+        now=COMMITTED_BINDING_NOW,
     )
     phases = {
         str(event.get("phase"))
@@ -1375,9 +1417,15 @@ def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_
         epochs=2,
         seed=7,
     )
-    dense = solve_uk_rowwise_weights_under_doctrine(frame, problem, **common)
+    dense = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, **common, now=COMMITTED_BINDING_NOW
+    )
     sized = solve_uk_rowwise_weights_under_doctrine(
-        frame, problem, dataset_households=2, **common
+        frame,
+        problem,
+        dataset_households=2,
+        **common,
+        now=COMMITTED_BINDING_NOW,
     )
     assert dense.dense_reference is None
     reference = sized.dense_reference
@@ -1400,7 +1448,12 @@ def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_
     assert reference.weights.size == 3
     # A selection seed moves the draw only: same pool, same dense reference.
     other = solve_uk_rowwise_weights_under_doctrine(
-        frame, problem, dataset_households=2, selection_seed=11, **common
+        frame,
+        problem,
+        dataset_households=2,
+        selection_seed=11,
+        **common,
+        now=COMMITTED_BINDING_NOW,
     )
     np.testing.assert_array_equal(other.dense_reference.weights, reference.weights)
     assert other.size_receipt["seed"] == 11
@@ -1657,7 +1710,11 @@ def test_size_holdout_uses_compact_support_and_reselects_each_fold(monkeypatch):
         runtime, "_derive_uk_local_bound_families_from_target_frame", lambda *a, **k: ()
     )
     receipt = rotated_uk_local_holdout(
-        _clone_frame(), richer, dataset_households=2, epochs=1
+        _clone_frame(),
+        richer,
+        dataset_households=2,
+        epochs=1,
+        now=COMMITTED_BINDING_NOW,
     )
     assert len(calls) == 5
     assert all(n < len(richer.targets) and k == 2 for n, k in calls)
@@ -1834,6 +1891,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
         size_checkpoint_dir=checkpoint_dir,
         checkpoint_identity=identity,
         **common,
+        now=COMMITTED_BINDING_NOW,
     )
     assert (checkpoint_dir / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
     manifest = json.loads(
@@ -1865,6 +1923,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
         resume_size_checkpoint=checkpoint_dir,
         checkpoint_identity=identity,
         **common,
+        now=COMMITTED_BINDING_NOW,
     )
     np.testing.assert_array_equal(resumed.selected_support, first.selected_support)
     np.testing.assert_array_equal(resumed.weights, first.weights)
@@ -1888,6 +1947,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
         resume_size_checkpoint=checkpoint_dir,
         checkpoint_identity=identity,
         **common,
+        now=COMMITTED_BINDING_NOW,
     )
     assert redrawn.size_receipt["selection_pi_hi"] == 1.0
     assert redrawn.size_receipt["selection_search_pi_hi"] == 0.5
@@ -1912,6 +1972,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
                 resume_size_checkpoint=checkpoint_dir,
                 checkpoint_identity=identity,
                 **common,
+                now=COMMITTED_BINDING_NOW,
             )
     finally:
         lr_module.UK_LOCAL_SOLVE_DOCTRINE = original_doctrine
@@ -1921,6 +1982,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
         resume_size_checkpoint=checkpoint_dir,
         checkpoint_identity=identity,
         **common,
+        now=COMMITTED_BINDING_NOW,
     )
     assert provenance_run.size_receipt["checkpoint"]["resumed_from"]["provenance"] == {}
 
@@ -1932,6 +1994,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             resume_size_checkpoint=checkpoint_dir,
             checkpoint_identity={**identity, "epochs": 3},
             **common,
+            now=COMMITTED_BINDING_NOW,
         )
     with pytest.raises(ValueError, match="absent in checkpoint"):
         solve_uk_rowwise_weights_under_doctrine(
@@ -1940,6 +2003,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             resume_size_checkpoint=checkpoint_dir,
             checkpoint_identity={**identity, "ladder_sha256": "x"},
             **common,
+            now=COMMITTED_BINDING_NOW,
         )
     from microcosm.build.uk_runtime.local_rowwise import _rowwise_target_set
 
@@ -1977,6 +2041,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             resume_size_checkpoint=checkpoint_dir,
             checkpoint_identity=identity,
             **common,
+            now=COMMITTED_BINDING_NOW,
         )
     with pytest.raises(FileExistsError, match="refusing to overwrite"):
         solve_uk_rowwise_weights_under_doctrine(
@@ -1985,6 +2050,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             size_checkpoint_dir=checkpoint_dir,
             checkpoint_identity=identity,
             **common,
+            now=COMMITTED_BINDING_NOW,
         )
     with pytest.raises(ValueError, match="dataset_households"):
         solve_uk_rowwise_weights_under_doctrine(
@@ -1994,6 +2060,7 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             epochs=2,
             seed=7,
             size_checkpoint_dir=tmp_path / "no-size",
+            now=COMMITTED_BINDING_NOW,
         )
 
 
@@ -2012,6 +2079,7 @@ def test_progress_lines_cover_the_dense_solve_the_probes_and_the_refit():
         seed=7,
         selection_pi_hi=0.5,
         progress=lines.append,
+        now=COMMITTED_BINDING_NOW,
     )
     text = "\n".join(lines)
     # The dense solve, each probe's epochs, the probe verdicts, the stop line

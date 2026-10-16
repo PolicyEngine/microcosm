@@ -1152,6 +1152,7 @@ def prepare_uk_full_solve(
     national_rows: UKRowwiseNationalRows | None = None,
     target_weight_rule: str = "uniform",
     allow_empty_local_binding: bool = False,
+    now: Any = None,
 ) -> UKPreparedFullSolve:
     """Validate the selected surface with one doctrine for every geography.
 
@@ -1159,6 +1160,11 @@ def prepare_uk_full_solve(
     family: the graph's country-only target selection passes it, because its
     local surface is empty by construction; any other caller keeps the
     refusal of a declaration that names nothing.
+
+    ``now`` is the date the local binding adjudications are evaluated on
+    (:func:`require_adjudicated_uk_local_binding`); ``None`` is today, which
+    every build uses. Tests pass a fixed date so the committed register's
+    expiry cannot fail them on a later day (microcosm#1278).
     """
 
     _require_uniform_target_surface(problem)
@@ -1172,6 +1178,7 @@ def prepare_uk_full_solve(
     binding_adjudications = require_adjudicated_uk_local_binding(
         local_bound_families,
         problem.target_frame,
+        now=now,
         allow_empty=allow_empty_local_binding,
     )
     national_families = (
@@ -1374,6 +1381,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     progress: Callable[[str], None] | None = None,
     progress_events: Callable[[dict[str, object]], None] | None = None,
     allow_empty_local_binding: bool = False,
+    now: Any = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
@@ -1382,6 +1390,9 @@ def solve_uk_rowwise_weights_under_doctrine(
     dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
     phase-tagged by the size machinery, so a build driver can publish staging
     telemetry without changing the lines a log reader follows.
+
+    ``now`` dates the binding adjudications' review, as in
+    :func:`prepare_uk_full_solve`.
 
     ``selection_seed`` (default ``seed``) seeds only the size selection —
     the informed L0 search, the exact-count draw and the refit — so two
@@ -1424,6 +1435,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         national_rows=national_rows,
         target_weight_rule=target_weight_rule,
         allow_empty_local_binding=allow_empty_local_binding,
+        now=now,
     )
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     target_set = prepared.target_set
@@ -1963,12 +1975,14 @@ def rotated_uk_local_holdout(
     refit_l2_lambda: float = 0.0,
     refit_l2_anchor: str | None = None,
     refit_l2_basis: str | None = None,
+    now: Any = None,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training.
 
     A sized fold reruns the whole size selection on its training rows;
     ``selection_initial_lambda`` starts each fold's budget search where the
-    main build's search started.
+    main build's search started. ``now`` dates every fold's binding review,
+    as in :func:`prepare_uk_full_solve`.
     """
 
     if not len(problem.targets):
@@ -2023,6 +2037,7 @@ def rotated_uk_local_holdout(
             bound_families=[*train_families, *declared_national],
             national_rows=national_rows,
             target_weight_rule=target_weight_rule,
+            now=now,
             restore=restore,
             epochs=epochs,
             learning_rate=learning_rate,

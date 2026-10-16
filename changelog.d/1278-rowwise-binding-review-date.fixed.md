@@ -1,0 +1,3 @@
+The UK rowwise solve takes the date it reviews the local binding adjudications on (microcosm#1278). `prepare_uk_full_solve`, `solve_uk_rowwise_weights_under_doctrine` and `rotated_uk_local_holdout` accept `now` and pass it to `require_adjudicated_uk_local_binding`. Builds and the graph kernels still review on today's date.
+
+The engine-free rowwise tests now review the committed register on its latest approval date (`COMMITTED_BINDING_NOW` in `test_support`), not today. Seventeen of them would otherwise have warned from 2027-01-07 and failed from 2027-01-15, when the six local adjudications renewed under #1278 lapse. Two new tests check that a solve and every holdout fold refuse a date past the register's windows.
