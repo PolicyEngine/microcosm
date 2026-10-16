@@ -13,6 +13,7 @@
     "linear_combination",
     "scaled_by_ratio",
     "calendar_year_window",
+    "calendar_year_window_scaled_by_ratio",
     "rolled_forward_by_ratio"
   ],
   "resolution_defaults": {
@@ -2171,7 +2172,7 @@
         "policyengine": {
           "metric_name": "obr/sdlt",
           "value_variable": "stamp_duty_land_tax",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "Households' SDLT: the OBR's SDLT line at the calendar-2025 window of its fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane), times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together. The OBR line covers every buyer, and HMRC's other buyers (companies, partnerships and collective investment schemes) pay about a third of it; policyengine-uk charges households' stamp_duty_land_tax and adds corporate_sdlt beside it, so binding the whole line pushed households' SDLT up by the companies' share (uk-data#564, microcosm#1095). uk-data#569 (a draft, at 0544d692f) subtracts policyengine-uk's corporate SDLT statistic instead, which needs the unreleased pe-uk#2322; the receipts share is HMRC's own outturn split. Non-resident individuals' surcharge stays inside the individuals' share."
         },
         "axiom": {
           "metric_name": "obr/sdlt",
@@ -2187,7 +2188,36 @@
       },
       "category_id": "obr.efo_receipts",
       "label": "Stamp Duty Land Tax",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "individuals' SDLT receipts, Tables 8a and 8b, 2024-25"
+        },
+        {
+          "role": "denominator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.all_buyers.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.all_buyers.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "all buyers' SDLT receipts, Tables 8a and 8b, 2024-25"
+        }
+      ]
     },
     {
       "target_id": "obr.attendance_allowance",

@@ -954,6 +954,7 @@
     "latest_plateau",
     "count_x_mean",
     "calendar_year_window",
+    "calendar_year_window_scaled_by_ratio",
     "linear_combination",
     "monthly_window_average",
     "monthly_window_count_x_mean",
@@ -1107,7 +1108,36 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
+      "value_operation": "calendar_year_window_scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.individuals.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "individuals' SDLT receipts, Tables 8a and 8b, 2024-25"
+        },
+        {
+          "role": "denominator",
+          "source_name": "hmrc",
+          "source_record_id": [
+            "hmrc.stamp_taxes_2024_25.table_8a.all_buyers.fy2024.all_price_bands.receipts",
+            "hmrc.stamp_taxes_2024_25.table_8b.all_buyers.fy2024.all_price_bands.receipts"
+          ],
+          "period_type": "fiscal_year",
+          "period_value": 2024,
+          "expected_member_count": 2,
+          "label": "all buyers' SDLT receipts, Tables 8a and 8b, 2024-25"
+        }
+      ]
     },
     {
       "name": "obr.attendance_allowance",

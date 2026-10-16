@@ -8336,10 +8336,10 @@
   {
    "fixture_value": 15406516698.785578,
    "kind": "calibration_drift",
-   "ledger_value": 15026137524.089184,
+   "ledger_value": 10161716337.860817,
    "name": "obr.sdlt",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' SDLT, the OBR March 2026 line at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane) times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together; the frozen incumbent fixture holds the FY2025-26 value of the whole line alone, which companies, partnerships and collective investment schemes pay about a third of."
   },
   {
    "fixture_value": 3194800881.520547,
