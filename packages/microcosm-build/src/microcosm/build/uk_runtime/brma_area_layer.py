@@ -68,7 +68,7 @@ class GrainSpec:
 
 
 #: England and Wales are keyed by 2021 LSOA (each output area takes its
-#: LSOA's BRMA, as policyengine-uk-data#516 places them); Scotland by 2022
+#: LSOA's BRMA, as uk-data#516 places them); Scotland by 2022
 #: output area.
 GRAINS: Mapping[str, GrainSpec] = {
     "ew_lsoa21": GrainSpec(
@@ -101,7 +101,7 @@ _LIST_ALIASES = {
 def english_welsh_brma_key(name: str) -> str:
     """The engine name of a VOA or Rent Officers Wales BRMA name.
 
-    The rule policyengine-uk-data#516 applies to the same layers.
+    The rule uk-data#516 applies to the same layers.
     """
 
     return re.sub(r"\W+", "_", str(name).replace("&", "").upper()).strip("_")

@@ -421,11 +421,11 @@
   "microcosm#1262",
   "microcosm#1092",
   "microcosm#1090",
-  "policyengine-uk-data#516"
+  "uk-data#516"
  ],
  "kind": "uk_brma_area_layer_provenance",
  "method": {
-  "england_wales": "Each 2021 LSOA's population-weighted centroid joined (intersects) to the VOA May 2020 polygons in England and the Rent Officers Wales May 2012 polygons in Wales; centroids outside every polygon take the documented overrides. Each output area takes its LSOA's BRMA. Ported from policyengine-uk-data tools/brma_households/build.py (#516).",
+  "england_wales": "Each 2021 LSOA's population-weighted centroid joined (intersects) to the VOA May 2020 polygons in England and the Rent Officers Wales May 2012 polygons in Wales; centroids outside every polygon take the documented overrides. Each output area takes its LSOA's BRMA. Ported from uk-data tools/brma_households/build.py (#516).",
   "regions": "Each area's FRS region and council come from the atomic supports, so the layer and the geography assignment share one roster.",
   "scotland": "Each 2022 output area's population-weighted centroid within the Scottish Government polygons (then intersects for centroids on a boundary); a centroid outside every polygon takes its master postcode's single BRMA in Rent Service Scotland's lookup, and where the lookup names one BRMA that contradicts the polygon the lookup wins. The two output areas it leaves ambiguous are overridden. Ported from microcosm#1092."
  },

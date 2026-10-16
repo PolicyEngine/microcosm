@@ -8,7 +8,7 @@ assigned area. Writes ``uk/brma_area_layer.json`` and its provenance sidecar.
 
 - England and Wales: each LSOA's population-weighted centroid in the VOA
   (May 2020) or Rent Officers Wales (May 2012) BRMA polygons; each output
-  area takes its LSOA's BRMA. This is policyengine-uk-data#516's method
+  area takes its LSOA's BRMA. This is uk-data#516's method
   (``tools/brma_households/build.py``), with its six documented overrides.
 - Scotland: each output area's population-weighted centroid in the Scottish
   Government's BRMA polygons (2009, revised 2015), corrected by Rent Service
@@ -113,7 +113,7 @@ SUPPORT_FILES = {
     "uk_scotland_output_area_2022": "uk_scotland_output_area_2022_support.npz",
 }
 
-# Overrides established on 2026-10-02 for policyengine-uk-data#516 (copied
+# Overrides established on 2026-10-02 for uk-data#516 (copied
 # verbatim from its tools/brma_households/build.py); live reply pages are
 # evidence, not inputs.
 LSOA_OVERRIDES = {
@@ -658,7 +658,7 @@ def build(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
             "microcosm#1262",
             "microcosm#1092",
             "microcosm#1090",
-            "policyengine-uk-data#516",
+            "uk-data#516",
         ],
         "method": {
             "england_wales": (
@@ -666,7 +666,7 @@ def build(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
                 "VOA May 2020 polygons in England and the Rent Officers Wales May 2012 "
                 "polygons in Wales; centroids outside every polygon take the documented "
                 "overrides. Each output area takes its LSOA's BRMA. Ported from "
-                "policyengine-uk-data tools/brma_households/build.py (#516)."
+                "uk-data tools/brma_households/build.py (#516)."
             ),
             "scotland": (
                 "Each 2022 output area's population-weighted centroid within the Scottish "
