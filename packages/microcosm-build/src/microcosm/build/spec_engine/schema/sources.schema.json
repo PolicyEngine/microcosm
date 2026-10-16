@@ -7143,7 +7143,7 @@
        "type": "string"
       },
       "rate_rule": {
-       "const": "one_minus_zero_emission_share"
+       "const": "per_car_zero_emission_share"
       },
       "period_value": {
        "type": "integer"

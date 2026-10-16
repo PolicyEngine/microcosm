@@ -13,10 +13,7 @@ import pandas as pd
 
 from microcosm.build.gates import EXPLICIT_KIND, FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import (
-    assign_binary_from_rate,
-    stable_identity_uniforms,
-)
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.bus_fare_pricing import (
     PRICE_BUS_JOURNEYS_KIND,
     UK_DFT_BUS_JOURNEYS_RESOURCE,
@@ -322,7 +319,9 @@ IMPUTE_PREPAYMENT_METER_KIND = "impute_prepayment_meter"
 #: none pays by account or direct debit, or did not say (microcosm#1110).
 UK_LCFS_PREPAYMENT_CODES = ("b1751", "b1701", "b233", "c45114", "c45214")
 UK_LCFS_PREPAYMENT_RULE = "key_or_meter_payment_positive"
-UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
+#: Each vehicle is zero-emission at the licensed-car share; the rate is one
+#: minus that share (microcosm#1278).
+UK_LCFS_ICE_SHARE_RULE = "per_car_zero_emission_share"
 #: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
 #: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
 UK_LITRES_AUDIT_PER_FUEL_BASIS = "desnz cars share of each fuel's road use"
@@ -2305,11 +2304,12 @@ def lcfs_donor_uprating(
 
 
 def lcfs_ice_share(stage: SourceStageSpec) -> tuple[float, dict[str, Any]]:
-    """The declared fuel-buyer share of car households and its receipt.
+    """The declared fuel-buyer share of licensed cars and its receipt.
 
     Read from the stage's ``assign_binary_from_rate`` declaration for
     ``has_fuel_consumption``: the vendored DfT VEH1103 licensed-car stock at
     the declared period and geography, one minus the zero-emission share.
+    :func:`assign_recipient_has_fuel` draws each vehicle at it.
     """
 
     parameters = _operation_parameters(
@@ -2421,6 +2421,9 @@ def fuel_flag_evidence(
             "households": int(len(recipient)),
             "with_vehicles_share": _weighted_share(recipient_vehicles, weights),
             "flagged_share": _weighted_share(flagged, weights),
+            "flagged_share_among_vehicle_households": _weighted_share(
+                flagged[recipient_vehicles], weights[recipient_vehicles]
+            ),
         },
     }
 
@@ -2811,17 +2814,30 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
 
 
 def assign_recipient_has_fuel(frame: Frame, *, rate: float, seed: int) -> np.ndarray:
+    """Flag the recipient households that buy road fuel.
+
+    ``rate`` is the fuel-buyer share of licensed cars, one minus the
+    zero-emission share. Each of a household's vehicles is zero-emission at
+    that share, independently, so a household with ``n`` vehicles buys fuel
+    unless all ``n`` are: it is flagged at ``1 - (1 - rate) ** n``, against a
+    uniform keyed on its identity (microcosm#1278). A one-vehicle household
+    keeps the draw it had when the whole household was drawn at ``rate``.
+    """
+
     household = frame.table("household")
     if "num_vehicles" not in household:
         raise KeyError("recipient household table is missing 'num_vehicles'.")
+    if not 0.0 < float(rate) <= 1.0:
+        raise ValueError(f"fuel-buyer share {rate} is outside (0, 1].")
     draws = stable_identity_uniforms(
         household["household_id"].to_numpy(),
         seed=seed,
         salt="lcfs_has_fuel_consumption",
     )
-    return (_numeric(household["num_vehicles"]) > 0) & assign_binary_from_rate(
-        draws, rate
-    )
+    has_vehicle = (_numeric(household["num_vehicles"]) > 0).to_numpy()
+    vehicles = np.maximum(vehicle_count(household["num_vehicles"]).to_numpy(), 1)
+    buys_fuel = 1.0 - (1.0 - float(rate)) ** vehicles
+    return has_vehicle & (np.asarray(draws, dtype=np.float64) < buys_fuel)
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
