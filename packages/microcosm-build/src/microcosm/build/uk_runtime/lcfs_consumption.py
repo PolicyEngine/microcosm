@@ -560,11 +560,15 @@ class UKLCFSConsumptionStageTransform:
             seed=_operation_seed(self.stage, "assign_binary_from_rate"),
         )
         weights = frame.weights_for("household").values
+        # The receipts' floors count source households, not the copies the
+        # frame stacks of one (microcosm#1306 review).
+        sources = _source_households(frame.table("household"))
         fuel_flag_receipt = fuel_flag_evidence(
             donor,
             recipient,
             recipient_weights=weights,
             ice_share_receipt=ice_share_receipt,
+            sources=sources,
         )
         imputation = impute_lcfs_consumption(
             donor,
@@ -653,7 +657,7 @@ class UKLCFSConsumptionStageTransform:
                 weights=weights,
                 period_value=int(uprating["to_period"]),
                 donor=donor,
-                sources=_source_households(frame.table("household")),
+                sources=sources,
             )
         )
         litres_audit = fuel_litres_audit(
@@ -804,13 +808,18 @@ def weighted_top_shares(
 
     For each fraction the highest-spending households are taken in order
     until they carry that fraction of the weight, so a smaller fraction's
-    households lead a larger one's. A share is ``"<10"`` when its households
-    rest on fewer than ten distinct sources (``sources``, one per row when
-    omitted: a frame stacks copies of one source household), as every receipt
-    count is (UKDS disclosure control). So is a larger fraction's share when
-    its households beyond the last shipped smaller fraction's rest on one to
-    nine: the two shares' difference would give back their spend
-    (microcosm#1306 review). ``None`` when the total is not positive.
+    households lead a larger one's. The floors count the distinct sources
+    that spend anything (``sources``, one per row when omitted: a frame
+    stacks copies of one source household), as every receipt count is (UKDS
+    disclosure control), and a share is ``"<10"`` when one to nine of them:
+    - sit in its top group;
+    - sit outside it, since the receipt's total less the top group's spend
+      gives back theirs;
+    - or sit between it and the last shipped smaller fraction's group, since
+      the two shares' difference gives back their spend (microcosm#1306
+      review).
+
+    ``None`` when the total is not positive.
     """
 
     for fraction in fractions:
@@ -830,17 +839,25 @@ def weighted_top_shares(
         return {fraction: None for fraction in fractions}
     order = np.argsort(-value, kind="stable")
     cumulative = np.cumsum(weight[order])
+
+    def spenders(rows: np.ndarray) -> int:
+        return len(set(source[rows][value[rows] != 0].tolist()))
+
     shares: dict[float, float | str | None] = {}
     shipped_rows: int | None = None
     for fraction in sorted(fractions):
         cut = fraction * cumulative[-1]
         rows = int(np.searchsorted(cumulative, cut, side="left")) + 1
         top = order[:rows]
-        share: float | str | None = small_cell_share(
-            float(np.dot(weight[top], value[top]) / total), len(set(source[top]))
-        )
-        if isinstance(share, float) and shipped_rows is not None:
-            share = small_cell_share(share, len(set(source[order[shipped_rows:rows]])))
+        share: float | str | None = float(np.dot(weight[top], value[top]) / total)
+        for group in (
+            top,
+            order[rows:],
+            order[shipped_rows:rows] if shipped_rows is not None else order[:0],
+        ):
+            share = small_cell_share(share, spenders(group))
+            if not isinstance(share, float):
+                break
         if isinstance(share, float):
             shipped_rows = rows
         shares[fraction] = share
@@ -2525,6 +2542,7 @@ def fuel_flag_evidence(
     *,
     recipient_weights: Sequence[float],
     ice_share_receipt: Mapping[str, Any],
+    sources: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Weighted fuel-household shares on both sides of the imputation (donor design weights, frame prior weights).
 
@@ -2532,8 +2550,13 @@ def fuel_flag_evidence(
     also runs a petrol or diesel car keeps the household's fuel: the share
     of vehicles in fuel-free households sits below the per-car zero-emission
     share the draw uses, and the receipt records both (microcosm#1306
-    review). The two shares among vehicle households are "<10" when one to
-    nine households carry them.
+    review).
+
+    The shares on one side difference into the households with and without
+    a vehicle, crossed with fuel bought or not. So every share on that side
+    is "<10" when any of those groups that is not empty rests on one to nine
+    distinct positive-weight sources: the frame's source households
+    (``sources``, not the copies it stacks of one), the donor's diaries.
     """
 
     donor_weights = _numeric(donor["household_weight"]).to_numpy(dtype=float)
@@ -2541,40 +2564,78 @@ def fuel_flag_evidence(
     donor_fuel = (
         _numeric(donor["petrol_spending"]) + _numeric(donor["diesel_spending"])
     ).to_numpy(dtype=float) > 0
+    donor_floor = _thinnest_group(
+        donor_vehicles, donor_fuel, donor_weights, np.arange(len(donor))
+    )
     weights = np.asarray(recipient_weights, dtype=float)
     recipient_vehicles = _numeric(recipient["num_vehicles"]).to_numpy(dtype=float) > 0
     vehicles = vehicle_count(recipient["num_vehicles"]).to_numpy(dtype=float)
     flagged = recipient["has_fuel_consumption"].to_numpy(dtype=bool)
     fuel_free = recipient_vehicles & ~flagged
+    recipient_floor = _thinnest_group(
+        recipient_vehicles,
+        flagged,
+        weights,
+        np.arange(len(recipient)) if sources is None else np.asarray(sources),
+    )
     return {
         "ice_share": dict(ice_share_receipt),
         "donor": {
             "households": rounded_count(len(donor)),
-            "with_vehicles_share": _weighted_share(donor_vehicles, donor_weights),
-            "positive_fuel_share": _weighted_share(donor_fuel, donor_weights),
-            "positive_fuel_share_among_vehicle_households": _weighted_share(
-                donor_fuel[donor_vehicles], donor_weights[donor_vehicles]
+            "with_vehicles_share": small_cell_share(
+                _weighted_share(donor_vehicles, donor_weights), donor_floor
+            ),
+            "positive_fuel_share": small_cell_share(
+                _weighted_share(donor_fuel, donor_weights), donor_floor
+            ),
+            "positive_fuel_share_among_vehicle_households": small_cell_share(
+                _weighted_share(
+                    donor_fuel[donor_vehicles], donor_weights[donor_vehicles]
+                ),
+                donor_floor,
             ),
         },
         "recipient": {
             "households": int(len(recipient)),
-            "with_vehicles_share": _weighted_share(recipient_vehicles, weights),
-            "flagged_share": _weighted_share(flagged, weights),
+            "with_vehicles_share": small_cell_share(
+                _weighted_share(recipient_vehicles, weights), recipient_floor
+            ),
+            "flagged_share": small_cell_share(
+                _weighted_share(flagged, weights), recipient_floor
+            ),
             "flagged_share_among_vehicle_households": small_cell_share(
                 _weighted_share(
                     flagged[recipient_vehicles], weights[recipient_vehicles]
                 ),
-                int((flagged & recipient_vehicles).sum()),
+                recipient_floor,
             ),
             "fuel_free_share_of_vehicles": small_cell_share(
                 _weighted_share(
                     fuel_free[recipient_vehicles],
                     (weights * vehicles)[recipient_vehicles],
                 ),
-                int(fuel_free.sum()),
+                recipient_floor,
             ),
         },
     }
+
+
+def _thinnest_group(
+    vehicles: np.ndarray,
+    fuel: np.ndarray,
+    weights: np.ndarray,
+    sources: np.ndarray,
+) -> int:
+    """The fewest distinct positive-weight sources in a non-empty group of
+    households with and without a vehicle, crossed with fuel or none."""
+
+    positive = np.asarray(weights, dtype=float) > 0
+    counts = [
+        len(set(sources[positive & by_vehicle & by_fuel].tolist()))
+        for by_vehicle in (vehicles, ~vehicles)
+        for by_fuel in (fuel, ~fuel)
+    ]
+    return min((count for count in counts if count), default=0)
 
 
 def _weighted_share(mask: np.ndarray, weights: np.ndarray) -> float:
@@ -3171,16 +3232,34 @@ def _lowercase(data: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+#: Columns that mark a frame row as a copy of a source household: the SPI
+#: support channel's clones and the high-value home split.
+_SOURCE_COPY_COLUMNS = (
+    "household_support_clone_index",
+    "household_is_high_value_support_copy",
+    "high_value_support_copy_index",
+)
+
+
 def _source_households(household: pd.DataFrame) -> np.ndarray | None:
-    """Each frame row's source household (``None`` on a frame without one).
+    """Each frame row's source household (``None`` on a frame without copies).
 
     A frame stacks copies of one source household (the SPI support channel,
     the high-value home split), so a receipt's floor counts these, not rows.
+    A frame that marks copies but names no source household is refused, so a
+    floor never falls back to counting rows (microcosm#1306 review).
     """
 
-    if "source_household_id" not in household.columns:
-        return None
-    return household["source_household_id"].to_numpy()
+    if "source_household_id" in household.columns:
+        return household["source_household_id"].to_numpy()
+    marked = [column for column in _SOURCE_COPY_COLUMNS if column in household]
+    if marked:
+        raise ValueError(
+            f"The frame marks copies of source households ({', '.join(marked)}) "
+            "but carries no source_household_id, so a receipt cannot count "
+            "its distinct source households."
+        )
+    return None
 
 
 def _numeric(values: pd.Series) -> pd.Series:
