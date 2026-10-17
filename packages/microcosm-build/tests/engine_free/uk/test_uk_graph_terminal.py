@@ -1142,3 +1142,54 @@ def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
     assert "graph_binding" not in shaped
     assert shaped == {k: v for k, v in measured.items() if k != "graph_binding"}
     assert "graph_binding" in measured  # the artifact's report is left intact
+
+
+def test_the_candidate_manifest_records_the_exclusions_each_signed_gate_stood_on():
+    """microcosm#1301: the full gate report does not ship, so the candidate
+    manifest records the names each signed-exclusion gate stood on, leaving
+    out dormant entries as the release assembler does."""
+    from microcosm.build.uk_runtime.graph_terminal import (
+        _gate_rows,
+        _reviewed_exclusions_stood_on,
+    )
+    from microcosm.data.contract import _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+    document = {
+        "report": {
+            "outcomes": [
+                {
+                    "id": "uk_target_fit",
+                    "details": {
+                        "reviewed_exclusions": {
+                            "synthetic.row_b@2025": {"reason": "synthetic"},
+                            "synthetic.row_a@2025": {"reason": "synthetic"},
+                        },
+                        "dormant_exclusions": [],
+                    },
+                },
+                {
+                    "id": "uk_input_mass_parity",
+                    "details": {
+                        "reviewed_exclusions": {
+                            "synthetic_column": "synthetic reason",
+                            "synthetic_dormant": "never measured",
+                        },
+                        "dormant_exclusions": ["synthetic_dormant"],
+                    },
+                },
+                # A gate outside the signed set is not recorded.
+                {
+                    "id": "uk_weight_ratio",
+                    "details": {"reviewed_exclusions": {"synthetic": "x"}},
+                },
+            ]
+        }
+    }
+    record = _reviewed_exclusions_stood_on(_gate_rows(document))
+    assert tuple(record) == _UK_DENSE_SIGNED_EXCLUSION_GATES
+    assert record == {
+        "uk_target_fit": ["synthetic.row_a@2025", "synthetic.row_b@2025"],
+        # The report lacks the gate: it stood on none.
+        "uk_local_target_fit": [],
+        "uk_input_mass_parity": ["synthetic_column"],
+    }

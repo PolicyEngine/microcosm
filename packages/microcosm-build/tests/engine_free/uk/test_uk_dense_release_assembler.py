@@ -13,6 +13,10 @@ import pytest
 
 from microcosm.build.gate_battery import _canonical_json_bytes, _canonical_sha256
 from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+from microcosm.build.uk_runtime.graph_terminal import (
+    _gate_rows,
+    _reviewed_exclusions_stood_on,
+)
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_DATASET_HOUSEHOLDS
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data import contract as dc
@@ -388,6 +392,11 @@ def _candidate_dir(
                 "adjudication": "synthetic decision",
             }
         },
+        # What the build's projection records from the full gate report
+        # (microcosm#1301), which the contract holds the coverage to.
+        "reviewed_exclusions_stood_on": _reviewed_exclusions_stood_on(
+            _gate_rows(_full_gate_report())
+        ),
         "staging_delivery": _staging_delivery(),
         "geography": {"assignment": synthetic_geography_binding()},
         "identity": {
@@ -591,7 +600,14 @@ def test_assembler_stages_a_contract_valid_dense_release(
         "uk_local_target_fit": [],
         "uk_input_mass_parity": ["synthetic_column"],
     }
+    # The full gate report does not ship; the candidate manifest's record of
+    # the same names does, and the contract holds the coverage to it.
     assert not (release_dir / "uk.full.gates.calibrated.gate_report.json").exists()
+    shipped = json.loads((release_dir / "rowwise_candidate_manifest.json").read_text())
+    assert (
+        shipped["reviewed_exclusions_stood_on"]
+        == coverage["signed_deferrals"]["reviewed_exclusions"]
+    )
     assert "--tag-only" in summary["publish_command"]
     published = candidate / "microcosm_uk_2024_25_dense.h5"
     assert (
@@ -748,6 +764,30 @@ def test_assembler_requires_the_full_gate_report(tmp_path, monkeypatch, tamper):
         _load("assemble_uk_dense_release_dir").main(
             _assemble_args(candidate, spine, incumbent, tmp_path / "r")
         )
+
+
+def test_assembly_refuses_names_the_candidate_did_not_record(
+    tmp_path, monkeypatch
+) -> None:
+    """The coverage's national exclusion names come from the full gate report,
+    which does not ship; the shipped candidate manifest's record of them is
+    what the contract holds them to (microcosm#1301)."""
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["reviewed_exclusions_stood_on"]["uk_target_fit"] = []
+    manifest_path.write_text(json.dumps(manifest))
+    out = tmp_path / "releases"
+    with pytest.raises(
+        dc.ReleaseContractError,
+        match="reviewed_exclusions.uk_target_fit does not match the reviewed "
+        "exclusions the evaluated candidate recorded",
+    ):
+        _load("assemble_uk_dense_release_dir").main(
+            _assemble_args(candidate, spine, incumbent, out)
+        )
+    assert not (out / UK_DENSE_RELEASE_ID).exists()
 
 
 def _assemble_args(
@@ -1233,6 +1273,13 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     coverage = json.loads((release_dir / "uk_source_coverage.json").read_text())
     assert coverage["doctrine"]["clone_count"] == 15
     assert coverage["size"]["sized"] is sized
+    # The build records the names each signed-exclusion gate stood on, which
+    # the coverage restates from the full gate report (microcosm#1301).
+    assert (
+        manifest["reviewed_exclusions_stood_on"]
+        == coverage["signed_deferrals"]["reviewed_exclusions"]
+        == {gate_id: [] for gate_id in dc._UK_DENSE_SIGNED_EXCLUSION_GATES}
+    )
     limitations = _limitations(release_dir)
     assert "engine_measurement" in limitations
     assert ("size_doctrine" in limitations) is sized

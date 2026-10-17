@@ -138,7 +138,9 @@ def write_dense_bundle(
     manifest records the same holdout and size. Every reviewed exclusion the
     signed report's local target-fit and area-support gates stood on, and each
     of ``national_exclusions`` (a ``uk_target_fit`` name), is named in the
-    coverage and the manifest's limitations, the areas in ``area_support``.
+    coverage and the manifest's limitations, the areas in ``area_support``;
+    the candidate manifest records the target-fit and input-mass names under
+    ``reviewed_exclusions_stood_on``, as the build does.
     """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
@@ -151,6 +153,11 @@ def write_dense_bundle(
             or {}
         )
         for gate_id in ("uk_local_target_fit", "uk_local_area_support")
+    }
+    reviewed_exclusions = {
+        "uk_target_fit": sorted(national_exclusions),
+        "uk_local_target_fit": stood_on["uk_local_target_fit"],
+        "uk_input_mass_parity": [],
     }
     below_floor: dict[str, list[str]] = {}
     for key in stood_on["uk_local_area_support"]:
@@ -234,11 +241,7 @@ def write_dense_bundle(
         },
         "signed_deferrals": {
             "binding_adjudications": {"x": {}},
-            "reviewed_exclusions": {
-                "uk_target_fit": sorted(national_exclusions),
-                "uk_local_target_fit": stood_on["uk_local_target_fit"],
-                "uk_input_mass_parity": [],
-            },
+            "reviewed_exclusions": json.loads(json.dumps(reviewed_exclusions)),
         },
         "holdout": (
             {
@@ -289,6 +292,7 @@ def write_dense_bundle(
         },
     }
     candidate["measure_exclusions"] = coverage.get("measure_exclusions", {})
+    candidate["reviewed_exclusions_stood_on"] = reviewed_exclusions
     candidate["parameters"] = {
         "skip_holdout": holdout != "measured",
         "n_clones": size_record["clone_count"],
@@ -1074,6 +1078,13 @@ def _drop_coverage_name(gate_id: str, name: str):
     return mutate
 
 
+def _add_coverage_name(gate_id: str, name: str):
+    def mutate(coverage: dict) -> None:
+        coverage["signed_deferrals"]["reviewed_exclusions"][gate_id].append(name)
+
+    return mutate
+
+
 @pytest.mark.parametrize(
     "manifest_edit,coverage_edit,expected",
     [
@@ -1100,6 +1111,23 @@ def _drop_coverage_name(gate_id: str, name: str):
             _drop_limitation(f"reviewed_exclusion:uk_local_target_fit:{_SIGNED_CELL}"),
             _drop_coverage_name("uk_local_target_fit", _SIGNED_CELL),
             "does not match the reviewed exclusions the signed uk_local_gates.json",
+        ),
+        (
+            # The coverage and the manifest both drop the national row: the
+            # candidate manifest's record still names it.
+            _drop_limitation(f"reviewed_exclusion:uk_target_fit:{_NATIONAL_EXCLUSION}"),
+            _drop_coverage_name("uk_target_fit", _NATIONAL_EXCLUSION),
+            "reviewed_exclusions.uk_target_fit does not match the reviewed "
+            "exclusions the evaluated candidate recorded",
+        ),
+        (
+            # Both add an input-mass name the candidate's gates never stood on.
+            lambda m: m["reviewed_limitations"].append(
+                {"id": "reviewed_exclusion:uk_input_mass_parity:synthetic_column"}
+            ),
+            _add_coverage_name("uk_input_mass_parity", "synthetic_column"),
+            "reviewed_exclusions.uk_input_mass_parity does not match the reviewed "
+            "exclusions the evaluated candidate recorded",
         ),
         (
             None,
@@ -1139,15 +1167,46 @@ def test_every_signed_exclusion_is_named_in_the_manifest(
     tmp_path, manifest_edit, coverage_edit, expected
 ):
     """After microcosm#1301 local cells and areas are signed at the gate only,
-    so the manifest's limitations are where a consumer learns of them: the
-    local names are checked against the signed report, the national names
-    against the coverage."""
+    so the manifest's limitations are where a consumer learns of them: every
+    gate's names are checked against the candidate manifest's record, the
+    local names against the signed report too."""
     release_dir = _signed_bundle(tmp_path)
     if coverage_edit is not None:
         _rewrite_coverage(release_dir, coverage_edit)
     if manifest_edit is not None:
         _rewrite_manifest(release_dir, manifest_edit)
     assert expected in _failures(release_dir)
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        "missing",
+        {"uk_target_fit": [_NATIONAL_EXCLUSION]},
+        {
+            "uk_target_fit": _NATIONAL_EXCLUSION,
+            "uk_local_target_fit": [],
+            "uk_input_mass_parity": [],
+        },
+    ],
+    ids=["missing", "partial", "malformed"],
+)
+def test_a_candidate_must_record_the_exclusions_its_gates_stood_on(
+    tmp_path, record
+) -> None:
+    """Without the build's record nothing shipped names the national
+    exclusions the gates stood on, so the release refuses (microcosm#1301)."""
+
+    release_dir = _signed_bundle(tmp_path)
+    path = release_dir / "rowwise_candidate_manifest.json"
+    candidate = json.loads(path.read_text())
+    if record == "missing":
+        del candidate["reviewed_exclusions_stood_on"]
+    else:
+        candidate["reviewed_exclusions_stood_on"] = record
+    path.write_text(json.dumps(candidate))
+    _refresh_packaging_checksums(release_dir)
+    assert "must record, under 'reviewed_exclusions_stood_on'" in _failures(release_dir)
 
 
 def _set_holdout_claim(claim: str, limitation: dict, **fields):

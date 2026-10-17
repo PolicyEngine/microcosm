@@ -786,7 +786,10 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
 # The gates whose reviewed exclusions a dense release names, one
 # ``reviewed_exclusion:<gate>:<name>`` limitation each, with the names recorded
 # in the coverage's ``signed_deferrals.reviewed_exclusions`` (microcosm#1301).
-# The assembler (tools/assemble_uk_dense_release_dir.py) imports this tuple.
+# The assembler (tools/assemble_uk_dense_release_dir.py) imports this tuple,
+# and so does the build's candidate manifest projection
+# (uk_runtime/graph_terminal.py), which records the names each gate stood on
+# under ``reviewed_exclusions_stood_on`` for the contract to hold them to.
 _UK_DENSE_SIGNED_EXCLUSION_GATES = (
     "uk_target_fit",
     "uk_local_target_fit",
@@ -7471,6 +7474,7 @@ def _check_uk_dense_surface_files(
             _check_uk_dense_claims_against_candidate(
                 candidate, coverage, release_manifest, failures
             )
+            _check_uk_dense_exclusions_against_candidate(candidate, coverage, failures)
         shipped_diagnostics = _load_json(
             release_dir / "calibration_diagnostics.json", failures
         )
@@ -7629,6 +7633,55 @@ def _check_uk_dense_claims_against_candidate(
             failures.append(
                 f"release_manifest.json limitation 'size_doctrine' {mismatched} "
                 "do not match the evaluated candidate."
+            )
+
+
+def _check_uk_dense_exclusions_against_candidate(
+    candidate: Mapping, coverage: Mapping, failures: list[str]
+) -> None:
+    """The coverage's exclusion names restate the evaluated candidate (microcosm#1301).
+
+    The full gate report the reviewed-exclusion names come from does not
+    ship, so the build records the names each gate stood on in the candidate
+    manifest (``reviewed_exclusions_stood_on``), which the release
+    hash-joins. The coverage's names are held to that record gate by gate,
+    and the manifest's limitations to the coverage's names
+    (:func:`_check_uk_dense_signed_exclusions`), so a hand edit cannot drop
+    or add a national ``uk_target_fit`` or ``uk_input_mass_parity`` name.
+    """
+
+    recorded = candidate.get("reviewed_exclusions_stood_on")
+    if not (
+        isinstance(recorded, Mapping)
+        and set(map(str, recorded)) == set(_UK_DENSE_SIGNED_EXCLUSION_GATES)
+        and all(
+            isinstance(names, list) and all(isinstance(name, str) for name in names)
+            for names in recorded.values()
+        )
+    ):
+        failures.append(
+            "rowwise_candidate_manifest.json must record, under "
+            "'reviewed_exclusions_stood_on', the names of the reviewed "
+            f"exclusions each of {list(_UK_DENSE_SIGNED_EXCLUSION_GATES)} stood "
+            "on; a candidate built without the record is rebuilt."
+        )
+        return
+    named = _as_mapping(
+        _as_mapping(coverage.get("signed_deferrals")).get("reviewed_exclusions")
+    )
+    for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES:
+        names = named.get(gate_id)
+        if not isinstance(names, list):
+            continue  # _check_uk_dense_source_coverage records the malformed block
+        listed = set(map(str, names))
+        stood_on = set(recorded[gate_id])
+        if listed != stood_on:
+            failures.append(
+                f"{_UK_DENSE_SOURCE_COVERAGE_FILE} signed_deferrals."
+                f"reviewed_exclusions.{gate_id} does not match the reviewed "
+                "exclusions the evaluated candidate recorded its gates stood "
+                f"on; missing {sorted(stood_on - listed)[:5]}, unexpected "
+                f"{sorted(listed - stood_on)[:5]}."
             )
 
 
@@ -7800,12 +7853,12 @@ def _check_uk_dense_signed_exclusions(
     """The manifest names every reviewed exclusion the gates stood on (microcosm#1301).
 
     Local cells and areas are signed at the gate only, so the manifest's
-    limitations are where a consumer learns of them. The local target-fit
-    names and the areas below the support floor are checked against the
-    signed local report the release ships. The national target-fit and
-    input-mass names come from the full gate report, which does not ship, so
-    the contract holds the manifest to the names the coverage records for
-    them; nothing shipped can confirm those two lists themselves.
+    limitations are where a consumer learns of them. The limitations are held
+    to the names the coverage records, and those to the candidate manifest's
+    record of what each gate stood on, since the full gate report the names
+    come from does not ship (:func:`_check_uk_dense_exclusions_against_candidate`).
+    The local target-fit names and the areas below the support floor are also
+    checked against the signed local report the release ships.
     """
 
     file = "release_manifest.json"

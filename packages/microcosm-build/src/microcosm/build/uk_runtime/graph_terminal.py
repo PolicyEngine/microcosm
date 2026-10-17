@@ -1507,6 +1507,32 @@ def _gate_rows(document: Mapping) -> dict[str, dict]:
     return rows
 
 
+def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
+    """The names of the reviewed exclusions each signed-exclusion gate stood on.
+
+    One sorted list per gate a dense release names in its limitations, empty
+    when the gate stood on none or the report lacks it; dormant entries are
+    left out, as the release assembler leaves them out. The full gate report
+    does not ship, so the release contract holds the coverage's names and
+    the manifest's limitations to this record (microcosm#1301).
+    """
+    from microcosm.data.contract import _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+    record: dict[str, list[str]] = {}
+    for gate_id in _UK_DENSE_SIGNED_EXCLUSION_GATES:
+        row = gate_rows.get(gate_id)
+        details = row.get("details") if isinstance(row, Mapping) else None
+        details = details if isinstance(details, Mapping) else {}
+        excluded = details.get("reviewed_exclusions")
+        dormant = set(map(str, details.get("dormant_exclusions") or ()))
+        record[gate_id] = (
+            sorted(set(map(str, excluded)) - dormant)
+            if isinstance(excluded, Mapping)
+            else []
+        )
+    return record
+
+
 def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
     """Split the terminal target diagnostics into local and national rows."""
     kinds = target_rows["name"].map(materialization)
@@ -1973,6 +1999,7 @@ def rowwise_candidate_manifest_from_graph(
                 (surface.get("measure_exclusions") or {}).items()
             )
         },
+        "reviewed_exclusions_stood_on": _reviewed_exclusions_stood_on(gate_rows),
         "blocked_at_f100": bool(blocking_failures),
         "blocking_failures": blocking_failures,
         "diagnostic_failures": diagnostic_lines,

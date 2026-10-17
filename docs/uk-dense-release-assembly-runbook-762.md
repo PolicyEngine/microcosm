@@ -401,9 +401,13 @@ first from the full gate report and records the names per gate in the
 coverage's `signed_deferrals.reviewed_exclusions`. The contract requires
 exactly those limitations; it checks the `uk_local_target_fit` names and the
 `below_floor` areas against the signed `uk_local_gates.json`, and requires the
-`area_support` block. The full gate report is not shipped, so the
-`uk_target_fit` and `uk_input_mass_parity` names are held to the coverage
-only. The limitations carry names and reasons, never the measured errors.
+`area_support` block. The full gate report is not shipped, so the build records
+the names each of the three gates stood on in the candidate manifest
+(`reviewed_exclusions_stood_on`), which the release ships and hash-joins, and
+the contract holds the coverage's names to that record: a hand edit that drops
+a `uk_target_fit` or `uk_input_mass_parity` name from both the coverage and the
+limitations is refused. The limitations carry names and reasons, never the
+measured errors.
 
 Assembly and every later directory validation require measured clean code
 (`code.git_dirty` exactly `false`) and full measure-exclusion provenance.
