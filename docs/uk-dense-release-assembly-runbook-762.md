@@ -251,8 +251,9 @@ refuses one inside this checkout or any other, and `.gitignore` also covers
 - `signoff_draft.json`: the receipt;
 - `PR_BODY.md`: gate ids, build 1's attempt id and report digest, register
   entry counts, the national register's stale-risk and near-bound counts, the
-  reviewer, the adjudication, policy dates, the names of the entries that set
-  the assembly deadline and the tests to run;
+  national entries for review, the reviewer, the adjudication, policy dates,
+  the names of the entries that set the assembly deadline and the tests to
+  run;
 - `PRIVATE_review.csv`: mode 0600, holding per-row errors, every fit row's
   stale-risk and near-bound flags and per-area support figures. Never commit
   or post it.
@@ -482,7 +483,12 @@ each warning before publishing. A figure in the signed `uk_local_gates.json`
 cannot be edited out without failing its signature, nor one in
 `source_calibration_diagnostics.json` without failing the candidate manifest's
 hash of it; a figure in a file the assembler writes is fixed at its source and
-the directory re-assembled.
+the directory re-assembled. The pre-flight's `--candidate-dir` runs the same
+walk over the three files the assembler ships byte for byte (the candidate
+manifest, the original diagnostics and the signed local report), so a finding
+shows right after each build. The walk reads key names and the shortfall
+wording only: a figure under another name, in other prose or outside the
+top-level JSON files is not found, so the manual scan stays.
 
 The manifest's `reviewed_limitations` record what the release does not claim,
 and the contract checks them against the coverage: `engine_measurement`

@@ -155,12 +155,13 @@ uv run --no-sync python tools/build_uk_full.py --release-role dense --release-ca
   --review-date <YYYY-MM-DD> --graph-store <store> --out <build-1-dir>
 ```
 
-Build 2, at the sign-off's head, repeats that command with the same `--review-date` and `--graph-store`, a new `--out`, and the gate clock and the guard:
+Build 2, at the sign-off's head, repeats that command with the same `--review-date` and `--graph-store`, a new `--out`, the gate clock and the guard, and replaces build 1's `--logbook-prev-row-digest` with build 1's own row digest, so build 2's Logbook row follows build 1's:
 
 ```bash
 uv run --no-sync python tools/build_uk_full.py --release-role dense --release-candidate \
   <build 1's inputs and solve arguments> \
   --review-date <build 1's> --graph-store <build 1's store> --out <new-build-2-dir> \
+  --logbook-prev-row-digest <build 1's row digest> \
   --gate-review-date <on or after the sign-off's latest approved_on> --require-solve-reuse
 ```
 
