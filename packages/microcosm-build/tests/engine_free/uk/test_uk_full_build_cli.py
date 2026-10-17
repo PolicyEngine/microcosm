@@ -2764,6 +2764,50 @@ def test_solve_reuse_refuses_a_gate_clock_past_an_expiry_it_depends_on(
     assert ("changes the solve and needs a third build" in message) is solve_scoped
 
 
+#: The registers whose line rule the guard shares with the calibrated gates
+#: (``battery_bindings._in_line``): (stand-in keyword, entry name).
+_LINE_SCOPED_ENTRIES = (
+    ("target_fit", "national.synthetic@2025"),
+    ("local", "family/E06999999/metric"),
+    ("input_mass", "column"),
+    ("areas", "local_authority/E06999999"),
+    ("degenerate", "household.synthetic_constant"),
+)
+
+
+@pytest.mark.parametrize("window", ["premature", "expired"])
+@pytest.mark.parametrize(("register", "name"), _LINE_SCOPED_ENTRIES)
+def test_the_solve_reuse_guard_holds_each_register_to_the_local_line(
+    tmp_path, monkeypatch, register, name, window
+):
+    """An entry out of its window on the gate clock refuses it only where the
+    calibrated gates evaluate it: an entry scoped to the national line stands
+    aside, as those gates set it aside, and the same entry on the local line,
+    or on every line, refuses the gate clock. Dropping the line rule for any
+    register the guard reads fails this test (microcosm#1301)."""
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+    clock = solve + timedelta(days=5)
+    approved, expires = (
+        (clock + timedelta(days=1), clock + timedelta(days=29))
+        if window == "premature"
+        else (solve - timedelta(days=20), clock - timedelta(days=1))
+    )
+    reuse = (*_reuse_from(tmp_path, solve), "--gate-review-date", clock.isoformat())
+    _stand_in_one(
+        monkeypatch, register, name, _signed(approved, "national", expires_on=expires)
+    )
+    cli.validate_cli_args(arguments(tmp_path, *reuse))
+    phrase = "take force" if window == "premature" else "the release depends on expired"
+    for lines in (("local",), ()):
+        _stand_in_one(
+            monkeypatch, register, name, _signed(approved, *lines, expires_on=expires)
+        )
+        with pytest.raises(ValueError, match=phrase):
+            cli.validate_cli_args(arguments(tmp_path, *reuse))
+
+
 def test_solve_reuse_names_no_usable_gate_clock_when_the_windows_part(
     tmp_path, monkeypatch
 ):
