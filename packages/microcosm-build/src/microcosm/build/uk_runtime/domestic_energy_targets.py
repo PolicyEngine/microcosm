@@ -12,12 +12,12 @@ local-authority rows bind from them, each through a declared
   fuel puts Great Britain's authorities on the stage's own level, so they
   carry only DESNZ's split between areas. Energy Trends is a United Kingdom
   total and the sub-national statistics cover Great Britain: Great Britain's
-  share of UK households (ONS, Labour Force Survey, in the level's year)
-  stands in for its share of the level, a declared interim. Chronicle now
-  carries Northern Ireland's consumption (PolicyEngine/chronicle#356) on a
-  basis DESNZ calls not directly comparable with Great Britain's (Northern
-  Ireland's electricity runs on financial years), so reading the share from
-  it is a change of its own (microcosm#1300);
+  part of the level is its share of DESNZ's sub-national domestic consumption
+  with Northern Ireland's row added, so each factor is the UK level over the
+  UK sub-national total and both nations stay on DESNZ's sub-national basis
+  (microcosm#1278). DESNZ calls Northern Ireland's figures not directly
+  comparable with Great Britain's: its electricity runs on financial years
+  and its gas on Northern Ireland gas years;
 * gas-connected households (``desnz.subnational.gas_meter_share``): each
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
