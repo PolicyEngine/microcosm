@@ -16,9 +16,19 @@ uk-data#534 does (a draft, at ``c67077a66``):
 * each other unit is drawn at ``(r - p) / (1 - p)``, clipped to [0, 1]. ``r``
   is DWP's claimed / (claimed + did not claim) for the unit's combination of
   legacy benefits, or the all-households rate where DWP reports none; ``p`` is
-  the combination's share of such units already drawn to claim, at the
-  spine's design weights (uk-data#534's is unweighted). So the share claiming
-  at the closure in each combination is DWP's rate.
+  the combination's share of Great Britain's such units already drawn to
+  claim, at the spine's design weights (uk-data#534's is unweighted), and the
+  probability applies to the combination's units in Northern Ireland too.
+  So, in expectation, the weighted share of Great Britain's drawn units
+  claiming at the closure in each combination is DWP's rate wherever ``p`` is
+  at most ``r``; where ``p`` exceeds it the probability is 0, and the receipt
+  flags the combination (``rate_unreachable``), never ``p`` itself.
+
+Two limits carry over from uk-data#534: the drawn cohort includes units on
+the Pension Credit route, whose legacy benefits policyengine-uk does not
+close, which dilutes the rate among the units it does move; and DWP's rates
+count every household sent a notice, including households not entitled to
+Universal Credit.
 
 The rates are DWP's Stat-Xplore households sent a migration notice in Great
 Britain, July 2022 to June 2026, by legacy benefits and move status, vendored
@@ -45,7 +55,9 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import small_cell_share
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    _benunit_households,
     _household_to_benunit_weights,
 )
 from microcosm.frame import Frame
@@ -199,33 +211,56 @@ def legacy_closure_claim_probabilities(
     claims_anyway: np.ndarray,
     weights: np.ndarray,
     rates: Mapping[str, float],
+    great_britain: np.ndarray | None = None,
+    source_ids: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, dict[str, object]]]:
     """Each drawn unit's claim probability, and a receipt by combination.
 
     Within a combination, ``(r - p) / (1 - p)`` clipped to [0, 1], where ``r``
-    is DWP's rate and ``p`` the weighted share of the drawn units that would
-    claim anyway; so the expected weighted share claiming at the closure is
-    ``r`` wherever ``p <= r``.
+    is DWP's rate and ``p`` the weighted share of Great Britain's drawn units
+    that would claim anyway (DWP's rates cover Great Britain); the probability
+    applies to every unit of the combination. The expected weighted share of
+    Great Britain's drawn units claiming at the closure is ``r`` wherever
+    ``p <= r``. The receipt bands each cohort on its distinct source
+    households and flags an unreachable rate only where ten or more carry it.
     """
 
+    gb = (
+        np.ones(len(combination), dtype=bool)
+        if great_britain is None
+        else np.asarray(great_britain, dtype=bool)
+    )
     probability = np.zeros(len(combination))
     receipt: dict[str, dict[str, object]] = {}
+
+    def count(mask: np.ndarray) -> int:
+        """Distinct source households behind a cell; rows without lineage."""
+
+        if source_ids is None:
+            return int(mask.sum())
+        return int(len(np.unique(np.asarray(source_ids)[mask])))
+
     for key in sorted(set(combination[drawn])):
         cohort = drawn & (combination == key)
+        basis = cohort & gb
         rate = float(rates.get(key, rates[_ALL]))
-        cohort_weight = float(weights[cohort].sum())
+        basis_weight = float(weights[basis].sum())
         p = (
-            float(weights[cohort & claims_anyway].sum()) / cohort_weight
-            if cohort_weight > 0
+            float(weights[basis & claims_anyway].sum()) / basis_weight
+            if basis_weight > 0
             else 0.0
         )
         probability[cohort] = (
             0.0 if p >= 1 else float(np.clip((rate - p) / (1 - p), 0.0, 1.0))
         )
+
+        # The flag rests on p, so on Great Britain's sources.
+        flag = bool(p > rate) if count(basis) >= 10 else "<10"
         receipt[str(key)] = {
             "rate": rate,
             "rate_source": "combination" if key in rates else "all_households",
-            "support": _support_band(int(cohort.sum())),
+            "rate_unreachable": flag,
+            "support": _support_band(count(cohort)),
         }
     return probability, receipt
 
@@ -268,12 +303,25 @@ def assign_uc_claim_at_legacy_closure(
     on_uc = _reported_by_benunit(person, benunit, "universal_credit_reported")
     claims_anyway = benunit["would_claim_uc"].to_numpy().astype(bool)
     drawn = ~on_uc & (combination != "")
+    unit_households = pd.Series(_benunit_households(benunit, person=person))
+    by_household = household.set_index("household_id")
+    great_britain = (
+        unit_households.map(by_household["region"].astype(str)).to_numpy()
+        != "NORTHERN_IRELAND"
+    )
+    source_ids = (
+        unit_households.map(by_household["household_source_id"]).to_numpy()
+        if "household_source_id" in by_household
+        else unit_households.to_numpy()
+    )
     probability, combinations_drawn = legacy_closure_claim_probabilities(
         combination=combination,
         drawn=drawn,
         claims_anyway=claims_anyway,
         weights=weights,
         rates=rates,
+        great_britain=great_britain,
+        source_ids=source_ids,
     )
     uniforms = stable_identity_uniforms(
         benunit["benunit_id"].to_numpy(), seed=_STREAM_SEED, salt=LEGACY_CLOSURE_OUTPUT
@@ -290,15 +338,24 @@ def assign_uc_claim_at_legacy_closure(
         mass_log=frame.mass_log,
     )
     validate_uk_national_frame(result)
-    drawn_weight = float(weights[drawn].sum())
+    # Great Britain's weighted aggregates only, DWP's universe; a figure one to
+    # nine source households carry is "<10" (UKDS disclosure control).
+    gb_drawn = drawn & great_britain
+    gb_sources = int(len(np.unique(source_ids[gb_drawn])))
+    drawn_weight = float(weights[gb_drawn].sum())
     receipt = {
         "combinations": combinations_drawn,
-        # Great Britain-wide weighted aggregates only (UKDS disclosure control).
-        "drawn_benunit_weight": drawn_weight,
-        "weighted_share_claiming_at_closure": (
-            float(weights[drawn & flag].sum()) / drawn_weight if drawn_weight else None
+        "great_britain_drawn_benunit_weight": small_cell_share(
+            drawn_weight, gb_sources
         ),
-        "p_basis": "spine_design_weights",
+        "great_britain_weighted_share_claiming_at_closure": (
+            small_cell_share(
+                float(weights[gb_drawn & flag].sum()) / drawn_weight, gb_sources
+            )
+            if drawn_weight
+            else None
+        ),
+        "p_basis": "spine_design_weights_great_britain",
     }
     return UKLegacyClosureTakeUpResult(frame=result, receipt=receipt)
 
@@ -315,7 +372,7 @@ def legacy_closure_operation_parameters() -> tuple[tuple[str, dict[str, object]]
                 "feed_pin": "chronicle_feed.json",
                 "record_sets": list(LEGACY_CLOSURE_RECORD_SETS),
                 "source_vintage": "July 2022 to June 2026",
-                "mapped_build_period": 2025,
+                "mapped_build_period": 2024,
                 "period_mapping": "cumulative_claim_rates_applied_at_every_closure",
                 "require_before_source_read": True,
                 "runtime_sha256_required": True,
@@ -338,8 +395,9 @@ def legacy_closure_operation_parameters() -> tuple[tuple[str, dict[str, object]]
                 ),
                 "probability": "clip((rate - p) / (1 - p), 0, 1)",
                 "p": (
-                    "the combination's weighted share of drawn units with "
-                    "would_claim_uc true, at the spine's design weights"
+                    "the combination's weighted share of Great Britain's drawn "
+                    "units with would_claim_uc true, at the spine's design "
+                    "weights; the probability applies in Northern Ireland too"
                 ),
                 "stream": {"salt": LEGACY_CLOSURE_OUTPUT, "seed": _STREAM_SEED},
             },
