@@ -35,6 +35,7 @@ import numpy as np
 __all__ = [
     "UK_LOCAL_CLONE_COUNT",
     "UK_LOCAL_DATASET_HOUSEHOLDS",
+    "UK_LOCAL_L0_SEARCH_FLOOR",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_ROW_METADATA_RULES",
     "UK_LOCAL_SIZE_BASELINE_PI_FLOOR",
@@ -141,7 +142,8 @@ UK_LOCAL_SOLVE_EPOCHS = 2000
 #: K=15, ``55k-k20`` at K=20, ``k25-60k`` and ``k25-100k`` at K=25), more clones
 #: did not lift the weakest seat's support, and the 100,000-household draw's
 #: support gain on the K=25 pool came from the size settings below, not from
-#: K. A K=15 / 100,000-household build re-measures it.
+#: K. The K=15 / 150,000-household release build (microcosm#1301) re-measures
+#: it.
 UK_LOCAL_CLONE_COUNT = 15
 
 #: Target-weighting rules that read more row metadata than the grain
@@ -169,21 +171,42 @@ UK_LOCAL_TARGET_WEIGHT_RULES = ("uniform", "grain_equal", *UK_LOCAL_ROW_METADATA
 #: a uniform anchor it equals n / ESS − 1, so its λ means the same at any
 #: size); λ is 10⁻² times the doctrine rule's loss ratio to ``grain_equal``
 #: (2.1575). A sized release candidate must use exactly these settings at
-#: :data:`UK_LOCAL_DATASET_HOUSEHOLDS`.
+#: :data:`UK_LOCAL_DATASET_HOUSEHOLDS`. The microcosm#1301 amendment keeps all
+#: of them at 150,000 households.
 UK_LOCAL_SIZE_SELECTION_PI_HI = 0.5
 UK_LOCAL_SIZE_BASELINE_PI_FLOOR = 0.5
 UK_LOCAL_SIZE_REFIT_L2_LAMBDA = 0.0215748772773509
 UK_LOCAL_SIZE_REFIT_L2_ANCHOR = "uniform"
 UK_LOCAL_SIZE_REFIT_L2_BASIS = "chi_square"
 
-#: The household count a sized local release ships (microcosm#1124, ruling
-#: of 2026-10-13): the local release is the exact-k selection from the
-#: K-clone pool at this size, under the dense line's publication
-#: requirements (rotated holdout, signed gates, incumbent-surface evaluation
-#: on one engine). The pool itself is too large for one engine and for the
-#: consumers who load the file. A release candidate may also be unsized
-#: (the whole pool); any other size stays candidate-only.
-UK_LOCAL_DATASET_HOUSEHOLDS = 100_000
+#: The household count a sized local release ships. The microcosm#1124
+#: ruling of 2026-10-13 made the local release the exact-k selection from the
+#: K-clone pool at a declared size, then 100,000 households; the pool itself
+#: is too large for one engine and for the consumers who load the file.
+#:
+#: microcosm#1124 as amended for microcosm#1301: 150,000 households, at K=15
+#: and with the size settings above. 100,000 was out of reach at K=15 under
+#: the solver's floor penalty of 1e-7 (the size search's open mass there was
+#: about 94,500), hence also :data:`UK_LOCAL_L0_SEARCH_FLOOR`. The
+#: publication requirements are the dense line's: every release-blocking
+#: gate passed, on signed reviewed exclusions where it needs them, and the
+#: pre-flight. The rotated holdout and the incumbent-surface comparison are
+#: opt-in diagnostics, no longer requirements; a release without them
+#: records the limitations it does not claim. A release candidate may also
+#: be unsized (the whole pool); any other size stays candidate-only.
+UK_LOCAL_DATASET_HOUSEHOLDS = 150_000
+
+#: The lowest L0 penalty the local size search may probe (microcosm#1301).
+#: The solver's default bracket starts at 1e-7, where the K=15 pool's open
+#: mass stopped short of 100,000 households; 1e-10 sits about two decades
+#: below where a 150,000-household search is expected to settle (1.3e-8 to
+#: 5e-8, extrapolated from the 100,000-household probes). Only the UK size
+#: search runs under it (``dataset_size.uk_size_search_bracket``, whose
+#: ceiling stays the solver's); every other caller, and the US contract that
+#: records the solver's bracket, keep the default. The size receipt records
+#: the bracket each search ran under and the pre-flight checks it. It has no
+#: command-line setting, so it is not part of :func:`uk_local_size_doctrine`.
+UK_LOCAL_L0_SEARCH_FLOOR = 1e-10
 
 
 def uk_local_size_doctrine() -> dict[str, object]:

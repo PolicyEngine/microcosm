@@ -66,6 +66,7 @@ from microcosm.graph import (
     Graph,
     KernelRegistry,
     SourceRef,
+    StoreMiss,
     compile_graph,
     graph_to_json,
     run_graph,
@@ -109,7 +110,11 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
-from .dataset_size import UK_SIZE_L2_ANCHORS, UK_SIZE_L2_BASES
+from .dataset_size import (
+    UK_SIZE_L2_ANCHORS,
+    UK_SIZE_L2_BASES,
+    uk_size_search_bracket,
+)
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -164,7 +169,7 @@ from .inspection_export import (
     register_uk_inspection_export_kernel,
     use_inspection_export,
 )
-from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
@@ -226,6 +231,7 @@ from .rowwise_staging import (
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
+from .solve_scope import UK_GATE_ONLY_RESOURCES
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -239,6 +245,7 @@ __all__ = [
     "UK_ROWWISE_DENSE_POSTURE",
     "PreparedUKFullBuild",
     "PreparedUKNationalBuild",
+    "SolveReuseError",
     "execute_full_build",
     "execute_national_build",
     "main",
@@ -510,12 +517,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--native-scorecard",
         type=Path,
-        help="Measured incumbent-surface comparison bound to immutable candidate.json and its exact output bytes.",
+        help=(
+            "Optional diagnostic: a measured incumbent-surface comparison bound "
+            "to immutable candidate.json and its exact output bytes."
+        ),
     )
     parser.add_argument(
         "--matched-size-scorecard",
         type=Path,
-        help="Additional measured comparison with both populations at requested k.",
+        help=(
+            "Optional diagnostic: a further measured comparison with both "
+            "populations at the requested k."
+        ),
     )
     parser.add_argument(
         "--target-geographies",
@@ -564,6 +577,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "doctrine's 0.5 with --dataset-households, 1.0 otherwise."
         ),
     )
+    size_bracket = "[{:g}, {:g}]".format(*uk_size_search_bracket())
     parser.add_argument(
         "--selection-initial-lambda",
         type=float,
@@ -575,7 +589,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "there when the draw is feasible and within tolerance; a stale "
             "value costs probes, not feasibility (a warm and a cold search may "
             "settle on different penalties inside the budget window). Requires "
-            "--dataset-households."
+            "--dataset-households, and must lie in the size search's L0 bracket "
+            f"{size_bracket} (microcosm#1301): refused outside it, never clamped."
         ),
     )
     parser.add_argument(
@@ -657,7 +672,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--expected-constituency-vintage",
         help="Dense role only: constituency vintage required from the ladder.",
     )
-    parser.add_argument("--skip-holdout", action="store_true")
+    parser.add_argument(
+        "--rotated-holdout",
+        action="store_true",
+        help=(
+            "Dense only: run the five-fold rotated local holdout, an opt-in "
+            "report-only diagnostic (microcosm#1301). Each fold repeats the "
+            "dense solve and, in a sized build, the size search and refit. "
+            "Without it the holdout is recorded as not requested and the "
+            "release claims no out-of-sample fit."
+        ),
+    )
     parser.add_argument(
         "--inspection-export",
         action="store_true",
@@ -669,7 +694,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--release-candidate", action="store_true")
-    parser.add_argument("--review-date", type=date.fromisoformat, default=date.today())
+    parser.add_argument(
+        "--review-date",
+        type=date.fromisoformat,
+        default=date.today(),
+        help=(
+            "The solve clock (default today): the date target compilation and "
+            "the source preflight evaluate reviewed entries on, and the "
+            "calibrated gates too unless --gate-review-date is given. A build "
+            "that reuses an earlier build's solve repeats its review date, so "
+            "a build whose solve a second build will reuse should name it."
+        ),
+    )
+    parser.add_argument(
+        "--gate-review-date",
+        type=date.fromisoformat,
+        default=None,
+        help=(
+            "Dense only: the calibrated gates' clock, the date they evaluate "
+            "their reviewed exclusions on (microcosm#1301); defaults to "
+            "--review-date. Never earlier than it, nor later than today. Only "
+            "the calibrated gate node and what follows it re-key, so a second "
+            "build at a gate-only sign-off reuses the first build's solve."
+        ),
+    )
     parser.add_argument(
         "--resume-size-checkpoint",
         type=Path,
@@ -712,10 +760,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--graph-store",
         type=Path,
-        help="Persistent shared graph store; default <out>/.graph-store.",
+        help=(
+            "Persistent shared graph store; default <out>/.graph-store. A "
+            "build whose solve a second build will reuse should name it, and "
+            "--require-solve-reuse requires it."
+        ),
     )
     parser.add_argument(
         "--resume", choices=("auto", "require", "forbid"), default="auto"
+    )
+    parser.add_argument(
+        "--require-solve-reuse",
+        action="store_true",
+        help=(
+            "Dense only: before calibrating, require every node the calibrated "
+            "gates depend on (the spine, targets, preflight, solve, size stages "
+            "and holdout) from --graph-store, and fail with SolveReuseError "
+            "naming the missing nodes rather than re-solve (microcosm#1301). "
+            "The calibrated gates, export and certification still run. Needs "
+            "build 1's store named by --graph-store and an --out that holds no "
+            "earlier attempt (no build.json, failure.json or Logbook spool "
+            "row), and refuses a gate clock (--gate-review-date, else "
+            "--review-date) outside the window of an entry the build depends "
+            "on: before an in-line gate-only or degenerate-register sign-off's "
+            "approved_on, or after the expiry of one of them or of a measure "
+            "exclusion the solve applied. Refused with --resume forbid."
+        ),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
@@ -1082,6 +1152,9 @@ def prepare_full_build(
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
             selection_initial_lambda=args.selection_initial_lambda,
+            # microcosm#1301: the doctrine's L0 floor, which the warm start
+            # above is checked against; it has no command-line setting.
+            selection_l0_search_floor=UK_LOCAL_L0_SEARCH_FLOOR,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
             selection_l2=cli_size_l2(args, "selection"),
@@ -1163,6 +1236,7 @@ def prepare_full_build(
         spine_stage_names=stages,
         engine_identity=engine_identity,
         review_date=args.review_date,
+        gate_review_date=getattr(args, "gate_review_date", None),
         sample_fraction=config.effective_sample_fraction,
         release_candidate=args.release_candidate,
         spine_provenance=provenance,
@@ -1175,7 +1249,10 @@ def prepare_full_build(
         "target_scope": "all"
         if config.geography_levels is None
         else list(config.geography_levels),
+        # Both clocks (microcosm#1301): the solve's, and the calibrated
+        # gates' (the solve's unless --gate-review-date moved it).
         "review_date": args.review_date.isoformat(),
+        "gate_review_date": _gate_review_date(args).isoformat(),
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
@@ -1258,6 +1335,104 @@ def _through(graph: Graph, endpoint: str) -> Graph:
     return replace(
         graph, nodes=tuple(node for node in graph.nodes if node.id in needed)
     )
+
+
+def _gate_review_date(args: argparse.Namespace) -> date:
+    """The calibrated gates' clock: ``--gate-review-date``, else the solve's."""
+    gate_clock = getattr(args, "gate_review_date", None)
+    return args.review_date if gate_clock is None else gate_clock
+
+
+#: The node the solve sub-graph ends before: its strict ancestors are the
+#: solve, and it and its descendants are what a gate-only sign-off re-runs.
+_SOLVE_BOUNDARY = "uk.full.gates.calibrated"
+
+
+def _solve_subgraph(graph: Graph) -> Graph:
+    """The solve: every strict ancestor of the calibrated gates (microcosm#1301).
+
+    The spine, the target surface, the source preflight, the dense solve,
+    the size search, draw and refit, the installed population and the
+    holdout: everything a second build at a gate-only sign-off must find in
+    the graph store rather than compute.
+    """
+    through = _through(graph, _SOLVE_BOUNDARY)
+    return replace(
+        through,
+        nodes=tuple(node for node in through.nodes if node.id != _SOLVE_BOUNDARY),
+    )
+
+
+class SolveReuseError(RuntimeError):
+    """``--require-solve-reuse`` found the solve absent from the graph store."""
+
+
+def _solve_reuse_failure(miss: StoreMiss) -> SolveReuseError:
+    return SolveReuseError(
+        "--require-solve-reuse: the graph store does not hold the solve this "
+        f"build would reuse ({miss}). A solve is reused only when everything "
+        "that keys it matches the earlier build: the solve code at this "
+        "commit; --review-date, --release-candidate, the size, seed, epoch "
+        "and --selection-initial-lambda arguments and --engine-blocks; every "
+        "packaged UK resource but the gate-only registers "
+        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}); the virtual "
+        "environment and platform; and --graph-store."
+    )
+
+
+def _run_solve_phase(compiled, *, required: bool, **kwargs):
+    """Run a phase of the solve, as a cache replay when reuse is required."""
+    if not required:
+        return _run_graph_with_progress(compiled, **kwargs)
+    try:
+        return _run_graph_with_progress(compiled, **{**kwargs, "resume": "require"})
+    except StoreMiss as miss:
+        raise _solve_reuse_failure(miss) from miss
+
+
+def refuse_occupied_solve_reuse_output(args: argparse.Namespace) -> None:
+    """Refuse a solve-reuse build into an ``--out`` that holds an attempt.
+
+    A second build writes its own bundle beside build 1's (microcosm#1301).
+    Publishing into build 1's ``--out`` would replace the bundle its
+    sign-off was drafted from, which ``draft_uk_dense_signoff.py --verify
+    --build-1`` compares build 2 with. A directory holds a bundle once its
+    ``build.json`` completion marker is published, whether the build passed,
+    was blocked or was refused. A failed attempt leaves ``failure.json`` and
+    a Logbook spool row (``logbook-spool/*.json``) instead, and a retry into
+    that ``--out`` would spool a second attempt's row beside the first:
+    ``--verify`` refuses a run directory whose spool names two attempts, and
+    the assembler takes the last row by file name. So any of the three
+    refuses the directory. As on the national line
+    (:func:`refuse_occupied_national_output`), the refusal runs before the
+    attempt opens and writes nothing into the directory. Dry runs write
+    nothing and are not refused.
+    """
+
+    if not getattr(args, "require_solve_reuse", False):
+        return
+    out = Path(args.out)
+    held = [
+        path.relative_to(out).as_posix()
+        for path in (
+            out / "build.json",
+            out / "failure.json",
+            *sorted((out / "logbook-spool").glob("*.json")),
+        )
+        if path.is_file()
+    ]
+    if held:
+        shown = ", ".join(held[:3]) + (
+            f" and {len(held) - 3} more" if len(held) > 3 else ""
+        )
+        raise FileExistsError(
+            f"--require-solve-reuse: --out {args.out} already holds a build "
+            f"attempt ({shown}). A second build publishes its own bundle and "
+            "Logbook row: here it would replace build 1's bundle, or spool its "
+            "row beside an earlier attempt's, and --verify refuses a run "
+            "directory whose spool names two attempts. Pass a new --out and "
+            "name build 1's store with --graph-store."
+        )
 
 
 def _payload(manifest, store, node: str, artifact: str) -> bytes:
@@ -1902,6 +2077,10 @@ def _execute_full_build(
     # Preserve source evidence before downstream transforms can raise. Each is
     # an ancestor-closed checkpoint of this graph, with the same node keys/RNG.
     resume = args.resume
+    # microcosm#1301: with --require-solve-reuse every phase up to the
+    # calibrated gates is a cache replay, and a miss stops the build before
+    # any node computes.
+    reuse = bool(getattr(args, "require_solve_reuse", False))
     node_ids = {node.id for node in graph.nodes}
     for endpoint in (
         "spine.gates.assembled",
@@ -1910,8 +2089,9 @@ def _execute_full_build(
     ):
         if endpoint not in node_ids:
             continue
-        checkpoint = _run_graph_with_progress(
+        checkpoint = _run_solve_phase(
             compile_graph(_through(graph, endpoint)),
+            required=reuse,
             sources=sources,
             store=store,
             kernels=kernels,
@@ -1925,8 +2105,9 @@ def _execute_full_build(
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
     preflight_graph = _through(graph, "uk.full.gates.preflight")
-    preflight = _run_graph_with_progress(
+    preflight = _run_solve_phase(
         compile_graph(preflight_graph),
+        required=reuse,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1976,6 +2157,19 @@ def _execute_full_build(
             blocking_failure_count=len(blocking),
         )
         return 1
+    if reuse:
+        # The whole solve sub-graph, required from the store before the
+        # calibrated gates run on it; the manifest is dropped at once, since
+        # the numerical phase below replays the same nodes as hits.
+        _run_solve_phase(
+            compile_graph(_solve_subgraph(graph)),
+            required=True,
+            sources=sources,
+            store=store,
+            kernels=kernels,
+            resume="require",
+            execution=execution,
+        )
     stage(
         telemetry,
         "calibration",
@@ -3393,7 +3587,9 @@ def _dense_attempt(
 
     try:
         # The credential and chain checks still precede input loading, while
-        # the emitter records their failures.
+        # the emitter records their failures; a second build's occupied
+        # --out is refused first, before anything is written into it.
+        refuse_occupied_solve_reuse_output(args)
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)

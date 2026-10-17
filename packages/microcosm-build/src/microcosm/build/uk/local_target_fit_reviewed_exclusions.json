@@ -1,0 +1,5 @@
+{
+ "schema_version": 2,
+ "description": "Reviewed target-fit exclusions for the UK local-area battery's uk_local_target_fit gate (schema 2 per #610; microcosm#1301). Each key is one local cell as the gate names it, family/area_code/metric, and each entry defers that cell's breach of the 25% release bound with a complete approval receipt: the reasoning, approver, adjudication reference, approval date and expiry, and optionally the release_lines it applies on. The exclusion lifts the release fence only: the cell stays BOUND in calibration, so the solver keeps pulling toward it, and only the gate reads this register. The gate reports dormant entries and FAILS stale ones (the cell back inside the bound), expired ones and ones not yet in force, on the build's review date. Reasons name the defect and its owner, never a per-area support figure or a cell estimate.",
+ "exclusions": {}
+}

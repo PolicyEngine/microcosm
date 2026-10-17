@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.cgt_projection import UKCGTProjection
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
@@ -57,6 +58,7 @@ __all__ = [
     "UKInputMassReference",
     "UKZeroWeightStratumDeclaration",
     "uk_default_degenerate_reviewed_exclusions",
+    "uk_default_local_target_fit_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
     "uk_export_candidate_columns",
@@ -424,6 +426,25 @@ def uk_default_target_fit_reviewed_exclusions() -> Mapping[str, UKReviewedExclus
     return MappingProxyType(
         load_uk_reviewed_exclusion_register(
             None, resource=UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
+        )
+    )
+
+
+@functools.cache
+def uk_default_local_target_fit_reviewed_exclusions() -> Mapping[
+    str, UKReviewedExclusion
+]:
+    """The committed local target-fit register (microcosm#1301), loaded lazily.
+
+    Keys are the ``uk_local_target_fit`` gate's cell names,
+    ``family/area_code/metric``. An entry lifts that gate's fence for one
+    cell and nothing else: the cell stays bound in the solve, and no target
+    compilation reads this register.
+    """
+
+    return MappingProxyType(
+        load_uk_reviewed_exclusion_register(
+            None, resource=UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
         )
     )
 

@@ -426,11 +426,12 @@ def test_the_uc_bridge_bound_refuses_a_caseload_far_from_its_cells():
         _uc_surface()
 
 
-def test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier():
+def test_the_uc_bridge_bound_refuses_authorities_whose_gb_total_is_short():
     # The caseload matches the constituencies, but Scotland's authority tier
-    # carries 60 of its 100: the authorities sum to 160 of 200. An exact
-    # signature group rescales them onto the constituencies first, so the
-    # bound reads their input totals (microcosm#1302 review).
+    # carries 60 of its 100: the authorities' GB total is 160 of 200. An
+    # exact signature group rescales them onto the constituencies first, so
+    # the bound reads the GB total as given (microcosm#1302 review); it bounds
+    # each grain's GB total, not each nation within it.
     with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.25 "):
         _uc_surface(gb=200.0)
 
@@ -447,6 +448,47 @@ def test_the_uc_bridge_bound_counts_off_surface_cells_on_the_last_pass():
     assert values["S12000033"] == pytest.approx(60.0)
     assert values["W06000001"] == pytest.approx(100.0)
     assert receipt["off_surface_cells"]["rows_added"] == 1
+
+
+_UC_AREA_TARGET = "dwp.uc.households_by_area"
+
+
+@pytest.mark.parametrize(
+    ("off_surface", "gb", "message"),
+    [
+        # Another target's cell moves no UC leg, so the pass that carries
+        # the off-surface cells adds no row; it still checks the bound.
+        (
+            _off("local_authority", "E06000001", 5.0),
+            300.0,
+            r"the constituency rows of leg .* by 1\.5 ",
+        ),
+        # Scotland's other authority joins the frame at 40, and the GB
+        # caseload is still 1.5 times the constituencies.
+        (
+            _off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET),
+            300.0,
+            r"the constituency rows of leg .* by 1\.5 ",
+        ),
+        # At 10 the constituencies match the caseload, but the authorities
+        # sum to 170 of 200 with the off-surface cell counted.
+        (
+            _off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET),
+            200.0,
+            r"the la rows of leg .* by 1\.17",
+        ),
+    ],
+    ids=["unrelated_cell", "uc_cell_far_caseload", "uc_cell_short_authorities"],
+)
+def test_the_uc_bridge_bound_refuses_on_the_pass_that_carries_off_surface_cells(
+    off_surface, gb, message
+):
+    # Every committed surface has off-surface cells, so the first pass only
+    # records the bridge's factor and the pass that carries them is the one
+    # that refuses (microcosm#1302 re-review). That pass runs whether or not
+    # an off-surface cell adds a row to the frame.
+    with pytest.raises(ValueError, match=message):
+        _uc_surface([off_surface], gb=gb)
 
 
 def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours(
@@ -546,3 +588,26 @@ def test_a_small_cell_deferral_the_runs_ladder_does_not_carry_is_left_out(
         _uc_surface(
             deferred_cells=unguarded, area_region_codes={"E06000001": "E12000001"}
         )
+
+
+def test_the_uc_bridge_bound_counts_a_small_cell_deferral():
+    # The tests above lift the bound; this one keeps the real rule. Scotland's
+    # other authority is a small-cell deferral at 40, which always joins the
+    # frame, so the authorities' GB total meets the caseload of 200 and the
+    # surface is accepted: the bound authority keeps its 60.
+    deferrals = [_off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET)]
+    values, receipt = _uc_surface(deferred_cells=deferrals, gb=200.0)
+    assert values["S12000033"] == pytest.approx(60.0)
+    assert values["W06000001"] == pytest.approx(100.0)
+    assert "S12000034" not in values
+    assert receipt["small_cell_deferrals"] == {
+        "rows_added": 1,
+        "areas_outside_the_ladder": [],
+    }
+
+
+def test_the_uc_bridge_bound_refuses_authorities_short_with_a_small_cell_deferral():
+    # At 10 the deferral leaves the authorities' GB total at 170 of 200.
+    deferrals = [_off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET)]
+    with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.17"):
+        _uc_surface(deferred_cells=deferrals, gb=200.0)

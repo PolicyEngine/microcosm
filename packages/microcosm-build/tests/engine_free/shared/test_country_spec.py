@@ -921,6 +921,7 @@ class TestUKCountryPackage:
         assert legacy_rows == (
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -1059,6 +1060,7 @@ class TestExistingPackagesGeneralize:
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
+            "local_target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
@@ -1156,7 +1158,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1291
+            len(references) == 1319
         )  # microcosm#1095: + 4, the two national 15_19 sex bands split into ages 15, 16-17 and 18-19; microcosm#1106: + 13 SPI property amounts; microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1186,7 +1188,10 @@ class TestExistingPackagesGeneralize:
         # microcosm#1207: the 9 DfT BUS01a bus journey rows (London and the
         # eight English regions outside London); microcosm#1095: less DWP's
         # five-or-more-children UC count, a diagnostic beside the two-child
-        # limit rows
+        # limit rows; microcosm#1301: the 30 high-value homes region cells
+        # (three thresholds over England's regions and Wales), which the
+        # national line drops after the compile, less the North East and
+        # Wales rows over £2m, signed out below the small-cell floor
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

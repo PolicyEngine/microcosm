@@ -22,10 +22,13 @@ local-authority rows bind from them, each through a declared
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
 
-The rows keep the fact's own period: consumption is calendar 2024 kWh against
-the frame's stored calendar-2024 spend, and the gas-connected base is the
-census, whose level the household controls set. Each cell carries
-``uprating_hold`` beside its factor, so the holds register declares both.
+The rows keep the fact's own period: consumption is DESNZ's 2024 kWh,
+calendar 2024 for electricity and gas year 2024 for gas, which the
+sub-national lookups pair with calendar 2024
+(``energy_pricing.SUBNATIONAL_PERIOD_TYPES``), against the frame's stored
+calendar-2024 spend, and the gas-connected base is the census, whose level
+the household controls set. Each cell carries ``uprating_hold`` beside its
+factor, so the holds register declares both.
 
 The frame side: :func:`household_energy_kwh` turns each household's stored
 spend back into kWh at the stage's declared QEP prices (the inverse of the

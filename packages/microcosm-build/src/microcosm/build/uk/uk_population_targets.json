@@ -853,7 +853,10 @@
       "dft.bus_journeys.west_midlands": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
       "dft.bus_journeys.east_of_england": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
       "dft.bus_journeys.south_east": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
-      "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207)."
+      "dft.bus_journeys.south_west": "Post-freeze fact family (DfT BUS01a passenger journeys by English region, FY2024-25), no uk-data metric (microcosm#1207).",
+      "microcosm.high_value_homes.over_1m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_1_5m_by_region": "Microcosm-derived fact family (owner-occupied homes over £1.5m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301).",
+      "microcosm.high_value_homes.over_2m_by_region": "Microcosm-derived fact family (owner-occupied homes over £2m by English region and Wales, from Land Registry Price Paid, the UK HPI and the NSPL; uk/high_value_home_stock_facts.json, microcosm#1240), no uk-data metric. Bound on the local line only (calibration_lines), so the national line drops it after the compile (microcosm#1301)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1243,7 +1246,10 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age"
+      "dwp.hb.amount_pension_age",
+      "microcosm.high_value_homes.over_1m_by_region",
+      "microcosm.high_value_homes.over_1_5m_by_region",
+      "microcosm.high_value_homes.over_2m_by_region"
     ]
   },
   "profile_parity": {
@@ -28207,6 +28213,198 @@
       "value_operation": "calendar_year_window"
     },
     {
+      "target_id": "microcosm.high_value_homes.over_1m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_1m",
+          "value_variable": "owner_occupied_home_over_gbp_1m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_1m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines): on the national spine main_residence_value is the WAS donor's, not a Land Registry placement."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_1m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_1_5m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 1500000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_1_5m",
+          "value_variable": "owner_occupied_home_over_gbp_1_5m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_1_5m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines): on the national spine main_residence_value is the WAS donor's, not a Land Registry placement."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_1_5m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £1.5 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
+      "target_id": "microcosm.high_value_homes.over_2m_by_region",
+      "family": "high_value_homes",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "calibration_lines": [
+        "local"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
+          {
+            "concept": "uk.household.main_residence_value",
+            "operator": ">",
+            "value": 2000000,
+            "price_basis": "2026-04"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "high_value_homes_by_region/over_2m",
+          "value_variable": "owner_occupied_home_over_gbp_2m",
+          "notes": "One reference per area of the England-and-Wales region tier (microcosm#1301): the nine English regions at the derived resource's region level and Wales at country level (area_scope), each scoped on the frame by the household-region predicate the generator stamps into its reference metadata. owner_occupied_home_over_gbp_2m is a per-household indicator the measure resolver computes from the stored main_residence_value and tenure_type through high_value_home_mask, the predicate the local cells and the release gates share, at the frame-basis threshold; it never reads an engine-uprated value. Bound on the local line only (calibration_lines): on the national spine main_residence_value is the WAS donor's, not a Land Registry placement."
+        },
+        "axiom": {
+          "metric_name": "high_value_homes_by_region/over_2m",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "microcosm",
+        "source_measure_id": "owner_occupied_homes",
+        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1"
+      },
+      "area_scope": {
+        "region": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        },
+        "country": {
+          "gss_prefixes": [
+            "E",
+            "W"
+          ]
+        }
+      },
+      "category_id": "microcosm.high_value_homes",
+      "label": "Owner-occupied homes valued over £2 million by region",
+      "selector_note": "The English region and Wales rows of the Microcosm-derived stock the constituency and local-authority cells bind (microcosm#1240, fix 2; uk/high_value_home_stock_facts.json), selected by the same record set and measured identically, so each row is the cross-grain control for its area cells and carries the stock of any cell a signed small-cell rule defers. Local line only (microcosm#1301): the national line and the release-cut certifier drop these rows right after the compile, before reconciliation and the measure exclusions, so the national registry is unchanged. Scotland and Northern Ireland have no Price Paid coverage."
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -31450,7 +31648,7 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £1 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_1m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
     },
     {
       "target_id": "microcosm.high_value_homes.over_1_5m",
@@ -31526,7 +31724,7 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £1.5 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_1_5m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
     },
     {
       "target_id": "microcosm.high_value_homes.over_2m",
@@ -31602,7 +31800,7 @@
       },
       "category_id": "microcosm.high_value_homes",
       "label": "Owner-occupied homes valued over £2 million",
-      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales."
+      "selector_note": "Microcosm-derived counts (microcosm#1240, fix 2): the latest non-bulk category A sale of every dwelling in HM Land Registry Price Paid Data since 1995, uprated by the local-authority and property-type UK HPI to the frame's calendar-2024 price basis, placed through the NSPL and the committed England-and-Wales atomic support, weighted by the census owner-occupied share (rescaled to the OBR costing note's 60 per cent owner-occupied control on the £2m+ stock) and a VOA stock-coverage correction. The threshold is stated at April 2026 prices and deflated to the basis with the England all-dwellings HPI; the frame reads the stored main_residence_value at the dataset period. Chronicle registers the inputs raw-only (chronicle#343); the counts are not Chronicle facts. Scotland and Northern Ireland have no Price Paid coverage, so the family is England and Wales. The English region and Wales rows of the same stock (microcosm.high_value_homes.over_2m_by_region) control these cells on the local line through the cross-grain rule (microcosm#1301)."
     },
     {
       "target_id": "desnz.subnational.electricity_kwh",

@@ -43,6 +43,19 @@ def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
     }
 
 
+def test_local_target_fit_parameters_pin_the_bound_and_its_own_register() -> None:
+    # microcosm#1301: the local cells stand on their own register, read by the
+    # gate only, never on the national target-fit register.
+    entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+    target_fit = entries["uk_local_target_fit"]
+    assert target_fit.gate == "target_fit"
+    assert dict(target_fit.parameters) == {
+        "surface": "local_candidate",
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "local_target_fit_reviewed_exclusions.json",
+    }
+
+
 def test_local_scope_exclusions_classify_every_other_uk_gate() -> None:
     declared = {entry.id for entry in load_country_spec("uk").gates.gates}
     exclusions = uk_local_gate_scope_exclusions()

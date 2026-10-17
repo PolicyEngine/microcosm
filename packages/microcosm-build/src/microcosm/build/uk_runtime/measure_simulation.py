@@ -17,6 +17,10 @@ import pandas as pd
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
+from microcosm.build.uk_runtime.high_value_homes import (
+    high_value_home_mask,
+    uk_high_value_home_thresholds,
+)
 from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
@@ -187,6 +191,40 @@ def household_bus_boardings(frame: Any, variable: str) -> np.ndarray:
     ).to_numpy(dtype=float)
 
 
+#: Owner-occupied homes over each high-value threshold, one indicator per
+#: household: the measure of the region rows that control the family's area
+#: cells on the local line (microcosm#1301). The indicator is the stored
+#: main_residence_value and tenure_type through ``high_value_home_mask`` at the
+#: threshold's frame-basis value, as the local metrics and the release gates
+#: read them, never an engine-uprated value. Reserved names: a persisted column
+#: of any would bypass the mask.
+_HIGH_VALUE_HOME_MEASURES = {
+    "owner_occupied_home_over_gbp_1m": "over_gbp_1m",
+    "owner_occupied_home_over_gbp_1_5m": "over_gbp_1_5m",
+    "owner_occupied_home_over_gbp_2m": "over_gbp_2m",
+}
+_HIGH_VALUE_HOME_COLUMNS = ("main_residence_value", "tenure_type")
+
+
+def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
+    """One for an owner-occupied household whose stored home value is over the threshold."""
+
+    threshold_id = _HIGH_VALUE_HOME_MEASURES[variable]
+    threshold = {
+        candidate.threshold_id: candidate
+        for candidate in uk_high_value_home_thresholds()
+    }[threshold_id]
+    household = frame.table("household")
+    missing = [column for column in _HIGH_VALUE_HOME_COLUMNS if column not in household]
+    if missing:
+        raise ValueError(f"{variable} needs the stored household columns {missing}.")
+    return high_value_home_mask(
+        household["main_residence_value"].to_numpy(dtype=float),
+        household["tenure_type"].to_numpy(),
+        threshold_basis_gbp=threshold.basis_gbp,
+    ).astype(float)
+
+
 #: HMRC's statistics count the year's profit after losses brought forward,
 #: which policyengine-uk keeps apart in loss_relief: the self-employment rows
 #: read that profit, and every row on HMRC's total income (its bands, its
@@ -308,6 +346,14 @@ def compute_uk_measure_input(
         return (
             household_bus_boardings(frame, variable),
             f"stage_boardings_per_trip:{_BUS_BOARDING_MEASURES[variable]}",
+        )
+
+    if variable in _HIGH_VALUE_HOME_MEASURES:
+        if entity != "household":
+            raise KeyError(f"high-value home measures are household-only: {entity}")
+        return (
+            household_high_value_home(frame, variable),
+            f"frame_columns:high_value_home_mask:{_HIGH_VALUE_HOME_MEASURES[variable]}",
         )
 
     if variable in _LOSS_RELIEF_MEASURES:
@@ -750,6 +796,14 @@ class UKMeasureResolver:
                 "Bus boarding measures must not be persisted as source inputs: "
                 f"{persisted_boardings}"
             )
+        persisted_high_value = sorted(
+            set(_HIGH_VALUE_HOME_MEASURES) & set(map(str, frame.table("household")))
+        )
+        if persisted_high_value:
+            raise ValueError(
+                "High-value home measures must not be persisted as source inputs: "
+                f"{persisted_high_value}"
+            )
         self.simulation = factory(dataset=str(source_path))
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
@@ -826,7 +880,7 @@ class UKMeasureResolver:
             | UC_PAID_TARGET_VARIABLES
         ):
             return entity == "benunit"
-        if variable in _BUS_BOARDING_MEASURES:
+        if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return entity == "household"
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
@@ -855,7 +909,7 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
-        if variable in _BUS_BOARDING_MEASURES:
+        if variable in _BUS_BOARDING_MEASURES or variable in _HIGH_VALUE_HOME_MEASURES:
             return "household"
         if _cgt_model_measure(variable, self.year) is not None:
             return "person"

@@ -57,7 +57,7 @@
       ],
       "lower_side": "contract:dwp.uc.households_by_area",
       "max_factor_shift": 0.02,
-      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). Both sides count paid claims since the abf0921 re-pin (PolicyEngine/chronicle#339 splits each area-month by Stat-Xplore's Payment Indicator and the area targets bind 'Yes', microcosm#1300), so the factor sits near one, the size of DWP's 'Unknown' area, which carries no area fact, where it was the GB paid share, 0.921, applied to every area alike (microcosm#1198 review, must-fix 1). A factor more than two per cent from one means the sides no longer measure one quantity and is refused: each grain is read on its own input total, before any group rescales it, and a surface with off-surface cells on the pass that carries them."
+      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). Both sides count paid claims since the abf0921 re-pin (PolicyEngine/chronicle#339 splits each area-month by Stat-Xplore's Payment Indicator and the area targets bind 'Yes', microcosm#1300), so the factor sits near one, the size of DWP's 'Unknown' area, which carries no area fact, where it was the GB paid share, 0.921, applied to every area alike (microcosm#1198 review, must-fix 1). A factor more than two per cent from one means the sides no longer measure one quantity and is refused. The bound applies to each grain's GB total, the constituencies' and the authorities' sums over Great Britain, read before any group rescales them (on a surface with off-surface cells, on the pass that carries them); it does not bound each nation or English region within a grain, whose authorities the exact-signature group puts on its own constituencies."
     },
     {
       "bridge_id": "national_age_0_9_vs_local_age_0_10",
@@ -621,18 +621,6 @@
     "ons.equiv_housing_costs": {
       "route": "no_higher_control",
       "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
-    },
-    "microcosm.high_value_homes.over_1m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
-    },
-    "microcosm.high_value_homes.over_1_5m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1.5m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
-    },
-    "microcosm.high_value_homes.over_2m": {
-      "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £2m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
     },
     "desnz.subnational.electricity_kwh": {
       "route": "no_higher_control",

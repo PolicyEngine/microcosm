@@ -309,17 +309,22 @@ def prepare_release(
             raise ValueError(
                 "parent_h5 and compatibility_wheels require a source_enrichment release."
             )
+    contract_warnings: list[str] = []
     if evidence:
         validate_evidence_release_dir(release_dir)
     elif parent_h5 is not None or compatibility_wheels:
-        validate_release_dir(
+        contract_warnings = validate_release_dir(
             release_dir,
             parent_h5=parent_h5,
             artifact_root=artifact_root,
             compatibility_wheels=compatibility_wheels,
         )
     else:
-        validate_release_dir(release_dir, artifact_root=artifact_root)
+        contract_warnings = validate_release_dir(
+            release_dir, artifact_root=artifact_root
+        )
+    for contract_warning in contract_warnings:
+        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
     if line is not None:

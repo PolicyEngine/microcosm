@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassReference,
     UKZeroWeightStratumDeclaration,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -577,6 +578,71 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     assert register == {}
 
 
+def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
+    # The local cells' register (microcosm#1301) starts empty; a sign-off after
+    # a build adds its entries and edits this pin in the same reviewed change.
+    # Whatever it holds must name a cell the uk_local_target_fit gate reports,
+    # family/area_code/metric over a crosswalk area, and its reasons carry no
+    # figures: no per-area support figure and no cell estimate.
+    from microcosm.build.uk_runtime.battery_bindings import _local_area_roster
+
+    register = uk_default_local_target_fit_reviewed_exclusions()
+    roster = _local_area_roster(
+        "local_area_crosswalk.json", ("constituency", "local_authority")
+    )
+    area_codes = {code for codes in roster.values() for code in codes}
+    for key, record in register.items():
+        pieces = key.split("/", 2)
+        assert len(pieces) == 3 and all(pieces), key
+        assert pieces[1] in area_codes, key
+        assert "%" not in record.reason, key
+    assert uk_default_local_target_fit_reviewed_exclusions() is register
+    assert register == {}
+
+
+def _national_line_register() -> dict[str, UKReviewedExclusion]:
+    """The committed target-fit register as the national line reads it.
+
+    A gate-only sign-off between the two dense builds (microcosm#1301) adds
+    entries scoped ``release_lines: ["local"]`` and approved after the fixed
+    clocks below. The national line sets them aside, as
+    ``battery_bindings._in_line`` does, so these national-row checks keep
+    reading only the entries that apply to them.
+    """
+
+    return {
+        name: record
+        for name, record in uk_default_target_fit_reviewed_exclusions().items()
+        if record.applies_on("national")
+    }
+
+
+def test_national_line_register_sets_local_sign_offs_aside(monkeypatch) -> None:
+    # A local-line sign-off approved after the fixed clocks would read as
+    # premature there and fail every national-row check.
+    signed = UKReviewedExclusion(
+        **{
+            **_entry("Synthetic local-line sign-off."),
+            "approved_on": "2026-10-22",
+            "expires_on": "2026-11-19",
+        },
+        release_lines=("local",),
+    )
+    monkeypatch.setitem(
+        globals(),
+        "uk_default_target_fit_reviewed_exclusions",
+        lambda: {"dwp.uc.households_children_1@2025": signed},
+    )
+
+    assert _national_line_register() == {}
+    fit = uk_target_fit_gate(
+        {"dwp.uc.households_children_1@2025": -0.1},
+        reviewed_exclusions=_national_line_register(),
+        now=date(2026, 10, 6),
+    )
+    assert fit.passed
+
+
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
 # the explicit family_equal override. This is not a default-doctrine fit claim.
 _RESTORED_TARGET_FIT_ERRORS = {
@@ -598,7 +664,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **_RESTORED_TARGET_FIT_ERRORS,
             **empty_tail,
         },
-        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
 
@@ -620,7 +686,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     # a default 256/uniform or any override run must have no old deferral.
     fit = uk_target_fit_gate(
         {name: relative_error},
-        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
 
@@ -635,7 +701,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     assert "hmrc.cgt.liability_total@2025" not in register
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
-        reviewed_exclusions=register,
+        reviewed_exclusions=_national_line_register(),
         now=date(2026, 10, 6),
     )
     assert not fit.passed

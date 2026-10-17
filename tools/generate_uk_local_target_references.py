@@ -24,9 +24,6 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UK_UPRATING_APPLIERS,
     uk_small_cell_rule_is_signed,
 )
-from microcosm.build.uk_runtime.weighted_integrity import (
-    load_uk_local_area_support_exclusion_register,
-)
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
@@ -52,6 +49,24 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 UK_PACKAGE_ROOT = Path("packages/microcosm-build/src/microcosm/build/uk")
+# The local authorities whose own local-authority cells are signed-deferred
+# because they miss the support floor at every K measured: the Isles of Scilly
+# and the City of London (microcosm#762 A4, as amended by A14). These are
+# solve-scoped and live here, not in uk/local_area_support_exclusions.json,
+# which only the area-support gate reads since microcosm#1301, so signing an
+# area gate-only never changes the compiled problem. Lockstep tests hold them
+# inside that register's local_authority/* exclusion keys.
+SUPPORT_FLOOR_DEFERRED_AREA_IDS: tuple[str, ...] = ("E06000053", "E09000001")
+# The families that bind in those areas despite the floor (microcosm#887),
+# lockstep-tested equal to the register's bound_despite_support_floor block.
+SUPPORT_FLOOR_BOUND_FAMILIES: frozenset[str] = frozenset({"census_households"})
+# The high-value homes area targets whose constituency level is deferred whole
+# (microcosm#1301); their region rows bind in target_references.json instead.
+HIGH_VALUE_HOMES_LOCAL_TARGET_IDS: tuple[str, ...] = (
+    "microcosm.high_value_homes.over_1m",
+    "microcosm.high_value_homes.over_1_5m",
+    "microcosm.high_value_homes.over_2m",
+)
 
 
 def main() -> None:
@@ -372,6 +387,9 @@ def _area_signed_deferrals(
     welsh_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "W"
     )
+    england_and_wales_constituencies = tuple(
+        area_id for area_id in constituency_ids if area_id[:1] in {"E", "W"}
+    )
     if len(scottish_local_authorities) != 32:
         raise ValueError(
             "Scottish council-tax deferral mask expected 32 crosswalk local "
@@ -391,6 +409,12 @@ def _area_signed_deferrals(
         raise ValueError(
             "English council-tax Band H deferral mask expected 296 crosswalk "
             f"local authorities; measured {len(english_local_authorities)}."
+        )
+    if len(england_and_wales_constituencies) != 575:
+        raise ValueError(
+            "England and Wales high-value homes constituency deferral mask "
+            "expected 575 crosswalk constituencies; measured "
+            f"{len(england_and_wales_constituencies)}."
         )
     support_floor_excluded_area_ids, support_floor_binding_families = (
         _support_floor_register_scope()
@@ -550,6 +574,33 @@ def _area_signed_deferrals(
         area_ids=("S12000027",),
         defer_if_compiles=True,
     )
+    # microcosm#1301: the high-value homes family is controlled by its region
+    # rows on the local line and binds its local-authority cells down to the
+    # signed hvcts_la_household_floor rule, so its constituency level is
+    # deferred whole, as the English band-H level is. The rule's second pass
+    # then finds no active constituency cell to defer.
+    for target_id in HIGH_VALUE_HOMES_LOCAL_TARGET_IDS:
+        add(
+            target_id=target_id,
+            geography_level="constituency",
+            reason_id="high_value_homes_constituency_grain_deferred",
+            rationale=(
+                "The derived high-value homes stock binds at the nine English "
+                "regions and Wales (microcosm.high_value_homes.over_*_by_region, "
+                "local line only) and at local-authority grain down to the "
+                "hvcts_la_household_floor rule (uk/local_small_cell_rule.json). "
+                "At constituency grain most cells hold fewer than 400 homes "
+                "(289 of the 575 seats over £1m, 448 over £1.5m, 512 over £2m), "
+                "about two household weights at the ruled 150,000 households, so "
+                "their fit would be noise. The level is deferred whole rather "
+                "than cell by cell, and the region rows control the stock the "
+                "seats share. The seat rank correlations of the "
+                "uk_high_value_homes_benchmarks diagnostic read the "
+                "constituency stock out of sample (microcosm#1301)."
+            ),
+            area_ids=england_and_wales_constituencies,
+            defer_if_compiles=True,
+        )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
@@ -629,22 +680,13 @@ def _area_signed_deferrals(
 
 
 def _support_floor_register_scope() -> tuple[tuple[str, ...], frozenset[str]]:
-    """Return generator masks from the signed local-area support register."""
+    """Return the support-floor deferral masks: the areas and bound families.
 
-    register = load_uk_local_area_support_exclusion_register(None)
-    area_ids: list[str] = []
-    for key in register["exclusions"]:
-        level, separator, area_id = key.partition("/")
-        if separator != "/" or level != "local_authority" or not area_id:
-            raise ValueError(
-                "local-area support exclusion keys used by the generator must "
-                f"have local_authority/<area_id> shape, got {key!r}."
-            )
-        area_ids.append(area_id)
-    return (
-        tuple(sorted(area_ids)),
-        frozenset(register["bound_despite_support_floor"]),
-    )
+    Both are this module's constants, never read from the gate-only
+    local-area support register (microcosm#1301).
+    """
+
+    return SUPPORT_FLOOR_DEFERRED_AREA_IDS, SUPPORT_FLOOR_BOUND_FAMILIES
 
 
 if __name__ == "__main__":
