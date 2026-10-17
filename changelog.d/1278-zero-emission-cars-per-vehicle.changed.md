@@ -3,6 +3,6 @@ The UK LCFS stage now draws the fuel-buyer flag per vehicle (microcosm#1278). Ea
 - One-vehicle households keep their flag.
 - Households with several vehicles are no longer all one or the other, so they buy fuel more often.
 - The declaration's `rate_rule` becomes `per_car_zero_emission_share` in the stage spec, the rendered stage roster and the sources schema.
-- The fuel-flag receipt adds the flagged share among vehicle households.
+- The fuel-flag receipt adds the flagged share among vehicle households and the share of vehicles in fuel-free households. The flag is per household, so a zero-emission car beside a petrol or diesel one keeps its household's fuel spend, and the second share sits below the per-car share the draw uses. Both are "<10" when one to nine households carry them.
 - Who holds the zero-emission cars by income is still random (a later change).
 - The release input coverage manifest and the H2 spine fixture are regenerated.
