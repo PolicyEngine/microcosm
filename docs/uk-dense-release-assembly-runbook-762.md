@@ -62,8 +62,16 @@ uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
   --ledger-manifest-sha256 <manifest> --seed 42 \
   --input-mass-reference <licensed-input-mass-reference> \
+  --review-date <YYYY-MM-DD> --graph-store <graph-store-dir> \
   --logbook-prev-row-digest <previous row> --out <candidate-dir>
 ```
+
+Pass `--review-date` and `--graph-store` explicitly, even though both have
+defaults. If this build's gate-only failures are signed (below), a second
+build must repeat both to reuse this build's solve, and neither default
+carries over: `--review-date` defaults to the day the command runs, which keys
+a different solve on a later day, and `--graph-store` defaults to
+`<out>/.graph-store`, which is empty under the second build's new `--out`.
 
 `--release-role dense` is required (microcosm#823): the role supplies the
 solve defaults (K=15, seed 42, 2,000 epochs, learning rate 0.15,
@@ -153,12 +161,15 @@ against it and refuses one that moved:
 ```bash
 uv run --no-sync python tools/draft_uk_dense_signoff.py --run-dir <build-1> \
   --approved-by <reviewer> --approved-on <YYYY-MM-DD> \
-  --gate-clock <planned build-2 gate clock> --out <outside-the-repo>/signoff
+  --gate-clock <planned build-2 gate clock> --out <outside-every-git-work-tree>/signoff
 ```
 
 **What the tool checks.** It reads the full gate report, the signed
-`*.local_gates.json`, `*.targets.csv`, `*.area_support.csv` and the Logbook
-row, and refuses any of these:
+`*.local_gates.json`, `*.targets.csv`, `*.area_support.csv`, the Logbook row
+and the measure exclusions build 1's solve ran under. Those come from
+`rowwise_candidate_manifest.json`, or, when build 1's gates stopped it before
+the export, from `uk.full.target_compilation.surface.json`, which every build
+that reached the calibrated gates leaves. It refuses any of these:
 
 - inputs that disagree with one another;
 - a report bound to no attempt;
@@ -167,15 +178,33 @@ row, and refuses any of these:
 - a window that leaves an entry premature or expired at the gate clock, or is
   longer than 92 days;
 - a gate clock earlier than build 1's;
+- a gate clock later than the earliest expiry among those measure exclusions
+  and the local line's degenerate-register entries, which no sign-off can
+  renew without changing the solve;
 - national entries that break the national graph test's review invariant.
 
-**What it drafts.** Every entry carries `release_lines: ["local"]`:
+**What it drafts.** Every drafted entry carries `release_lines: ["local"]`:
 
 - an entry for every signable failure;
 - a renewal for a failing row whose entry is out of its window at the gate
   clock;
 - the removal of every entry build 2 would fail as stale, unknown or out of
   its window, and of local entries that no row earns.
+
+The national target-fit register is shared with the national line, which may
+still stand on its entries, so an entry there that applies on every line is
+never removed or replaced. When build 2 would fail it on the local line
+(stale, premature or expired at the gate clock), it is rescoped to
+`release_lines: ["national"]` and otherwise left as it is:
+
+- An expired one also goes to review, because only the national line can
+  renew or retire it. Kept beside approvals made after its expiry, it breaks
+  the national graph test's review invariant, so the draft is then unsignable
+  until the national line renews or retires it by hand and the draft is redone.
+- A row build 1 still breaches keeps such an entry for the national line too.
+  A register key holds one entry, so no local-only entry can be drafted beside
+  it, and the row needs a hand sign-off. For a premature entry, a gate clock
+  on or after its approval also works, since the entry is then in force.
 
 Fit entries expire after 28 days and area entries after 3 months. Each reason
 is templated: it names the key, the gate's bound or the floors the area
@@ -221,7 +250,8 @@ refuses one inside this checkout or any other, and `.gitignore` also covers
 - `signoff_draft.json`: the receipt;
 - `PR_BODY.md`: gate ids, build 1's attempt id and report digest, register
   entry counts, the national register's stale-risk and near-bound counts, the
-  reviewer, the adjudication, policy dates and the tests to run;
+  reviewer, the adjudication, policy dates, the names of the entries that set
+  the assembly deadline and the tests to run;
 - `PRIVATE_review.csv`: mode 0600, holding per-row errors, every fit row's
   stale-risk and near-bound flags and per-area support figures. Never commit
   or post it.
@@ -232,8 +262,16 @@ and near-bound rows (unsigned rows within one point below it). Only the
 national register's counts reach `PR_BODY.md` and the receipt. A local cell's
 key is in the patch, so a public count of signed cells next to the bound would
 bracket a named sub-GOR estimate: the local registers' counts are printed on
-the tool's standard output and kept as flags in `PRIVATE_review.csv`. The tool
-also prints the range of gate clocks build 2 may use.
+the tool's standard output and kept as flags in `PRIVATE_review.csv`.
+
+The tool also prints the range of gate clocks build 2 may use, and the receipt
+and `PR_BODY.md` give the **assembly deadline**, where that range ends: the
+earliest expiry among the measure exclusions build 1's solve ran under, the
+local line's degenerate-register entries and the gate-only entries the local
+line stands on after the sign-off. Build 2, its verification and the release
+assembly must all run by that date. Assembly and upload check the measure
+exclusions on the day they run, and renewing a measure exclusion or a
+degenerate-register entry changes the solve, so it would need a third build.
 
 **The sign-off PR.** Branch from build 1's commit and `git apply` the patch.
 Run the tests `PR_BODY.md` lists. Before committing the patch or posting the
@@ -245,13 +283,30 @@ build 2's commit stays in main's history.
 ### Second build: reuse the first build's solve (microcosm#1301)
 
 When build 1 is blocked only by failures signed in gate-only registers, build
-2 runs at the sign-off's head with build 1's arguments, its `--graph-store`
-and its `--review-date`, a new `--out`, and:
+2 runs at the sign-off's head. It repeats build 1's command with every
+argument, the sized-release ones included, and the same `--review-date` and
+`--graph-store`. It changes only the output directory and the Logbook
+predecessor, and adds two flags:
 
 ```bash
-  --gate-review-date <inside the range the draft printed> \
-  --require-solve-reuse
+uv run --no-sync python tools/build_uk_full.py <build 1's other arguments> \
+  --review-date <build 1's review date> --graph-store <build 1's graph store> \
+  --logbook-prev-row-digest <build 1's row digest> --out <new-candidate-dir> \
+  --gate-review-date <inside the range the draft printed> --require-solve-reuse
 ```
+
+- `--out` must be a new directory. Reusing build 1's overwrites build 1's
+  bundle, which `--verify` and the draft receipt still need.
+- `--logbook-prev-row-digest` must name the tail of the `uk/local` Logbook
+  chain when build 2 starts. That is build 1's row digest (the `row_digest` of
+  the one row in `<build-1>/logbook-spool/`, which is also the file's name),
+  unless another dense attempt has been recorded since, in which case it is
+  that attempt's. Build 1's own value would fork the chain, and leaving both
+  the flag and `POPULACE_LOGBOOK_PREV_ROW_DIGEST` unset would start a second
+  genesis. The Logbook store refuses either row and the archive export refuses
+  the chain, but the build itself does not check: the remote insert is
+  best-effort and the digest keys no graph node, so it never affects solve
+  reuse.
 
 The calibrated gates evaluate their reviewed exclusions on the gate clock,
 which may not precede `--review-date` or be later than today. Every node
@@ -270,7 +325,8 @@ key exported:
 
 ```bash
 uv run --no-sync python tools/draft_uk_dense_signoff.py --verify <build-2> \
-  --build-1 <build-1> --draft-receipt <outside-the-repo>/signoff/signoff_draft.json
+  --build-1 <build-1> \
+  --draft-receipt <outside-every-git-work-tree>/signoff/signoff_draft.json
 ```
 
 Verification fails unless all of these hold:
@@ -281,10 +337,15 @@ Verification fails unless all of these hold:
 - every receipt matches its register entry;
 - no release-blocking gate failed;
 - the signed local report passes the dense release contract, including the
-  disclosure walk a release directory gets.
+  disclosure walk a release directory gets;
+- with `--draft-receipt`, every drafted entry is committed, no retired one is,
+  and every rescoped one is committed for the national line only;
+- the assembly deadline, computed as the draft computes it from build 2's
+  measure exclusions and the checkout's registers, has not passed.
 
-It warns when build 2 did not reuse build 1's solve or its per-row errors
-differ. The entries expire: retire or renew them before `expires_on`, because
+It warns when build 2 did not reuse build 1's solve, when its per-row errors
+differ, and when the assembly deadline is two days away or less. The entries
+expire: retire or renew them before `expires_on`, because
 engine-free tests evaluate the committed registers at today's date.
 
 ## 3. Pre-flight the finished run

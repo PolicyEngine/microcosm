@@ -130,6 +130,39 @@ def _entry(approved_on: str, expires_on: str, *, lines=("local",), reason=None):
     return payload
 
 
+def _measure_exclusion(expires_on: str) -> dict:
+    """A measure exclusion as the target compilation receipts it (synthetic)."""
+
+    return {
+        "reason": "Synthetic measure exclusion for the sign-off tests.",
+        "tracking": "microcosm#1301",
+        "approved_by": "test-reviewer",
+        "adjudication": "microcosm#1301 (synthetic)",
+        "approved_on": "2026-09-01",
+        "expires_on": expires_on,
+        "evaluated_on": BUILD_CLOCK.isoformat(),
+    }
+
+
+#: The measure exclusions build 1's solve ran under, expiring well after the
+#: drafted entries unless a test says otherwise.
+MEASURE_EXCLUSIONS = {"synthetic.measure_a@2025": _measure_exclusion("2027-01-31")}
+
+
+def degenerate_register(entries: dict | None = None) -> dict:
+    """A degenerate register; by default one local entry expiring late."""
+
+    return {
+        "schema_version": 2,
+        "description": "Synthetic degenerate register.",
+        "exclusions": {
+            "household.synthetic_constant": _entry("2026-09-01", "2027-03-01")
+        }
+        if entries is None
+        else entries,
+    }
+
+
 def build_1_registers() -> dict:
     """The committed registers build 1 stood on."""
 
@@ -216,7 +249,9 @@ def _dump(payload: dict, indent: int) -> str:
     return json.dumps(payload, indent=indent, ensure_ascii=False) + "\n"
 
 
-def make_repo(root: Path, registers: dict, *, deferred=()) -> Path:
+def make_repo(
+    root: Path, registers: dict, *, deferred=(), degenerate: dict | None = None
+) -> Path:
     for gate_id, payload in registers.items():
         path = root / SPECS[gate_id].path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -225,6 +260,7 @@ def make_repo(root: Path, registers: dict, *, deferred=()) -> Path:
         (TOOL.TERMINAL_GATES_TEST, PIN_SOURCE),
         (TOOL.WEIGHTED_INTEGRITY_TEST, AREA_PIN_SOURCE),
         (TOOL.LOCAL_REFERENCE_GENERATOR, generator_source(deferred)),
+        (TOOL.DEGENERATE_REGISTER, _dump(degenerate or degenerate_register(), 1)),
     ):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -382,8 +418,14 @@ def write_run(
     release_candidate: bool = True,
     sample_fraction: float = 1.0,
     artifacts: dict | None = None,
+    measure_exclusions: dict | None = None,
 ) -> Path:
-    """A dense run directory as a blocked or passing build leaves it."""
+    """A dense run directory as a blocked or passing build leaves it.
+
+    Like a build its gates stopped before the export, it holds the target
+    compilation's surface but no candidate manifest; the surface here carries
+    only the measure-exclusion receipt.
+    """
 
     national = dict(NATIONAL if national is None else national)
     targets = _target_rows(national, local)
@@ -455,6 +497,15 @@ def write_run(
     )
     pd.DataFrame(targets).to_csv(path / f"{STEM}.targets.csv", index=False)
     support_frame.to_csv(path / f"{STEM}.area_support.csv", index=False)
+    (path / TOOL.TARGET_SURFACE_FILENAME).write_text(
+        json.dumps(
+            {
+                "measure_exclusions": MEASURE_EXCLUSIONS
+                if measure_exclusions is None
+                else measure_exclusions
+            }
+        )
+    )
     spool = path / "logbook-spool"
     spool.mkdir()
     (spool / "row.json").write_text(json.dumps({"build_id": attempt_id}))
@@ -463,16 +514,18 @@ def write_run(
 
 @pytest.fixture(autouse=True)
 def _synthetic_environment(monkeypatch):
-    """Sign with the test key, wire the local target-fit register, and keep
-    the real registers' windows out of the national review invariant (its own
-    tests below exercise it). The signed reports carry the live dense digests,
-    so --verify checks them against the contract's committed pin."""
+    """Sign with the test key, wire the local target-fit register, keep the
+    real registers' windows out of the national review invariant (its own
+    tests below exercise it) and verify on build 2's gate clock. The signed
+    reports carry the live dense digests, so --verify checks them against the
+    contract's committed pin."""
 
     monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     monkeypatch.setattr(
         TOOL, "register_wiring", lambda gates=None: dict.fromkeys(SPECS)
     )
     monkeypatch.setattr(TOOL, "_review_registers", list)
+    monkeypatch.setattr(TOOL, "_today", lambda: GATE_CLOCK)
 
 
 @pytest.fixture
@@ -547,6 +600,19 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
         gate: {"passes": True, "failure_count": 0} for gate in SPECS
     }
     assert receipt["gate_clock_range"] == [APPROVED_ON, "2026-11-19"]
+    # The drafted fit entries expire first; build 1's measure exclusion and
+    # the degenerate entry outlast them.
+    assert receipt["assembly_deadline"] == {
+        "date": "2026-11-19",
+        "set_by": [
+            "uk_local_target_fit:census_households/E14000001/households",
+            "uk_target_fit:synthetic.national_a@2025",
+            "uk_target_fit:synthetic.national_b@2025",
+        ],
+    }
+    assert receipt["build_1"]["measure_exclusions_from"] == (
+        TOOL.TARGET_SURFACE_FILENAME
+    )
     assert receipt["pins"] == {
         "files": [
             TOOL.TERMINAL_GATES_TEST.as_posix(),
@@ -554,6 +620,14 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
         ],
         "manual": [],
     }
+    assert (
+        "**Assembly deadline: 2026-11-19**, when "
+        "`uk_local_target_fit:census_households/E14000001/households`, "
+        "`uk_target_fit:synthetic.national_a@2025` and "
+        "`uk_target_fit:synthetic.national_b@2025` expire: "
+    ) in (out / "PR_BODY.md").read_text()
+    # A sign-off with many cells names three and counts the rest.
+    assert TOOL._named(["a", "b", "c", "d", "e"]) == "`a`, `b`, `c` and 2 more"
 
     apply_patch(repo, out / "signoff.patch")
     after = read_registers(repo)
@@ -647,7 +721,10 @@ def test_local_fit_bands_reach_only_the_private_file_and_the_terminal(tmp_path, 
     assert (national["stale_risk_count"], national["near_bound_count"]) == (1, 1)
 
     body = (out / "PR_BODY.md").read_text()
-    assert "| Register | Added | Renewed | Kept | Retired | For review |" in body
+    assert (
+        "| Register | Added | Renewed | Kept | Retired | Rescoped | For review |"
+        in body
+    )
     assert "Stale-risk |" not in body and "Near-bound |" not in body
     assert "National target-fit rows: 1 stale-risk, 1 near-bound." in body
     assert "Local target-fit cells" in body
@@ -1048,7 +1125,289 @@ def test_a_build_that_passed_needs_nothing(tmp_path, capsys):
     out = tmp_path / "draft"
     assert draft(build, repo, out) == 0
     assert not (out / "signoff.patch").exists()
-    assert "Nothing to sign" in (out / "PR_BODY.md").read_text()
+    body = (out / "PR_BODY.md").read_text()
+    assert "Nothing to sign" in body
+    # Build 1 itself is assembled, by the area entry's expiry.
+    assert "**Assembly deadline: 2026-12-01**" in body
+
+
+# ---------------------------------------------------------------------------
+# The national line's approvals and the assembly deadline
+# ---------------------------------------------------------------------------
+
+UNSCOPED_KEY = "synthetic.national_c@2025"
+BREACHING_KEY = "synthetic.national_a@2025"
+
+
+@pytest.mark.parametrize(
+    ("entry", "approved_on", "why", "review"),
+    [
+        # In force, and build 1 fits the row inside the bound: stale on the
+        # local line.
+        (
+            _entry("2026-10-01", "2026-10-29", lines=None),
+            APPROVED_ON,
+            "fits the row inside the bound",
+            False,
+        ),
+        # Approved for every line after the gate clock: premature there.
+        (
+            _entry("2026-10-23", "2026-11-20", lines=None),
+            APPROVED_ON,
+            "takes force 2026-10-23, after the gate clock",
+            False,
+        ),
+        # In force for build 1, expired at the gate clock: kept all the same,
+        # for the national line to renew or retire. The sign-off is approved
+        # before the expiry, so the national graph test's review invariant
+        # still holds.
+        (
+            _entry("2026-09-01", "2026-10-21", lines=None),
+            "2026-10-20",
+            "expired 2026-10-21; the national line must renew or retire it",
+            True,
+        ),
+    ],
+)
+def test_an_unscoped_national_entry_build_2_would_fail_is_rescoped(
+    tmp_path, entry, approved_on, why, review
+):
+    # The register is shared: the national line may still stand on it.
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][UNSCOPED_KEY] = entry
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    clock = ("--approved-on", approved_on, "--gate-clock", GATE_CLOCK.isoformat())
+    assert draft(build, repo, out, *clock) == 0
+
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    national = receipt["registers"]["uk_target_fit"]
+    assert national["rescope"] == [UNSCOPED_KEY]
+    assert national["remove"] == ["synthetic.national_e@2025"]
+    assert national["review"] == ([UNSCOPED_KEY] if review else [])
+    assert national["conflicts"] == []
+    assert why in national["notes"][UNSCOPED_KEY]
+    assert receipt["predicted_build_2"]["uk_target_fit"]["passes"] is True
+    # Set aside on the local line, it no longer holds the gate clock back.
+    assert receipt["gate_clock_range"][0] == approved_on
+    body = (out / "PR_BODY.md").read_text()
+    assert (
+        "| National target-fit rows (`uk_target_fit`) | 2 | 0 | 0 | 1 | 1 | "
+        f"{int(review)} |"
+    ) in body
+    assert 'now carry `"release_lines": ["national"]`' in body
+    assert (
+        f"National target-fit entries for review: `{UNSCOPED_KEY}`." in body
+    ) is review
+
+    apply_patch(repo, out / "signoff.patch")
+    after = read_registers(repo)
+    committed = after["uk_target_fit"]["exclusions"][UNSCOPED_KEY]
+    assert committed == {**entry, "release_lines": ["national"]}
+    record = coerce_reviewed_exclusions({UNSCOPED_KEY: committed}, label="after")
+    assert record[UNSCOPED_KEY].applies_on("national")
+    assert not record[UNSCOPED_KEY].applies_on("local")
+    assert f'"{UNSCOPED_KEY}",' in (repo / TOOL.TERMINAL_GATES_TEST).read_text()
+    (fragment,) = (repo / "changelog.d").glob("1301-uk-dense-signoff-*.changed.md")
+    assert (
+        "1 national target-fit entry that applied on every line is scoped to the "
+        "national line, which still stands on it." in fragment.read_text()
+    )
+
+    build_2 = write_run(
+        tmp_path / "build-2", registers=after, attempt_id=ATTEMPT_2, clock=GATE_CLOCK
+    )
+    status, result = verify(
+        build_2, repo, tmp_path, "--draft-receipt", str(out / "signoff_draft.json")
+    )
+    assert status == 0, result["failures"]
+
+
+def test_an_expired_kept_entry_that_breaks_the_review_invariant_is_unsignable(
+    tmp_path,
+):
+    # Kept beside approvals made after it expired, the entry would fail the
+    # national graph test's review invariant, so the national line must renew
+    # or retire it first.
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][UNSCOPED_KEY] = _entry(
+        "2026-09-01", "2026-10-21", lines=None
+    )
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 1
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    national = receipt["registers"]["uk_target_fit"]
+    assert national["rescope"] == national["review"] == [UNSCOPED_KEY]
+    reason = receipt["not_signable"]["uk_target_fit"]
+    assert "review invariant" in reason
+    assert (
+        f"because {UNSCOPED_KEY} expired and is kept for the national line: "
+        "renew or retire it there by hand, then draft again"
+    ) in reason
+    assert not (out / "signoff.patch").exists()
+    assert "a hand fix and a new draft" in (out / "PR_BODY.md").read_text()
+
+
+@pytest.mark.parametrize(
+    ("entry", "review", "advice"),
+    [
+        (_entry("2026-09-01", "2026-10-21", lines=None), True, "sign the row by hand"),
+        (
+            _entry("2026-10-23", "2026-11-20", lines=None),
+            False,
+            "or choose a gate clock on or after 2026-10-23",
+        ),
+    ],
+)
+def test_a_breaching_row_never_replaces_its_entry_for_every_line(
+    tmp_path, entry, review, advice
+):
+    # Build 1 breaches the bound on the row and its all-lines entry is out of
+    # its window at the gate clock. The entry is kept for the national line,
+    # and one key holds one entry, so the local line needs a hand sign-off.
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][BREACHING_KEY] = entry
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 1
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    national = receipt["registers"]["uk_target_fit"]
+    assert national["rescope"] == national["conflicts"] == [BREACHING_KEY]
+    assert national["renew"] == []
+    assert national["review"] == ([BREACHING_KEY] if review else [])
+    note = national["notes"][BREACHING_KEY]
+    assert "one key holds one entry, so no local-only entry can be drafted" in note
+    assert advice in note
+    assert "sign them by hand" in receipt["not_signable"]["uk_target_fit"]
+    assert not (out / "signoff.patch").exists()
+
+
+def test_a_gate_clock_on_its_approval_keeps_a_premature_all_lines_entry(tmp_path):
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][BREACHING_KEY] = _entry(
+        "2026-10-23", "2026-11-20", lines=None
+    )
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out, "--gate-clock", "2026-10-23") == 0
+    national = json.loads((out / "signoff_draft.json").read_text())["registers"][
+        "uk_target_fit"
+    ]
+    assert national["keep"] == [BREACHING_KEY]
+    assert national["rescope"] == national["conflicts"] == []
+
+
+def test_an_unscoped_local_cell_entry_is_still_removed(tmp_path):
+    # The national line reads no local cell, so nothing is rescoped there.
+    registers = build_1_registers()
+    key = "census_households/E14000002/households"
+    registers["uk_local_target_fit"]["exclusions"][key] = _entry(
+        "2026-10-01", "2026-10-29", lines=None
+    )
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    local = json.loads((out / "signoff_draft.json").read_text())["registers"][
+        "uk_local_target_fit"
+    ]
+    assert local["remove"] == [key]
+    assert local["rescope"] == []
+
+
+@pytest.mark.parametrize(
+    ("measures", "degenerate", "deadline", "set_by"),
+    [
+        (
+            {"synthetic.measure_a@2025": _measure_exclusion("2026-11-05")},
+            None,
+            "2026-11-05",
+            "measure_exclusion:synthetic.measure_a@2025",
+        ),
+        (
+            MEASURE_EXCLUSIONS,
+            {
+                "household.synthetic_constant": _entry("2026-09-01", "2026-11-01"),
+                # Not the local line's: it never caps the local release.
+                "household.synthetic_national": _entry(
+                    "2026-09-01", "2026-10-25", lines=("national",)
+                ),
+            },
+            "2026-11-01",
+            "degenerate:household.synthetic_constant",
+        ),
+    ],
+)
+def test_solve_scoped_expiries_cap_the_gate_clock_and_set_the_deadline(
+    tmp_path, measures, degenerate, deadline, set_by
+):
+    registers = build_1_registers()
+    repo = make_repo(
+        tmp_path / "repo",
+        registers,
+        degenerate=None if degenerate is None else degenerate_register(degenerate),
+    )
+    build = write_run(
+        tmp_path / "build-1", registers=registers, measure_exclusions=measures
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["gate_clock_range"] == [APPROVED_ON, deadline]
+    assert receipt["assembly_deadline"] == {"date": deadline, "set_by": [set_by]}
+    body = (out / "PR_BODY.md").read_text()
+    assert f"**Assembly deadline: {deadline}**, when `{set_by}` expires" in body
+    assert f"on or before {deadline}." in body
+
+
+def test_a_gate_clock_past_a_solve_scoped_expiry_is_refused(repo, tmp_path, capsys):
+    # In force for build 1's solve clock, expired at the planned gate clock:
+    # renewing it would change the solve.
+    measures = {"synthetic.measure_a@2025": _measure_exclusion("2026-10-21")}
+    build = write_run(
+        tmp_path / "build-1", registers=build_1_registers(), measure_exclusions=measures
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 2
+    assert (
+        "--gate-clock 2026-10-22 is after 2026-10-21, when "
+        "measure_exclusion:synthetic.measure_a@2025 expires"
+    ) in capsys.readouterr().err
+    assert not out.exists()
+    # A gate clock on the expiry itself is in time.
+    assert draft(build, repo, out, "--approved-on", "2026-10-21") == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["gate_clock_range"] == ["2026-10-21", "2026-10-21"]
+
+
+def test_the_candidate_manifest_receipt_is_read_before_the_surface(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    name = "synthetic.measure_a@2025"
+    for filename, expiry in (
+        (TOOL.TARGET_SURFACE_FILENAME, "2027-01-31"),
+        (TOOL.CANDIDATE_MANIFEST_FILENAME, "2026-12-31"),
+    ):
+        (run / filename).write_text(
+            json.dumps({"measure_exclusions": {name: _measure_exclusion(expiry)}})
+        )
+        assert TOOL.receipted_measure_exclusions(run) == (
+            {name: date.fromisoformat(expiry)},
+            filename,
+        )
+
+
+def test_a_run_without_receipted_measure_exclusions_is_refused(
+    build_1, repo, tmp_path, capsys
+):
+    (build_1 / TOOL.TARGET_SURFACE_FILENAME).unlink()
+    assert draft(build_1, repo, tmp_path / "draft") == 2
+    assert "the measure exclusions its solve ran under" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -1259,6 +1618,73 @@ def test_verify_reports_row_drift_and_no_solve_reuse(build_1, repo, tmp_path):
     assert "build 2 did not reuse build 1's solve" in result["warnings"]
 
 
+@pytest.mark.parametrize(
+    ("today", "outcome"),
+    [
+        (date(2026, 10, 27), None),
+        (date(2026, 10, 28), "warning"),
+        (date(2026, 10, 30), "warning"),
+        (date(2026, 10, 31), "failure"),
+    ],
+)
+def test_verify_warns_near_the_assembly_deadline_and_fails_past_it(
+    repo, tmp_path, monkeypatch, today, outcome
+):
+    measures = {"synthetic.measure_a@2025": _measure_exclusion("2026-10-30")}
+    build = write_run(
+        tmp_path / "build-1", registers=build_1_registers(), measure_exclusions=measures
+    )
+    registers = _signed_off(build, repo, tmp_path)
+    build_2 = write_run(
+        tmp_path / "build-2",
+        registers=registers,
+        attempt_id=ATTEMPT_2,
+        clock=GATE_CLOCK,
+        measure_exclusions=measures,
+    )
+    monkeypatch.setattr(TOOL, "_today", lambda: today)
+    status, result = verify(build_2, repo, tmp_path)
+    assert result["assembly_deadline"] == {
+        "date": "2026-10-30",
+        "set_by": ["measure_exclusion:synthetic.measure_a@2025"],
+    }
+    warned = [line for line in result["warnings"] if "assembly deadline" in line]
+    failed = [line for line in result["failures"] if "assembly deadline" in line]
+    assert (status, bool(warned), bool(failed)) == {
+        None: (0, False, False),
+        "warning": (0, True, False),
+        "failure": (1, False, True),
+    }[outcome]
+
+
+def test_verify_fails_a_rescope_committed_on_every_line(tmp_path):
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][UNSCOPED_KEY] = _entry(
+        "2026-10-01", "2026-10-29", lines=None
+    )
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    signed = _signed_off(build, repo, tmp_path)
+    # The sign-off committed with the entry left on every line.
+    del signed["uk_target_fit"]["exclusions"][UNSCOPED_KEY]["release_lines"]
+    make_repo(repo, signed)
+    build_2 = write_run(
+        tmp_path / "build-2", registers=signed, attempt_id=ATTEMPT_2, clock=GATE_CLOCK
+    )
+    status, result = verify(
+        build_2,
+        repo,
+        tmp_path,
+        "--draft-receipt",
+        str(tmp_path / "draft" / "signoff_draft.json"),
+    )
+    assert status == 1
+    assert (
+        f"uk_target_fit: entries drafted for the national line only are not "
+        f"committed so ['{UNSCOPED_KEY}']"
+    ) in result["failures"]
+
+
 # ---------------------------------------------------------------------------
 # Lockstep with the repository
 # ---------------------------------------------------------------------------
@@ -1290,6 +1716,38 @@ def test_the_full_gate_report_filename_matches_the_driver():
     from microcosm.build.uk_runtime.full_build_cli import FULL_GATE_REPORT_FILENAME
 
     assert TOOL.FULL_GATE_REPORT_FILENAME == FULL_GATE_REPORT_FILENAME
+
+
+def test_the_measure_exclusion_receipts_are_the_files_the_build_writes(tmp_path):
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.full_build_cli import _materialize_evidence
+    from microcosm.build.uk_runtime.rowwise_cli import MANIFEST_FILENAME
+
+    assert TOOL.CANDIDATE_MANIFEST_FILENAME == MANIFEST_FILENAME
+    # The build writes every node artifact as <node>.<artifact>.json.
+    payload = b'{"measure_exclusions": {}}'
+    manifest = SimpleNamespace(
+        nodes={
+            "uk.full.target_compilation": SimpleNamespace(
+                opaque_artifacts={"surface": "surface-key"}
+            )
+        }
+    )
+    _materialize_evidence(
+        manifest, SimpleNamespace(load_bytes=lambda key: payload), tmp_path
+    )
+    assert (tmp_path / TOOL.TARGET_SURFACE_FILENAME).read_bytes() == payload
+
+
+def test_the_degenerate_register_is_the_runtime_register():
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+    )
+
+    assert TOOL.DEGENERATE_REGISTER.name == UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
+    # The committed register loads through the tool, the local line's entries.
+    assert TOOL.degenerate_expiries(REPOSITORY)
 
 
 def test_the_committed_pins_are_found():

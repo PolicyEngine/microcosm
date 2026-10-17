@@ -36,8 +36,21 @@ drafts a ``release_lines: ["local"]`` entry for every signable failure, the
 removal of every entry build 2 would fail (stale, unknown or out of its
 window), and the test pins those registers move (``test_uk_terminal_gates.py``
 for the two target-fit registers, ``test_uk_weighted_integrity.py`` for the
-area exclusions). Any other release-blocking failure makes the build
-unsignable: nothing is drafted, and a third build is needed.
+area exclusions). A national target-fit entry that applies on every line is
+never removed or replaced, since the national line may still stand on it:
+when build 2 would fail it on the local line, it is scoped to the national
+line, unchanged otherwise. An expired one also goes to review, for the
+national line to renew or retire, and a row build 1 still breaches under such
+an entry needs a hand sign-off, since one key holds one entry. Any other
+release-blocking failure makes the build unsignable: nothing is drafted, and
+a third build is needed.
+
+The receipt and the PR body give the assembly deadline: the earliest expiry
+among the measure exclusions build 1's solve ran under (as its run directory
+receipts them), the local line's degenerate-register entries and the in-line
+gate-only entries after the sign-off. Build 2's gate-clock range ends there,
+and a ``--gate-clock`` past the solve-scoped expiries is refused: renewing
+either kind of entry changes the solve.
 
 Verify, after build 2::
 
@@ -48,7 +61,8 @@ It checks that build 2 stood on every in-line entry of the three registers at
 this checkout and that none was stale, dormant, premature, expired or unknown.
 It checks that no release-blocking gate failed and that the signed local report
 passes the dense release contract, its disclosure walk included (the signing
-key must be exported). With
+key must be exported). It fails once the assembly deadline has passed and
+warns from two days before it. With
 ``--build-1`` it also reports whether build 2 reused build 1's solve and
 reproduced its per-row errors.
 
@@ -133,7 +147,19 @@ LINE_LENGTH = 88
 #: ``full_build_cli.FULL_GATE_REPORT_FILENAME`` (lockstep-tested).
 FULL_GATE_REPORT_FILENAME = "uk.full.gates.calibrated.gate_report.json"
 LOCAL_REPORT_SUFFIX = ".local_gates.json"
+#: ``rowwise_cli.MANIFEST_FILENAME`` (lockstep-tested): the candidate manifest,
+#: whose measure exclusions assembly and upload validate on the day they run.
+CANDIDATE_MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
+#: The target compilation's surface as the build materializes its evidence
+#: (``<node>.<artifact>.json``, lockstep-tested). The manifest's measure
+#: exclusions are projected from it, and a build that its gates stopped
+#: before the export leaves only this.
+TARGET_SURFACE_FILENAME = "uk.full.target_compilation.surface.json"
+#: The degenerate register: solve-scoped, since the release contract pins its
+#: digest, yet the calibrated gates evaluate it on build 2's gate clock.
+DEGENERATE_REGISTER = UK_RESOURCES / "degenerate_reviewed_exclusions.json"
 LOCAL_LINE = "local"
+NATIONAL_LINE = "national"
 #: The geography levels whose targets the local surface materializes
 #: (``full_gates._LOCAL_LEVELS``); every other row is a national row.
 LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
@@ -142,6 +168,8 @@ FIT_WINDOW_DAYS = 28
 AREA_WINDOW_MONTHS = 3
 MAX_WINDOW_DAYS = 92
 STALE_RISK_MARGIN = 0.01
+#: ``--verify`` warns from this many days before the assembly deadline.
+DEADLINE_WARNING_DAYS = 2
 
 #: The only digits reviewer free text may carry (:func:`figure_free`): issue
 #: references (``#1301``, ``microcosm#1301``, ``PolicyEngine/microcosm#1301``,
@@ -337,7 +365,8 @@ def generator_deferred_areas(repo_root: Path) -> frozenset[str] | None:
 
 @dataclass(frozen=True)
 class BuildEvidence:
-    """One run directory, its four inputs checked against one another."""
+    """One run directory, its four inputs checked against one another, and the
+    measure exclusions its solve ran under."""
 
     run_dir: Path
     attempt_id: str
@@ -352,6 +381,10 @@ class BuildEvidence:
     sha256: Mapping[str, str]
     clock: date
     dev_build: bool
+    #: The measure exclusions the build's solve ran under, name to expiry, and
+    #: the file that receipts them (:func:`receipted_measure_exclusions`).
+    measure_exclusions: Mapping[str, date]
+    measure_exclusions_from: str
 
     def details(self, gate_id: str) -> Mapping[str, Any]:
         return self.outcomes.get(gate_id, {}).get("details") or {}
@@ -388,7 +421,44 @@ class BuildEvidence:
             "release_candidate": bool(self.document.get("release_candidate")),
             "sample_fraction": float(self.document.get("sample_fraction", 0.0)),
             "artifacts": {name: artifacts.get(name) for name in IDENTITY_ARTIFACTS},
+            "measure_exclusions_from": self.measure_exclusions_from,
         }
+
+
+def receipted_measure_exclusions(run_dir: Path) -> tuple[dict[str, date], str]:
+    """The measure exclusions a dense run's solve ran under: expiries and source.
+
+    Assembly and upload validate the candidate manifest's
+    ``measure_exclusions`` on the day they run, so their earliest expiry is
+    the last day a release of this solve can be assembled; renewing one
+    changes the solve. The manifest is read when the build exported one.
+    Otherwise the target compilation's materialized surface, from which the
+    manifest projects them, is: every run that reached the calibrated gates
+    leaves it, blocked or not.
+    """
+
+    for filename in (CANDIDATE_MANIFEST_FILENAME, TARGET_SURFACE_FILENAME):
+        path = run_dir / filename
+        if not path.is_file():
+            continue
+        records = _read_json(path, filename).get("measure_exclusions")
+        if not isinstance(records, Mapping):
+            raise InputError(f"{filename} receipts no measure_exclusions mapping.")
+        expiries = {}
+        for name, record in records.items():
+            if not isinstance(record, Mapping):
+                raise InputError(
+                    f"{filename} measure exclusion {name!r} is not a record."
+                )
+            expiries[str(name)] = _iso(
+                record.get("expires_on"), f"{filename} {name!r} expires_on"
+            )
+        return expiries, filename
+    raise InputError(
+        f"the run directory has neither {CANDIDATE_MANIFEST_FILENAME} nor "
+        f"{TARGET_SURFACE_FILENAME}, so the measure exclusions its solve ran "
+        "under are not receipted."
+    )
 
 
 def _one(paths: Sequence[Path], label: str) -> Path:
@@ -630,6 +700,7 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
     )
     if not isinstance(clock_text, str):
         raise InputError("uk_target_fit recorded no exclusions_evaluated_on clock.")
+    measure_exclusions, measure_exclusions_from = receipted_measure_exclusions(run_dir)
     evidence = BuildEvidence(
         run_dir=run_dir,
         attempt_id=attempt_id,
@@ -649,6 +720,8 @@ def load_build(run_dir: Path, *, allow_dev_build: bool = False) -> BuildEvidence
         },
         clock=_iso(clock_text, "uk_target_fit exclusions_evaluated_on"),
         dev_build=dev_build,
+        measure_exclusions=measure_exclusions,
+        measure_exclusions_from=measure_exclusions_from,
     )
     below = area_support_below_floor(support, **evidence.area_floors)
     if "support_below_floor" in support and not np.array_equal(
@@ -717,6 +790,9 @@ class RegisterDraft:
     renew: list[str] = field(default_factory=list)
     keep: list[str] = field(default_factory=list)
     remove: list[str] = field(default_factory=list)
+    #: Unscoped national entries scoped to the national line rather than
+    #: removed (:func:`draft_target_fit`).
+    rescope: list[str] = field(default_factory=list)
     review: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
     held: list[str] = field(default_factory=list)
@@ -728,6 +804,8 @@ class RegisterDraft:
         block = {
             key: value for key, value in self.before.items() if key not in self.remove
         }
+        for key in self.rescope:
+            block[key] = {**self.before[key], "release_lines": [NATIONAL_LINE]}
         for key in self.renew:
             block[key] = self.entries[key]
         for key in sorted(self.add):
@@ -736,7 +814,7 @@ class RegisterDraft:
 
     @property
     def changed(self) -> bool:
-        return bool(self.add or self.renew or self.remove)
+        return bool(self.add or self.renew or self.remove or self.rescope)
 
     def summary(self) -> dict[str, Any]:
         """The receipt's record of the register: keys and actions.
@@ -754,6 +832,7 @@ class RegisterDraft:
             "renew": sorted(self.renew),
             "keep": sorted(self.keep),
             "remove": sorted(self.remove),
+            "rescope": sorted(self.rescope),
             "review": sorted(self.review),
             "conflicts": sorted(self.conflicts),
             "held": sorted(self.held),
@@ -774,6 +853,50 @@ def _in_force(record: UKReviewedExclusion, clock: date) -> bool:
     return not record.expired(clock) and not record.premature(clock)
 
 
+def _rescope(
+    draft: RegisterDraft,
+    key: str,
+    record: UKReviewedExclusion,
+    clock: date,
+    *,
+    breaching: bool,
+) -> None:
+    """Keep an entry the national line may stand on, scoped to that line.
+
+    The national target-fit register is shared with the national line, so the
+    dense sign-off never removes or replaces an entry that applies there: it
+    scopes it to the national line, unchanged otherwise. An expired one also
+    goes to review, since only the national line can renew or retire it. A
+    row build 1 still breaches is then left without a local entry, because
+    one key holds one entry, and needs a hand sign-off.
+    """
+
+    draft.rescope.append(key)
+    if record.expired(clock):
+        state = f"it expired {record.expires_on}"
+    elif record.premature(clock):
+        state = f"it takes force {record.approved_on}, after the gate clock"
+    else:
+        state = (
+            "dense build 1 fits the row inside the bound, so build 2 would "
+            "fail it as stale"
+        )
+    note = f"kept for the national line and scoped to it, unchanged otherwise: {state}"
+    if record.expired(clock):
+        draft.review.append(key)
+        note += "; the national line must renew or retire it"
+    if breaching:
+        draft.conflicts.append(key)
+        note += (
+            "; build 1 breaches the bound on the row, and one key holds one "
+            "entry, so no local-only entry can be drafted beside it: sign the "
+            "row by hand"
+        )
+        if record.premature(clock):
+            note += f", or choose a gate clock on or after {record.approved_on}"
+    draft.notes[key] = note
+
+
 def _classify_failing(
     draft: RegisterDraft,
     failing: Iterable[str],
@@ -781,7 +904,10 @@ def _classify_failing(
     *,
     clock: date,
     entry: Callable[[str], dict[str, Any]],
+    shared: bool = False,
 ) -> None:
+    """Sign the failing keys; ``shared`` marks the national register."""
+
     for key in sorted(failing):
         record = records.get(key)
         if record is None:
@@ -794,6 +920,8 @@ def _classify_failing(
             )
         elif _in_force(record, clock):
             draft.keep.append(key)
+        elif shared and record.applies_on(NATIONAL_LINE):
+            _rescope(draft, key, record, clock, breaching=True)
         else:
             draft.renew.append(key)
             draft.entries[key] = entry(key)
@@ -811,33 +939,47 @@ def draft_target_fit(
     reason: Callable[[str], str],
     margin: float = STALE_RISK_MARGIN,
 ) -> RegisterDraft:
-    """Sign every row beyond the bound; retire what build 2 would fail."""
+    """Sign every row beyond the bound; retire what build 2 would fail.
+
+    The national register is shared with the national line, so an entry there
+    that also applies on that line is never removed or replaced
+    (:func:`_rescope`): the national line reads it as before, and the local
+    line sets it aside.
+    """
 
     records = coerce_reviewed_exclusions(block, label=spec.resource)
     draft = RegisterDraft(spec=spec, before=dict(block))
     breaching = {key for key, error in errors.items() if abs(error) > bound}
     clock = window.gate_clock
+    shared = spec.kind == "national_row"
     _classify_failing(
         draft,
         breaching,
         records,
         clock=clock,
         entry=lambda key: window.entry(reason(key), area=False),
+        shared=shared,
     )
     for key, record in records.items():
         if key in breaching or not record.applies_on(LOCAL_LINE):
             continue
         local_only = record.release_lines == (LOCAL_LINE,)
-        if key in errors or not _in_force(record, clock) or local_only:
-            # Stale, out of its window, or a local entry no row earns: build 2
-            # fails the first two and the third is dead on its own line.
-            draft.remove.append(key)
-            if not local_only:
-                draft.notes[key] = "the entry also applies on the national line"
-        else:
+        if not (key in errors or not _in_force(record, clock) or local_only):
             # An unscoped entry no local row earns may still serve the
             # national line; a reviewer decides.
             draft.review.append(key)
+            if shared:
+                draft.notes[key] = (
+                    "no local row earns it, and the national line may still stand on it"
+                )
+        elif shared and not local_only:
+            _rescope(draft, key, record, clock, breaching=False)
+        else:
+            # Stale, out of its window, or a local entry no row earns: build 2
+            # fails the first two and the third is dead on its own line. Of
+            # the national register only local entries get here, and the
+            # national line reads no local cell.
+            draft.remove.append(key)
     signed = {*draft.add, *draft.renew, *draft.keep}
     draft.stale_risk = sorted(
         key for key in signed if abs(errors[key]) <= bound + margin
@@ -1017,6 +1159,61 @@ def predict(
             "failure_count": len(result.failures),
         }
     return verdicts
+
+
+# ---------------------------------------------------------------------------
+# Deadline
+# ---------------------------------------------------------------------------
+
+
+def _expiries(records: Mapping[str, UKReviewedExclusion]) -> dict[str, date]:
+    return {
+        key: date.fromisoformat(record.expires_on) for key, record in records.items()
+    }
+
+
+def degenerate_expiries(repo_root: Path) -> dict[str, date]:
+    """The local line's degenerate-register entries at ``repo_root``, by expiry.
+
+    The register is solve-scoped, so build 2 stands on build 1's entries, and
+    its calibrated gates evaluate them on the gate clock: one out of its
+    window there fails the gate, and renewing it changes the solve.
+    """
+
+    payload = _read_json(repo_root / DEGENERATE_REGISTER, DEGENERATE_REGISTER.name)
+    try:
+        records = _scoped(payload.get("exclusions") or {}, DEGENERATE_REGISTER.name)
+    except (TypeError, ValueError) as error:
+        raise InputError(
+            f"{DEGENERATE_REGISTER.name} does not load: {error}"
+        ) from error
+    return _expiries(records)
+
+
+def assembly_deadline(
+    sources: Mapping[str, Mapping[str, date]],
+) -> dict[str, Any] | None:
+    """The earliest expiry a release of build 1's solve depends on.
+
+    ``sources`` maps a source (``measure_exclusion``, ``degenerate``, a
+    gate-only register's gate id or block) to its entries' expiries. Build
+    2's gate clock may not be later, and assembly and upload, which check
+    the measure exclusions on the day they run, may not be either. Returns
+    the date and the ``source:name`` of every entry expiring on it.
+    """
+
+    dated = [
+        (day, f"{source}:{name}")
+        for source, entries in sources.items()
+        for name, day in entries.items()
+    ]
+    if not dated:
+        return None
+    earliest = min(day for day, _ in dated)
+    return {
+        "date": earliest.isoformat(),
+        "set_by": sorted(label for day, label in dated if day == earliest),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1525,6 +1722,7 @@ def _private_rows(
             **dict.fromkeys(draft.add, "add"),
             **dict.fromkeys(draft.renew, "renew"),
             **dict.fromkeys(draft.remove, "remove"),
+            **dict.fromkeys(draft.rescope, "rescope"),
             **dict.fromkeys(draft.review, "review"),
             **dict.fromkeys(draft.conflicts, "conflict"),
             **dict.fromkeys(draft.held, "held"),
@@ -1578,6 +1776,35 @@ _TABLE_LABELS = {
 }
 
 
+def _named(labels: Sequence[str], *, quote: str = "`", shown: int = 3) -> str:
+    """Up to ``shown`` labels and a count of the rest, as a sentence list."""
+
+    parts = [f"{quote}{label}{quote}" for label in labels[:shown]]
+    if len(labels) > shown:
+        parts.append(f"{len(labels) - shown} more")
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + f" and {parts[-1]}"
+
+
+def _deadline_lines(receipt: Mapping[str, Any]) -> list[str]:
+    deadline = receipt.get("assembly_deadline")
+    if deadline is None:
+        return []
+    set_by = deadline["set_by"]
+    return [
+        f"**Assembly deadline: {deadline['date']}**, when {_named(set_by)} "
+        f"{'expires' if len(set_by) == 1 else 'expire'}: the earliest expiry "
+        "among the measure exclusions build 1's solve ran under, the local "
+        "line's degenerate-register entries and the gate-only entries the "
+        "local line stands on. Build 2, its `--verify` and the release "
+        "assembly must all run by then. Assembly and upload refuse a measure "
+        "exclusion past its expiry, and renewing one, or a degenerate-register "
+        "entry, changes the solve.",
+        "",
+    ]
+
+
 def pr_body(receipt: Mapping[str, Any]) -> str:
     """The sign-off PR's body: counts, gate ids and policy dates only.
 
@@ -1597,7 +1824,8 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
     ]
     if not receipt["signable"]:
         lines += [
-            "**Not signable: build 1 needs a third build.**",
+            "**Not signable: build 1 needs a third build, or a hand fix and a "
+            "new draft where a reason below says so.**",
             "",
             *(
                 f"- `{gate}`: {reason}"
@@ -1613,6 +1841,7 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
             "Nothing to sign: build 1 passed every gate this tool signs, and no "
             "register entry would fail build 2.",
             "",
+            *_deadline_lines(receipt),
         ]
         return "\n".join(lines)
     earliest, latest = receipt["gate_clock_range"]
@@ -1622,16 +1851,33 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
         "release fence. A build in which a signed row passes fails its entry "
         "as stale.",
         "",
-        "| Register | Added | Renewed | Kept | Retired | For review |",
-        "|---|---|---|---|---|---|",
+        "| Register | Added | Renewed | Kept | Retired | Rescoped | For review |",
+        "|---|---|---|---|---|---|---|",
     ]
     for gate_id, summary in receipt["registers"].items():
         lines.append(
             f"| {_TABLE_LABELS[gate_id]} | {len(summary['add'])} | "
             f"{len(summary['renew'])} | {len(summary['keep'])} | "
-            f"{len(summary['remove'])} | {len(summary['review'])} |"
+            f"{len(summary['remove'])} | {len(summary['rescope'])} | "
+            f"{len(summary['review'])} |"
         )
+    if any(summary["rescope"] for summary in receipt["registers"].values()):
+        lines += [
+            "",
+            "Rescoped entries are national target-fit entries that applied on "
+            "every line and that build 2 would fail on the local line, stale or "
+            'out of their window at the gate clock. They now carry `"release_lines": '
+            '["national"]` and are otherwise unchanged, so the national line '
+            "still stands on them as before.",
+        ]
     national = receipt["registers"].get("uk_target_fit")
+    if national is not None and national["review"]:
+        lines += [
+            "",
+            f"National target-fit entries for review: {_named(national['review'])}. "
+            "The receipt's notes give each one's reason; an expired one must be "
+            "renewed or retired on the national line.",
+        ]
     if national is not None:
         lines += [
             "",
@@ -1651,6 +1897,7 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
         f"clock (`--gate-review-date`) on or after {earliest}"
         + (f" and on or before {latest}." if latest else "."),
         "",
+        *_deadline_lines(receipt),
         "Predicted build-2 verdicts on build 1's rows: "
         + ", ".join(
             f"`{gate}` {'passes' if verdict['passes'] else 'fails'}"
@@ -1687,10 +1934,11 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
         "Disclosure: this body carries gate ids and their predicted verdicts, "
         "build 1's attempt id and report digest, register entry counts, the "
         "national register's stale-risk and near-bound counts, the reviewer, "
-        "the adjudication, policy dates and test paths. Per-row errors, the "
-        "local registers' stale-risk and near-bound counts and per-area "
-        "support figures stay in the private review file outside every git "
-        "work tree.",
+        "the adjudication, policy dates, the names of the national entries for "
+        "review and of the entries that set the assembly deadline, and test "
+        "paths. Per-row errors, the local registers' stale-risk and near-bound "
+        "counts and per-area support figures stay in the private review file "
+        "outside every git work tree.",
         "",
     ]
     return "\n".join(lines)
@@ -1708,6 +1956,7 @@ def _changelog(receipt: Mapping[str, Any]) -> str:
 
     window = receipt["window"]
     retired = sum(len(summary["remove"]) for summary in registers.values())
+    rescoped = count("uk_target_fit", "rescope")
     return (
         "Sign dense build 1's gate-only failures for the local line "
         f"(microcosm#1301, attempt {receipt['build_1']['attempt_id']}): "
@@ -1716,7 +1965,16 @@ def _changelog(receipt: Mapping[str, Any]) -> str:
         f"and {counted(count('uk_local_area_support', 'add', 'renew'), 'area')} "
         f"below the support floor, approved {window['approved_on']}; "
         f"{counted(retired, 'entry', 'entries')} that build 2 would fail "
-        f"{'is' if retired == 1 else 'are'} retired. Every signed row stays "
+        f"{'is' if retired == 1 else 'are'} retired"
+        + (
+            f", and {counted(rescoped, 'national target-fit entry', 'national target-fit entries')} "
+            f"that applied on every line {'is' if rescoped == 1 else 'are'} "
+            "scoped to the national line, which still stands on "
+            f"{'it' if rescoped == 1 else 'them'}"
+            if rescoped
+            else ""
+        )
+        + ". Every signed row stays "
         "bound in the solve, each entry suppresses only the local line's release "
         "fence, and a build in which a signed row passes fails its entry as "
         "stale.\n"
@@ -1856,6 +2114,25 @@ def run_draft(args: argparse.Namespace) -> int:
     adjudication = figure_free((args.adjudication or "").strip(), "--adjudication")
     evidence = load_build(args.run_dir, allow_dev_build=args.allow_dev_build)
     window = _window(args, evidence, adjudication=adjudication)
+    # The solve-scoped expiries no sign-off can move: renewing either kind of
+    # entry changes the solve, and build 2 must reuse build 1's.
+    solve_scoped = {
+        "measure_exclusion": evidence.measure_exclusions,
+        "degenerate": degenerate_expiries(repo_root),
+    }
+    solve_deadline = assembly_deadline(solve_scoped)
+    if solve_deadline is not None and window.gate_clock > date.fromisoformat(
+        solve_deadline["date"]
+    ):
+        set_by = solve_deadline["set_by"]
+        raise InputError(
+            f"--gate-clock {window.gate_clock.isoformat()} is after "
+            f"{solve_deadline['date']}, when {_named(set_by, quote='')} "
+            f"{'expires' if len(set_by) == 1 else 'expire'}: build 2's gates "
+            "fail an expired degenerate-register entry, and assembly refuses an "
+            "expired measure exclusion. Choose a gate clock on or before that "
+            "date; renewing either changes the solve and needs a third build."
+        )
     names = _area_names(name_overrides)
     wiring = register_wiring()
     deferred: frozenset[str] = frozenset()
@@ -1938,7 +2215,9 @@ def run_draft(args: argparse.Namespace) -> int:
         if draft.conflicts:
             not_signable.setdefault(
                 spec.gate_id,
-                "failing keys are held by entries for another release line",
+                "failing keys hold entries the tool may not replace, and a key "
+                "holds one entry; sign them by hand (the receipt's conflicts "
+                "and notes name them)",
             )
         drafts[spec.gate_id] = draft
 
@@ -1952,9 +2231,32 @@ def run_draft(args: argparse.Namespace) -> int:
         if not verdict["passes"] and gate_id not in not_signable:
             not_signable[gate_id] = "the drafted register does not make the gate pass"
     if "uk_target_fit" in drafts and drafts["uk_target_fit"].changed:
-        problem = national_review_invariant(drafts["uk_target_fit"].after())
-        if problem is not None:
+        national = drafts["uk_target_fit"]
+        after = national.after()
+        problem = national_review_invariant(after)
+        # An expired entry kept for the national line breaks the national
+        # graph test's review invariant beside newer approvals: only the
+        # national line can renew or retire it, and then the draft is redone.
+        expired = sorted(set(national.rescope) & set(national.review))
+        if problem is not None and not (
+            expired
+            and national_review_invariant(
+                {key: value for key, value in after.items() if key not in expired}
+            )
+            is None
+        ):
             raise InputError(problem)
+        if problem is not None:
+            reason = (
+                f"{problem}, because {_named(expired, quote='')} expired and "
+                f"{'is' if len(expired) == 1 else 'are'} kept for the national "
+                f"line: renew or retire {'it' if len(expired) == 1 else 'them'} "
+                "there by hand, then draft again"
+            )
+            earlier = not_signable.get("uk_target_fit")
+            not_signable["uk_target_fit"] = (
+                reason if earlier is None else f"{earlier}; {reason}"
+            )
     if evidence.dev_build:
         not_signable.setdefault(
             "release_candidate", "a development build is never signable"
@@ -2009,7 +2311,7 @@ def run_draft(args: argparse.Namespace) -> int:
                 pin_files.append(relative.as_posix())
 
     touched = {
-        draft.spec.kind: [*draft.add, *draft.renew, *draft.remove]
+        draft.spec.kind: [*draft.add, *draft.renew, *draft.remove, *draft.rescope]
         for draft in drafts.values()
     }
     needles = {
@@ -2017,12 +2319,22 @@ def run_draft(args: argparse.Namespace) -> int:
         for kind, keys in touched.items()
         for key in keys
     }
-    in_line_after = [
-        record
+    # Every gate-only entry build 2's calibrated gates evaluate on the local
+    # line, after the sign-off.
+    in_line_after = {
+        draft.spec.gate_id: _scoped(draft.after(), draft.spec.resource)
         for draft in drafts.values()
-        for record in _scoped(draft.after(), draft.spec.resource).values()
-    ]
-    expiries = [record.expires_on for record in in_line_after]
+    }
+    if "uk_local_area_support" in drafts:
+        in_line_after["bound_despite_support_floor"] = _scoped(
+            bound_despite, "bound_despite_support_floor"
+        )
+    deadline = assembly_deadline(
+        {
+            **solve_scoped,
+            **{source: _expiries(records) for source, records in in_line_after.items()},
+        }
+    )
     receipt: dict[str, Any] = {
         "schema": "microcosm.uk.dense-signoff-draft.v1",
         "build_1": {"run_dir": str(evidence.run_dir), **evidence.identity()},
@@ -2034,15 +2346,20 @@ def run_draft(args: argparse.Namespace) -> int:
             "area_support_expires_on": window.area_expires_on.isoformat(),
             "gate_clock": window.gate_clock.isoformat(),
         },
-        # Build 2's gate clock must put every in-line entry in force, and may
-        # not precede its solve clock (build 1's).
+        # Build 2's gate clock must put every in-line entry in force, may not
+        # precede its solve clock (build 1's) and may not pass the deadline.
         "gate_clock_range": [
             max(
                 [evidence.clock.isoformat()]
-                + [record.approved_on for record in in_line_after]
+                + [
+                    record.approved_on
+                    for records in in_line_after.values()
+                    for record in records.values()
+                ]
             ),
-            min(expiries) if expiries else None,
+            None if deadline is None else deadline["date"],
         ],
+        "assembly_deadline": deadline,
         "stale_risk_margin": args.stale_risk_margin,
         "signable": signable,
         "dev_build": evidence.dev_build,
@@ -2091,7 +2408,14 @@ def run_draft(args: argparse.Namespace) -> int:
                 "counts": {
                     gate: {
                         action: len(summary[action])
-                        for action in ("add", "renew", "keep", "remove", "review")
+                        for action in (
+                            "add",
+                            "renew",
+                            "keep",
+                            "remove",
+                            "rescope",
+                            "review",
+                        )
                     }
                     for gate, summary in receipt["registers"].items()
                 },
@@ -2103,6 +2427,7 @@ def run_draft(args: argparse.Namespace) -> int:
                     if draft.spec.kind != "area"
                 },
                 "gate_clock_range": receipt["gate_clock_range"],
+                "assembly_deadline": deadline,
             },
             indent=1,
         )
@@ -2123,20 +2448,33 @@ def _receipt_matches(entry: Mapping[str, Any], record: UKReviewedExclusion) -> b
     )
 
 
+def _today() -> date:
+    """The day ``--verify`` runs on; the tests pin it."""
+
+    return date.today()
+
+
 def verify(
     build_2: BuildEvidence,
     *,
     repo_root: Path,
     build_1: BuildEvidence | None = None,
     draft_receipt: Mapping[str, Any] | None = None,
+    today: date | None = None,
 ) -> dict[str, Any]:
-    """Whether build 2 stood on exactly the committed sign-off and passed."""
+    """Whether build 2 stood on exactly the committed sign-off and passed.
+
+    It also fails once the assembly deadline (:func:`assembly_deadline`, on
+    build 2's measure exclusions and this checkout's registers) has passed,
+    and warns from :data:`DEADLINE_WARNING_DAYS` days before it.
+    """
 
     from microcosm.data.contract import (
         _check_uk_dense_gate_report,
         _uk_dense_disclosure_failures,
     )
 
+    today = _today() if today is None else today
     failures: list[str] = []
     warnings: list[str] = []
     enforcement = build_2.enforcement
@@ -2153,12 +2491,19 @@ def verify(
         )
     wiring = register_wiring()
     stood_on: dict[str, int] = {}
+    in_line: dict[str, Mapping[str, UKReviewedExclusion]] = {}
     for spec in REGISTERS:
         if wiring[spec.gate_id] is not None:
             continue
         details = build_2.details(spec.gate_id)
         payload = _read_json(repo_root / spec.path, spec.resource)
         records = _scoped(payload[spec.block], spec.resource)
+        in_line[spec.gate_id] = records
+        if spec.kind == "area":
+            in_line["bound_despite_support_floor"] = _scoped(
+                payload.get("bound_despite_support_floor") or {},
+                "bound_despite_support_floor",
+            )
         used = details.get("reviewed_exclusions") or {}
         for name in (
             "stale_exclusions",
@@ -2268,23 +2613,53 @@ def verify(
             spec = next((s for s in REGISTERS if s.gate_id == gate_id), None)
             if spec is None or wiring[gate_id] is not None:
                 continue
-            committed = set(
-                _read_json(repo_root / spec.path, spec.resource)[spec.block]
-            )
+            block = _read_json(repo_root / spec.path, spec.resource)[spec.block]
+            committed = set(block)
             missing = sorted(set(summary.get("add", ())) - committed) + sorted(
                 set(summary.get("renew", ())) - committed
             )
             kept = sorted(set(summary.get("remove", ())) & committed)
+            records = coerce_reviewed_exclusions(block, label=spec.resource)
+            unscoped = sorted(
+                key
+                for key in summary.get("rescope", ())
+                if key not in records or records[key].applies_on(LOCAL_LINE)
+            )
             if missing:
                 failures.append(f"{gate_id}: drafted entries not committed {missing}")
             if kept:
                 failures.append(f"{gate_id}: retired entries still committed {kept}")
+            if unscoped:
+                failures.append(
+                    f"{gate_id}: entries drafted for the national line only are "
+                    f"not committed so {unscoped}"
+                )
+    deadline = assembly_deadline(
+        {
+            "measure_exclusion": build_2.measure_exclusions,
+            "degenerate": degenerate_expiries(repo_root),
+            **{source: _expiries(records) for source, records in in_line.items()},
+        }
+    )
+    if deadline is not None:
+        days_left = (date.fromisoformat(deadline["date"]) - today).days
+        named = _named(deadline["set_by"], quote="")
+        if days_left < 0:
+            failures.append(
+                f"the assembly deadline {deadline['date']} has passed ({named})"
+            )
+        elif days_left <= DEADLINE_WARNING_DAYS:
+            warnings.append(
+                f"the assembly deadline {deadline['date']} is {days_left} day(s) "
+                f"away ({named}): assemble and upload by then"
+            )
     return {
         "schema": "microcosm.uk.dense-signoff-verify.v1",
         "ok": not failures,
         "build_2": {"run_dir": str(build_2.run_dir), **build_2.identity()},
         "stood_on": stood_on,
         "comparison": comparison,
+        "assembly_deadline": deadline,
         "failures": failures,
         "warnings": warnings,
     }
