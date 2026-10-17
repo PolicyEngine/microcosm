@@ -360,11 +360,31 @@ def _meter_rows_by_roster_area(
     ]["aliases"]
     meters: dict[str, dict[str, float]] = {}
     for fuel, concept in SUBNATIONAL_METER_CONCEPTS.items():
+        expected = SUBNATIONAL_PERIOD_TYPES[fuel]
+        # A meter row on another period type would otherwise read as a missing
+        # fuel, and the gas-share applier would blame an authority without a
+        # gas network (microcosm#1302 review).
+        stamped = {
+            str((row.get("period") or {}).get("type"))
+            for row in _local_energy_rows(
+                rows,
+                concept=concept,
+                geography_level="local_authority",
+                period_value=year,
+                dimensions={"metric": "meter_count", "fuel": fuel},
+            )
+        }
+        if stamped - {expected}:
+            raise ValueError(
+                f"{UK_LOCAL_ENERGY_RESOURCE}: {year} {fuel} meter counts are "
+                f"stamped {sorted(stamped - {expected})}, where the {fuel} lookups "
+                f"read {expected!r} (energy_pricing.SUBNATIONAL_PERIOD_TYPES)."
+            )
         for row in _local_energy_rows(
             rows,
             concept=concept,
             geography_level="local_authority",
-            period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
+            period_type=expected,
             period_value=year,
             dimensions={"metric": "meter_count", "fuel": fuel},
         ):
