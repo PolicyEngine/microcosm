@@ -19,6 +19,7 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     UK_ENERGY_LEVEL_INDEX_CONCEPT,
     UK_GAS_CONNECTED_HOLD,
     UK_GAS_METER_SHARE_INDEX_CONCEPT,
+    _meter_rows_by_roster_area,
     align_census_households_by_gas_meter_share,
     align_energy_to_stage_level,
     declared_energy_pricing,
@@ -31,6 +32,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     ELECTRICITY_KWH,
     GAS_KWH,
     SUBNATIONAL_METER_CONCEPTS,
+    SUBNATIONAL_PERIOD_TYPES,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     published_energy_level,
 )
@@ -67,11 +69,20 @@ _HOUSEHOLDS = [
 ]
 
 
-def _meter_row(fuel: str, area: str, value: float) -> dict:
+#: The period types the feed stamps (microcosm#1300), spelled out rather than
+#: read from the constant under test.
+_FEED_PERIOD_TYPES = {"electricity": "calendar_year", "gas": "gas_year"}
+
+
+def _meter_row(
+    fuel: str, area: str, value: float, *, period_type: str | None = None
+) -> dict:
+    # Gas rows carry DESNZ's gas year and electricity rows the calendar year,
+    # as the feed stamps them (microcosm#1300).
     return {
         "concept": SUBNATIONAL_METER_CONCEPTS[fuel],
         "geography": {"id": area, "level": "local_authority"},
-        "period": {"type": "calendar_year", "value": 2024},
+        "period": {"type": period_type or _FEED_PERIOD_TYPES[fuel], "value": 2024},
         "dimensions": {"fuel": fuel, "metric": "meter_count"},
         "unit": "count",
         "value": value,
@@ -293,6 +304,30 @@ def test_an_authority_without_gas_meters_is_refused_not_zeroed():
     reference = _reference(GAS_CONNECTED_TARGET, UK_GAS_METER_SHARE_INDEX_CONCEPT)
     with pytest.raises(ValueError, match="signed deferral"):
         align_census_households_by_gas_meter_share(reference, registry, rows=_METERS)
+
+
+def test_a_meter_row_on_another_period_type_is_named_not_read_as_missing():
+    # A gas row restamped by calendar year would otherwise leave the authority
+    # with no gas count and read as one without a gas network.
+    rows = [
+        _meter_row("gas", "E06000001", 300.0, period_type="calendar_year"),
+        _meter_row("electricity", "E06000001", 400.0),
+    ]
+    registry = TargetRegistry(
+        [_cell(GAS_CONNECTED_TARGET, "E06000001", 10.0)], country="uk"
+    )
+    reference = _reference(GAS_CONNECTED_TARGET, UK_GAS_METER_SHARE_INDEX_CONCEPT)
+    with pytest.raises(
+        ValueError, match=r"gas meter counts are stamped \['calendar_year'\]"
+    ):
+        align_census_households_by_gas_meter_share(reference, registry, rows=rows)
+
+
+def test_the_committed_meter_counts_cover_the_roster_on_their_period_types():
+    assert SUBNATIONAL_PERIOD_TYPES == _FEED_PERIOD_TYPES
+    meters = _meter_rows_by_roster_area(2024, None)
+    assert len(meters) == 350
+    assert sum(set(fuels) == {"electricity", "gas"} for fuels in meters.values()) == 347
 
 
 def test_a_gas_meter_share_above_one_is_refused():

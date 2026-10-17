@@ -453,7 +453,7 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "scotgov.bus.passenger_revenue": 391_000_000.0,
         "scotgov.bus.government_support": 499_000_000.0,
         "welshgov.bus.public_support": 131_489_970.0,
-        "dfi_ni.bus.passenger_receipts": 150_082_817.48999995,
+        "dfi_ni.bus.passenger_receipts": 152_500_000.0,
         "nithc.public_transport_support": 111_700_000.0,
     }
     assert {

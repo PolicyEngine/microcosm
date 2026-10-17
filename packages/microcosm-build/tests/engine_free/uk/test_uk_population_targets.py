@@ -662,19 +662,38 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
         "uk.local_geography.population.age_70_80.v1"
     )
     # microcosm#1123: the calendar-2025 mean of DWP's monthly series, the
-    # three-plus band summed from its three published child counts.
+    # three-plus band summed from its three published child counts; paid
+    # claims only, as the national rows count (microcosm#1300).
     assert targets["dwp.uc.households_by_area_children_3plus"]["ledger_selector"] == {
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "dimensions": ["number_of_children"],
-        "dimension_values": {"number_of_children": [3, 4, "5 or more"]},
+        "dimensions": ["number_of_children", "payment_indicator"],
+        "dimension_values": {
+            "number_of_children": [3, 4, "5 or more"],
+            "payment_indicator": "Yes",
+        },
         "period_type": "month",
         "period_value": [f"2025-{month:02d}" for month in range(1, 13)],
     }
     assert targets["dwp.uc.households_by_area_children_3plus"]["value_operation"] == (
         "monthly_window_sum_average"
     )
+    # Each summed cell names every dimension its facts carry.
+    assert targets["dwp.uc.households_by_area_children_3plus"]["value_operands"] == [
+        {
+            "dimension_values": {
+                "number_of_children": children,
+                "payment_indicator": "Yes",
+            }
+        }
+        for children in (3, 4, "5 or more")
+    ]
+    for target_id, target in targets.items():
+        if target_id.startswith("dwp.uc.households_by_area"):
+            selector = target["ledger_selector"]
+            assert "payment_indicator" in selector["dimensions"], target_id
+            assert selector["dimension_values"]["payment_indicator"] == "Yes"
     assert (
         targets["dwp.uc.households_by_area_children_3plus"]["bindings"]["policyengine"][
             "metric_name"

@@ -1890,11 +1890,14 @@ def apply_uk_cross_grain_reconciliation(
     area_region_codes: Mapping[str, str] | None = None,
     extra_bridges: Sequence[CrossGrainBridge] = (),
     extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
+    check_factor_bounds: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
     ``extra_bridges`` and ``extra_signatures`` carry the summed fan-out
     controls the joint surface adds for its declared fan-out sum bridges.
+    ``check_factor_bounds=False`` records the bridges' factor bounds without
+    refusing, for a pass the caller reruns with more rows.
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -1930,6 +1933,7 @@ def apply_uk_cross_grain_reconciliation(
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
+        check_factor_bounds=check_factor_bounds,
     )
 
 
@@ -2623,7 +2627,9 @@ def uk_local_target_surface(
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
     )
 
-    def reconcile() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    def reconcile(
+        *, check_factor_bounds: bool = True
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         frame = pd.DataFrame(
             reconciliation_rows,
             columns=["grain", "geography_id", "target_id", "value", "_output_position"],
@@ -2637,11 +2643,17 @@ def uk_local_target_surface(
             area_region_codes=area_region_codes,
             extra_bridges=fanout_bridges,
             extra_signatures=fanout_signatures,
+            check_factor_bounds=check_factor_bounds,
         )
         return frame, raw, result, pass_receipt
 
     coverage = uk_cross_grain_coverage_receipt()
-    reconciliation, raw_surface, reconciled, receipt = reconcile()
+    # A bridge's factor bound is a property of the whole frame, off-surface
+    # cells included, so a surface that has them is bounded on its last pass
+    # only (microcosm#1302 review).
+    reconciliation, raw_surface, reconciled, receipt = reconcile(
+        check_factor_bounds=not off_surface_cells
+    )
     off_surface_rows: list[dict[str, Any]] = []
     off_surface_receipt: dict[str, Any] = {
         "deferred_with_value": [],
@@ -2722,9 +2734,8 @@ def uk_local_target_surface(
             frame_only_rows=frame_only_rows,
             share_reference=households or None,
         )
-        if off_surface_rows:
-            reconciliation_rows.extend(off_surface_rows)
-            reconciliation, raw_surface, reconciled, receipt = reconcile()
+        reconciliation_rows.extend(off_surface_rows)
+        reconciliation, raw_surface, reconciled, receipt = reconcile()
     receipt["off_surface_cells"] = {
         **off_surface_receipt,
         "areas_outside_the_ladder": sorted(areas_outside_the_ladder),

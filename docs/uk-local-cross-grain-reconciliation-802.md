@@ -132,8 +132,10 @@ country-spec fingerprint covers:
   the lower side's. Each nation's household estimate controls its census
   household cells, each region's and nation's higher rate taxpayer row
   controls its area cells, and the GB UC caseload controls UC households by
-  area. The UC sides are not yet one concept (paid claims against every
-  household on UC), so that bridge applies the GB paid share to every area.
+  area. Both UC sides count paid claims since the abf0921 re-pin
+  (microcosm#1300), so that bridge's factor sits near one, and it refuses a
+  factor more than 2% from one at either grain, read on the grain's own
+  input total.
   Eight age bridges join the region-tier ONS age bands (inclusive integer
   ages) to the local bands (half-open). The 80-89 band has no local cell.
 - **partitions**: member targets that divide a parent at one geography,

@@ -1446,9 +1446,15 @@
             "2025-10",
             "2025-11",
             "2025-12"
-          ]
+          ],
+          "dimensions": [
+            "payment_indicator"
+          ],
+          "dimension_values": {
+            "payment_indicator": "Yes"
+          }
         },
-        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households"
       },
       {
@@ -1462,7 +1468,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1480,10 +1487,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 0
+            "number_of_children": 0,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.0_children"
       },
       {
@@ -1497,7 +1505,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1515,10 +1524,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 1
+            "number_of_children": 1,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.1_child"
       },
       {
@@ -1532,7 +1542,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1550,10 +1561,11 @@
             "2025-12"
           ],
           "dimension_values": {
-            "number_of_children": 2
+            "number_of_children": 2,
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.2_children"
       },
       {
@@ -1567,7 +1579,8 @@
           "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
           "dimensions": [
-            "number_of_children"
+            "number_of_children",
+            "payment_indicator"
           ],
           "period_type": "month",
           "period_value": [
@@ -1589,10 +1602,11 @@
               3,
               4,
               "5 or more"
-            ]
+            ],
+            "payment_indicator": "Yes"
           }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use. microcosm#1300 binds paid claims (Payment Indicator Yes), the scope the national UC rows count.",
         "renamed_from": "dwp.universal_credit.households.3plus_children"
       },
       {
@@ -2215,7 +2229,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Attendance Allowance from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 12 also holds Scotland's Pension Age Disability Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/attendance_allowance",
@@ -2273,7 +2287,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Carer's Allowance from 3 September 2018; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. FRS code 13 also holds Scotland's Carer Support Payment, which the Scottish Government funds, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/carers_allowance",
@@ -2599,7 +2613,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (compute/income.py:115-119), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "EFO incapacity-benefits line. OBR table 4.9 footnote 2: the line includes incapacity benefit, employment and support allowance, severe disablement allowance and the incapacity part of income support, and excludes the health element of universal credit. The model column sums benunit-level esa_income and person-level esa_contrib, incapacity_benefit and sda to household; uk-data sums the first two (compute/income.py:115-119), and adding the other two follows uk-data#582 (microcosm#1095). Incapacity Benefit has been closed to new claims since ESA began in October 2008, so its term carries only what the FRS still reports. Income Support has no incapacity part in the engine, which pays it as one benefit; that part stays a residual of the row, with no declared difference (María's ruling of 2026-10-16). Severe Disablement Allowance is a small part of the line: DWP reports GBP 53.8m for England and Wales in 2024-25 and GBP 46.8m in 2025-26, against OBR's GBP 12.41bn and GBP 7.21bn. The Scottish Government pays SDA in Scotland (GBP 5.0m in 2024-25, GBP 4.4m in 2025-26 in the Scottish Budget), outside DWP's line; at well under 0.1 percent of the row it stays inside the Great Britain scope below rather than a per-term mask. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2667,7 +2681,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/housing_benefit",
@@ -2735,7 +2749,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/jobseekers_allowance",
@@ -2803,7 +2817,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/pension_credit",
@@ -2861,7 +2875,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -2929,7 +2943,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/statutory_maternity_pay",
@@ -3041,7 +3055,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_in_cap",
@@ -3121,7 +3135,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_outside_cap",
@@ -3176,7 +3190,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Winter Fuel Payment from 1 April 2024; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Pension Age Winter Heating Payment is Scottish Government spending, so the model column sums English and Welsh households only. Since the abf0921 re-pin the Chronicle fact carries the England and Wales code K04000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -17393,7 +17407,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. Since the abf0921 re-pin the Chronicle fact carries the Great Britain code K03000001 (microcosm#1300)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",
@@ -28865,13 +28879,19 @@
           "2025-10",
           "2025-11",
           "2025-12"
-        ]
+        ],
+        "dimensions": [
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "payment_indicator": "Yes"
+        }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -28923,7 +28943,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -28941,14 +28962,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 0
+          "number_of_children": 0,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 0",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -29000,7 +29022,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -29018,14 +29041,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 1
+          "number_of_children": 1,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 1",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -29077,7 +29101,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -29095,14 +29120,15 @@
           "2025-12"
         ],
         "dimension_values": {
-          "number_of_children": 2
+          "number_of_children": 2,
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 2",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -29154,7 +29180,8 @@
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": [
-          "number_of_children"
+          "number_of_children",
+          "payment_indicator"
         ],
         "period_type": "month",
         "period_value": [
@@ -29176,7 +29203,8 @@
             3,
             4,
             "5 or more"
-          ]
+          ],
+          "payment_indicator": "Yes"
         }
       },
       "category_id": "dwp.universal_credit",
@@ -29185,22 +29213,25 @@
       "value_operands": [
         {
           "dimension_values": {
-            "number_of_children": 3
+            "number_of_children": 3,
+            "payment_indicator": "Yes"
           }
         },
         {
           "dimension_values": {
-            "number_of_children": 4
+            "number_of_children": 4,
+            "payment_indicator": "Yes"
           }
         },
         {
           "dimension_values": {
-            "number_of_children": "5 or more"
+            "number_of_children": "5 or more",
+            "payment_indicator": "Yes"
           }
         }
       ],
       "period_match_policy": "source_window",
-      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use (microcosm#1123). The two sides are not yet one concept: this area extract carries no Payment Indicator, so it counts every household on UC, nil awards included (6.73m across Great Britain), while the national rows count paid claims (6.20m). The bridge to the GB caseload scales the area cells by one factor (0.921), which assumes the same nil-award share in every area, and the child bands keep their all-claims shares, so they sit between +2.8% (no children) and -5.1% (three or more) of the national paid rows. The fix is a paid-claims area series from Chronicle (microcosm#1198 review, must-fix 1; tracked on microcosm#736)."
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series, paid claims only (Payment Indicator Yes; extracted 15 October 2026, PolicyEngine/chronicle#339), the window and the scope the national UC rows use (microcosm#1123, #1300). Nil awards are outside both sides, so the bridge to the GB caseload compares paid claims with paid claims and its factor sits near one (it refuses a factor more than 2% from one), and the child bands keep their own paid-claims shares."
     },
     {
       "target_id": "ons.equiv_net_income_bhc",
@@ -31610,7 +31641,7 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic electricity consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households until PolicyEngine/chronicle#356 lands. The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic electricity consumption by local authority, calendar 2024 (non-half-hourly meters read 31 January 2024 to 30 January 2025 and half-hourly meters over calendar 2024, both counted, as reported), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households: an interim that stands past the abf0921 re-pin, which brought Northern Ireland's published domestic consumption (PolicyEngine/chronicle#356), until a change stacked on it derives Great Britain's part from those facts (the desnz_northern_ireland_interim_share fence). The frame reads each household's stored electricity_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_kwh",
@@ -31649,7 +31680,7 @@
       "category_id": "desnz.domestic_energy",
       "label": "Domestic gas consumption (kWh)",
       "uprating_index": "desnz.energy_trends.gb_domestic_level",
-      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, calendar 2024 (mid-May 2024 to mid-May 2025, weather-corrected), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households until PolicyEngine/chronicle#356 lands. The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
+      "selector_note": "DESNZ sub-national domestic gas consumption by local authority, gas year 2024 (mid-May 2024 to mid-May 2025, weather-corrected; Chronicle stamps it gas_year since the abf0921 re-pin and Microcosm pairs gas year 2024 with calendar 2024, energy_pricing.SUBNATIONAL_PERIOD_TYPES, microcosm#1300), levelled onto the lcfs stage's Energy Trends level by one Great Britain factor per fuel (desnz.energy_trends.gb_domestic_level): the cells keep DESNZ's split between authorities and bind as a distribution, with Northern Ireland's part of the UK level taken out at its share of UK households: an interim that stands past the abf0921 re-pin, which brought Northern Ireland's published domestic consumption (PolicyEngine/chronicle#356), until a change stacked on it derives Great Britain's part from those facts (the desnz_northern_ireland_interim_share fence). The frame reads each household's stored gas_consumption at the dataset period and turns it back into kWh at the stage's declared QEP prices. Local-authority grain only: the region rows are the authorities' sums, and DESNZ publishes no constituency cut (microcosm#1207)."
     },
     {
       "target_id": "desnz.subnational.gas_connected_households",
@@ -31750,7 +31781,7 @@
           "source_concept": "obr.state_pension",
           "entity_name": "person",
           "geography_level": "country",
-          "geography_id": "K02000001"
+          "geography_id": "K03000001"
         },
         "entity": "person",
         "measure": "obr/state_pension",
@@ -31761,7 +31792,7 @@
         },
         "assertion_policy": "allow_source_projection",
         "period_match_policy": "exact",
-        "ledger_fact_key": "ledger.aggregate_fact.v2:567e55f9f73df2808c1c4be8"
+        "ledger_fact_key": "ledger.aggregate_fact.v2:f686ddf63af027d5b1a76842"
       },
       "notes": "March 2026 OBR FY2025-26 State Pension forecast retained unchanged as diagnostic provenance (microcosm#1069 R4). It matches DWP's Great Britain total including pensioners paid outside the UK and, on that evidence, leaves out Northern Ireland, so it measures a different quantity from the bound resident level; never insert it into the fitting registry."
     },

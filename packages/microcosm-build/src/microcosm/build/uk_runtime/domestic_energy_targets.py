@@ -11,10 +11,13 @@ local-authority rows bind from them, each through a declared
   weather-corrected for gas). The rows bind as a distribution: one factor per
   fuel puts Great Britain's authorities on the stage's own level, so they
   carry only DESNZ's split between areas. Energy Trends is a United Kingdom
-  total and the sub-national statistics cover Great Britain: until Chronicle
-  carries Northern Ireland's consumption (PolicyEngine/chronicle#356), Great
-  Britain's share of UK households (ONS, Labour Force Survey, in the level's
-  year) stands in for its share of the level, a declared interim;
+  total and the sub-national statistics cover Great Britain: Great Britain's
+  share of UK households (ONS, Labour Force Survey, in the level's year)
+  stands in for its share of the level, a declared interim. Chronicle now
+  carries Northern Ireland's consumption (PolicyEngine/chronicle#356) on a
+  basis DESNZ calls not directly comparable with Great Britain's (Northern
+  Ireland's electricity runs on financial years), so reading the share from
+  it is a change of its own (microcosm#1300);
 * gas-connected households (``desnz.subnational.gas_meter_share``): each
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
@@ -48,6 +51,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     GAS_FUEL,
     GAS_KWH,
     SUBNATIONAL_METER_CONCEPTS,
+    SUBNATIONAL_PERIOD_TYPES,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     EnergyPrices,
     pricing_operation,
@@ -80,8 +84,8 @@ GAS_METER_SHARE_PERIOD = 2024
 UK_ENERGY_LEVEL_BASIS = (
     "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
     "United Kingdom, calendar {year} (the level the LCFS stage rakes to), times "
-    "Great Britain's share of UK households (ONS LFS {year}, the interim until "
-    "Chronicle carries Northern Ireland's consumption), over DESNZ's "
+    "Great Britain's share of UK households (ONS LFS {year}, an interim until "
+    "the share is read from Northern Ireland's published consumption), over DESNZ's "
     "sub-national Great Britain total for {year}: the authorities keep DESNZ's "
     "split between areas at the stage's level"
 )
@@ -216,9 +220,11 @@ def great_britain_household_share(
         "united_kingdom_households": united_kingdom,
         "great_britain_share": share,
         "interim": (
-            "Northern Ireland's consumption is not in the feed "
-            "(PolicyEngine/chronicle#356): Great Britain's share of UK "
-            "households stands in for its share of the Energy Trends level"
+            "Northern Ireland's consumption is in the feed "
+            "(PolicyEngine/chronicle#356) on a basis DESNZ calls not directly "
+            "comparable with Great Britain's: until the share is read from it, "
+            "Great Britain's share of UK households stands in for its share of "
+            "the Energy Trends level"
         ),
     }
 
@@ -248,6 +254,7 @@ def gb_energy_level_factors(
                 UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
                 concept=concept,
                 geography_id=GREAT_BRITAIN_GEOGRAPHY_ID,
+                period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
                 period_value=year,
                 dimensions={"metric": "consumption", "fuel": fuel},
             ),
@@ -353,10 +360,31 @@ def _meter_rows_by_roster_area(
     ]["aliases"]
     meters: dict[str, dict[str, float]] = {}
     for fuel, concept in SUBNATIONAL_METER_CONCEPTS.items():
+        expected = SUBNATIONAL_PERIOD_TYPES[fuel]
+        # A meter row on another period type would otherwise read as a missing
+        # fuel, and the gas-share applier would blame an authority without a
+        # gas network (microcosm#1302 review).
+        stamped = {
+            str((row.get("period") or {}).get("type"))
+            for row in _local_energy_rows(
+                rows,
+                concept=concept,
+                geography_level="local_authority",
+                period_value=year,
+                dimensions={"metric": "meter_count", "fuel": fuel},
+            )
+        }
+        if stamped - {expected}:
+            raise ValueError(
+                f"{UK_LOCAL_ENERGY_RESOURCE}: {year} {fuel} meter counts are "
+                f"stamped {sorted(stamped - {expected})}, where the {fuel} lookups "
+                f"read {expected!r} (energy_pricing.SUBNATIONAL_PERIOD_TYPES)."
+            )
         for row in _local_energy_rows(
             rows,
             concept=concept,
             geography_level="local_authority",
+            period_type=expected,
             period_value=year,
             dimensions={"metric": "meter_count", "fuel": fuel},
         ):

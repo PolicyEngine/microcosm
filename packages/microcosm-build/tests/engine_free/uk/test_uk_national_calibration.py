@@ -642,6 +642,13 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                 ),
                 "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
                 "period": {"type": "fiscal_year", "value": year},
+                # Chronicle stamps OBR table 4.9's DWP lines with the
+                # geography DWP counts them over (microcosm#1300).
+                "geography": {
+                    "level": "country",
+                    "id": "K03000001",
+                    "name": "Great Britain",
+                },
             }
             for year in (2024, 2025)
         ],

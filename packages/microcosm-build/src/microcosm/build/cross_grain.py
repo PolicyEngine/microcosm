@@ -42,6 +42,11 @@ class CrossGrainBridge:
     ``per_geography`` declares instead that each higher target is the control
     of the geography it sits at (each nation's household estimate over its
     own legs, microcosm#1123): a geography then carries some of them only.
+    ``max_factor_shift``, when set, refuses a leg whose factor on the input
+    totals (the control over its lower rows as given, before any group
+    rescales them) is further than that from one: the two sides would no
+    longer measure one quantity. Each lower grain is bounded on its own input
+    total, so a grain another group rescales first is still bounded.
     """
 
     bridge_id: str
@@ -49,6 +54,7 @@ class CrossGrainBridge:
     higher_target_ids: tuple[str, ...]
     lower_side: str
     per_geography: bool = False
+    max_factor_shift: float | None = None
 
 
 @dataclass(frozen=True)
@@ -272,6 +278,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     rule: CrossGrainRule,
     *,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+    check_factor_bounds: bool = True,
 ) -> tuple[
     pd.DataFrame,
     list[dict[str, Any]],
@@ -293,6 +300,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     controls_without_lower_rows: list[dict[str, Any]] = []
     delegated_legs: list[dict[str, Any]] = []
     control_grains = _control_grains(rule)
+    bridges_by_id = {bridge.bridge_id: bridge for bridge in rule.bridges}
     # Rows already rescaled by a nearer control, per group identity and lower
     # grain, so a farther control never rescales them again; and the rows no
     # control has covered yet, checked once every pair has had its turn.
@@ -544,6 +552,32 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "cannot reconcile opposite-signed lower and control targets."
                 )
+            bridge = bridges_by_id.get(group.bridge_id or "")
+            bound = None if bridge is None else bridge.max_factor_shift
+            input_factor = None
+            if bound is not None:
+                # The bound reads the lower rows as given, not as an earlier
+                # group left them: an exact-signature group that rescales this
+                # grain onto a nearer tier first would leave a factor of one
+                # here whatever the input (microcosm#1302 review).
+                input_sum = float(
+                    local_frame.iloc[positions][columns["value"]]
+                    .to_numpy(dtype=np.float64)
+                    .sum()
+                )
+                if input_sum != 0.0:
+                    input_factor = parent_value / input_sum
+                else:
+                    input_factor = 1.0 if parent_value == 0.0 else float("inf")
+                if check_factor_bounds and not abs(input_factor - 1.0) <= bound:
+                    raise ValueError(
+                        f"cross-grain bridge {bridge.bridge_id!r} would scale the "
+                        f"{group.lower_grain} rows of leg "
+                        f"{'+'.join(control['covered_legs'])!r} by {input_factor!r} "
+                        f"on their input totals, further than its declared "
+                        f"max_factor_shift {bound} from one: the two sides no "
+                        "longer measure one quantity."
+                    )
             reconciled.iloc[positions, reconciled.columns.get_loc(columns["value"])] = (
                 raw_values * factor
             )
@@ -581,6 +615,15 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                         0.0 if raw_sum == 0.0 else (new_total - raw_sum) / raw_sum
                     ),
                     "declared_factor": factor,
+                    **(
+                        {}
+                        if bound is None
+                        else {
+                            "max_factor_shift": bound,
+                            "factor_on_input_totals": input_factor,
+                            "factor_bound_checked": check_factor_bounds,
+                        }
+                    ),
                     "reason": (
                         "standing cross-grain rule: "
                         f"{group.winning_grain} controls {group.lower_grain}"
@@ -628,6 +671,7 @@ def reconcile_cross_grain_surface(
     rule: CrossGrainRule,
     *,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+    check_factor_bounds: bool = True,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     """Return a copied surface with every detected lower grain rescaled."""
 
@@ -636,6 +680,7 @@ def reconcile_cross_grain_surface(
         groups,
         rule,
         licensed_empty_legs=licensed_empty_legs,
+        check_factor_bounds=check_factor_bounds,
     )
     return reconciled, receipts
 
@@ -648,8 +693,14 @@ def apply_cross_grain_reconciliation(
     *,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+    check_factor_bounds: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Detect, reconcile, and return the always-present pass receipt."""
+    """Detect, reconcile, and return the always-present pass receipt.
+
+    ``check_factor_bounds=False`` records each bounded bridge's factor without
+    refusing it, for a pass that is not the caller's last (a surface whose
+    off-surface cells join a second pass is bounded on that one).
+    """
 
     bound = tuple(str(target_id) for target_id in bound_higher_targets)
     groups = detect_cross_grain_inconsistencies(
@@ -677,9 +728,11 @@ def apply_cross_grain_reconciliation(
         groups,
         rule,
         licensed_empty_legs=licensed_empty_legs,
+        check_factor_bounds=check_factor_bounds,
     )
     receipt = {
         "bound_higher_targets": list(bound),
+        "factor_bounds_checked": check_factor_bounds,
         "inconsistencies_in_force": [group.inconsistency_id for group in groups],
         "groups": group_receipts,
         "unbound_bridges": unbound_bridges,
@@ -970,6 +1023,17 @@ def _validate_rule(rule: CrossGrainRule) -> None:
             raise ValueError(
                 f"cross-grain bridge {bridge.bridge_id!r} uses forbidden "
                 f"external side(s) {external_sides}; all sides must be contract targets."
+            )
+        bound = bridge.max_factor_shift
+        if bound is not None and (
+            isinstance(bound, bool)
+            or not isinstance(bound, int | float)
+            or not np.isfinite(bound)
+            or bound <= 0.0
+        ):
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} declares max_factor_shift "
+                f"{bound!r}; a bound must be a finite positive number."
             )
     for geography_id, legs in rule.parent_geography_legs.items():
         if not str(geography_id) or not legs or any(not str(leg) for leg in legs):

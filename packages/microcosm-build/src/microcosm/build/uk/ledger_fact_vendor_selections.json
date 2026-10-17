@@ -532,7 +532,8 @@
             "geography_level": [
               "country",
               "region"
-            ]
+            ],
+            "geography_vintage": "publication_2025_nspl"
           },
           "expected_row_count": 112
         }
@@ -1291,7 +1292,7 @@
     },
     {
       "resource": "desnz_local_energy_facts.json",
-      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and ONS's Labour Force Survey household totals for England, Wales, Scotland and the UK, 2024 (Great Britain's share of UK households, the interim share of the Energy Trends UK level the authority kWh rows are levelled to until Chronicle carries Northern Ireland's consumption, PolicyEngine/chronicle#356). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and ONS's Labour Force Survey household totals for England, Wales, Scotland and the UK, 2024 (Great Britain's share of UK households, the interim share of the Energy Trends UK level the authority kWh rows are levelled to until it is read from Northern Ireland's published consumption, which Chronicle carries since PolicyEngine/chronicle#356 on a basis DESNZ calls not directly comparable). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
       "consumers": [
         "uk_runtime.domestic_energy_targets"
       ],
@@ -1306,8 +1307,15 @@
               "desnz.subnational.domestic_gas_meter_count"
             ],
             "geography_level": "local_authority",
-            "period_type": "calendar_year",
-            "period_value": "2024"
+            "geography_vintage": "publication_2025_nspl",
+            "period_type": [
+              "calendar_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic"
+            }
           },
           "expected_row_count": 697
         },

@@ -344,14 +344,43 @@ def _uc(name: str, level: str, area: str, value: float) -> TargetSpec:
     )
 
 
+@pytest.fixture
+def unbounded_uc_bridge(monkeypatch):
+    """The UK cross-grain rule with the bridges' factor bounds lifted.
+
+    The tests that take it put a GB caseload of 300 over 200 households, to
+    show where an off-surface cell's share goes at factors far from one. The
+    UC bridge refuses a factor more than 2% from one (microcosm#1300), as the
+    ``test_the_uc_bridge_bound_*`` tests show on the real rule; these are
+    about the shares, so they lift it.
+    """
+
+    from dataclasses import replace
+
+    from microcosm.build.uk_runtime import ledger_targets
+
+    rule = ledger_targets.UK_CROSS_GRAIN_RULE
+    monkeypatch.setattr(
+        ledger_targets,
+        "UK_CROSS_GRAIN_RULE",
+        replace(
+            rule,
+            bridges=tuple(
+                replace(bridge, max_factor_shift=None) for bridge in rule.bridges
+            ),
+        ),
+    )
+
+
 def _uc_surface(
-    off_surface_cells=(), area_region_codes=None, deferred_cells=()
+    off_surface_cells=(), area_region_codes=None, deferred_cells=(), *, gb=300.0
 ) -> tuple[dict[str, float], dict]:
-    # A GB caseload of 300 over two constituencies of 100 (Scotland, Wales).
-    # Wales has its one authority; Scotland's tier carries one of two.
+    # A GB caseload (300 unless given) over two constituencies of 100
+    # (Scotland, Wales). Wales has its one authority; Scotland's tier carries
+    # one of two, at 60.
     registry = TargetRegistry(
         [
-            _uc("dwp.uc.households", "country", "K03000001", 300.0),
+            _uc("dwp.uc.households", "country", "K03000001", gb),
             _uc(
                 "dwp.uc.households_by_area@S14000001",
                 "constituency",
@@ -390,7 +419,39 @@ def _uc_surface(
     return dict(zip(surface["area_code"], surface["value"], strict=True)), receipt
 
 
-def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours():
+def test_the_uc_bridge_bound_refuses_a_caseload_far_from_its_cells():
+    # A GB caseload of 300 over 200 constituency households is not one
+    # quantity at a factor of 1.5: the bridge refuses (microcosm#1300).
+    with pytest.raises(ValueError, match=r"the constituency rows of leg .* by 1\.5 "):
+        _uc_surface()
+
+
+def test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier():
+    # The caseload matches the constituencies, but Scotland's authority tier
+    # carries 60 of its 100: the authorities sum to 160 of 200. An exact
+    # signature group rescales them onto the constituencies first, so the
+    # bound reads their input totals (microcosm#1302 review).
+    with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.25 "):
+        _uc_surface(gb=200.0)
+
+
+def test_the_uc_bridge_bound_counts_off_surface_cells_on_the_last_pass():
+    # With Scotland's other authority off the surface at 40, the authorities
+    # sum to the caseload. The first pass, without it, reads 160 of 200; the
+    # bound is checked on the pass that carries it, so the real rule accepts
+    # the surface and the bound authority keeps its 60.
+    target = "dwp.uc.households_by_area"
+    values, receipt = _uc_surface(
+        [_off("local_authority", "S12000034", 40.0, target_id=target)], gb=200.0
+    )
+    assert values["S12000033"] == pytest.approx(60.0)
+    assert values["W06000001"] == pytest.approx(100.0)
+    assert receipt["off_surface_cells"]["rows_added"] == 1
+
+
+def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours(
+    unbounded_uc_bridge,
+):
     target = "dwp.uc.households_by_area"
     # With nothing declared, Scotland's one bound authority takes the whole leg.
     values, receipt = _uc_surface()
@@ -417,7 +478,9 @@ def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours():
     assert entry["leg"] == "S92000003"
 
 
-def test_an_off_surface_area_the_runs_ladder_does_not_carry_is_left_out():
+def test_an_off_surface_area_the_runs_ladder_does_not_carry_is_left_out(
+    unbounded_uc_bridge,
+):
     target = "dwp.uc.households_by_area"
     cells = [
         _off("local_authority", "S12000034", 40.0, target_id=target),
@@ -447,7 +510,9 @@ def test_an_off_surface_area_the_runs_ladder_does_not_carry_is_left_out():
         _uc_surface(unguarded, area_region_codes={"E06000001": "E12000001"})
 
 
-def test_a_small_cell_deferral_the_runs_ladder_does_not_carry_is_left_out():
+def test_a_small_cell_deferral_the_runs_ladder_does_not_carry_is_left_out(
+    unbounded_uc_bridge,
+):
     # A small-cell deferral always joins the frame. Under a run's own ladder
     # it is placed as an off-surface cell is (microcosm#1278): the run's
     # ladder lacks the English authority, so it is left out and named.

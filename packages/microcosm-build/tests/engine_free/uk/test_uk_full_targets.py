@@ -206,28 +206,29 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 735820c feed re-pinned by microcosm#1240
-    # (PolicyEngine/chronicle#343 via #349, the HVCTS inputs). It holds every
-    # 942a1fa row microcosm#1123 pinned (PolicyEngine/chronicle#313 via #314,
-    # the 2025 calibration inputs) and the 1ee7dfe rows of microcosm#1113.
+    # The identity is the abf0921 feed re-pinned by microcosm#1300
+    # (PolicyEngine/chronicle#359: UC by payment indicator, OBR table 4.9
+    # geography, DESNZ gas years and Northern Ireland energy, UV404 by output
+    # area). It holds the 735820c HVCTS inputs microcosm#1240 pinned, every
+    # 942a1fa row of microcosm#1123 and the 1ee7dfe rows of microcosm#1113.
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4")
+        == ("2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("2777dc33969a3aff449896aad3dcb0b2492c18896d6ab656918c04cd2e18551c")
+        == ("b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "735820cf76684aae1dfee4cffb48224d59bb7aab"
+        == "abf0921b896d29ee0745ed2aefde8d6337ed7164"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 950242
+    assert national.fact_row_count == local["fact_row_count"] == 1499301
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
