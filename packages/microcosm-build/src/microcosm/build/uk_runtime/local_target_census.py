@@ -244,7 +244,9 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "against thresholds deflated to the same price basis. The English "
             "region and Wales rows of the same estimate "
             "(microcosm.high_value_homes.*_by_region) bind on the local line "
-            "only, as the cross-grain control for these cells (microcosm#1301)."
+            "only, as the cross-grain control for these cells, except the "
+            "North East and Wales rows over £2m, which are signed out below "
+            "the 400-home floor (microcosm#1301)."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],

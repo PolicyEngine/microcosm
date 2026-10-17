@@ -707,6 +707,39 @@ def test_author_target_references_fans_out_over_a_geography_roster() -> None:
     ]
 
 
+def test_a_row_level_signed_exclusion_takes_out_one_geography_cell() -> None:
+    """Keyed on ``geography_id``, a row-level sign-out takes one cell out of a
+    geography fan-out (the high-value homes region rows below the local
+    small-cell floor, microcosm#1301) and leaves the other cells active."""
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        signed_row_exclusions_by_target_id={
+            "ons.age.0_10_by_region": {
+                ("geography_id", '"E12000001"'): "below the floor",
+                ("geography_id", '"W92000004"'): "below the floor",
+            }
+        },
+        source_fact_feed="synthetic",
+    )
+    authored = author_target_references(_two_level_contract(), _tier_facts(), config)
+    assert [row["name"] for row in authored.references] == [
+        "ons.age.0_10_by_region@E12000007"
+    ]
+    target = authored.membership_report["targets"]["ons.age.0_10_by_region"]
+    assert target["status"] == "active"
+    assert [(entry["name"], entry["status"]) for entry in target["candidates"]] == [
+        ("ons.age.0_10_by_region@E12000007", "active"),
+        ("ons.age.0_10_by_region@E12000001", "signed_excluded"),
+        ("ons.age.0_10_by_region@W92000004", "signed_excluded"),
+    ]
+    assert target["candidates"][1]["signed_row"] == {
+        "dimension": "geography_id",
+        "value": "E12000001",
+    }
+
+
 def test_geography_fanout_refuses_an_absent_roster_cell() -> None:
     config = TargetReferenceAuthoringConfig(
         target_period=2025,

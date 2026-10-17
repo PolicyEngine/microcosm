@@ -702,7 +702,10 @@ def _signed_row_exclusions(
     An entry carrying ``row: {dimension, value}`` signs out the fan-out row
     whose selector pins that dimension value (the HMRC CGT age band 0-15,
     which the frame cannot carry; the size-of-gain band below the annual
-    exempt amount) and leaves the target's other rows active.
+    exempt amount), or, with ``dimension: geography_id``, one cell of a
+    geography fan-out (the high-value homes region rows below the local
+    small-cell floor, microcosm#1301), and leaves the target's other rows
+    active.
     """
 
     target_ids = {str(target["target_id"]) for target in contract.get("targets", ())}
