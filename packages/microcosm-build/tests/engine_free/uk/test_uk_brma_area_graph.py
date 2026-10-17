@@ -146,3 +146,16 @@ def test_config_follows_the_geography_assignment() -> None:
             property_localisation="none",
             brma_localisation="area",
         )
+
+
+def test_brma_targets_need_area_brmas():
+    """microcosm#1305 review: without area BRMAs the rows would bind on the spine's draw."""
+    assert UKFullBuildConfig(
+        calibration_year=2025, geography_levels=("la", "brma")
+    ).geography_levels == ("la", "brma")
+    with pytest.raises(ValueError, match="BRMA targets need the area BRMAs"):
+        UKFullBuildConfig(
+            calibration_year=2025,
+            geography_assignment="legacy",
+            geography_levels=("la", "brma"),
+        )

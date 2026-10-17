@@ -155,7 +155,7 @@ def test_frs_renters_rank_within_their_cell_and_spi_renters_land_among_them() ->
     assert u["d"] == pytest.approx(5 / 6)
     # The SPI renter at 15k sits above a and below b, so F(x-) = F(x) = 1/3.
     assert u["c"] == pytest.approx(1 / 3)
-    assert details == {"fallback_cells": 0}
+    assert details == {"fallback_cells": 0, "great_britain_cells": 0}
 
 
 @settings(max_examples=60, deadline=None)
@@ -496,3 +496,92 @@ def test_config_follows_the_brma_mode() -> None:
             brma_localisation="none",
             private_rent_localisation="brma_list",
         )
+
+
+def test_a_sampled_rung_ranks_a_region_without_frs_renters_on_great_britain():
+    """microcosm#1305 review: a small rung's sample can leave a region bare.
+
+    Wales holds only the SPI-channel renter here. A full-scale build refuses;
+    a sampled rung ranks and scales it on Great Britain's FRS renters on
+    Wales's census mix, and the details count both.
+    """
+
+    rows = _rows(
+        region=np.array(
+            [
+                "LONDON",
+                "LONDON",
+                "WALES",
+                "LONDON",
+                "LONDON",
+                "LONDON",
+                "NORTHERN_IRELAND",
+            ]
+        ),
+        brma=np.array(
+            [
+                "CENTRAL_LONDON",
+                "INNER_EAST_LONDON",
+                "CARDIFF",
+                "CENTRAL_LONDON",
+                "INNER_EAST_LONDON",
+                "CENTRAL_LONDON",
+                "BELFAST",
+            ],
+            dtype=object,
+        ),
+    )
+    arguments = {
+        **rows,
+        "tie_uniform": _ties(rows["spine_key"]),
+        "quantiles": _quantiles(),
+        "counts": _counts(),
+    }
+    with pytest.raises(
+        ValueError, match="No FRS private renter carries weight in WALES"
+    ):
+        prl.localise_rents(**arguments)
+    new, details = prl.localise_rents(**arguments, strict=False)
+    assert details["great_britain_cells"] == 1
+    assert details["regions_scaled_on_great_britain"] == 1
+    assert new[2] > 0 and new[2] != pytest.approx(rows["rent"][2])
+
+
+def test_the_size_identity_moves_with_the_rent_pins():
+    """microcosm#1305 review: a size checkpoint binds the rent resources it ran on."""
+    from argparse import Namespace
+
+    from microcosm.build.uk_runtime.rowwise_posture import UK_ROWWISE_DENSE_POSTURE
+    from microcosm.build.uk_runtime.size_checkpoint import uk_size_checkpoint_identity
+
+    def identity(quantiles_sha256: str) -> dict:
+        args = Namespace(
+            _posture=UK_ROWWISE_DENSE_POSTURE,
+            ledger_facts_sha256="f",
+            ledger_manifest_sha256="m",
+            seed=7,
+            selection_seed=None,
+            n_clones=2,
+            dataset_households=2,
+            epochs=2,
+            learning_rate=0.02,
+            sample_fraction=1.0,
+            sample_seed=1,
+            source_lineage_modulus=None,
+            target_weight_rule="grain_equal",
+            engine_blocks=1,
+            measure_exclusions=None,
+            private_rent_localisation="brma_list",
+        )
+        pins = {
+            "dataset": {"sha256": "d"},
+            "ladder": {"sha256": "l"},
+            prl.QUANTILES_SOURCE: {"sha256": quantiles_sha256},
+            prl.COUNTS_SOURCE: {"sha256": "c"},
+        }
+        return uk_size_checkpoint_identity(args, pins=pins, source_year=2024)
+
+    assert identity("q1") != identity("q2")
+    assert identity("q1")["private_rent_localisation"]["resource_pins"][
+        prl.QUANTILES_SOURCE
+    ] == {"sha256": "q1"}

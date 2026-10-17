@@ -259,7 +259,7 @@ def _spine_rows(*, spine_key, region, category, rent, channel, weight) -> pd.Dat
 
 
 def rent_uniforms(
-    spine: pd.DataFrame, tie_uniform: Mapping[str, float]
+    spine: pd.DataFrame, tie_uniform: Mapping[str, float], *, strict: bool = True
 ) -> tuple[pd.Series, dict[str, int]]:
     """Each spine household's rank among its cell's FRS renters.
 
@@ -267,12 +267,16 @@ def rent_uniforms(
     the FRS-channel rents of the household's region and category and ``v`` its
     keyed tie-break uniform, so FRS renters' ranks are uniform and SPI-channel
     renters land where their rent sits among them. A cell with no FRS renter
-    ranks against its region's FRS renters of every size.
+    ranks against its region's FRS renters of every size. A region with none
+    at all refuses at full scale; with ``strict=False``, for a sampled
+    development rung, its cells rank against Great Britain's FRS renters of
+    their size (or of every size), counted in the details.
     """
 
     reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
     u = pd.Series(np.nan, index=spine.index, dtype=float)
     fallback_cells = 0
+    great_britain_cells = 0
     for (region, category), rows in spine.groupby(["region", "category"], sort=True):
         pool = reference[
             (reference["region"] == region) & (reference["category"] == category)
@@ -280,6 +284,11 @@ def rent_uniforms(
         if pool.empty:
             pool = reference[reference["region"] == region]
             fallback_cells += 1
+        if pool.empty and not strict:
+            pool = reference[reference["category"] == category]
+            if pool.empty:
+                pool = reference
+            great_britain_cells += 1
         if pool.empty or float(pool["weight"].sum()) <= 0:
             raise ValueError(f"No FRS private renter carries weight in {region}.")
         order = np.argsort(pool["rent"].to_numpy(), kind="stable")
@@ -295,7 +304,10 @@ def rent_uniforms(
         u.loc[rows.index] = np.clip(below + v * (at_or_below - below), 0.0, 1.0)
     if u.isna().any():
         raise ValueError("A private renter was left without a rank.")
-    return u, {"fallback_cells": fallback_cells}
+    return u, {
+        "fallback_cells": fallback_cells,
+        "great_britain_cells": great_britain_cells,
+    }
 
 
 def region_scales(
@@ -313,34 +325,46 @@ def region_scales(
     """
 
     reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
-    scales: dict[str, float] = {}
-    for region, rows in reference.groupby("region", sort=True):
-        weight = rows["weight"].to_numpy()
-        mean_rent = float(np.average(rows["rent"].to_numpy(), weights=weight))
-        shares = rows.groupby("category")["weight"].sum() / weight.sum()
-        level = 0.0
-        for category, share in shares.items():
-            cell = counts.get((region, str(category))) or {}
-            total = sum(cell.values())
-            if total <= 0:
-                raise ValueError(f"No census private renters for {region} {category}.")
-            for brma, households in cell.items():
-                key = (brma, str(category))
-                if key not in quantiles.means:
-                    raise ValueError(f"No list of rents for {brma} {category}.")
-                level += (
-                    share * households / total * quantiles.means[key] * WEEKS_IN_YEAR
-                )
-        if level <= 0:
-            raise ValueError(f"The lists give {region} no rent level.")
-        scale = mean_rent / level
-        if not np.isfinite(scale) or not SCALE_BAND[0] <= scale <= SCALE_BAND[1]:
-            raise ValueError(
-                f"{region}'s scale on the lists is outside {SCALE_BAND}; a resource "
-                "or the frame's rents are wrong."
-            )
-        scales[str(region)] = float(scale)
-    return scales
+    return {
+        str(region): _region_scale(
+            rows, region=str(region), counts=counts, quantiles=quantiles
+        )
+        for region, rows in reference.groupby("region", sort=True)
+    }
+
+
+def _region_scale(
+    rows: pd.DataFrame,
+    *,
+    region: str,
+    counts: Mapping[tuple[str, str], Mapping[str, float]],
+    quantiles: RentQuantiles,
+) -> float:
+    """One region's scale: ``rows``' FRS mean rent on the region's census mix."""
+
+    weight = rows["weight"].to_numpy()
+    mean_rent = float(np.average(rows["rent"].to_numpy(), weights=weight))
+    shares = rows.groupby("category")["weight"].sum() / weight.sum()
+    level = 0.0
+    for category, share in shares.items():
+        cell = counts.get((region, str(category))) or {}
+        total = sum(cell.values())
+        if total <= 0:
+            raise ValueError(f"No census private renters for {region} {category}.")
+        for brma, households in cell.items():
+            key = (brma, str(category))
+            if key not in quantiles.means:
+                raise ValueError(f"No list of rents for {brma} {category}.")
+            level += share * households / total * quantiles.means[key] * WEEKS_IN_YEAR
+    if level <= 0:
+        raise ValueError(f"The lists give {region} no rent level.")
+    scale = mean_rent / level
+    if not np.isfinite(scale) or not SCALE_BAND[0] <= scale <= SCALE_BAND[1]:
+        raise ValueError(
+            f"{region}'s scale on the lists is outside {SCALE_BAND}; a resource "
+            "or the frame's rents are wrong."
+        )
+    return float(scale)
 
 
 def localise_rents(
@@ -356,6 +380,7 @@ def localise_rents(
     tie_uniform: Mapping[str, float],
     quantiles: RentQuantiles,
     counts: Mapping[tuple[str, str], Mapping[str, float]],
+    strict: bool = True,
 ) -> tuple[np.ndarray, dict[str, int]]:
     """Each Great Britain private renter's rent off its assigned BRMA's list.
 
@@ -364,6 +389,11 @@ def localise_rents(
     of a spine household), ``Q_bc`` its assigned BRMA and category's weekly
     quantiles, ``s_r`` its region's scale. Every other row keeps its rent bit
     for bit. Returns exact counts; callers round them before any receipt.
+
+    ``strict=False`` is for a sampled development rung, whose sample can leave
+    a region with SPI-channel renters and no FRS renter: that region ranks
+    against, and is scaled on, Great Britain's FRS renters on its own census
+    mix, and the details count it. A full-scale build refuses instead.
     """
 
     rent = np.asarray(rent, dtype=float)
@@ -371,7 +401,13 @@ def localise_rents(
     mask = redraw_mask(region, tenure_type, rent)
     details = {"rows_redrawn": int(mask.sum()), "spine_households_redrawn": 0}
     if not mask.any():
-        return out, {**details, "fallback_cells": 0, "regions": 0}
+        return out, {
+            **details,
+            "fallback_cells": 0,
+            "great_britain_cells": 0,
+            "regions": 0,
+            "regions_scaled_on_great_britain": 0,
+        }
     rows = np.flatnonzero(mask)
     keys = np.asarray(spine_key, dtype=object)[rows]
     categories = rent_categories(np.asarray(num_bedrooms)[rows])
@@ -384,11 +420,18 @@ def localise_rents(
         channel=np.asarray(channel)[rows],
         weight=np.asarray(weight, dtype=float)[rows],
     )
-    u, rank_details = rent_uniforms(spine, tie_uniform)
+    u, rank_details = rent_uniforms(spine, tie_uniform, strict=strict)
     scales = region_scales(spine, counts=counts, quantiles=quantiles)
     missing = sorted(set(regions) - set(scales))
-    if missing:
+    if missing and strict:
         raise ValueError(f"No FRS private renter to scale the regions {missing}.")
+    reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
+    if missing and reference.empty:
+        raise ValueError("No FRS private renter in Great Britain carries weight.")
+    for code in missing:
+        scales[code] = _region_scale(
+            reference, region=code, counts=counts, quantiles=quantiles
+        )
     cells = pd.DataFrame(
         {
             "brma": np.asarray(brma).astype(str)[rows],
@@ -411,5 +454,7 @@ def localise_rents(
         **details,
         "spine_households_redrawn": int(len(spine)),
         "fallback_cells": int(rank_details["fallback_cells"]),
+        "great_britain_cells": int(rank_details["great_britain_cells"]),
         "regions": len(scales),
+        "regions_scaled_on_great_britain": len(missing),
     }

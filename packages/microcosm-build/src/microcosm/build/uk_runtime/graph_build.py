@@ -184,12 +184,18 @@ class UKFullBuildConfig:
                 "region",
                 "constituency",
                 "la",
+                "brma",
             }:
                 raise ValueError(
                     "Use explicit supported geography levels or omit the selector for all."
                 )
             if len(set(self.geography_levels)) != len(self.geography_levels):
                 raise ValueError("Geographic target levels must not repeat.")
+            if "brma" in self.geography_levels and self.brma_localisation != "area":
+                raise ValueError(
+                    "BRMA targets need the area BRMAs: without them the rows "
+                    "would bind on the spine's regional BRMA draw."
+                )
         if self.target_families is not None and (
             not self.target_families
             or any(not isinstance(f, str) or not f for f in self.target_families)
@@ -282,6 +288,10 @@ def uk_full_graph(
         property_localisation_mode=config.property_localisation,
         brma_localisation_mode=config.brma_localisation,
         private_rent_localisation_mode=config.private_rent_localisation,
+        # A sampled rung's rent node may rank a region on Great Britain's FRS
+        # renters; a full-scale build refuses (microcosm#1305 review).
+        full_scale=config.sample_fraction == 1.0
+        and config.source_sample_fraction == 1.0,
     )
     graph = append_uk_target_nodes(
         graph,
@@ -294,6 +304,7 @@ def uk_full_graph(
         target_weight_rule=config.calibration.target_weight_rule,
         optional_sources=optional_target_sources,
         review_date=review_date,
+        brma_rows=config.brma_localisation == "area",
     )
     cells = population_columns(graph, "uk.full.expand")
     # This structural checkpoint depends on every pool operation, including

@@ -432,3 +432,14 @@ def _profile_target(
         "geography_levels": geography_levels,
         "bindings": {"policyengine": {"metric_name": metric_name}},
     }
+
+
+def test_brma_codes_and_metrics_cover_scotland_only():
+    """microcosm#1305 review: the partial BRMA grain's codes and its one metric."""
+    from microcosm.build.uk_runtime.local_targets import uk_brma_area_codes
+
+    lothian, cardiff = uk_brma_area_codes(["LOTHIAN", "CARDIFF"])
+    assert lothian.startswith("S33") and cardiff == ""
+    metrics = compute_household_metrics(FakeUKSimulation(), "brma")
+    assert metrics.columns.tolist() == ["rent/private_rent_brma"]
+    assert metrics["rent/private_rent_brma"].tolist() == [0.0, 10.0, 0.0]
