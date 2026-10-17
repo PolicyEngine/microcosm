@@ -39,7 +39,19 @@ vendored from the pinned Chronicle feed (``hmrc_stamp_tax_facts.json``):
   the five above GBP 2m combined, as uk-data#573 does;
 * non-residential: Table 8b's individuals for 2024-25, and its six bands.
 
-Receipts are checked against HMRC, never fitted, as in uk-data#573.
+Households' HRAD is not published, so the allocation by individuals' shares
+of all Table 8a residential transactions is an assumption, as uk-data#573
+says, not an observed household series. uk-data#573 gives the household
+lower bounds Tables 6b and 8a imply, 87,200 transactions and GBP 33.28bn;
+the allocation probably overstates households' purchases, since nearly all
+receipts at or below the GBP 250,000 nil-rate band are surcharge, and other
+buyers' receipts there imply more higher-rates transactions than their share
+of all transactions gives them.
+
+The stage fits transactions and value only. Households' SDLT is fitted at
+build level through ``obr.sdlt``; uk-data#573 also holds its file's
+higher-rates SDLT within 30% of HMRC's in a test, which this port does not
+carry.
 """
 
 from __future__ import annotations
