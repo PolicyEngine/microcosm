@@ -25585,7 +25585,7 @@
    "nation": "england"
   }
  },
- "built_on": "2026-10-16",
+ "built_on": "2026-10-17",
  "categories": [
   "B",
   "C",
@@ -25659,7 +25659,7 @@
   "scotland_mean_tolerance": 0.15,
   "tails": "flat beyond the end knots (winsorised at the 0.5th and 99.5th percentiles)",
   "thin_cells": "20 to 49 lets: the cell's median times its nation and category's pooled shape (lets over their own cell's median); under 20: a log-additive BRMA plus category median fitted on the nation's cells with 20 or more lets, weighted by lets, times that shape",
-  "uprating": "none: the rent node scales each FRS region's level, so a factor common to a nation's list cancels; Wales's list is a year older than England's"
+  "uprating": "none: the rent node scales each FRS region's level, so a factor common to a nation's list cancels within the nation; Wales's list is a year older than England's, which the 16 LSOAs of the cross-border BRMAs (West Cheshire, Monmouthshire, Brecon and Radnor) read under the other nation's scale"
  },
  "schema_version": 1,
  "sources": {

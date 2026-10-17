@@ -704,10 +704,13 @@ class UKPrivateRentKernel(_PopulationKernel):
     keeps its rank among the FRS renters of its region and bedroom size (one
     keyed tie-break per spine household, shared by all of its pool clones)
     and reads that quantile off its assigned BRMA's list for homes of its
-    size, scaled so the region's mean rent stays at the FRS level. Weights are
-    untouched; owners, social renters, zero rents and Northern Ireland keep
-    their rents bit for bit. The region scales and ranks stay inside the
-    kernel; the receipt carries rounded counts only.
+    size, scaled so the region's mean rent is the FRS level on the census
+    private-renter mix. Placement follows all households, so at design
+    weights the level moves with the gap between the two mixes, which
+    calibration's tenure rows close. Weights are untouched; owners, social
+    renters, zero rents and Northern Ireland keep their rents bit for bit. The
+    region scales and ranks stay inside the kernel; the receipt carries
+    rounded record counts only.
     """
 
     ref = "uk.full.private_rent@1"
