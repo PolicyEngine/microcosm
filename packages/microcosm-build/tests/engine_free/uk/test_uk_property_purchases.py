@@ -176,7 +176,58 @@ def test_the_threshold_applies_outside_the_fit_regions() -> None:
     outside = result.prices[-50:] > 0
     # Scotland and Wales buy at the same hazard and threshold, unfitted.
     assert outside.any()
-    assert result.receipt["purchases_outside_sdlt_regions_weight"] > 0
+    assert result.receipt["outside_sdlt_regions_support"] in {"<10", "10-29", "30+"}
+
+
+def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
+    # UKDS disclosure control: a weighted figure one to nine source
+    # households carry is "<10", and so is anything derived from it.
+    inputs = _inputs()
+    inputs["sdlt_mask"] = np.ones_like(inputs["sdlt_mask"])
+    inputs["sdlt_mask"][-50:] = False
+    n = len(inputs["stock"])
+    # Every row outside the fit regions belongs to one of three households.
+    sources = np.arange(n)
+    sources[-50:] = 10_000 + np.arange(50) % 3
+    result = pp.impute_property_purchase_prices(
+        **inputs, target=_target(), source_ids=sources
+    )
+    receipt = result.receipt
+    assert (result.prices[-50:] > 0).any()
+    assert receipt["outside_sdlt_regions_support"] == "<10"
+    assert receipt["purchases_outside_sdlt_regions_weight"] == "<10"
+    assert receipt["fitted_value"] == pytest.approx(9e6, rel=1e-8)
+    # Every fit-region row belongs to one of five households.
+    few = np.arange(n) % 5
+    result = pp.impute_property_purchase_prices(
+        **inputs, target=_target(), source_ids=few
+    )
+    for field in (
+        "fitted_transactions",
+        "fitted_value",
+        "value_shortfall_share",
+        "eligible_owner_weight",
+        "event_rate",
+        "price_scale",
+    ):
+        assert result.receipt[field] == "<10", field
+    assert result.receipt["purchaser_support"] == "<10"
+
+
+def test_the_stock_cap_share_hides_a_small_side() -> None:
+    inputs = _inputs()
+    first = pp.impute_property_purchase_prices(**inputs, target=_target())
+    bought = first.prices > 0
+    at_cap = bought & (first.prices >= inputs["stock"] - 1e-6)
+    assert at_cap.any() and (bought & ~at_cap).sum() >= 10
+    # The rows at the cap belong to two households; the rest are their own.
+    sources = np.arange(len(inputs["stock"])) + 100
+    sources[at_cap] = np.arange(int(at_cap.sum())) % 2
+    result = pp.impute_property_purchase_prices(
+        **inputs, target=_target(), source_ids=sources
+    )
+    assert result.receipt["stock_cap_support"] == "<10"
+    assert result.receipt["weighted_share_at_stock_cap"] == "<10"
 
 
 def test_infeasible_targets_refuse() -> None:
@@ -292,6 +343,12 @@ def test_the_stage_writes_both_purchases_and_conserves_mass() -> None:
         household["non_residential_property_purchased"]
         <= household["non_residential_property_value"] + 1e-6
     )
+    # Both kinds buy: positive prices, and the fit reaches its targets.
+    for column in pp.PROPERTY_PURCHASES_OUTPUT_COLUMNS:
+        assert (household[column] > 0).any(), column
+    for kind in result.evidence()["kinds"]:
+        assert kind["fitted_transactions"] > 0
+        assert kind["fitted_value"] > 0
     record = result.frame.mass_log[-1]
     assert record.declared_factor == 1.0
     assert record.reason == pp.PROPERTY_PURCHASES_MASS_CHANGE_REASON
@@ -301,6 +358,18 @@ def test_the_stage_writes_both_purchases_and_conserves_mass() -> None:
         "additional_residential",
         "non_residential",
     ]
+
+
+def test_the_packaged_targets_reproduce_uk_data_573() -> None:
+    # The vendored HMRC Stamp Tax rows give uk-data#573's household figures.
+    targets = pp.load_property_purchase_targets()
+    additional = targets.additional_residential
+    assert additional.transactions == pytest.approx(186_588.8624, rel=1e-9)
+    assert additional.value == pytest.approx(68_805_261_766.68, rel=1e-9)
+    non_residential = targets.non_residential
+    assert non_residential.transactions == pytest.approx(25_000.0)
+    assert non_residential.value == pytest.approx(7.64e9)
+    assert additional.band_ids == pp.PROPERTY_PURCHASE_BAND_IDS
 
 
 def test_draws_are_keyed_by_household_identity() -> None:
