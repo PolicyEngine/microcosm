@@ -121,14 +121,16 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     summary = evidence.summary
     bands = summary["england_owner_occupied_by_band_2026"]
     # The toy pool's bands rest on fewer than ten source households, so the
-    # shipped copies are suppressed (PR #1270 review, finding 6); the total
-    # over two suppressed bands stays, and empty bands stay as zero.
+    # shipped copies are suppressed (PR #1270 review, finding 6), and so is
+    # the total, which rests on five and would give back their sum
+    # (microcosm#1306 review); empty bands stay as zero.
     assert bands["gbp_2m_to_2_5m"] is None and bands["gbp_2_5m_to_3_5m"] is None
     assert bands["gbp_3_5m_to_5m"] == 0.0 and bands["over_gbp_5m"] == 0.0
-    assert bands["total"] == pytest.approx(6.0)
+    assert bands["total"] is None
     assert summary["england_bands_suppressed_small_cells"] == [
         "gbp_2_5m_to_3_5m",
         "gbp_2m_to_2_5m",
+        "total",
     ]
     assert summary["obr"]["status"] == "awaiting_vendored_facts"
     shares = summary["regional_over_2m_share"]
@@ -141,6 +143,8 @@ def test_evidence_counts_bands_shares_correlations_and_support() -> None:
     assert shares["gap"] == {"E12000007": None, "E12000008": None}
     assert shares["largest_gap_shipped"] == 0.0
     assert shares["largest_gap_in_suppressed_region"] is True
+    # The frame total ships beside the shares, so it is withheld on the floor.
+    assert shares["frame_total"] is None
     rho = summary["seat_rank_correlation"]["over_gbp_2m"]["final"]
     assert rho["spearman_vs_derived_stock"] == pytest.approx(1.0)
     assert rho["spearman_vs_voa_band_h"] == pytest.approx(1.0)
@@ -310,10 +314,13 @@ def test_obr_leg_reads_the_vendored_costing_rows() -> None:
         "total": 165_000.0,
     }
     assert obr["non_owner_occupied_share"] == pytest.approx(0.4)
+    assert obr["non_owner_occupied_share_status"] == "available"
+    assert obr["non_owner_occupied_share_fiscal_year"] == "2028"
     assert obr["owner_occupied_sensitivity_total"] == pytest.approx(99_000.0)
-    assert obr["frame_over_owner_occupied_sensitivity"] == pytest.approx(
-        summary["england_owner_occupied_by_band_2026"]["total"] / 99_000.0
-    )
+    # The toy pool's total rests on five source households and is withheld,
+    # so it carries no ratio (the ratios are checked on a larger pool below).
+    assert summary["england_owner_occupied_by_band_2026"]["total"] is None
+    assert obr["frame_over_owner_occupied_sensitivity"] is None
     england = {
         measure: facts.rows_at(
             level="country", measure_id=measure, threshold_id="over_gbp_2m"
@@ -324,9 +331,67 @@ def test_obr_leg_reads_the_vendored_costing_rows() -> None:
     assert derived["private_sector_over_obr_all_properties"] == pytest.approx(
         england["private_sector_dwellings"] / 165_000.0
     )
-    assert derived["owner_occupied_over_obr_owner_occupied"] == pytest.approx(
-        england["owner_occupied_homes"] / 99_000.0
+    # The stock build sets the owner-occupied share of England's 2m+ stock to
+    # one less the same OBR share, so the owner-occupied ratio would repeat
+    # the private-sector one: only the counts ship beside it.
+    assert "owner_occupied_over_obr_owner_occupied" not in derived
+    assert england["owner_occupied_homes"] / 99_000.0 == pytest.approx(
+        england["private_sector_dwellings"] / 165_000.0, rel=1e-6
     )
+    assert derived["owner_occupied_homes"] == england["owner_occupied_homes"]
+
+
+def _pool_by_band_2026(sources_by_band: dict[str, int]) -> pd.DataFrame:
+    """England owner-occupiers, one distinct source each, valued inside a band."""
+    facts = high_value_homes.load_uk_high_value_home_stock_facts()
+    two_m = {t.threshold_id: t for t in facts.thresholds}["over_gbp_2m"]
+    deflator = two_m.basis_gbp / two_m.nominal_gbp
+    midpoints = {
+        "gbp_2m_to_2_5m": 2.2e6,
+        "gbp_2_5m_to_3_5m": 3.0e6,
+        "gbp_3_5m_to_5m": 4.0e6,
+        "over_gbp_5m": 6.0e6,
+    }
+    values = [
+        midpoints[band] * deflator
+        for band, n in sources_by_band.items()
+        for _ in range(n)
+    ]
+    n = len(values)
+    return pd.DataFrame(
+        {
+            "region_code": ["E12000007"] * n,
+            "constituency_code": ["E14000001"] * n,
+            "local_authority_code": ["E09000020"] * n,
+            "tenure_type": ["OWNED_OUTRIGHT"] * n,
+            "main_residence_value": values,
+            "source_household_id": list(range(1, n + 1)),
+        }
+    )
+
+
+def test_obr_leg_ratios_read_the_shipped_total() -> None:
+    household = _pool_by_band_2026(
+        {"gbp_2m_to_2_5m": 12, "gbp_2_5m_to_3_5m": 11, "gbp_3_5m_to_5m": 10}
+    )
+    weights = np.full(len(household), 100.0)
+    summary = uk_high_value_home_evidence(
+        household,
+        weights=weights,
+        facts=high_value_homes.load_uk_high_value_home_stock_facts(),
+        obr_rows=high_value_homes.load_vendored_obr_hvcts_facts(),
+    ).summary
+    bands = summary["england_owner_occupied_by_band_2026"]
+    assert bands["total"] == pytest.approx(3_300.0)
+    assert summary["england_bands_suppressed_small_cells"] == []
+    obr = summary["obr"]
+    assert obr["frame_over_owner_occupied_sensitivity"] == pytest.approx(
+        3_300.0 / 99_000.0
+    )
+    assert obr["frame_over_all_properties_ratio"]["gbp_2m_to_2_5m"] == pytest.approx(
+        1_200.0 / 71_000.0
+    )
+    assert obr["frame_over_all_properties_ratio"]["over_gbp_5m"] == 0.0
 
 
 @pytest.mark.parametrize(
@@ -355,6 +420,18 @@ def test_obr_leg_names_rows_that_match_no_year() -> None:
     }
 
 
+def test_obr_leg_names_the_year_its_share_is_from() -> None:
+    # The note states the share once, for 2028-29: a later year's comparison
+    # says so rather than applying it silently.
+    obr = _evidence_with_obr(
+        high_value_homes.load_vendored_obr_hvcts_facts(), obr_period="2030"
+    ).summary["obr"]
+    assert obr["status"] == "available"
+    assert obr["non_owner_occupied_share"] == pytest.approx(0.4)
+    assert obr["non_owner_occupied_share_fiscal_year"] == "2028"
+    assert obr["owner_occupied_sensitivity_total"] == pytest.approx(167_000.0 * 0.6)
+
+
 def _matching_row(rows: list[dict], band: str) -> dict:
     return next(
         row
@@ -366,25 +443,143 @@ def _matching_row(rows: list[dict], band: str) -> dict:
     )
 
 
-@pytest.mark.parametrize("defect", ["unit", "band", "duplicate", "share"])
-def test_obr_leg_refuses_malformed_rows(defect: str) -> None:
+@pytest.mark.parametrize("defect", ["unit", "band", "duplicate"])
+def test_obr_leg_reports_malformed_rows_without_raising(defect: str) -> None:
+    # The leg runs in the terminal phase after the solve, so a bad re-vendor
+    # is reported as a status, never raised.
     rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
     row = _matching_row(rows, "over_gbp_5m")
     if defect == "unit":
         row["unit"] = "thousand"
     elif defect == "band":
         row["dimensions"]["property_value_band"] = "over_gbp_10m"
-    elif defect == "duplicate":
-        rows.append(copy.deepcopy(row))
     else:
-        share = next(
-            r
-            for r in rows
-            if r["concept"] == "obr.hvcts_costing.non_owner_occupied_share"
+        rows.append(copy.deepcopy(row))
+    obr = _evidence_with_obr(rows).summary["obr"]
+    assert obr["status"] == "malformed_rows"
+    assert len(obr["problems"]) == 1
+    assert "all_properties" not in obr
+
+
+@pytest.mark.parametrize(
+    ("defect", "status", "missing"),
+    [
+        ("concept", "incomplete_rows", ["over_gbp_5m"]),
+        ("geography", "incomplete_rows", ["over_gbp_5m"]),
+        ("total", "incomplete_rows", ["total"]),
+        ("calendar_year", "no_matching_rows", None),
+    ],
+)
+def test_obr_leg_selects_by_concept_geography_and_period_type(
+    defect: str, status: str, missing: list[str] | None
+) -> None:
+    rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
+    if defect == "concept":
+        _matching_row(rows, "over_gbp_5m")["concept"] = "obr.hvcts_costing.other"
+    elif defect == "geography":
+        _matching_row(rows, "over_gbp_5m")["geography"]["id"] = "K02000001"
+    elif defect == "total":
+        total = next(
+            row
+            for row in rows
+            if row["concept"] == "obr.hvcts_costing.properties_in_scope"
+            and row["period"]["value"] == 2028
+            and row["dimensions"].get("behaviour_basis") == "static"
+            and "property_value_band" not in row["dimensions"]
         )
+        rows.remove(total)
+    else:
+        for row in rows:
+            if row["period"]["value"] == 2028:
+                row["period"]["type"] = "calendar_year"
+    obr = _evidence_with_obr(rows).summary["obr"]
+    assert obr["status"] == status
+    assert obr.get("missing_bands") == missing
+    assert "owner_occupied_sensitivity_total" not in obr
+
+
+@pytest.mark.parametrize(
+    ("defect", "status"),
+    [
+        ("duplicate", "ambiguous_rows"),
+        ("unit", "malformed_row"),
+        ("range", "malformed_row"),
+    ],
+)
+def test_obr_leg_reports_a_share_it_cannot_read(defect: str, status: str) -> None:
+    rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
+    share = next(
+        r for r in rows if r["concept"] == "obr.hvcts_costing.non_owner_occupied_share"
+    )
+    if defect == "duplicate":
         rows.append(copy.deepcopy(share))
-    with pytest.raises(ValueError, match="OBR HVCTS"):
-        _evidence_with_obr(rows)
+    elif defect == "unit":
+        share["unit"] = "count"
+    else:
+        share["value"] = 140.0
+    obr = _evidence_with_obr(rows).summary["obr"]
+    # The band comparison stands; only the owner-occupied sensitivity goes.
+    assert obr["status"] == "available"
+    assert obr["non_owner_occupied_share"] is None
+    assert obr["non_owner_occupied_share_status"] == status
+    assert "owner_occupied_sensitivity_total" not in obr
+
+
+def test_small_cell_suppression_withholds_a_thin_total() -> None:
+    # One band on five sources and the rest empty: the total is that band,
+    # so both go (microcosm#1306 review).
+    household = _pool_by_band_2026({"gbp_2m_to_2_5m": 5})
+    summary = uk_high_value_home_evidence(
+        household,
+        weights=np.full(len(household), 100.0),
+        facts=high_value_homes.load_uk_high_value_home_stock_facts(),
+    ).summary
+    bands = summary["england_owner_occupied_by_band_2026"]
+    assert bands["gbp_2m_to_2_5m"] is None and bands["total"] is None
+    assert bands["gbp_3_5m_to_5m"] == 0.0
+    assert summary["regional_over_2m_share"]["frame_total"] is None
+
+
+def test_small_cell_suppression_protects_the_withheld_bands_together() -> None:
+    # Bands on 40, 4 and 3 sources: the two thin bands rest together on 7, so
+    # the total less the shipped bands would give their sum back; the next
+    # smallest band goes too, and the total, on 47, ships.
+    household = _pool_by_band_2026(
+        {"gbp_2m_to_2_5m": 40, "gbp_2_5m_to_3_5m": 4, "gbp_3_5m_to_5m": 3}
+    )
+    summary = uk_high_value_home_evidence(
+        household,
+        weights=np.full(len(household), 100.0),
+        facts=high_value_homes.load_uk_high_value_home_stock_facts(),
+    ).summary
+    bands = summary["england_owner_occupied_by_band_2026"]
+    assert summary["england_bands_suppressed_small_cells"] == [
+        "gbp_2_5m_to_3_5m",
+        "gbp_2m_to_2_5m",
+        "gbp_3_5m_to_5m",
+    ]
+    assert bands["over_gbp_5m"] == 0.0
+    assert bands["total"] == pytest.approx(4_700.0)
+
+
+def test_small_cell_suppression_applies_to_shares_summing_to_one() -> None:
+    from microcosm.build.uk_runtime.high_value_home_gates import _suppress_small_cells
+
+    sources = {
+        "E12000007": set(range(30)),
+        "E12000008": {100, 101, 102},
+        "E12000009": {200, 201},
+    }
+    shares = {"E12000007": 0.9, "E12000008": 0.06, "E12000009": 0.04}
+    shipped, withheld = _suppress_small_cells(shares, sources)
+    # Shares sum to one, so the two thin regions (five sources together) take
+    # the third with them.
+    assert withheld == ["E12000007", "E12000008", "E12000009"]
+    assert set(shipped.values()) == {None}
+    sources["E12000008"] = set(range(100, 112))
+    shipped, withheld = _suppress_small_cells(shares, sources)
+    assert withheld == ["E12000008", "E12000009"]
+    assert shipped["E12000007"] == pytest.approx(0.9)
 
 
 def test_benchmarks_gate_outcome_does_not_depend_on_the_obr_leg() -> None:
@@ -413,8 +608,9 @@ def test_benchmarks_gate_outcome_does_not_depend_on_the_obr_leg() -> None:
 
 
 def test_evidence_and_both_gates_name_the_main_residence_scope() -> None:
-    # Until microcosm#1240 fix 6's coverage decision, every reading of these
-    # figures says they cover owner-occupiers' main residences only.
+    # Until the coverage decision (microcosm#1240 fix 6, tracked on
+    # microcosm#1278), every reading of these figures says they cover
+    # owner-occupiers' main residences only.
     facts = _facts(
         {"E14000001": 500.0, "E14000002": 200.0, "E14000003": 0.0},
         {"E12000007": 500.0, "E12000008": 200.0},
