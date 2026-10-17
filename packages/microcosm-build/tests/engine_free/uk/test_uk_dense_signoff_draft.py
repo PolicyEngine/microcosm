@@ -4,7 +4,8 @@ Every run directory here is written by the production code a dense build runs:
 the real target-fit and area-support gate functions produce the details, the
 full gate manifest and enforcement classify them, and the dense replay writes
 and signs the local gate report. The rows, support figures and registers are
-synthetic.
+synthetic, and the area codes are placeholders no area carries (``E06999998``,
+``E14999999`` and the like), so no synthetic figure sits beside a real area.
 """
 
 from __future__ import annotations
@@ -104,16 +105,16 @@ NATIONAL = {
     "synthetic.national_e@2025": 0.1042,
 }
 LOCAL = (
-    ("census_households", "E14000001", "households", -0.4021),
-    ("census_households", "E14000002", "households", 0.0517),
-    ("synthetic_income", "E06000001", "count", 0.1233),
+    ("census_households", "E14999998", "households", -0.4021),
+    ("census_households", "E14999999", "households", 0.0517),
+    ("synthetic_income", "E06999998", "count", 0.1233),
 )
 #: (level, code, positive rows, distinct sources, ESS)
 SUPPORT = (
-    ("constituency", "E14000001", 120, 110, 95.5),
-    ("constituency", "E14000002", 130, 125, 101.25),
-    ("local_authority", "E06000001", 40, 38, PLANTED_ESS),
-    ("local_authority", "E06000002", 60, 55, 55.5),
+    ("constituency", "E14999998", 120, 110, 95.5),
+    ("constituency", "E14999999", 130, 125, 101.25),
+    ("local_authority", "E06999998", 40, 38, PLANTED_ESS),
+    ("local_authority", "E06999999", 60, 55, 55.5),
 )
 
 
@@ -185,7 +186,7 @@ def build_1_registers() -> dict:
             "description": "Synthetic local-area support register.",
             "exclusions": {
                 # Every floor met on build 1: stale.
-                "local_authority/E06000002": _entry(
+                "local_authority/E06999999": _entry(
                     "2026-09-02", "2026-12-02", lines=None
                 ),
             },
@@ -230,7 +231,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     loaded = load_uk_local_area_support_exclusion_register(None)
     assert set(loaded["exclusions"]) == {
-        "local_authority/E06000002",
+        "local_authority/E06999999",
     }
     assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
 '''
@@ -592,10 +593,10 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
     assert national["stale_risk_count"] == 1
     assert national["near_bound_count"] == 1
     local = receipt["registers"]["uk_local_target_fit"]
-    assert local["add"] == ["census_households/E14000001/households"]
+    assert local["add"] == ["census_households/E14999998/households"]
     area = receipt["registers"]["uk_local_area_support"]
-    assert area["add"] == ["local_authority/E06000001"]
-    assert area["remove"] == ["local_authority/E06000002"]
+    assert area["add"] == ["local_authority/E06999998"]
+    assert area["remove"] == ["local_authority/E06999999"]
     assert receipt["predicted_build_2"] == {
         gate: {"passes": True, "failure_count": 0} for gate in SPECS
     }
@@ -605,7 +606,7 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
     assert receipt["assembly_deadline"] == {
         "date": "2026-11-19",
         "set_by": [
-            "uk_local_target_fit:census_households/E14000001/households",
+            "uk_local_target_fit:census_households/E14999998/households",
             "uk_target_fit:synthetic.national_a@2025",
             "uk_target_fit:synthetic.national_b@2025",
         ],
@@ -622,7 +623,7 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
     }
     assert (
         "**Assembly deadline: 2026-11-19**, when "
-        "`uk_local_target_fit:census_households/E14000001/households`, "
+        "`uk_local_target_fit:census_households/E14999998/households`, "
         "`uk_target_fit:synthetic.national_a@2025` and "
         "`uk_target_fit:synthetic.national_b@2025` expire: "
     ) in (out / "PR_BODY.md").read_text()
@@ -646,7 +647,7 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
         == "2026-11-19"
     )
     assert (
-        after["uk_local_area_support"]["exclusions"]["local_authority/E06000001"][
+        after["uk_local_area_support"]["exclusions"]["local_authority/E06999998"][
             "expires_on"
         ]
         == "2027-01-22"
@@ -659,16 +660,16 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
     pins = (repo / TOOL.TERMINAL_GATES_TEST).read_text()
     ast.parse(pins)
     assert '"synthetic.national_a@2025",' in pins
-    assert '"census_households/E14000001/households",' in pins
+    assert '"census_households/E14999998/households",' in pins
     assert pins.count("record.release_lines") == 2
     area_pins = (repo / TOOL.WEIGHTED_INTEGRITY_TEST).read_text()
     ast.parse(area_pins)
     assert (
         '    assert set(loaded["exclusions"]) == {\n'
-        '        "local_authority/E06000001",\n    }\n'
+        '        "local_authority/E06999998",\n    }\n'
         '    assert {record.release_lines for record in loaded["exclusions"].values()}'
     ) in area_pins
-    assert "local_authority/E06000002" not in area_pins
+    assert "local_authority/E06999999" not in area_pins
     assert (
         '    assert set(loaded["bound_despite_support_floor"]) == {"census_households"}'
         in area_pins
@@ -702,9 +703,9 @@ def test_local_fit_bands_reach_only_the_private_file_and_the_terminal(tmp_path, 
     # inside it (near bound): with its key in the patch, a public count of
     # the first would bracket a named local estimate.
     local = (
-        ("census_households", "E14000001", "households", -0.2521),
-        ("census_households", "E14000002", "households", 0.2451),
-        ("synthetic_income", "E06000001", "count", 0.1233),
+        ("census_households", "E14999998", "households", -0.2521),
+        ("census_households", "E14999999", "households", 0.2451),
+        ("synthetic_income", "E06999998", "count", 0.1233),
     )
     registers = build_1_registers()
     repo = make_repo(tmp_path / "repo", registers)
@@ -740,8 +741,8 @@ def test_local_fit_bands_reach_only_the_private_file_and_the_terminal(tmp_path, 
     }
     private = pd.read_csv(out / "PRIVATE_review.csv", skiprows=1, dtype=str)
     cells = private[private["gate"] == "uk_local_target_fit"].set_index("key")
-    assert cells.loc["census_households/E14000001/households", "stale_risk"] == "True"
-    assert cells.loc["census_households/E14000002/households", "near_bound"] == "True"
+    assert cells.loc["census_households/E14999998/households", "stale_risk"] == "True"
+    assert cells.loc["census_households/E14999999/households", "near_bound"] == "True"
 
 
 def test_a_non_signable_failure_writes_no_patch(repo, tmp_path):
@@ -813,15 +814,15 @@ def test_a_local_register_the_checkout_does_not_wire_is_unsignable(
 def test_a_stale_entry_the_generator_defers_is_held_not_retired(build_1, tmp_path):
     # Its cells are deferred on the generator's own constants, lockstep-tested
     # against the register: retiring the entry moves the solve.
-    repo = make_repo(tmp_path / "repo", build_1_registers(), deferred=("E06000002",))
+    repo = make_repo(tmp_path / "repo", build_1_registers(), deferred=("E06999999",))
     out = tmp_path / "draft"
     assert draft(build_1, repo, out) == 1
     receipt = json.loads((out / "signoff_draft.json").read_text())
     area = receipt["registers"]["uk_local_area_support"]
-    assert area["held"] == ["local_authority/E06000002"]
+    assert area["held"] == ["local_authority/E06999999"]
     assert area["remove"] == []
     reason = receipt["not_signable"]["uk_local_area_support"]
-    assert "local_authority/E06000002 is held" in reason
+    assert "local_authority/E06999999 is held" in reason
     assert "SUPPORT_FLOOR_DEFERRED_AREA_IDS" in reason
     assert not (out / "signoff.patch").exists()
 
@@ -829,16 +830,16 @@ def test_a_stale_entry_the_generator_defers_is_held_not_retired(build_1, tmp_pat
 def test_an_expiring_entry_the_generator_defers_is_left_to_hand_renewal(tmp_path):
     registers = build_1_registers()
     # In force for build 1, expired at the gate clock.
-    registers["uk_local_area_support"]["exclusions"]["local_authority/E06000001"] = (
+    registers["uk_local_area_support"]["exclusions"]["local_authority/E06999998"] = (
         _entry("2026-09-01", "2026-10-21", lines=None)
     )
-    repo = make_repo(tmp_path / "repo", registers, deferred=("E06000001",))
+    repo = make_repo(tmp_path / "repo", registers, deferred=("E06999998",))
     build = write_run(tmp_path / "build-1", registers=registers)
     out = tmp_path / "draft"
     assert draft(build, repo, out) == 1
     receipt = json.loads((out / "signoff_draft.json").read_text())
     area = receipt["registers"]["uk_local_area_support"]
-    assert area["held"] == ["local_authority/E06000001"]
+    assert area["held"] == ["local_authority/E06999998"]
     assert area["renew"] == []
     assert "renew the entry by hand" in receipt["not_signable"]["uk_local_area_support"]
 
@@ -894,7 +895,7 @@ def test_free_text_with_only_issue_references_and_dates_is_accepted(text):
     ("flag", "value"),
     [
         ("--class-note", "local_authority/*=Synthetic: 7 rows against the floor."),
-        ("--area-name", "E06000001=Synthetic household 4521 weight 312.5"),
+        ("--area-name", "E06999998=Synthetic household 4521 weight 312.5"),
         ("--adjudication", "microcosm#1301: ESS=3.2 on build 1"),
         ("--adjudication", "Synthetic: 12% above its target"),
     ],
@@ -923,7 +924,7 @@ def test_an_adjudication_citing_issues_and_dates_is_drafted(build_1, repo, tmp_p
         for entry in after[gate_id]["exclusions"].values():
             assert entry["adjudication"] == adjudication
     cell = after["uk_local_target_fit"]["exclusions"][
-        "census_households/E14000001/households"
+        "census_households/E14999998/households"
     ]
     assert cell["reason"].endswith(" Reviewed under PolicyEngine/microcosm#1301.")
 
@@ -933,7 +934,7 @@ def test_the_drafted_entries_still_get_the_release_disclosure_walk():
     # stand on, so the drafted entries get the release's disclosure walk too.
     spec = SPECS["uk_local_area_support"]
     drafted = TOOL.RegisterDraft(spec=spec, before={})
-    drafted.entries["local_authority/E06000001"] = _entry(
+    drafted.entries["local_authority/E06999998"] = _entry(
         APPROVED_ON, "2026-11-19", reason="Synthetic reason stating rows 7 < 50."
     )
     (failure,) = TOOL.drafted_disclosure_failures({spec.gate_id: drafted})
@@ -1113,7 +1114,7 @@ def test_a_build_that_passed_needs_nothing(tmp_path, capsys):
     registers = build_1_registers()
     registers["uk_target_fit"]["exclusions"] = {}
     registers["uk_local_area_support"]["exclusions"] = {
-        "local_authority/E06000001": _entry("2026-10-01", "2026-12-01")
+        "local_authority/E06999998": _entry("2026-10-01", "2026-12-01")
     }
     repo = make_repo(tmp_path / "repo", registers)
     build = write_run(
@@ -1305,7 +1306,7 @@ def test_a_gate_clock_on_its_approval_keeps_a_premature_all_lines_entry(tmp_path
 def test_an_unscoped_local_cell_entry_is_still_removed(tmp_path):
     # The national line reads no local cell, so nothing is rescoped there.
     registers = build_1_registers()
-    key = "census_households/E14000002/households"
+    key = "census_households/E14999999/households"
     registers["uk_local_target_fit"]["exclusions"][key] = _entry(
         "2026-10-01", "2026-10-29", lines=None
     )
@@ -1524,7 +1525,7 @@ def _stale(registers):
 
 
 def _dormant(registers):
-    registers["uk_local_target_fit"]["exclusions"]["census_households/E14000009/x"] = (
+    registers["uk_local_target_fit"]["exclusions"]["census_households/E14999997/x"] = (
         _entry(APPROVED_ON, "2026-11-19")
     )
     return {}
@@ -1540,7 +1541,7 @@ def _per_family(registers):
 
 def _figure_in_reason(registers):
     entry = registers["uk_local_area_support"]["exclusions"][
-        "local_authority/E06000001"
+        "local_authority/E06999998"
     ]
     entry["reason"] = "Synthetic reason stating rows 7 < 50."
     return {}
@@ -1805,12 +1806,12 @@ def test_the_committed_pins_rewrite_and_reparse():
                 drafted, _ = TOOL.rewrite_pin(
                     source,
                     spec.loader,
-                    [*committed, "synthetic/E06000001/key"],
+                    [*committed, "synthetic/E06999998/key"],
                     local_only=local_only,
                     block=spec.pin_block,
                 )
                 ast.parse(drafted)
-                assert '"synthetic/E06000001/key",' in drafted
+                assert '"synthetic/E06999998/key",' in drafted
                 added = set(drafted.splitlines()) - set(source.splitlines())
                 assert all(len(line) <= TOOL.LINE_LENGTH for line in added)
                 back, _ = TOOL.rewrite_pin(
