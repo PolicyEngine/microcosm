@@ -869,6 +869,25 @@ FIGURE_PROBES = (
     "a share of twelve %",
     "ESS-3.2#1301",
     "reviewed 2026-02-30",
+    # A bare #N is no issue reference: it can number anything.
+    "household #4521 carries weight #312",
+    "record #1234 decides the cell",
+    "#7 rows against the #50-row floor",
+    # Nor is a word#N of a repository the allowlist does not name, nor one
+    # that runs into another word.
+    "rows#7 against floor#50",
+    "household-microcosm#4521",
+    "microcosm#1301#7",
+    # A figure shaped like a date, outside 2000-2099.
+    "household 1234-05-06",
+    # Percent signs in their Unicode forms.
+    "#25\uff05",
+    "a share of twelve \ufe6a",
+    "a share of twelve \u066a",
+    "a share of twelve \u2030",
+    # Digits in a URL that is not a PolicyEngine issue or pull request.
+    "https://example.org/households/4521",
+    "https://github.com/PolicyEngine/microcosm/pull/1307/commits/4521abc",
 )
 
 
@@ -882,13 +901,38 @@ def test_free_text_stating_a_figure_is_refused(text):
     "text",
     [
         "microcosm#1301 ruling of 2026-10-16",
-        "PolicyEngine/policyengine-uk#2459 and #1301, reviewed 2026-10-16.",
-        "policyengine.py#553 (see microcosm#1301)",
+        "PolicyEngine/policyengine-uk#2459 and microcosm#1301, reviewed 2026-10-16.",
+        "PolicyEngine/policyengine.py#553 (see microcosm#1301)",
         "Synthetic reviewer note without figures.",
+        "chronicle#359 and uk-data#521, after microcosm#1300",
+        "microcosm#1301#issuecomment-6232359992",
+        "PolicyEngine/microcosm#1301#issuecomment-6232359992 (the ruling)",
+        "https://github.com/PolicyEngine/microcosm/issues/1301#issuecomment-6232359992",
+        "the plan (https://github.com/PolicyEngine/microcosm/pull/1307), 2026-10-17",
     ],
 )
 def test_free_text_with_only_issue_references_and_dates_is_accepted(text):
     assert TOOL.figure_free(text, "--adjudication") == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Cite the comment by its anchor instead (microcosm#1301#issuecomment-N).
+        "microcosm#1301 (issue comment 6232359992)",
+        "K=15",
+        "150,000 households",
+        "plan arm c9",
+        "rehearsal R5",
+        "the 2025 uprating",
+    ],
+)
+def test_a_number_outside_a_reference_or_date_is_refused(text):
+    """Legitimate text whose number stands outside an issue reference, a
+    PolicyEngine URL or a date is refused too: the rule cannot tell a plan
+    code or a count from a figure. The manual scan stays the backstop."""
+    with pytest.raises(TOOL.InputError, match="a bare #N is refused"):
+        TOOL.figure_free(text, "--adjudication")
 
 
 @pytest.mark.parametrize(
@@ -950,6 +994,11 @@ def test_the_drafted_entries_still_get_the_release_disclosure_walk():
         "-reviewer",
         " juaristi22",
         "r" * 40,
+        # Login-shaped figures: a leading digit, or more than one digit run.
+        "4521",
+        "7-rows",
+        "rows-7-of-50",
+        "household4521-weight312",
     ],
 )
 def test_approved_by_must_be_a_github_login(repo, tmp_path, capsys, login):
@@ -961,7 +1010,8 @@ def test_approved_by_must_be_a_github_login(repo, tmp_path, capsys, login):
 
 
 @pytest.mark.parametrize(
-    "login", ["juaristi22", "MaxGhenis", "synthetic-reviewer", "r", "r" * 39]
+    "login",
+    ["juaristi22", "MaxGhenis", "vahid-ahmadi", "synthetic-reviewer", "r", "r" * 39],
 )
 def test_a_github_login_is_accepted(login):
     assert TOOL.github_login(login, "--approved-by") == login

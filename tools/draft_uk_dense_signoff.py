@@ -81,10 +81,15 @@ Disclosure (UKDS): the patch, the receipt and the PR body carry target and
 area identifiers, counts, policy constants, the reviewer's login and their
 free text. Reasons are templated and never quote an error, an estimate or a
 support figure, and the reports' failure lines are never copied.
-``--approved-by`` must be a GitHub login. The free text (``--class-note``,
-``--area-name``, ``--adjudication``) may carry digits only in issue references
-and ISO dates, and no ``%``; the drafted entries then get the release
-contract's disclosure walk, and a finding refuses the draft. Of the
+``--approved-by`` must be a GitHub login that starts with a letter and holds
+at most one run of digits. The free text (``--class-note``, ``--area-name``,
+``--adjudication``) may carry digits only in issue references of an
+allowlisted repository (``microcosm#N``, ``chronicle#N``, ``uk-data#N`` or
+``PolicyEngine/<repo>#N``, each optionally anchored ``#issuecomment-N``),
+GitHub URLs of a PolicyEngine issue or pull request, and ISO dates of real
+days in 2000-2099; a bare ``#N`` and any percent sign are refused. The
+drafted entries then get the release contract's disclosure walk, and a
+finding refuses the draft. Of the
 stale-risk and near-bound counts, the receipt and the PR body carry the
 national register's only: the local registers' bracket named sub-GOR
 estimates, so they go to standard output and, with per-row errors and
@@ -106,6 +111,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -173,15 +179,37 @@ STALE_RISK_MARGIN = 0.01
 #: ``--verify`` warns from this many days before the assembly deadline.
 DEADLINE_WARNING_DAYS = 2
 
-#: The only digits reviewer free text may carry (:func:`figure_free`): issue
-#: references (``#1301``, ``microcosm#1301``, ``PolicyEngine/microcosm#1301``,
-#: whose owner and repository names hold no digits) and ISO dates of real days.
+#: The digits reviewer free text may carry (:func:`figure_free`) sit in issue
+#: references of an allowlisted repository, in GitHub URLs of a PolicyEngine
+#: issue or pull request, and in ISO dates. A repository name here holds no
+#: digit, and a bare ``#N`` is no reference: it could number anything.
+_REPOSITORY_NAME = r"[A-Za-z][A-Za-z_.-]*"
+#: ``microcosm#N``, ``chronicle#N``, ``uk-data#N`` or ``PolicyEngine/<repo>#N``,
+#: each optionally anchored on an issue comment (``#issuecomment-N``). Nothing
+#: may run into the reference from the left, so ``household-microcosm#N`` is
+#: not one.
 _ISSUE_REFERENCE_RE = re.compile(
-    r"(?:[A-Za-z][A-Za-z_.-]*/)?(?:[A-Za-z][A-Za-z_.-]*)?#[0-9]+"
+    r"(?<![A-Za-z0-9_./-])"
+    rf"(?:microcosm|chronicle|uk-data|PolicyEngine/{_REPOSITORY_NAME})"
+    r"#[0-9]+(?:#issuecomment-[0-9]+)?"
 )
-_ISO_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-#: A GitHub login, the only form ``--approved-by`` takes (:func:`github_login`).
-_GITHUB_LOGIN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}")
+#: ``https://github.com/PolicyEngine/<repo>/issues/N`` or ``.../pull/N``,
+#: optionally anchored on an issue comment.
+_ISSUE_URL_RE = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
+    rf"https://github\.com/PolicyEngine/{_REPOSITORY_NAME}/(?:issues|pull)/[0-9]+"
+    r"(?:#issuecomment-[0-9]+)?"
+)
+#: An ISO date of this century; :func:`figure_free` also requires a real day,
+#: so a figure shaped like a date (``1234-05-06``) is refused.
+_ISO_DATE_RE = re.compile(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}")
+#: The percent signs :func:`figure_free` refuses once NFKC has folded the
+#: full-width and small forms (U+FF05, U+FE6A) into ``%``: ``%`` itself, the
+#: Arabic percent sign and the per-mille and per-ten-thousand signs.
+_PERCENT_SIGNS = frozenset("%\u066a\u0609\u060a\u2030\u2031")
+#: A GitHub login, the only form ``--approved-by`` takes (:func:`github_login`):
+#: GitHub's shape, starting with a letter.
+_GITHUB_LOGIN_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,38}")
 
 #: Release-blocking gates whose entries are signed by hand in the sign-off PR.
 HAND_SIGNED_GATES = {
@@ -2004,22 +2032,38 @@ def figure_free(text: str, label: str) -> str:
     Reviewer free text lands in the committed registers and the PR body,
     where nothing else checks it: the contract's disclosure walk catches only
     an area's support worded with its measured value. So the text may carry
-    a digit only inside an issue reference (``#1301``, ``microcosm#1301``,
-    ``PolicyEngine/microcosm#1301``) or an ISO date of a real day, and never a
-    ``%``. A figure written in words passes; the manual scan covers that.
+    a digit only inside
+
+    * an issue reference of an allowlisted repository: ``microcosm#1301``,
+      ``chronicle#359``, ``uk-data#521`` or ``PolicyEngine/<repo>#N``,
+      optionally anchored ``#issuecomment-N``;
+    * a GitHub URL of a PolicyEngine issue or pull request
+      (``https://github.com/PolicyEngine/<repo>/issues/N`` or ``.../pull/N``),
+      optionally anchored ``#issuecomment-N``;
+    * an ISO date of a real day in 2000-2099;
+
+    and never a percent sign, ``%`` or a Unicode form of one. A bare ``#N``
+    (``household #4521``), a number in prose (``K=15``, ``2025``) and a
+    date-shaped figure (``1234-05-06``) are refused. A figure written in words
+    passes; the manual scan covers that.
     """
 
-    if "%" in text:
-        raise InputError(f"{label} must carry no figures ('%'): {text!r}.")
+    if any(
+        character in _PERCENT_SIGNS for character in unicodedata.normalize("NFKC", text)
+    ):
+        raise InputError(f"{label} must carry no figures (a percent sign): {text!r}.")
     rest = _ISO_DATE_RE.sub(
         lambda match: "" if _real_day(match.group()) else match.group(), text
     )
+    rest = _ISSUE_URL_RE.sub("", rest)
     rest = _ISSUE_REFERENCE_RE.sub("", rest)
     if any(character.isnumeric() for character in rest):
         raise InputError(
-            f"{label} may carry digits only in issue references (#1301, "
-            "microcosm#1301, PolicyEngine/microcosm#1301) and ISO dates "
-            f"(YYYY-MM-DD), so that it states no figure: {text!r}."
+            f"{label} may carry digits only in issue references (microcosm#1301, "
+            "chronicle#N, uk-data#N or PolicyEngine/<repo>#N, optionally "
+            "anchored #issuecomment-N), GitHub URLs of a PolicyEngine issue or "
+            "pull request, and ISO dates (YYYY-MM-DD) of real days in 2000-2099, "
+            f"so that it states no figure; a bare #N is refused: {text!r}."
         )
     return text
 
@@ -2028,13 +2072,21 @@ def github_login(value: str | None, label: str) -> str:
     """``value`` unchanged when it is a GitHub login, else refused (microcosm#1301).
 
     The reviewer lands in every drafted entry and the PR body, so it is a
-    login and nothing else: no spaces, no other text, and so no figure.
+    login and nothing else: no spaces, no other text. Within GitHub's shape
+    it must start with a letter and hold at most one run of digits, so that
+    it can carry no figure such as ``4521`` or ``rows-7-of-50``; ordinary
+    logins (``juaristi22``) pass.
     """
 
-    if value is None or _GITHUB_LOGIN_RE.fullmatch(value) is None:
+    if (
+        value is None
+        or _GITHUB_LOGIN_RE.fullmatch(value) is None
+        or len(re.findall(r"[0-9]+", value)) > 1
+    ):
         raise InputError(
             f"{label} must be a GitHub login (letters, digits and hyphens, at "
-            f"most 39 characters, starting with a letter or digit), got {value!r}."
+            "most 39 characters) that starts with a letter and holds at most "
+            f"one run of digits, got {value!r}."
         )
     return value
 
@@ -2722,8 +2774,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--adjudication",
-        help="the entries' adjudication (digits only in issue references and "
-        "ISO dates)",
+        help="the entries' adjudication (digits only in microcosm#N, "
+        "chronicle#N, uk-data#N or PolicyEngine/<repo>#N references, GitHub URLs "
+        "of a PolicyEngine issue or pull request and ISO dates; no bare #N)",
     )
     parser.add_argument(
         "--gate-clock",
@@ -2736,15 +2789,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="GLOB=TEXT",
-        help="a sentence appended to the reasons of keys matching GLOB (digits "
-        "only in issue references and ISO dates)",
+        help="a sentence appended to the reasons of keys matching GLOB (the "
+        "--adjudication digit check)",
     )
     parser.add_argument(
         "--area-name",
         action="append",
         default=[],
         metavar="CODE=NAME",
-        help="an area's name in its reasons (the --class-note digit check)",
+        help="an area's name in its reasons (the --adjudication digit check)",
     )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument(
