@@ -1,25 +1,25 @@
 {
- "compiled_count": 22986,
+ "compiled_count": 23004,
  "counts_by_kind": {
   "calibration_drift": 19274,
   "fixture_only": 4267,
-  "ledger_only": 3708
+  "ledger_only": 3726
  },
- "difference_count": 27249,
+ "difference_count": 27267,
  "differences": [
   {
    "fixture_value": 70.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area@E06000053",
    "period": 2025,
-   "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 397.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 10645.0,
@@ -740,7 +740,7 @@
    "kind": "fixture_only",
    "name": "hmrc.employment_income.amount@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: the publisher's SPI area tables lack the cell upstream — E14001416 publishes a self-employment count with no mean (so count_x_mean cannot resolve), and two local authorities carry no SPI target measures. The incumbent's fixture row for these cells is a boundary-mapped blend, not a published cell."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 83456.47065955242,
@@ -761,7 +761,7 @@
    "kind": "fixture_only",
    "name": "hmrc.employment_income.count@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: the publisher's SPI area tables lack the cell upstream — E14001416 publishes a self-employment count with no mean (so count_x_mean cannot resolve), and two local authorities carry no SPI target measures. The incumbent's fixture row for these cells is a boundary-mapped blend, not a published cell."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 292071077.7270251,
@@ -782,7 +782,7 @@
    "kind": "fixture_only",
    "name": "hmrc.self_employment_income.amount@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: the publisher's SPI area tables lack the cell upstream — E14001416 publishes a self-employment count with no mean (so count_x_mean cannot resolve), and two local authorities carry no SPI target measures. The incumbent's fixture row for these cells is a boundary-mapped blend, not a published cell."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 58597493.057818,
@@ -810,7 +810,7 @@
    "kind": "fixture_only",
    "name": "hmrc.self_employment_income.count@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: the publisher's SPI area tables lack the cell upstream — E14001416 publishes a self-employment count with no mean (so count_x_mean cannot resolve), and two local authorities carry no SPI target measures. The incumbent's fixture row for these cells is a boundary-mapped blend, not a published cell."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 69738772.716,
@@ -21243,91 +21243,91 @@
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_a@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 40.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_b@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 350.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_b@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 110.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_c@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 690.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_c@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 270.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_d@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 950.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_d@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 330.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_e@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 2890.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_e@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 270.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_f@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 1390.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_f@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 130.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_g@E06000053",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 1500.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_g@E09000001",
    "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 50.0,
@@ -23413,112 +23413,112 @@
    "kind": "fixture_only",
    "name": "ons.age.0_10@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 371.2896056622162,
    "kind": "fixture_only",
    "name": "ons.age.0_10@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 197.30835065295784,
    "kind": "fixture_only",
    "name": "ons.age.10_20@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 596.7848635513109,
    "kind": "fixture_only",
    "name": "ons.age.10_20@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 267.2896375840562,
    "kind": "fixture_only",
    "name": "ons.age.20_30@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 4071.5501521440415,
    "kind": "fixture_only",
    "name": "ons.age.20_30@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 219.6634839781698,
    "kind": "fixture_only",
    "name": "ons.age.30_40@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 3238.5784452002736,
    "kind": "fixture_only",
    "name": "ons.age.30_40@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 262.4298259916188,
    "kind": "fixture_only",
    "name": "ons.age.40_50@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 1650.392016791736,
    "kind": "fixture_only",
    "name": "ons.age.40_50@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 301.3083187311179,
    "kind": "fixture_only",
    "name": "ons.age.50_60@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 1313.1210922765815,
    "kind": "fixture_only",
    "name": "ons.age.50_60@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 248.82235353279412,
    "kind": "fixture_only",
    "name": "ons.age.60_70@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 920.4483156076408,
    "kind": "fixture_only",
    "name": "ons.age.60_70@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 294.50458250170556,
    "kind": "fixture_only",
    "name": "ons.age.70_80@E06000053",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 624.9717707874478,
    "kind": "fixture_only",
    "name": "ons.age.70_80@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 158838772.08480585,
@@ -29846,35 +29846,35 @@
    "kind": "fixture_only",
    "name": "ons.rent.private_rent@E09000001",
    "period": 2025,
-   "reason": "Signed deferral: every PIPR fact in the pinned feed is dated 2026-06, after the 2025 target period; Scotland is published at BRMA grain and Northern Ireland is absent. chronicle#200 asks for the 2025 months, which the package's preserved source rows already carry."
+   "reason": "Signed deferral: PIPR publishes no rent for these authorities. Scotland's rents are published for its 18 Broad Rental Market Areas only and bind at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); Northern Ireland has a country mean only; and two English authorities are not published. The incumbent's rows here are not published cells."
   },
   {
    "fixture_value": 742.014,
    "kind": "fixture_only",
    "name": "ons.tenure.owned_mortgage@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 1194.1019999999999,
    "kind": "fixture_only",
    "name": "ons.tenure.owned_outright@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 2546.9262,
    "kind": "fixture_only",
    "name": "ons.tenure.private_rent@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "fixture_value": 430.9578,
    "kind": "fixture_only",
    "name": "ons.tenure.social_rent@E09000001",
    "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+   "reason": "E06000053 and E09000001 are reviewed exclusions of the local-authority support floor (uk/local_area_support_exclusions.json, microcosm#762 A4): each misses the floor at every K measured. Their own local-authority cells are signed-deferred on the same evidence; their rows stay in the solve through the constituency families and the national rows (A14 amendment to A4)."
   },
   {
    "kind": "ledger_only",
@@ -52051,6 +52051,132 @@
    "name": "ons.rent.private_rent@W06000024",
    "period": 2025,
    "reason": "Coverage the incumbent lacks: our side compiles a published per-area fact the incumbent's surface NaN-masks or never carries (for example Northern Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 review): the incumbent's 360-row LA file carries N09000001-N09000010 only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st crosswalk area is a genuine incumbent roster gap, not a dropped row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 847.75,
+   "name": "ons.rent.private_rent_brma@S33000001",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 832.4166666666666,
+   "name": "ons.rent.private_rent_brma@S33000002",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 627.9166666666666,
+   "name": "ons.rent.private_rent_brma@S33000003",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 526.5833333333334,
+   "name": "ons.rent.private_rent_brma@S33000004",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 828.9166666666666,
+   "name": "ons.rent.private_rent_brma@S33000005",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1110.5,
+   "name": "ons.rent.private_rent_brma@S33000006",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 812.4166666666666,
+   "name": "ons.rent.private_rent_brma@S33000007",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 879.25,
+   "name": "ons.rent.private_rent_brma@S33000008",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1237.75,
+   "name": "ons.rent.private_rent_brma@S33000009",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 704.8333333333334,
+   "name": "ons.rent.private_rent_brma@S33000010",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1408.5833333333333,
+   "name": "ons.rent.private_rent_brma@S33000011",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 818.9166666666666,
+   "name": "ons.rent.private_rent_brma@S33000012",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 746.5833333333334,
+   "name": "ons.rent.private_rent_brma@S33000013",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 811.8333333333334,
+   "name": "ons.rent.private_rent_brma@S33000014",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 704.5833333333334,
+   "name": "ons.rent.private_rent_brma@S33000015",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 872.0833333333334,
+   "name": "ons.rent.private_rent_brma@S33000016",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 904.1666666666666,
+   "name": "ons.rent.private_rent_brma@S33000017",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 838.9166666666666,
+   "name": "ons.rent.private_rent_brma@S33000018",
+   "period": 2025,
+   "reason": "ledger_only by construction: PIPR publishes Scotland's private rents for its 18 Broad Rental Market Areas only, and Microcosm binds them at that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent fits no BRMA rows, so it carries no row to compare. The value is the compiled calendar-2025 mean, which the bound total composes with the BRMA's private renters."
   },
   {
    "kind": "ledger_only",
