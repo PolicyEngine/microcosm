@@ -774,6 +774,7 @@ class UKPrivateRentKernel(_PopulationKernel):
             tie_uniform=dict(zip(redrawn, (float(v) for v in draws), strict=True)),
             quantiles=quantiles,
             counts=counts,
+            strict=bool(context.params.get("strict_cells", True)),
         )
         index = pd.Index(household["household_id"], name="household_id")
         return KernelResult(
@@ -788,7 +789,11 @@ class UKPrivateRentKernel(_PopulationKernel):
                     details["spine_households_redrawn"]
                 ),
                 "cells_ranked_against_their_region": details["fallback_cells"],
+                "cells_ranked_against_great_britain": details["great_britain_cells"],
                 "regions_scaled": details["regions"],
+                "regions_scaled_on_great_britain": details[
+                    "regions_scaled_on_great_britain"
+                ],
                 "weights": "unchanged",
                 "quantiles_sha256": hashlib.sha256(quantiles_payload).hexdigest(),
                 "counts_sha256": hashlib.sha256(counts_payload).hexdigest(),
@@ -932,6 +937,7 @@ def append_uk_population_nodes(
     property_localisation_mode: str = "none",
     brma_localisation_mode: str = "none",
     private_rent_localisation_mode: str = "none",
+    full_scale: bool = True,
 ) -> Graph:
     """Compose sampling → replication → identity → assignment → derivation → gate.
 
@@ -1112,6 +1118,7 @@ def append_uk_population_nodes(
             property_localisation_mode=property_localisation_mode,
             brma_localisation_mode=brma_localisation_mode,
             private_rent_localisation_mode=private_rent_localisation_mode,
+            full_scale=full_scale,
         )
     nodes.extend(geography_nodes)
     declared = {s.name for s in graph.sources}
@@ -1183,6 +1190,7 @@ def _atomic_geography_nodes(
     property_localisation_mode: str = "none",
     brma_localisation_mode: str = "none",
     private_rent_localisation_mode: str = "none",
+    full_scale: bool = True,
 ) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
     """Identity-keyed assignment on the shared operators (release path order)."""
 
@@ -1253,6 +1261,7 @@ def _atomic_geography_nodes(
             identity_source=identity_source,
             source_vintage=source_vintage,
             lineage_inputs=lineage_inputs,
+            strict=full_scale,
         )
         brma_nodes = (*brma_nodes, *rent_nodes)
         brma_sources = (*brma_sources, *rent_sources)
@@ -1466,8 +1475,14 @@ def _private_rent_nodes(
     identity_source: str,
     source_vintage: str,
     lineage_inputs: tuple[str, ...],
+    strict: bool = True,
 ) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
-    """The microcosm#1262 private-rent node, after the area-BRMA node."""
+    """The microcosm#1262 private-rent node, after the area-BRMA node.
+
+    ``strict`` holds at full scale; a sampled development rung relaxes it so
+    that a region its sample leaves without FRS renters ranks and scales on
+    Great Britain's (``private_rent_localisation.localise_rents``).
+    """
 
     for column in _PRIVATE_RENT_COLUMNS:
         if ("household", column) not in cells:
@@ -1502,6 +1517,7 @@ def _private_rent_nodes(
             "source_vintage": source_vintage,
             "stream": stream,
             "method": private_rent_localisation.METHOD_VERSION,
+            "strict_cells": bool(strict),
         },
         description=(
             "Read each Great Britain private renter's rent off its assigned BRMA's "

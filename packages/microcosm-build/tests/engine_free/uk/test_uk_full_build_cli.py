@@ -3111,3 +3111,84 @@ def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
     assert (status, written) == (0, second)
     assert (second / "build.json").is_file()
     assert _files(out) == before
+
+
+def test_a_release_candidate_refuses_the_brma_and_rent_measurement_modes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1305 review: both none modes are for measurement builds only."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    with pytest.raises(ValueError, match="--brma-localisation none"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", "--brma-localisation", "none")
+        )
+    with pytest.raises(ValueError, match="--private-rent-localisation none"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path, "--release-candidate", "--private-rent-localisation", "none"
+            )
+        )
+
+
+def test_target_geographies_can_name_the_brma_rows(tmp_path):
+    assert arguments(
+        tmp_path, "--target-geographies", "la,brma"
+    ).target_geographies == (
+        "la",
+        "brma",
+    )
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--target-geographies", "la,ward")
+
+
+def test_the_brma_and_rent_resource_flags_need_their_modes(tmp_path):
+    """microcosm#1305 review: an override nothing reads is refused, not ignored."""
+    other = tmp_path / "other.json"
+    other.write_text("{}")
+    with pytest.raises(ValueError, match="need --brma-localisation area"):
+        cli._prepare_brma_localisation(
+            SimpleNamespace(
+                brma_localisation="none",
+                brma_area_layer=other,
+                brma_area_layer_sha256=None,
+            ),
+            {},
+            {},
+        )
+    with pytest.raises(ValueError, match="need --private-rent-localisation brma_list"):
+        cli._prepare_private_rent_localisation(
+            SimpleNamespace(
+                brma_localisation="none",
+                private_rent_localisation="none",
+                brma_rent_quantiles=None,
+                brma_rent_quantiles_sha256="0" * 64,
+            ),
+            {},
+            {},
+        )
+    # A release candidate builds on the committed bytes only.
+    with pytest.raises(ValueError, match="requires the committed BRMA area layer"):
+        cli._prepare_brma_localisation(
+            SimpleNamespace(
+                brma_localisation="area",
+                brma_area_layer=other,
+                brma_area_layer_sha256=None,
+                release_candidate=True,
+            ),
+            {},
+            {},
+        )
+    with pytest.raises(
+        ValueError, match="requires the committed 'uk_brma_rent_quantiles' resource"
+    ):
+        cli._prepare_private_rent_localisation(
+            SimpleNamespace(
+                brma_localisation="area",
+                private_rent_localisation="brma_list",
+                brma_rent_quantiles=other,
+                brma_rent_quantiles_sha256=None,
+                release_candidate=True,
+            ),
+            {},
+            {},
+        )

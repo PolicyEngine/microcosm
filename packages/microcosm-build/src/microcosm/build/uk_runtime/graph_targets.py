@@ -409,6 +409,16 @@ class UKFullTargetSelectionKernel(_TargetKernel):
                     or f"{spec.family}/{target_geography(spec)}" in families
                 )
             )
+        brma_left_out = 0
+        if context.params.get("brma_rows", True) is False:
+            # Without area BRMAs the BRMA rows would bind on the spine's
+            # regional draw, unrelated to placement (microcosm#1305 review).
+            brma_left_out = sum(
+                target_geography(spec) == "brma" for spec in registry.specs
+            )
+            registry = registry.select(
+                predicate=lambda spec: target_geography(spec) != "brma"
+            )
         selected = select_targets(
             registry, geography_levels=levels, geography_resolver=target_geography
         )
@@ -418,6 +428,19 @@ class UKFullTargetSelectionKernel(_TargetKernel):
             "registry": registry_payload(selected.registry),
             "receipt": selected.receipt,
             "target_families": None if families is None else list(families),
+            **(
+                {}
+                if context.params.get("brma_rows", True)
+                else {
+                    "brma_rows_left_out": {
+                        "rows": brma_left_out,
+                        "reason": (
+                            "no area BRMAs (--brma-localisation none): the rows "
+                            "would bind on the spine's regional BRMA draw"
+                        ),
+                    }
+                }
+            ),
         }
         return KernelResult(artifacts={"selection": canonical_json(payload)})
 
@@ -742,8 +765,14 @@ def append_uk_target_nodes(
     target_weight_rule: str = "uniform",
     optional_sources: tuple[str, ...] = (),
     review_date: str | None = None,
+    brma_rows: bool = True,
 ) -> Graph:
-    """Default all geographies. Scope is independent of K, k and solver outcomes."""
+    """Default all geographies. Scope is independent of K, k and solver outcomes.
+
+    ``brma_rows=False`` (no area BRMAs) leaves the BRMA-grain rows out of the
+    selection: they bind on each placed household's own BRMA, and the spine's
+    regional draw is unrelated to placement (microcosm#1305 review).
+    """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
@@ -784,6 +813,7 @@ def append_uk_target_nodes(
             params={
                 "geography_levels": geography_levels,
                 "target_families": target_families,
+                **({} if brma_rows else {"brma_rows": False}),
             },
             artifact_inputs=(surface,),
             artifact_outputs=(ArtifactOutput("selection", TARGET_SELECTION_TYPE),),

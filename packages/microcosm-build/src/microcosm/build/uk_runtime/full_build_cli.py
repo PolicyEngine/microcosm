@@ -410,10 +410,11 @@ def _target_geographies(value: str) -> tuple[str, ...] | None:
     if (
         not levels
         or len(levels) != len(set(levels))
-        or set(levels) - {"country", "region", "constituency", "la"}
+        or set(levels) - {"country", "region", "constituency", "la", "brma"}
     ):
         raise argparse.ArgumentTypeError(
-            "Use all or a comma-separated subset of country,region,constituency,la."
+            "Use all or a comma-separated subset of "
+            "country,region,constituency,la,brma."
         )
     return levels
 
@@ -586,7 +587,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=_target_geographies,
         default=None,
         metavar="all|country,...",
-        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build.",
+        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build; brma (Scotland's BRMA rent rows) needs area BRMAs.",
     )
     parser.add_argument(
         "--households-only",
@@ -967,6 +968,13 @@ def _prepare_brma_localisation(
     """
     mode = getattr(args, "brma_localisation", "none")
     if mode == "none":
+        if getattr(args, "brma_area_layer", None) or getattr(
+            args, "brma_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--brma-area-layer and --brma-area-layer-sha256 need "
+                "--brma-localisation area: without it nothing reads the layer."
+            )
         return {"mode": "none"}
     committed_path = Path(
         str(files("microcosm.build.uk").joinpath("brma_area_layer.json"))
@@ -1016,6 +1024,14 @@ def _prepare_private_rent_localisation(
         )
         args.private_rent_localisation = mode
     if mode == "none":
+        if getattr(args, "brma_rent_quantiles", None) or getattr(
+            args, "brma_rent_quantiles_sha256", None
+        ):
+            raise ValueError(
+                "--brma-rent-quantiles and --brma-rent-quantiles-sha256 need "
+                "--private-rent-localisation brma_list: without it nothing "
+                "reads the quantiles."
+            )
         return {"mode": "none"}
     resource_pins = {}
     for name, filename in _PRIVATE_RENT_RESOURCE_FILES.items():
