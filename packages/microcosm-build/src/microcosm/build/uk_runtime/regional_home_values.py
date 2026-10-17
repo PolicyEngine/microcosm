@@ -50,6 +50,7 @@ from microcosm.build.uk_runtime.property_localisation import (
     owner_mask,
     owner_uniforms,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -143,6 +144,19 @@ class UKRegionalHomeValuesResult:
         return {"stage": REGIONAL_HOME_VALUES_STAGE_NAME, **self.receipt}
 
 
+def source_count(household, mask: np.ndarray) -> int:
+    """Distinct source households behind a cell (UKDS disclosure control).
+
+    Support copies repeat their source household, so a cell is counted on
+    ``household_source_id``; rows count where no lineage is stored.
+    """
+
+    mask = np.asarray(mask, dtype=bool)
+    if "household_source_id" in household:
+        return int(household.loc[mask, "household_source_id"].nunique())
+    return int(mask.sum())
+
+
 def _support_band(count: int) -> str:
     """A count as a band, never itself (UKDS disclosure control)."""
 
@@ -193,11 +207,11 @@ def assign_regional_home_values(
     )
     target = owner_mask(tenure) & (value > 0) & (knots_region != "")
     new_value = value.copy()
-    rewritten_by_region: dict[str, int] = {}
+    rewritten_by_region: dict[str, int | str] = {}
     for code in sorted(set(knots_region[target])):
         rows = np.flatnonzero(target & (knots_region == code))
         new_value[rows] = np.interp(u[rows], parsed.grid, region_knots[code])
-        rewritten_by_region[str(code)] = int(len(rows))
+        rewritten_by_region[str(code)] = rounded_count(int(len(rows)))
     if np.any(~np.isfinite(new_value)) or np.any(new_value[target] <= 0):
         raise ValueError("Regional home values must be finite and positive.")
     new_wealth = np.maximum(wealth + (new_value - value), 0.0)
@@ -222,13 +236,13 @@ def assign_regional_home_values(
         mass_log=(*frame.mass_log, mass),
     )
     validate_uk_national_frame(result)
-    at_cap = int((target & (new_value >= parsed.cap)).sum())
+    at_cap = source_count(household, target & (new_value >= parsed.cap))
     receipt = {
         "knots_basis_year": parsed.basis_year,
         "knots_inputs_sha256": parsed.inputs_sha256,
-        "rows": int(len(household)),
+        "rows": rounded_count(int(len(household))),
         "rows_rewritten_by_region": rewritten_by_region,
-        "rows_at_cap": _support_band(at_cap) if at_cap else "0",
+        "sources_at_cap": _support_band(at_cap) if at_cap else "0",
         "weighted_value_before": float(np.dot(value[target], weights[target])),
         "weighted_value_after": float(np.dot(new_value[target], weights[target])),
         "ranking": {
