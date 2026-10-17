@@ -239,7 +239,7 @@
         "hmrc.salary_sacrifice.it_relief_higher_rate",
         "hmrc.salary_sacrifice.nics_relief_employee"
       ],
-      "reason": "HMRC Table 6.2's 2024-25 salary-sacrifice income-tax and employee NICs reliefs, the latest edition. They follow the employer NICs relief row (microcosm#1069 c11), which anchors the sacrificed amount at its 2024-25 level and restates only the rate it is relieved at; the income tax rates and the employee Class 1 main rate (8%) are unchanged from 2024-25 to 2025-26, so no restatement applies. Growing all the reliefs with earnings instead is an open ruling (microcosm#1123).",
+      "reason": "HMRC Table 6.2's 2024-25 salary-sacrifice income-tax and employee NICs reliefs, the latest edition. They follow the employer NICs relief row (microcosm#1069 c11), which anchors the sacrificed amount at its 2024-25 level and restates only the rate it is relieved at; the income tax rates and the employee Class 1 main rate (8%) are unchanged from 2024-25 to 2025-26, so no restatement applies. Growing all the reliefs with earnings instead is an open ruling (raised on microcosm#1123, tracked on microcosm#1278 since it closed into it).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-11",
@@ -283,7 +283,7 @@
       "target_ids": [
         "obr.fuel_duties_cars"
       ],
-      "reason": "The cars share of fuel duty comes from the OBR's April 2024 note (FY2024-25). HMRC's provisional FY2025-26 fuel duty total is in the feed, but carrying the cars line to calendar 2025 needs a fiscal-to-calendar roll-forward of the total that is not built yet; held to FY2024-25 until it is (a #1123 follow-up).",
+      "reason": "The cars share of fuel duty comes from the OBR's April 2024 note (FY2024-25). HMRC's provisional FY2025-26 fuel duty total is in the feed, but carrying the cars line to calendar 2025 needs a fiscal-to-calendar roll-forward of the total that is not built yet; held to FY2024-25 until it is (a #1123 follow-up, tracked on microcosm#1278 since #1123 closed into it).",
       "tracking": "microcosm#1278",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-11",
