@@ -15,9 +15,10 @@ is higher (the Scottish higher and advanced rates, which span the rest-of-UK
 higher-rate income range). Where the
 returned pay tapers the personal allowance, the allowance it withdraws raises
 taxable income too, so that tax lands in the brackets it reaches, as
-uk-data#533 reads it. policyengine-uk puts the Scottish top-rate threshold at
-GBP 112,570 rather than the statutory GBP 125,140 (pe-uk#2130), so it files
-some advanced-rate relief as additional.
+uk-data#533 reads it. From 2.134.3 policyengine-uk starts the Scottish top
+rate at the statutory GBP 125,140 of taxable income for 2024-25 to 2026-27
+(pe-uk#2437, closing pe-uk#2130). Before that it used GBP 112,570 and filed some
+advanced-rate relief as additional.
 
 A Gift Aid donor's bands are extended by the grossed-up gift (ITA 2007
 s.414(2)(b)), as policyengine-uk's earned_income_tax extends them from 2.128.0

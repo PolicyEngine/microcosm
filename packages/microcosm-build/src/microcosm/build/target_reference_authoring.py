@@ -829,6 +829,7 @@ def target_references_resource(
                         "scaled_by_ratio",
                         "rolled_forward_by_ratio",
                         "calendar_year_window",
+                        "calendar_year_window_scaled_by_ratio",
                     }
                 }
             ),

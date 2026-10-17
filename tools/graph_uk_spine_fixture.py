@@ -114,6 +114,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
@@ -123,6 +126,19 @@ from microcosm.build.uk_runtime.private_school_attendance import (
 )
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    PROPERTY_PURCHASE_BAND_IDS,
+    PROPERTY_PURCHASE_KINDS,
+    UKPropertyPurchasesStageTransform,
+    UKPropertyPurchaseTarget,
+    UKPropertyPurchaseTargets,
+    property_purchase_uniforms,
+    sdlt_region_mask,
+    select_property_purchasers,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -178,7 +194,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 42
+UK_FIXTURE_STAGE_COUNT = 45
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -1461,6 +1477,81 @@ _FIXTURE_PRIS_EXPENSES_PER_PROFIT = 1.0
 _FIXTURE_PRIS_INDIVIDUALS_SHARE = 0.99
 
 
+#: The fixture's purchase targets: a share of each kind's eligible
+#: England-and-Northern-Ireland owner weight, priced from bands in multiples of
+#: a floor scaled to the synthetic donor's small stocks (count, mean), so the
+#: stage fits a real threshold and scale on the small frame. Production
+#: targets carry HMRC's GBP 40,000 floor.
+_FIXTURE_PURCHASE_RATE = 0.25
+_FIXTURE_PURCHASE_MINIMUM = 1_000.0
+_FIXTURE_PURCHASE_BANDS = (
+    (60.0, 1.5),
+    (30.0, 3.0),
+    (14.0, 6.0),
+    (3.0, 11.0),
+    (2.0, 15.0),
+    (1.0, 40.0),
+)
+
+
+def _property_purchase_targets(frame: Frame) -> UKPropertyPurchaseTargets:
+    """Synthetic purchase targets sized to the frame ``property_purchases`` reads.
+
+    The count is a fixed share of each kind's eligible owner weight; the value
+    lies midway between the purchasers' price floor and their stock, found
+    with the stage's own selection and streams, so both fits are feasible.
+    """
+
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    sdlt = sdlt_region_mask(household["region"])
+    ids = household["household_id"].to_numpy()
+    targets = {}
+    for kind in PROPERTY_PURCHASE_KINDS:
+        stock = pd.to_numeric(household[kind.stock], errors="raise").to_numpy(
+            dtype=float
+        )
+        eligible = (stock >= _FIXTURE_PURCHASE_MINIMUM) & (weights > 0) & sdlt
+        if not eligible.any():
+            # The synthetic frame holds no stock of this kind: not imputed.
+            targets[kind.name] = None
+            continue
+        transactions = _FIXTURE_PURCHASE_RATE * float(weights[eligible].sum())
+        event_uniforms, _ = property_purchase_uniforms(ids, kind)
+        purchased, _ = select_property_purchasers(
+            stock=stock,
+            weights=weights,
+            sdlt_mask=sdlt,
+            event_uniforms=event_uniforms,
+            transactions=transactions,
+            minimum_price=_FIXTURE_PURCHASE_MINIMUM,
+            property_type=kind.name,
+        )
+        fitted = weights * (purchased & sdlt)
+        floor = _FIXTURE_PURCHASE_MINIMUM * float(fitted.sum())
+        capacity = float(np.dot(stock, fitted))
+        if not capacity > floor:
+            raise RuntimeError(
+                f"The fixture's {kind.name} purchasers hold no stock above the floor."
+            )
+        targets[kind.name] = UKPropertyPurchaseTarget(
+            property_type=kind.name,
+            transactions=transactions,
+            value=(floor + capacity) / 2.0,
+            band_ids=PROPERTY_PURCHASE_BAND_IDS,
+            band_transactions=tuple(count for count, _ in _FIXTURE_PURCHASE_BANDS),
+            band_values=tuple(
+                count * mean * _FIXTURE_PURCHASE_MINIMUM
+                for count, mean in _FIXTURE_PURCHASE_BANDS
+            ),
+            minimum_price=_FIXTURE_PURCHASE_MINIMUM,
+        )
+    return UKPropertyPurchaseTargets(
+        additional_residential=targets["additional_residential"],
+        non_residential=targets["non_residential"],
+    )
+
+
 def _property_rental_facts(frame: Frame) -> HMRCPropertyRentalFacts:
     """Synthetic PRIS facts sized to the frame ``property_components`` reads.
 
@@ -1783,6 +1874,7 @@ def _build_implementations(
     cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
     property_rental_facts: HMRCPropertyRentalFacts | None = None,
+    property_purchase_targets: UKPropertyPurchaseTargets | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
     contract = load_uk_take_up_contract()
@@ -1866,6 +1958,13 @@ def _build_implementations(
             donor_table=spi_donor,
             facts=property_rental_facts,
         ),
+        "regional_home_values": UKRegionalHomeValuesStageTransform(
+            stage=stages["regional_home_values"]
+        ),
+        "property_purchases": UKPropertyPurchasesStageTransform(
+            stage=stages["property_purchases"],
+            targets=property_purchase_targets,
+        ),
         "lcfs_consumption": UKLCFSConsumptionStageTransform(
             stage=stages["lcfs_consumption"],
             engine=engine,
@@ -1912,6 +2011,9 @@ def _build_implementations(
         ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
+        ),
+        "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+            stage=stages["uc_legacy_closure_take_up"]
         ),
         "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
             stage=stages["pension_credit_take_up"], engine=engine
@@ -2109,6 +2211,20 @@ def generate(output: Path) -> None:
     )
     build_kwargs["property_rental_facts"] = property_rental_facts
     implementations, _ = _build_implementations(**build_kwargs)
+    # The purchase targets are sized to the frame property_purchases reads.
+    prefix = stages[: stage_names.index("property_purchases")]
+    prefix_names = {stage.stage for stage in prefix}
+    before_purchases = _run_legacy_plan(
+        prefix,
+        {name: impl for name, impl in implementations.items() if name in prefix_names},
+    )
+    property_purchase_targets = _property_purchase_targets(before_purchases)
+    _write_json(
+        sources / "property_purchase_targets.json",
+        property_purchase_targets.payload(),
+    )
+    build_kwargs["property_purchase_targets"] = property_purchase_targets
+    implementations, _ = _build_implementations(**build_kwargs)
     prefix = stages[: stage_names.index("cgt_residential_split")]
     prefix_names = {stage.stage for stage in prefix}
     after_redraw = _run_legacy_plan(
@@ -2162,6 +2278,7 @@ def generate(output: Path) -> None:
             "cgt_distribution": "cgt_distribution.json",
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
             "property_rental_facts": "property_rental_facts.json",
+            "property_purchase_targets": "property_purchase_targets.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
         "cgt_badr_parameters": cgt_badr_parameters.__dict__,

@@ -117,10 +117,24 @@ def _apply_pending_roster_transformations(
     # follow the uprated rental property values.
     assert "property_components" not in roster
     roster.insert(roster.index("high_value_home_support") + 1, "property_components")
+    # microcosm#1112 re-mint pending: the regions' home values replace the
+    # owners' values after the support copies, before the components.
+    assert "regional_home_values" not in roster
+    roster.insert(roster.index("high_value_home_support") + 1, "regional_home_values")
+    # microcosm#1095 re-mint pending: the annual property purchases read the
+    # uprated stocks after the support copies (uk-data#573).
+    assert "property_purchases" not in roster
+    roster.insert(roster.index("property_components") + 1, "property_purchases")
     # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
     # the post-SPI incomes, so it runs right after UC capital coherence.
     assert "pension_credit_take_up" not in roster
     roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    # microcosm#1095 re-mint pending: the Move to UC claim draw reads the final
+    # legacy and UC receipts, after UC capital coherence (uk-data#534).
+    assert "uc_legacy_closure_take_up" not in roster
+    roster.insert(
+        roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up"
+    )
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster

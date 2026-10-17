@@ -121,6 +121,17 @@ _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
     "high-value council tax surcharge."
 )
 
+_OBR_SDLT_HOUSEHOLDS_RATIONALE = (
+    "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' "
+    "SDLT, the OBR March 2026 line at the calendar-2025 window (three twelfths of "
+    "FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, "
+    "PolicyEngine/chronicle#280 lane) times individuals' share of HMRC's 2024-25 "
+    "SDLT receipts, residential (Table 8a) and non-residential (Table 8b) "
+    "together; the frozen incumbent fixture holds the FY2025-26 value of the "
+    "whole line alone, which companies, partnerships and collective investment "
+    "schemes pay about a third of."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -728,6 +739,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
         elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
             row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
+        elif name == "obr.sdlt" and row.get("kind") == "calibration_drift":
+            row["reason"] = _OBR_SDLT_HOUSEHOLDS_RATIONALE
         elif (
             name.startswith("obr.")
             and row.get("kind") == "calibration_drift"

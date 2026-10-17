@@ -134,6 +134,9 @@ from microcosm.build.uk_runtime.high_value_home_support import (
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     write_uk_national_frame,
@@ -155,6 +158,12 @@ from microcosm.build.uk_runtime.private_school_attendance import (
 )
 from microcosm.build.uk_runtime.property_components import (
     UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    UKPropertyPurchasesStageTransform,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -694,6 +703,11 @@ def _rules_engine() -> PolicyEngineUKEngine:
             "build_uk_frs_spine requires the microcosm-build 'uk' extra "
             "(policyengine-uk). Run: uv sync --all-packages --extra uk"
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return PolicyEngineUKEngine()
 
 
@@ -1628,6 +1642,14 @@ def prepare_uk_spine_execution(
                 spi_tab_path=sources["spi"],
             )
         )
+    if "regional_home_values" in stage_names:
+        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
+            stage=stages_by_name["regional_home_values"],
+        )
+    if "property_purchases" in stage_names:
+        implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
+            stage=stages_by_name["property_purchases"],
+        )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(
             lambda sources: UKLCFSConsumptionStageTransform(
@@ -1689,6 +1711,12 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_legacy_closure_take_up" in stage_names:
+        implementations["uc_legacy_closure_take_up"] = (
+            UKLegacyClosureTakeUpStageTransform(
+                stage=stages_by_name["uc_legacy_closure_take_up"]
+            )
         )
     if "pension_credit_take_up" in stage_names:
         implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(

@@ -500,7 +500,9 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # no engine input.
         "reports_rent_from_other_property",
     ),
-    "household": ("property_wealth",),
+    # The value the spine's regional home values replaced (microcosm#1112):
+    # the dense node ranks on it, and it is no engine input.
+    "household": ("property_wealth", "main_residence_value_rank_basis"),
 }
 
 

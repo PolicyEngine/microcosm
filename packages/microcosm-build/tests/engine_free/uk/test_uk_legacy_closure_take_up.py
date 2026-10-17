@@ -1,0 +1,351 @@
+"""Universal Credit claims at the legacy closure, ported from uk-data#534
+(microcosm#1095)."""
+
+from __future__ import annotations
+
+import itertools
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime import legacy_closure_take_up as lc
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.frame import WeightKind
+
+_CLAIMED = "Claimed UC"
+_CLOSED = "Did not claim UC - Legacy benefit closed"
+_IN_PROGRESS = "In Progress"
+
+
+def _row(legacy_benefit: str, move_status: str, value: float) -> dict:
+    return {
+        "concept": "dwp.mtuc_households_sent_migration_notice",
+        "dimensions": {"legacy_benefit": legacy_benefit, "move_status": move_status},
+        "value": value,
+    }
+
+
+def _rows() -> list[dict]:
+    rows = []
+    for label, claimed, closed, in_progress in (
+        ("Child Tax Credit only", 600.0, 400.0, 50.0),
+        ("Child Tax Credit and Housing Benefit", 900.0, 100.0, 5.0),
+        ("Employment Support Allowance only", 950.0, 50.0, 0.0),
+        ("all", 2_450.0, 550.0, 55.0),
+    ):
+        rows.append(_row(label, _CLAIMED, claimed))
+        rows.append(_row(label, _CLOSED, closed))
+        rows.append(_row(label, _IN_PROGRESS, in_progress))
+    return rows
+
+
+def test_rates_are_claimed_over_claimed_and_closed() -> None:
+    rates = lc.move_to_uc_claim_rates_from_rows(_rows())
+    # Households still in progress are left out (uk-data#534).
+    assert rates == {
+        "all": pytest.approx(2_450 / 3_000),
+        "child_tax_credit": pytest.approx(0.6),
+        "child_tax_credit+housing_benefit": pytest.approx(0.9),
+        "esa_income": pytest.approx(0.95),
+    }
+
+
+def test_combination_keys_follow_the_engine_order() -> None:
+    rows = [
+        row
+        for row in _rows()
+        if row["dimensions"]["legacy_benefit"] != "Child Tax Credit and Housing Benefit"
+    ]
+    rows.append(_row("Housing Benefit and Child Tax Credit", _CLAIMED, 9.0))
+    rows.append(_row("Housing Benefit and Child Tax Credit", _CLOSED, 1.0))
+    rates = lc.move_to_uc_claim_rates_from_rows(rows)
+    assert rates["child_tax_credit+housing_benefit"] == pytest.approx(0.9)
+
+
+def test_rates_refuse_unknown_labels_repeats_and_a_missing_all_row() -> None:
+    with pytest.raises(ValueError, match="Unknown legacy benefit"):
+        lc.move_to_uc_claim_rates_from_rows(
+            [*_rows(), _row("Pension Credit only", _CLAIMED, 1.0)]
+        )
+    with pytest.raises(ValueError, match="repeat"):
+        lc.move_to_uc_claim_rates_from_rows([*_rows(), _row("all", _CLAIMED, 1.0)])
+    no_all = [row for row in _rows() if row["dimensions"]["legacy_benefit"] != "all"]
+    with pytest.raises(ValueError, match="no all-households row"):
+        lc.move_to_uc_claim_rates_from_rows(no_all)
+    no_closed = [
+        row
+        for row in _rows()
+        if row["dimensions"]
+        != {"legacy_benefit": "Child Tax Credit only", "move_status": _CLOSED}
+    ]
+    with pytest.raises(ValueError, match="lack the claimed and closed counts"):
+        lc.move_to_uc_claim_rates_from_rows(no_closed)
+
+
+def test_probabilities_hit_the_rate_at_the_weighted_share_already_claiming() -> None:
+    combination = np.array(["child_tax_credit"] * 4 + ["jsa_income"] * 2, dtype=object)
+    drawn = np.ones(6, dtype=bool)
+    claims_anyway = np.array([True, False, False, False, False, False])
+    # The claimant carries half the cohort's weight: weighted p = 0.5, where
+    # the unweighted share would be 0.25.
+    weights = np.array([3.0, 1.0, 1.0, 1.0, 2.0, 2.0])
+    probability, receipt = lc.legacy_closure_claim_probabilities(
+        combination=combination,
+        drawn=drawn,
+        claims_anyway=claims_anyway,
+        weights=weights,
+        rates={"child_tax_credit": 0.8, "all": 0.6},
+    )
+    np.testing.assert_allclose(probability[1:4], (0.8 - 0.5) / (1 - 0.5))
+    # A combination DWP does not report takes the all-households rate.
+    np.testing.assert_allclose(probability[4:], 0.6)
+    assert receipt["child_tax_credit"]["rate_source"] == "combination"
+    assert receipt["jsa_income"]["rate_source"] == "all_households"
+    assert {entry["support"] for entry in receipt.values()} == {"<10"}
+
+
+def test_probabilities_clip_where_the_claimants_exceed_the_rate() -> None:
+    probability, _ = lc.legacy_closure_claim_probabilities(
+        combination=np.array(["esa_income"] * 3, dtype=object),
+        drawn=np.ones(3, dtype=bool),
+        claims_anyway=np.array([True, True, False]),
+        weights=np.ones(3),
+        rates={"esa_income": 0.5, "all": 0.5},
+    )
+    np.testing.assert_array_equal(probability, 0.0)
+
+
+_REPORTED = (
+    *(f"{name}_reported" for name, _ in lc.LEGACY_BENEFITS),
+    "universal_credit_reported",
+)
+
+
+def _frame(
+    reported: dict[str, np.ndarray],
+    would_claim_uc: np.ndarray,
+    weights: np.ndarray,
+    regions=None,
+):
+    n = len(would_claim_uc)
+    ids = np.arange(1, n + 1, dtype="int64")
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_benunit_id": ids,
+            "age": np.full(n, 40, dtype="int64"),
+            **{
+                column: reported.get(column, np.zeros(n)).astype(float)
+                for column in _REPORTED
+            },
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": ids, "would_claim_uc": would_claim_uc})
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "region": pd.array(
+                ["NORTH_WEST"] * n if regions is None else list(regions),
+                dtype="string",
+            ),
+        }
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=weights,
+    )
+
+
+_RATES = {"child_tax_credit": 0.6, "child_tax_credit+housing_benefit": 0.9, "all": 0.8}
+
+
+def test_units_outside_the_draw_keep_the_engine_default() -> None:
+    n = 4
+    frame = _frame(
+        {
+            # Unit 1 reports UC beside tax credits; unit 2 would claim anyway;
+            # unit 3 reports no legacy benefit; unit 4 reports Child Tax Credit.
+            "child_tax_credit_reported": np.array([500.0, 500.0, 0.0, 500.0]),
+            "universal_credit_reported": np.array([800.0, 0.0, 0.0, 0.0]),
+        },
+        would_claim_uc=np.array([False, True, False, False]),
+        weights=np.ones(n),
+    )
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    flag = result.frame.table("benunit")[lc.LEGACY_CLOSURE_OUTPUT].to_numpy()
+    assert flag[:3].all()
+    assert result.evidence()["combinations"] == {
+        "child_tax_credit": {
+            "rate": 0.6,
+            "rate_source": "combination",
+            "rate_unreachable": "<10",
+            "support": "<10",
+        }
+    }
+
+
+def test_the_weighted_share_claiming_matches_dwps_rate() -> None:
+    rng = np.random.default_rng(11)
+    n = 6_000
+    tax_credit = rng.random(n) < 0.7
+    housing = tax_credit & (rng.random(n) < 0.3)
+    frame = _frame(
+        {
+            "child_tax_credit_reported": np.where(tax_credit, 400.0, 0.0),
+            "housing_benefit_reported": np.where(housing, 300.0, 0.0),
+        },
+        would_claim_uc=rng.random(n) < 0.2,
+        weights=rng.uniform(0.5, 3.0, n),
+    )
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    benunit = result.frame.table("benunit")
+    flag = benunit[lc.LEGACY_CLOSURE_OUTPUT].to_numpy()
+    weights = np.asarray(result.frame.weights_for("household").values)
+    for mask, rate in (
+        (tax_credit & ~housing, 0.6),
+        (housing, 0.9),
+    ):
+        share = weights[mask & flag].sum() / weights[mask].sum()
+        assert share == pytest.approx(rate, abs=0.03)
+    assert result.evidence()["combinations"]["child_tax_credit"]["support"] == "30+"
+    assert result.evidence()["p_basis"] == "spine_design_weights_great_britain"
+
+
+def test_draws_are_keyed_by_benunit_identity() -> None:
+    rng = np.random.default_rng(5)
+    n = 300
+    reported = {"child_tax_credit_reported": np.full(n, 400.0)}
+    full = lc.assign_uc_claim_at_legacy_closure(
+        _frame(reported, would_claim_uc=np.zeros(n, dtype=bool), weights=np.ones(n)),
+        rates=_RATES,
+    )
+    again = lc.assign_uc_claim_at_legacy_closure(
+        _frame(reported, would_claim_uc=np.zeros(n, dtype=bool), weights=np.ones(n)),
+        rates=_RATES,
+    )
+    column = lc.LEGACY_CLOSURE_OUTPUT
+    pd.testing.assert_series_equal(
+        full.frame.table("benunit")[column], again.frame.table("benunit")[column]
+    )
+    # A unit's uniform reads its own id, so the stream does not depend on
+    # which other units the frame carries.
+    ids = np.arange(1, n + 1)
+    subset = ids[rng.random(n) < 0.5]
+    uniforms = stable_identity_uniforms(ids, seed=0, salt=column)
+    np.testing.assert_array_equal(
+        uniforms[subset - 1],
+        stable_identity_uniforms(subset, seed=0, salt=column),
+    )
+
+
+def test_the_stage_refuses_a_stored_output_and_keeps_the_weights() -> None:
+    n = 3
+    frame = _frame(
+        {"esa_income_reported": np.full(n, 100.0)},
+        would_claim_uc=np.zeros(n, dtype=bool),
+        weights=np.full(n, 2.0),
+    )
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    # A flag only: the weights and the mass log pass through, as in the other
+    # benefit-unit take-up redraws.
+    assert result.frame.mass_log == frame.mass_log
+    np.testing.assert_array_equal(
+        result.frame.weights_for("household").values,
+        frame.weights_for("household").values,
+    )
+    with pytest.raises(ValueError, match="already stored"):
+        lc.assign_uc_claim_at_legacy_closure(result.frame, rates=_RATES)
+
+
+def test_the_packaged_rates_are_dwps_claimed_over_resolved_shares() -> None:
+    rates = lc.load_move_to_uc_claim_rates()
+    # Every combination DWP reports, and the all-households row.
+    assert "all" in rates
+    assert len(rates) == 20
+    assert all(0.0 < rate <= 1.0 for rate in rates.values())
+    assert set(rates) - {"all"} <= {
+        "+".join(names)
+        for size in range(1, 4)
+        for names in itertools.combinations(
+            [name for name, _ in lc.LEGACY_BENEFITS], size
+        )
+    }
+
+
+def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
+    from microcosm.build.country_spec import load_country_spec
+
+    stages = {stage.stage: stage for stage in load_country_spec("uk").sources.stages}
+    stage = stages[lc.LEGACY_CLOSURE_STAGE_NAME]
+    # Closed world: the transform refuses any drift from the code's constants.
+    lc.UKLegacyClosureTakeUpStageTransform(stage=stage)
+    order = list(stages)
+    position = order.index(lc.LEGACY_CLOSURE_STAGE_NAME)
+    # After the last writers of would_claim_uc and the UC receipts, before the
+    # Pension Credit redraw and any CGT clone.
+    assert order.index("uc_capital_coherence") == position - 1
+    assert position < order.index("pension_credit_take_up")
+    assert position < order.index("cgt_support_split")
+
+
+def test_p_is_measured_over_great_britain_and_applied_in_northern_ireland() -> None:
+    # Four Great Britain units, one claiming anyway (p = 0.25), and two Northern
+    # Irish units claiming anyway, which a UK-wide p would count (0.5).
+    combination = np.array(["child_tax_credit"] * 6, dtype=object)
+    great_britain = np.array([True, True, True, True, False, False])
+    probability, _ = lc.legacy_closure_claim_probabilities(
+        combination=combination,
+        drawn=np.ones(6, dtype=bool),
+        claims_anyway=np.array([True, False, False, False, True, True]),
+        weights=np.ones(6),
+        rates={"child_tax_credit": 0.8, "all": 0.8},
+        great_britain=great_britain,
+    )
+    np.testing.assert_allclose(probability, (0.8 - 0.25) / (1 - 0.25))
+
+
+def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources() -> None:
+    # Eleven of twelve units claim anyway: p exceeds DWP's rate, so none is drawn.
+    kwargs = dict(
+        combination=np.array(["esa_income"] * 12, dtype=object),
+        drawn=np.ones(12, dtype=bool),
+        claims_anyway=np.arange(12) < 11,
+        weights=np.ones(12),
+        rates={"esa_income": 0.8, "all": 0.8},
+    )
+    probability, receipt = lc.legacy_closure_claim_probabilities(
+        **kwargs, source_ids=np.arange(12)
+    )
+    np.testing.assert_array_equal(probability, 0.0)
+    assert receipt["esa_income"]["rate_unreachable"] is True
+    assert receipt["esa_income"]["support"] == "10-29"
+    # Twelve support copies of three households: the cell rests on fewer
+    # than ten sources, so neither the flag nor the support is given.
+    _, receipt = lc.legacy_closure_claim_probabilities(
+        **kwargs, source_ids=np.arange(12) % 3
+    )
+    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+    assert receipt["esa_income"]["support"] == "<10"
+
+
+def test_the_receipt_aggregates_cover_great_britain_only() -> None:
+    n = 40
+    regions = ["NORTH_WEST"] * 30 + ["NORTHERN_IRELAND"] * 10
+    frame = _frame(
+        {"child_tax_credit_reported": np.full(n, 400.0)},
+        would_claim_uc=np.zeros(n, dtype=bool),
+        weights=np.full(n, 2.0),
+        regions=regions,
+    )
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    # Thirty Great Britain units at weight 2; Northern Ireland's are left out.
+    assert result.evidence()["great_britain_drawn_benunit_weight"] == pytest.approx(
+        60.0
+    )

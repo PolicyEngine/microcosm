@@ -21,10 +21,12 @@ def test_the_compile_reads_the_vendored_pins_without_the_engine(monkeypatch) -> 
     assert hu._engine_version() == pins["engine"]["version"]
     assert json.loads(_PINS_PATH.read_text(encoding="utf-8")) == pins
 
+
 def test_an_instant_outside_the_pins_is_refused_by_name() -> None:
     path = hu.UK_ENGINE_INDEX_PARAMETERS[0]
     with pytest.raises(ValueError, match="not in the vendored engine pins"):
         hu.engine_parameter_value(path, "1999-01-01")
+
 
 def test_a_pins_file_for_the_wrong_roster_is_refused(monkeypatch) -> None:
     hu.engine_parameter_pins.cache_clear()
@@ -48,3 +50,18 @@ def test_a_pins_file_for_the_wrong_roster_is_refused(monkeypatch) -> None:
             hu.engine_parameter_pins()
     finally:
         hu.engine_parameter_pins.cache_clear()
+
+
+def test_a_build_refuses_an_engine_other_than_the_pinned_one(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    pinned = str(hmrc_uprating.engine_parameter_pins()["engine"]["version"])
+    monkeypatch.setattr(hmrc_uprating, "installed_engine_version", lambda: pinned)
+    assert hmrc_uprating.assert_installed_engine_is_pinned() == pinned
+    # The freeze: a later release in the environment refuses the build.
+    monkeypatch.setattr(hmrc_uprating, "installed_engine_version", lambda: "9.9.9")
+    with pytest.raises(RuntimeError, match="9.9.9 is installed"):
+        hmrc_uprating.assert_installed_engine_is_pinned()
+    # Without the engine, the caller's own import reports it.
+    monkeypatch.setattr(hmrc_uprating, "installed_engine_version", lambda: "absent")
+    assert hmrc_uprating.assert_installed_engine_is_pinned() == "absent"

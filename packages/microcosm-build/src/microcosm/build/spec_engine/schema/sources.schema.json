@@ -9651,6 +9651,228 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "knots",
+      "knots_level",
+      "region_map",
+      "rows",
+      "rank",
+      "support_stratum_lower",
+      "stream",
+      "value",
+      "property_wealth",
+      "rank_basis_column"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_regional_home_values"
+      },
+      "knots": {
+       "type": "string"
+      },
+      "knots_level": {
+       "type": "string"
+      },
+      "region_map": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rank": {
+       "type": "string"
+      },
+      "support_stratum_lower": {
+       "type": "number"
+      },
+      "stream": {
+       "type": "array",
+       "items": {
+        "type": [
+         "string",
+         "integer"
+        ]
+       }
+      },
+      "value": {
+       "type": "string"
+      },
+      "property_wealth": {
+       "type": "string"
+      },
+      "rank_basis_column": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "stocks",
+      "port_of",
+      "minimum_price",
+      "eligibility",
+      "fit_regions",
+      "hazard",
+      "event_score",
+      "threshold",
+      "price",
+      "minimum_value_share",
+      "weights",
+      "streams",
+      "additional_residential_targets",
+      "non_residential_targets"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_annual_property_purchases"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "stocks": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "port_of": {
+       "type": "string"
+      },
+      "minimum_price": {
+       "type": "number"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "fit_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "hazard": {
+       "type": "string"
+      },
+      "event_score": {
+       "type": "string"
+      },
+      "threshold": {
+       "type": "string"
+      },
+      "price": {
+       "type": "string"
+      },
+      "minimum_value_share": {
+       "type": "number"
+      },
+      "weights": {
+       "type": "string"
+      },
+      "streams": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "event_salt",
+         "price_salt",
+         "seed"
+        ],
+        "properties": {
+         "event_salt": {
+          "type": "string"
+         },
+         "price_salt": {
+          "type": "string"
+         },
+         "seed": {
+          "type": "integer"
+         }
+        }
+       }
+      },
+      "additional_residential_targets": {
+       "type": "string"
+      },
+      "non_residential_targets": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "port_of",
+      "legacy_benefits",
+      "true_without_draw",
+      "rate",
+      "probability",
+      "p",
+      "stream"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_uc_claim_at_legacy_closure"
+      },
+      "output": {
+       "type": "string"
+      },
+      "port_of": {
+       "type": "string"
+      },
+      "legacy_benefits": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "true_without_draw": {
+       "type": "string"
+      },
+      "rate": {
+       "type": "string"
+      },
+      "probability": {
+       "type": "string"
+      },
+      "p": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "salt",
+        "seed"
+       ],
+       "properties": {
+        "salt": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "role",
       "filename",
       "locator",

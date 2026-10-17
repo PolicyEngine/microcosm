@@ -52,6 +52,9 @@ from . import (
     frs_hmrc_source,
     frs_take_up,
     hmrc_property_rental,
+    ledger_fact_vendoring,
+    property_localisation,
+    rowwise_geography,
     spi_income,
     spi_support,
     uc_capital_coherence,
@@ -93,6 +96,7 @@ _STAGE_MODULES = {
     "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
     "property_components": "property_components",
+    "property_purchases": "property_purchases",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
@@ -104,10 +108,12 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
+    "regional_home_values": "regional_home_values",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
@@ -136,6 +142,12 @@ _STAGE_HELPER_MODULES = {
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
     "property_components": (hmrc_property_rental, spi_income, spi_support),
+    # The regional values rank as the dense node does and read its knots
+    # (microcosm#1112).
+    "regional_home_values": (property_localisation, rowwise_geography),
+    # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
+    # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
+    "property_purchases": (ledger_fact_vendoring, rowwise_geography),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     "lcfs_consumption": (uk_engine_adapter,),
     "etb_vat": (uk_engine_adapter,),
@@ -153,6 +165,9 @@ _STAGE_HELPER_MODULES = {
         uc_capital_coherence,
     ),
     "uc_capital_coherence": (uc_relationships,),
+    # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
+    # weight mapping and reads the vendored DWP rows (microcosm#1095).
+    "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
@@ -483,10 +498,16 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .high_value_home_support import UKHighValueHomeSupportStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
+    from .property_purchases import (
+        UKPropertyPurchasesStageTransform,
+        UKPropertyPurchaseTargets,
+    )
+    from .regional_home_values import UKRegionalHomeValuesStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -554,6 +575,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     property_rental_facts = _fixture_property_rental_facts(
         _fixture_input(source, inputs, "property_rental_facts")
+    )
+    property_purchase_targets = UKPropertyPurchaseTargets.from_payload(
+        _json_mapping(
+            _fixture_input(source, inputs, "property_purchase_targets"),
+            label="property purchase targets",
+        )
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -634,6 +661,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_table=spi_donor,
                 facts=property_rental_facts,
             ),
+            "property_purchases": UKPropertyPurchasesStageTransform(
+                stage=stages["property_purchases"],
+                targets=property_purchase_targets,
+            ),
+            "regional_home_values": UKRegionalHomeValuesStageTransform(
+                stage=stages["regional_home_values"]
+            ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],
                 engine=engine,
@@ -680,6 +714,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
+            ),
+            "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+                stage=stages["uc_legacy_closure_take_up"]
             ),
             "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
                 stage=stages["pension_credit_take_up"], engine=engine

@@ -931,6 +931,8 @@ class TestUKCountryPackage:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1027,8 +1029,11 @@ class TestUKCountryPackage:
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor, and
         # microcosm#1106 property_components after the regional uprating;
-        # microcosm#1240 high_value_home_support between them.
-        assert len(spec.sources.stages) == 42
+        # microcosm#1240 high_value_home_support between them, microcosm#1112
+        # regional_home_values after it, and microcosm#1095 property_purchases
+        # after property_components and uc_legacy_closure_take_up after
+        # uc_capital_coherence.
+        assert len(spec.sources.stages) == 45
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1069,6 +1074,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
             "hmrc_property_rental_income_facts.json",
+            "hmrc_stamp_tax_facts.json",
+            "dwp_move_to_uc_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
