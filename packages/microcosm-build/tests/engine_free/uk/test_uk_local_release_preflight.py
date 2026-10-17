@@ -227,6 +227,26 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
     )
 
 
+def test_the_candidate_walk_warns_on_shipped_support_figures(tmp_path: Path) -> None:
+    """The files the assembler ships byte for byte get the release's
+    disclosure walk right after the build, as warnings (microcosm#1301)."""
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    assert module.candidate_disclosure_warnings(candidate) == []
+
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["support"] = {"min_nonzero_households": 7}
+    # A cross-grain relation's excess is not an ESS extreme.
+    manifest["cross_grain"] = {"subset_relations": [{"max_excess": 0.0}]}
+    manifest_path.write_text(json.dumps(manifest))
+    (warning,) = module.candidate_disclosure_warnings(candidate)
+    assert warning.startswith("rowwise_candidate_manifest.json carries 1 minimum")
+    assert "support.min_nonzero_households" in warning
+    # The warning names where the figure is, never its value.
+    assert "7" not in warning
+
+
 def test_release_dir_contract_warnings_print_without_failing(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

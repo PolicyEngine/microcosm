@@ -437,6 +437,54 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     return failures
 
 
+def candidate_disclosure_warnings(candidate_dir: Path) -> list[str]:
+    """The release's disclosure walk over a run's to-be-shipped JSON (microcosm#1301).
+
+    The assembler ships the candidate manifest, the original diagnostics and
+    the signed local gate report byte for byte, so a per-area support figure
+    in one of them, or a false match, shows here after the build rather than
+    first at assembly. Like the contract, it warns and never fails.
+    """
+
+    from microcosm.data.contract import _uk_dense_disclosure_findings
+
+    manifest_path = candidate_dir / "rowwise_candidate_manifest.json"
+    try:
+        outputs = json.loads(manifest_path.read_text()).get("outputs") or {}
+    except (OSError, ValueError, AttributeError):
+        # check_candidate_dir reports a missing or unreadable manifest.
+        return []
+
+    def shipped(key: str, pattern: str) -> Path | None:
+        # The manifest's own output path, as the assembler reads it.
+        entry = outputs.get(key)
+        if isinstance(entry, dict) and entry.get("path"):
+            path = Path(str(entry["path"]))
+            return path if path.is_absolute() else candidate_dir / path
+        matches = sorted(glob.glob(str(candidate_dir / pattern)))
+        return Path(matches[0]) if matches else None
+
+    paths = [
+        manifest_path,
+        shipped("calibration_diagnostics", "*.diagnostics.json"),
+        shipped("local_gate_report", "*local_gates.json"),
+    ]
+    warnings: list[str] = []
+    for path in paths:
+        if path is None or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_bytes())
+        except (OSError, ValueError):
+            warnings.append(
+                f"{path.name} cannot be read as JSON, so the disclosure walk "
+                "cannot rule out a per-area support figure in it (microcosm#1301)."
+            )
+            continue
+        warnings += _uk_dense_disclosure_findings(path.name, payload)
+    return warnings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -485,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.candidate_dir is not None:
         failures += check_candidate_dir(args.candidate_dir)
+        warnings += candidate_disclosure_warnings(args.candidate_dir)
     if not args.env and args.candidate_dir is None and args.release_dir is None:
         parser.error(
             "nothing to check: pass --env, --candidate-dir and/or --release-dir"
