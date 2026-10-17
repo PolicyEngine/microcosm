@@ -437,23 +437,43 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     return failures
 
 
-def candidate_disclosure_warnings(candidate_dir: Path) -> list[str]:
+#: The opt-in incumbent comparison's files in a run directory, which the
+#: assembler ships byte for byte when ``--incumbent-manifest`` attaches them.
+INCUMBENT_COMPARISON_FILES = (
+    "score_vs_incumbent.json",
+    "incumbent_surface_evaluation.json",
+)
+
+
+def candidate_disclosure_warnings(
+    candidate_dir: Path, *, incumbent_manifest: Path | None = None
+) -> list[str]:
     """The release's disclosure walk over a run's to-be-shipped JSON (microcosm#1301).
 
     The assembler ships the candidate manifest, the original diagnostics and
-    the signed local gate report byte for byte, so a per-area support figure
+    the signed local gate report byte for byte, and, when the incumbent
+    comparison is attached, the score, the surface evaluation and the
+    extraction manifest (``incumbent_manifest``). So a per-area support figure
     in one of them, or a false match, shows here after the build rather than
-    first at assembly. Like the contract, it warns and never fails.
+    first at assembly. The comparison's files are walked whenever the run
+    directory holds them. Each file is read and walked as the contract does
+    (:func:`microcosm.data.contract._uk_dense_disclosure_file_warnings`), so a
+    file with NaN or a nesting too deep to walk is reported rather than
+    skipped or crashing the pre-flight. Like the contract, it warns and never
+    fails.
     """
 
-    from microcosm.data.contract import _uk_dense_disclosure_findings
+    from microcosm.data.contract import _uk_dense_disclosure_file_warnings
 
     manifest_path = candidate_dir / "rowwise_candidate_manifest.json"
     try:
         outputs = json.loads(manifest_path.read_text()).get("outputs") or {}
-    except (OSError, ValueError, AttributeError):
-        # check_candidate_dir reports a missing or unreadable manifest.
-        return []
+    except (OSError, ValueError, AttributeError, RecursionError):
+        # check_candidate_dir reports a missing or unreadable manifest, and
+        # the walk below reports one it cannot walk.
+        outputs = {}
+    if not isinstance(outputs, dict):
+        outputs = {}
 
     def shipped(key: str, pattern: str) -> Path | None:
         # The manifest's own output path, as the assembler reads it.
@@ -468,20 +488,13 @@ def candidate_disclosure_warnings(candidate_dir: Path) -> list[str]:
         manifest_path,
         shipped("calibration_diagnostics", "*.diagnostics.json"),
         shipped("local_gate_report", "*local_gates.json"),
+        *(candidate_dir / name for name in INCUMBENT_COMPARISON_FILES),
+        incumbent_manifest,
     ]
     warnings: list[str] = []
     for path in paths:
-        if path is None or not path.is_file():
-            continue
-        try:
-            payload = json.loads(path.read_bytes())
-        except (OSError, ValueError):
-            warnings.append(
-                f"{path.name} cannot be read as JSON, so the disclosure walk "
-                "cannot rule out a per-area support figure in it (microcosm#1301)."
-            )
-            continue
-        warnings += _uk_dense_disclosure_findings(path.name, payload)
+        if path is not None and path.is_file():
+            warnings += _uk_dense_disclosure_file_warnings(path)
     return warnings
 
 
@@ -497,9 +510,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-digests", action="store_true")
     parser.add_argument("--candidate-dir", type=Path, help="check a finished run")
     parser.add_argument(
+        "--incumbent-manifest",
+        type=Path,
+        help=(
+            "with --candidate-dir, the incumbent extraction manifest assembly "
+            "will attach; the disclosure walk reads it too"
+        ),
+    )
+    parser.add_argument(
         "--release-dir", type=Path, help="validate an assembled release directory"
     )
     args = parser.parse_args(argv)
+    if args.incumbent_manifest is not None and args.candidate_dir is None:
+        parser.error("--incumbent-manifest needs --candidate-dir")
     failures: list[str] = []
     # The contract's warnings (the disclosure walk, microcosm#1301) are
     # printed but never fail the pre-flight.
@@ -533,7 +556,14 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.candidate_dir is not None:
         failures += check_candidate_dir(args.candidate_dir)
-        warnings += candidate_disclosure_warnings(args.candidate_dir)
+        if (
+            args.incumbent_manifest is not None
+            and not args.incumbent_manifest.is_file()
+        ):
+            failures.append(f"incumbent manifest missing: {args.incumbent_manifest}")
+        warnings += candidate_disclosure_warnings(
+            args.candidate_dir, incumbent_manifest=args.incumbent_manifest
+        )
     if not args.env and args.candidate_dir is None and args.release_dir is None:
         parser.error(
             "nothing to check: pass --env, --candidate-dir and/or --release-dir"

@@ -5063,20 +5063,35 @@ def _check_area_support_block(
 
 # Per-area support figures a dense release withholds (microcosm#1301): an
 # area's rows, Kish ESS and distinct source households, under each name the
-# support table, the support gate and the diagnostics have used for them.
+# support table, the support gate, the diagnostics and the size evaluation
+# have used for them, and the plain synonyms a converted table would carry.
 # Weights and per-cell estimates are not support figures and ship as they are.
 # Names match whatever their case.
 _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
     {
         "rows",
         "n_rows",
+        "num_rows",
+        "row_count",
         "ess",
+        "kish_ess",
+        "effective_sample_size",
+        "sample_size",
         "sources",
+        "distinct_sources",
+        "source_households",
+        "distinct_source_households",
         "assigned_households",
         "nonzero_households",
         "nonzero_source_households",
-        "effective_sample_size",
     }
+)
+_UK_SUPPORT_FIGURE_STEMS = "(?:" + "|".join(sorted(_UK_AREA_SUPPORT_FIGURE_KEYS)) + ")"
+# A map of a figure by area or level is the figure too ("rows_by_area",
+# "ess_by_local_authority").
+_UK_SUPPORT_BY_SUFFIX = r"(?:_(?:by|per)_[a-z0-9_]+)?"
+_UK_SUPPORT_FIGURE_NAME_RE = re.compile(
+    rf"^{_UK_SUPPORT_FIGURE_STEMS}{_UK_SUPPORT_BY_SUFFIX}$"
 )
 # An area key: a GSS code below the region, bare or under its level
 # ("local_authority/E06000053"). Region, nation and UK codes (E12, E92, N92,
@@ -5084,56 +5099,85 @@ _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
 _UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?!E12|[ENSW]92|K0\d)[EKLMNSW]\d{8}$")
 _UK_REGION_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?:E12|[ENSW]92|K0\d)\d{6}$")
 # The fields that make a mapping one area's record, or, holding a list or a
-# pandas {row: value} column, a table's area column, unless they hold only
-# region, nation or UK codes. ``code`` counts only when it holds an area
-# code: build manifests and warnings use the name too.
+# pandas {row: value} column, a table's area column, whatever their case,
+# unless they hold only region, nation or UK codes. Any other field makes it
+# one when it holds an area code ("lad_code", "geography", "code"): build
+# manifests and warnings use those names for other things too.
 _UK_AREA_ID_KEYS = ("area_code", "geography_id")
 # A minimum, maximum, median or other order statistic of a support figure
 # over areas ("min_nonzero_households", "rows_min", "smallest_ess",
 # "median_effective_sample_size") is one area's figure. The names are whole
 # support-figure stems, so a parameter merely ending in "ess" ("max_excess")
 # is not one. Only the declared floors, under a "floors" key, may use them.
-_UK_SUPPORT_FIGURE_STEMS = (
-    r"(?:rows|n_rows|ess|sources|distinct_sources|assigned_households"
-    r"|nonzero_households|nonzero_source_households|effective_sample_size"
-    r"|sample_size)"
-)
 _UK_SUPPORT_EXTREME_KEY_RE = re.compile(
     r"^(?:(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest)_"
     rf"{_UK_SUPPORT_FIGURE_STEMS}"
-    rf"|{_UK_SUPPORT_FIGURE_STEMS}_(?:min|minimum|max|maximum|median))$"
+    rf"|{_UK_SUPPORT_FIGURE_STEMS}_(?:min|minimum|max|maximum|median))"
+    rf"{_UK_SUPPORT_BY_SUFFIX}$"
 )
-# The same statistic keyed under a figure's name ({"ess": {"min": ...,
-# "p10": ...}}).
+# The same statistic keyed above or below a figure's name ({"ess": {"min":
+# ..., "p10": ...}}, {"min": {"rows": ...}}).
 _UK_SUPPORT_STATISTIC_KEY_RE = re.compile(
     r"^(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest"
     r"|p\d{1,2}|q\d)$"
 )
 # A pandas row index: DataFrame.to_dict() writes a column as {"0": value, ...}.
 _UK_ROW_INDEX_RE = re.compile(r"^\d+$")
-# A number written as text, as a document converted from a CSV carries it.
+# A number written as text, as a document converted from a CSV carries it,
+# thousands separators included ("1,234").
 _UK_NUMERIC_TEXT_RE = re.compile(
-    r"^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?\s*$", re.IGNORECASE
+    r"^\s*[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d*)?|\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?\s*$",
+    re.IGNORECASE,
 )
 # A shortfall worded with the area's measured value ("rows 7 < 50"); the gate
 # names only the floor it misses ("rows < 50").
 _UK_SUPPORT_FIGURE_TEXT_RE = re.compile(
-    r"\b(?:rows|ESS|distinct sources)\s+\d[\d.]*(?:e[+-]?\d+)?\s*<", re.IGNORECASE
+    r"\b(?:rows|ESS|distinct sources)\s+\d[\d,.]*(?:e[+-]?\d+)?\s*<", re.IGNORECASE
 )
 _UK_DISCLOSURE_PATHS_SHOWN = 5
 
 
 def _uk_names_an_area(value: object) -> bool:
-    """Whether ``value`` is an area code, or a column holding one."""
+    """Whether ``value`` is an area code, or a column holding one: a list, or
+    a pandas ``{row: value}`` column."""
 
     if isinstance(value, str):
         return _UK_AREA_KEY_RE.fullmatch(value) is not None
     if isinstance(value, Mapping):
+        if not value or not all(_UK_ROW_INDEX_RE.fullmatch(str(k)) for k in value):
+            return False
         value = list(value.values())
     return isinstance(value, list) and any(
         isinstance(item, str) and _UK_AREA_KEY_RE.fullmatch(item) is not None
         for item in value
     )
+
+
+def _uk_split_table_records(value: Mapping) -> list[dict] | None:
+    """The rows of a pandas ``orient="split"`` table as records, else None.
+
+    ``DataFrame.to_dict(orient="split")`` writes ``{"index": [...], "columns":
+    [...], "data": [[...], ...]}``; each row becomes ``{column: cell}``, with
+    its index label under ``index``, so it reads as any other record.
+    """
+
+    columns, data = value.get("columns"), value.get("data")
+    if not (
+        isinstance(columns, list)
+        and all(isinstance(column, str) for column in columns)
+        and isinstance(data, list)
+        and all(isinstance(row, list) and len(row) == len(columns) for row in data)
+    ):
+        return None
+    index = value.get("index")
+    labels = index if isinstance(index, list) and len(index) == len(data) else []
+    return [
+        {
+            **({"index": labels[position]} if labels else {}),
+            **dict(zip(columns, row, strict=True)),
+        }
+        for position, row in enumerate(data)
+    ]
 
 
 def _uk_names_only_regions(value: object) -> bool:
@@ -5157,18 +5201,21 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
     """Per-area support figures in one shipped JSON document (microcosm#1301).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
-    written as text, under its name in any case) is found wherever it sits:
+    written as text with or without thousands separators, under its name in
+    any case) is found wherever it sits:
 
     - under its name in an area's record (a mapping with an ``area_code`` or
-      a ``geography_id``, or a ``code`` holding an area code), or under its
-      name anywhere beneath an area key;
-    - under its name in a table with an area column, as parallel lists or
-      as pandas ``{row: value}`` columns;
-    - under an area key beneath its name (``{"ess": {"E06999999": 41.2}}``),
-      through any level keys and lists between them;
+      a ``geography_id``, or any other field holding an area code, such as
+      ``lad_code``, ``geography`` or ``code``), or under its name anywhere
+      beneath an area key;
+    - under its name in a table with an area column, as parallel lists, as
+      pandas ``{row: value}`` columns or as a pandas ``split`` table;
+    - under an area key beneath its name or a map of it (``{"ess":
+      {"E06999999": 41.2}}``, ``{"rows_by_area": ...}``), through any level
+      keys and lists between them;
     - as a minimum, maximum, median or other order statistic of a figure
-      (``min_rows``, ``rows_min``, ``{"ess": {"p10": ...}}``), however
-      nested, outside the declared floors;
+      (``min_rows``, ``rows_min``, ``{"ess": {"p10": ...}}``, ``{"min":
+      {"rows": ...}}``), however nested, outside the declared floors;
     - in a string that states an area's measured support ("rows 7 < 50").
 
     Region, nation and UK codes name no area. The walk reads key names and
@@ -5193,22 +5240,38 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
         area: bool,
         figure: bool,
         extreme: bool,
+        statistic: bool,
         floors: bool,
     ) -> None:
         # ``label`` is the key the value sits under, or its column's name for
         # a list item or a pandas row. ``area`` holds inside an area's record
-        # or table and beneath an area key; ``figure``, ``extreme`` and
-        # ``floors`` hold beneath a key naming a support figure, an extreme
-        # of one, or the declared floors.
+        # or table and beneath an area key; ``figure``, ``extreme``,
+        # ``statistic`` and ``floors`` hold beneath a key naming a support
+        # figure, an extreme of one, an order statistic, or the declared
+        # floors.
+        flags = {
+            "figure": figure,
+            "extreme": extreme,
+            "statistic": statistic,
+            "floors": floors,
+        }
         if isinstance(value, Mapping):
-            area = (
-                area
-                or any(
-                    key in value and not _uk_names_only_regions(value[key])
-                    for key in _UK_AREA_ID_KEYS
+            area = area or any(
+                _uk_names_an_area(child)
+                or (
+                    str(key).lower() in _UK_AREA_ID_KEYS
+                    and not _uk_names_only_regions(child)
                 )
-                or _uk_names_an_area(value.get("code"))
+                for key, child in value.items()
             )
+            records = _uk_split_table_records(value)
+            if records is not None:
+                # A split table's cells are walked as its rows' records, so
+                # each cell sits under its column's name.
+                prefix = f"{path}.data" if path else "data"
+                for position, record in enumerate(records):
+                    walk(record, f"{prefix}[{position}]", label, area=area, **flags)
+                value = {key: child for key, child in value.items() if key != "data"}
             for raw_key, child in value.items():
                 key = str(raw_key)
                 name = key.lower()
@@ -5217,45 +5280,42 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
                     f"{path}.{key}" if path else key,
                     label if _UK_ROW_INDEX_RE.fullmatch(key) else key,
                     area=area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
-                    figure=figure or name in _UK_AREA_SUPPORT_FIGURE_KEYS,
+                    figure=figure
+                    or _UK_SUPPORT_FIGURE_NAME_RE.fullmatch(name) is not None,
                     extreme=extreme
                     or _UK_SUPPORT_EXTREME_KEY_RE.fullmatch(name) is not None,
+                    statistic=statistic
+                    or _UK_SUPPORT_STATISTIC_KEY_RE.fullmatch(name) is not None,
                     floors=floors or name == "floors",
                 )
             return
         if isinstance(value, list):
             for index, child in enumerate(value):
-                walk(
-                    child,
-                    f"{path}[{index}]",
-                    label,
-                    area=area,
-                    figure=figure,
-                    extreme=extreme,
-                    floors=floors,
-                )
+                walk(child, f"{path}[{index}]", label, area=area, **flags)
             return
         kind = None
         if number(value):
-            if (area and label.lower() in _UK_AREA_SUPPORT_FIGURE_KEYS) or (
+            if (area and _UK_SUPPORT_FIGURE_NAME_RE.fullmatch(label.lower())) or (
                 figure and _UK_AREA_KEY_RE.fullmatch(label)
             ):
                 kind = "figure"
-            elif not floors and (
-                extreme
-                or (
-                    figure
-                    and _UK_SUPPORT_STATISTIC_KEY_RE.fullmatch(label.lower())
-                    is not None
-                )
-            ):
+            elif not floors and (extreme or (figure and statistic)):
                 kind = "extreme"
         elif isinstance(value, str) and _UK_SUPPORT_FIGURE_TEXT_RE.search(value):
             kind = "text"
         if kind is not None:
             found[kind].append(path or "<document>")
 
-    walk(payload, "", "", area=False, figure=False, extreme=False, floors=False)
+    walk(
+        payload,
+        "",
+        "",
+        area=False,
+        figure=False,
+        extreme=False,
+        statistic=False,
+        floors=False,
+    )
     wording = {
         "figure": "per-area support figure(s) (rows, ESS or distinct sources)",
         "extreme": (
@@ -5273,6 +5333,26 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
     ]
 
 
+def _uk_dense_disclosure_file_warnings(path: Path) -> list[str]:
+    """The disclosure walk's warnings for one JSON file (microcosm#1301).
+
+    The file is read as the contract reads JSON, refusing NaN and the
+    infinities. A file the walk cannot read, parse or walk to the bottom of
+    (a nesting too deep to recurse) is reported, since a figure in it could
+    not be ruled out. The release pre-flight walks a run's files with it too.
+    """
+
+    try:
+        payload = json.loads(path.read_bytes(), parse_constant=_reject_json_constant)
+        return _uk_dense_disclosure_findings(path.name, payload)
+    except (OSError, ValueError, RecursionError):
+        return [
+            f"{path.name} cannot be read and walked as JSON, so the disclosure "
+            "walk cannot rule out a per-area support figure in it "
+            "(microcosm#1301)."
+        ]
+
+
 def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
     """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
 
@@ -5283,19 +5363,7 @@ def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
 
     warnings: list[str] = []
     for path in sorted(release_dir.glob("*.json")):
-        try:
-            payload = json.loads(
-                path.read_bytes(), parse_constant=_reject_json_constant
-            )
-            found = _uk_dense_disclosure_findings(path.name, payload)
-        except (OSError, ValueError, RecursionError):
-            warnings.append(
-                f"{path.name} cannot be read and walked as JSON, so the "
-                "disclosure walk cannot rule out a per-area support figure in "
-                "it (microcosm#1301)."
-            )
-            continue
-        warnings.extend(found)
+        warnings.extend(_uk_dense_disclosure_file_warnings(path))
     return warnings
 
 
