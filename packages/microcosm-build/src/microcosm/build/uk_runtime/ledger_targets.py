@@ -1997,6 +1997,7 @@ def apply_uk_cross_grain_reconciliation(
     extra_bridges: Sequence[CrossGrainBridge] = (),
     extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
     check_factor_bounds: bool = True,
+    frame_only_positions: Iterable[int] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -2004,6 +2005,9 @@ def apply_uk_cross_grain_reconciliation(
     controls the joint surface adds for its declared fan-out sum bridges.
     ``check_factor_bounds=False`` records the bridges' factor bounds without
     refusing, for a pass the caller reruns with more rows.
+    ``frame_only_positions`` names the rows that bind nothing (the small-cell
+    rule's deferred cells), so a wholly deferred leg with no control above it
+    is receipted rather than refused (microcosm#1301).
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -2040,6 +2044,7 @@ def apply_uk_cross_grain_reconciliation(
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
         check_factor_bounds=check_factor_bounds,
+        frame_only_positions=frame_only_positions,
     )
 
 
@@ -2741,6 +2746,14 @@ def uk_local_target_surface(
             columns=["grain", "geography_id", "target_id", "value", "_output_position"],
         )
         raw = frame[["grain", "geography_id", "target_id", "value"]]
+        # The area rows that bind nothing (deferred and off-surface cells): a
+        # leg holding only deferred ones needs no control (microcosm#1301).
+        frame_only = [
+            position
+            for position, row in enumerate(reconciliation_rows)
+            if row["_output_position"] is None
+            and row["grain"] in level_to_area_type.values()
+        ]
         result, pass_receipt = apply_uk_cross_grain_reconciliation(
             raw,
             bound_control_ids,
@@ -2750,6 +2763,7 @@ def uk_local_target_surface(
             extra_bridges=fanout_bridges,
             extra_signatures=fanout_signatures,
             check_factor_bounds=check_factor_bounds,
+            frame_only_positions=frame_only,
         )
         return frame, raw, result, pass_receipt
 
