@@ -58,9 +58,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
 # reportable (minimum threshold of 3), and 10 is advised where several outputs
-# come from the same source — which is exactly this file. Some studies impose
-# 30; raise this with --sdc-minimum-count when a study's Special Conditions
-# (EUL clause 3) require it.
+# come from the same source — which is exactly this file. No study the build
+# reads sets a higher minimum (microcosm.build.uk_runtime.receipt_counts);
+# raise this with --sdc-minimum-count if a study's Special Conditions (EUL
+# clause 3) ever do.
 DEFAULT_SDC_MINIMUM_COUNT = 10
 UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS = UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 
@@ -92,9 +93,10 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Minimum carrier count before a column's concentration "
             "statistics are reportable, per CD171-ResearchDataHandling "
-            f"§5.2.1 (default: {DEFAULT_SDC_MINIMUM_COUNT}; raise to 30 where "
-            "a study's Special Conditions require it). Columns below it are "
-            "suppressed, and --top-k values below it are refused."
+            f"§5.2.1 (default: {DEFAULT_SDC_MINIMUM_COUNT}; no study the build "
+            "reads sets a higher minimum, so raise it only if a study's Special "
+            "Conditions ever do). Columns below it are suppressed, and --top-k "
+            "values below it are refused."
         ),
     )
     parser.add_argument(
@@ -325,9 +327,17 @@ def main() -> int:
                     "clauses 11 and 12 wherever these numbers are posted."
                 ),
                 (
-                    "Check each study's Special Conditions (EUL clause 3): a "
-                    "study requiring a threshold of 30 needs "
-                    "--sdc-minimum-count 30."
+                    "Check each study's Special Conditions (EUL clause 3). No "
+                    "study the build reads sets a minimum above ten "
+                    "(microcosm.build.uk_runtime.receipt_counts); raise "
+                    "--sdc-minimum-count if one ever does."
+                ),
+                (
+                    "Material that includes analyses of the SPI 2022-23 Public "
+                    "Use Tape (SN 9422) goes to HMRC at least ten working days "
+                    "before it is distributed or published, and no attempt may "
+                    "be made to attribute a record to a named individual (the "
+                    "study's Special Conditions)."
                 ),
             ],
         },
