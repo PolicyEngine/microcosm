@@ -702,7 +702,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "The solve clock (default today): the date target compilation and "
             "the source preflight evaluate reviewed entries on, and the "
             "calibrated gates too unless --gate-review-date is given. A build "
-            "that reuses an earlier build's solve repeats its review date."
+            "that reuses an earlier build's solve repeats its review date, so "
+            "a build whose solve a second build will reuse should name it."
         ),
     )
     parser.add_argument(
@@ -759,7 +760,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--graph-store",
         type=Path,
-        help="Persistent shared graph store; default <out>/.graph-store.",
+        help=(
+            "Persistent shared graph store; default <out>/.graph-store. A "
+            "build whose solve a second build will reuse should name it, and "
+            "--require-solve-reuse requires it."
+        ),
     )
     parser.add_argument(
         "--resume", choices=("auto", "require", "forbid"), default="auto"
@@ -772,8 +777,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "gates depend on (the spine, targets, preflight, solve, size stages "
             "and holdout) from --graph-store, and fail with SolveReuseError "
             "naming the missing nodes rather than re-solve (microcosm#1301). "
-            "The calibrated gates, export and certification still run. Refused "
-            "with --resume forbid."
+            "The calibrated gates, export and certification still run. Needs "
+            "build 1's store named by --graph-store and an --out that holds no "
+            "bundle, and refuses a gate clock (--gate-review-date, else "
+            "--review-date) before an in-line gate-only sign-off's approved_on. "
+            "Refused with --resume forbid."
         ),
     )
     parser.add_argument("--out", type=Path, required=True)
@@ -1377,6 +1385,32 @@ def _run_solve_phase(compiled, *, required: bool, **kwargs):
         return _run_graph_with_progress(compiled, **{**kwargs, "resume": "require"})
     except StoreMiss as miss:
         raise _solve_reuse_failure(miss) from miss
+
+
+def refuse_occupied_solve_reuse_output(args: argparse.Namespace) -> None:
+    """Refuse a solve-reuse build into an ``--out`` that holds a bundle.
+
+    A second build writes its own bundle beside build 1's (microcosm#1301).
+    Publishing into build 1's ``--out`` would replace the bundle its
+    sign-off was drafted from, which ``draft_uk_dense_signoff.py --verify
+    --build-1`` compares build 2 with. A directory holds a bundle once its
+    ``build.json`` completion marker is published, whether the build passed,
+    was blocked or was refused. As on the national line
+    (:func:`refuse_occupied_national_output`), the refusal runs before the
+    attempt opens and writes nothing into the directory. Dry runs write
+    nothing and are not refused.
+    """
+
+    if not getattr(args, "require_solve_reuse", False):
+        return
+    marker = Path(args.out) / "build.json"
+    if marker.is_file():
+        raise FileExistsError(
+            f"--require-solve-reuse: --out {args.out} already holds a build "
+            f"bundle ({marker.name}). A second build publishes a new bundle, and "
+            "here it would replace build 1's; pass a new --out and name build "
+            "1's store with --graph-store."
+        )
 
 
 def _payload(manifest, store, node: str, artifact: str) -> bytes:
@@ -3531,7 +3565,9 @@ def _dense_attempt(
 
     try:
         # The credential and chain checks still precede input loading, while
-        # the emitter records their failures.
+        # the emitter records their failures; a second build's occupied
+        # --out is refused first, before anything is written into it.
+        refuse_occupied_solve_reuse_output(args)
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)

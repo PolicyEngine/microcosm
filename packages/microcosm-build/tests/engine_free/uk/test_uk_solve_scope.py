@@ -86,6 +86,10 @@ _REVIEWED_READERS = {
         "names the area-support register as a label in the candidate manifest "
         "projected after the build"
     ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_cli.py": (
+        "the command line's refusal of a solve-reuse gate clock before an "
+        "in-line sign-off takes force, checked before any node runs"
+    ),
     "tools/measure_uk_atomic_assignment.py": ("a measurement tool that no build runs"),
     "tools/draft_uk_dense_signoff.py": (
         "the sign-off drafting tool, which writes the registers between builds "
@@ -94,10 +98,14 @@ _REVIEWED_READERS = {
 }
 
 #: Reviewed readers limited to named functions: graph_terminal also holds the
-#: holdout kernel, which is on the solve's path.
+#: holdout kernel, which is on the solve's path, and rowwise_cli is the
+#: shared command surface of both lines.
 _READER_SCOPES = {
     "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_terminal.py": {
         "rowwise_candidate_manifest_from_graph"
+    },
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_cli.py": {
+        "gate_only_signoffs"
     },
 }
 
@@ -261,6 +269,24 @@ def test_the_gate_only_set_is_the_gate_registers_in_lockstep():
     assert UK_GATE_ONLY_RESOURCES <= set(named)
     for resource in UK_GATE_ONLY_RESOURCES:
         assert named[resource] == {"terminal"}, resource
+
+
+def test_the_solve_reuse_refusal_reads_every_gate_only_register():
+    """A second build is refused a gate clock before any in-line sign-off's
+    approval (``rowwise_cli.check_solve_reuse_arguments``, microcosm#1301), so
+    the sign-offs it reads must cover every gate-only register, as the local
+    line's gates scope them."""
+    from microcosm.build.uk_runtime import rowwise_cli
+
+    signoffs = rowwise_cli.gate_only_signoffs()
+    assert set(signoffs) == UK_GATE_ONLY_RESOURCES
+    for resource, records in signoffs.items():
+        for key, record in records.items():
+            # The area-support gate window-checks its bound families on
+            # every line; every other entry stands on the local line.
+            assert record.applies_on("local") or key.startswith(
+                "bound_despite_support_floor/"
+            ), (resource, key)
 
 
 def test_no_spine_stage_pins_a_gate_only_register():

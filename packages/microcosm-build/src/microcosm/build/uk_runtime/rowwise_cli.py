@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -63,6 +63,9 @@ from microcosm.build.uk_runtime.rowwise_posture import (
 )
 from microcosm.calibrate import TargetRegistry
 
+if TYPE_CHECKING:
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
+
 __all__ = [
     "AREA_SUPPORT_FILENAME",
     "BUDGET_ITERS",
@@ -91,12 +94,14 @@ __all__ = [
     "git_commit",
     "git_dirty",
     "gate_failures_by_criticality",
+    "gate_only_signoffs",
     "is_release_blocking",
     "local_vintage_census",
     "json_text",
     "new_candidate_build_id",
     "output_paths",
     "posture_of",
+    "premature_gate_only_signoffs",
     "record_candidate_attempt",
     "record_candidate_error",
     "refuse_dense_role_arguments",
@@ -554,6 +559,92 @@ def size_doctrine_drift(args: argparse.Namespace) -> list[str]:
     return drift
 
 
+#: The release line a dense build's gates declare (``full_gates``): the local
+#: line's K-clone pool, which a second build replays (microcosm#1301).
+_DENSE_GATE_LINE = "local"
+
+
+def gate_only_signoffs(
+    line: str = _DENSE_GATE_LINE,
+) -> dict[str, dict[str, UKReviewedExclusion]]:
+    """The gate-only registers' entries the calibrated gates evaluate on ``line``.
+
+    Keyed by register (``solve_scope.UK_GATE_ONLY_RESOURCES``), then by
+    entry: input-mass entries as ``<reference>/<column>`` over every
+    reference, area-support entries as ``<block>/<key>``. Each register is
+    read through the gates' own loader and line rule
+    (``battery_bindings._in_line``). The area-support gate window-checks its
+    ``bound_despite_support_floor`` approvals whatever the line, so all of
+    them are here (microcosm#1301).
+    """
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import _in_line
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_local_target_fit_reviewed_exclusions,
+        uk_default_target_fit_reviewed_exclusions,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+        UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
+        load_uk_local_area_support_exclusion_register,
+        uk_default_input_mass_reviewed_exclusions,
+    )
+
+    context = EvidenceContext(artifacts={"release_line": line})
+
+    def in_line(
+        records: Mapping[str, UKReviewedExclusion], prefix: str = ""
+    ) -> dict[str, UKReviewedExclusion]:
+        applied, _out_of_line = _in_line(records, context)
+        return {f"{prefix}{name}": record for name, record in applied.items()}
+
+    input_mass = uk_default_input_mass_reviewed_exclusions()
+    area_support = load_uk_local_area_support_exclusion_register(None)
+    return {
+        UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE: in_line(
+            uk_default_target_fit_reviewed_exclusions()
+        ),
+        UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE: in_line(
+            uk_default_local_target_fit_reviewed_exclusions()
+        ),
+        UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE: {
+            key: record
+            for reference, records in input_mass.items()
+            for key, record in in_line(records, f"{reference}/").items()
+        },
+        "local_area_support_exclusions.json": {
+            **in_line(area_support["exclusions"], "exclusions/"),
+            **{
+                f"bound_despite_support_floor/{key}": record
+                for key, record in area_support["bound_despite_support_floor"].items()
+            },
+        },
+    }
+
+
+def premature_gate_only_signoffs(
+    gate_clock: date, *, line: str = _DENSE_GATE_LINE
+) -> dict[str, dict[str, str]]:
+    """Per gate-only register, its entries on ``line`` not in force at ``gate_clock``.
+
+    Each maps to its ``approved_on``: the calibrated gates would fail it as
+    premature on that clock (microcosm#1301).
+    """
+
+    premature: dict[str, dict[str, str]] = {}
+    for resource, records in gate_only_signoffs(line).items():
+        found = {
+            name: record.approved_on
+            for name, record in sorted(records.items())
+            if record.premature(gate_clock)
+        }
+        if found:
+            premature[resource] = found
+    return premature
+
+
 def check_solve_reuse_arguments(
     args: argparse.Namespace, *, today: date | None = None
 ) -> None:
@@ -563,8 +654,17 @@ def check_solve_reuse_arguments(
     gates never evaluate reviewed exclusions before the solve's own clock.
     Given explicitly, it may not be later than ``today`` either, since it
     names the day a sign-off is in force; a future ``--review-date`` alone
-    stays admitted. ``--require-solve-reuse`` needs the solve from the graph
-    store, which ``--resume forbid`` refuses to read.
+    stays admitted.
+
+    ``--require-solve-reuse`` needs the solve from the graph store, which
+    ``--resume forbid`` refuses to read. It needs build 1's store named by
+    ``--graph-store`` too: the default lies under ``--out``, and a second
+    build writes a new ``--out`` (``full_build_cli`` refuses one that holds a
+    bundle), so the default holds no solve. And its gate clock, the solve's
+    unless ``--gate-review-date`` moves it, must put every in-line entry of
+    the gate-only registers in force (:func:`premature_gate_only_signoffs`).
+    Otherwise the calibrated gates fail the sign-off as premature, but only
+    after the solve replay.
     """
 
     gate_clock = getattr(args, "gate_review_date", None)
@@ -583,10 +683,47 @@ def check_solve_reuse_arguments(
                 f"today ({today.isoformat()}): the gate clock is a date the "
                 "sign-off is already in force on."
             )
-    if getattr(args, "require_solve_reuse", False) and args.resume == "forbid":
+    if not getattr(args, "require_solve_reuse", False):
+        return
+    if args.resume == "forbid":
         raise ValueError(
             "--require-solve-reuse reads the solve from the graph store, which "
             "--resume forbid refuses to do."
+        )
+    graph_store = getattr(args, "graph_store", None)
+    if graph_store is None:
+        raise ValueError(
+            "--require-solve-reuse needs --graph-store naming build 1's graph "
+            "store: the default, <out>/.graph-store, lies under --out, which a "
+            "second build gives a new directory, so it holds no solve. Pass "
+            "build 1's --graph-store, or its <out>/.graph-store if build 1 took "
+            "the default."
+        )
+    if not Path(graph_store).is_dir():
+        raise ValueError(
+            f"--graph-store {graph_store} is not a directory: "
+            "--require-solve-reuse reads build 1's solve from build 1's store."
+        )
+    clock = args.review_date if gate_clock is None else gate_clock
+    premature = premature_gate_only_signoffs(clock)
+    if premature:
+        count = sum(len(entries) for entries in premature.values())
+        latest = max(day for entries in premature.values() for day in entries.values())
+        registers = "; ".join(
+            f"{resource}: {len(entries)}, latest approved_on {max(entries.values())}"
+            for resource, entries in sorted(premature.items())
+        )
+        source = (
+            "--review-date; no --gate-review-date was given"
+            if gate_clock is None
+            else "--gate-review-date"
+        )
+        raise ValueError(
+            "--require-solve-reuse: the calibrated gates would evaluate the "
+            f"gate-only registers on {clock.isoformat()} ({source}), before "
+            f"{count} in-line sign-off(s) take force ({registers}), and fail "
+            "them as premature after the solve replay. Pass --gate-review-date "
+            f"on or after {latest}, the latest approved_on."
         )
 
 
