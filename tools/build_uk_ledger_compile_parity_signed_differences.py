@@ -837,10 +837,13 @@ def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
             .read_text(encoding="utf-8")
         )
 
+    # The support floor's reviewed exclusions defer their areas' cells as
+    # signed deferrals too; their rationale, not a per-metric one, is the cause
+    # (#1305 review: two English UC cells read as Northern Ireland's).
     rule_ids = {
         str(rule["rule_id"])
         for rule in committed("local_small_cell_rule.json")["rules"]
-    }
+    } | {"local_authority_support_floor_excluded"}
     return {
         (str(deferral["target_id"]), str(area)): str(deferral["rationale"])
         for deferral in committed("local_target_reference_membership.json")[

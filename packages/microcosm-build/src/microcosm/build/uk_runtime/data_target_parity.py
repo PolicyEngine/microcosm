@@ -406,7 +406,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_private_rent_pipr",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (the PIPR September 2026 edition in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts, which bind at BRMA grain (ons.rent.private_rent_brma, microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
+        "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (PIPR's July 2026 edition, the record set the selector resolves in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts, which bind at BRMA grain (ons.rent.private_rent_brma, microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
     },
     {
         "concern_id": "cross_grain_private_rent_scotland_brma",

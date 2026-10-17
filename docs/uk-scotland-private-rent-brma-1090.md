@@ -21,11 +21,13 @@ intersection:
   layer (`uk/brma_area_layer.json`, grain `scotland_oa22`). The layer places
   an output area by its population-weighted centroid in the Scottish
   Government's BRMA polygons. Rent Service Scotland's postcode lookup
-  (FOI 202300368850) supplies the BRMA of nine centroids outside every polygon
-  and corrects the output areas around Balloch where the newer lookup
-  contradicts the 2015 polygons (`tools/build_uk_brma_area_layer.py` records
-  each one). The overlap and the households' BRMAs are therefore one copy of
-  one method;
+  (FOI 202300368850) supplies the BRMA of 9 centroids outside every polygon
+  and corrects 59 output areas where the newer lookup contradicts the 2015
+  polygons, and 2 output areas near Balloch take microcosm#1092's documented
+  overrides. The layer's provenance (`uk/brma_area_layer.provenance.json`,
+  `receipts`) records these counts; `tools/build_uk_brma_area_layer.py`
+  rebuilds the areas themselves. The overlap and the households' BRMAs are
+  therefore one copy of one method;
 - its council comes from the committed Scotland atomic support, the one that
   assigns households their local authority;
 - both weights are Scotland's Census 2022 UV404 counts by output area, read
