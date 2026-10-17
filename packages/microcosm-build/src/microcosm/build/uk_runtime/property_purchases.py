@@ -60,6 +60,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import extreme_count, small_cell_share
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_COUNTRY
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -639,28 +640,46 @@ def impute_property_purchase_prices(
     prices = np.where(purchased, final, 0.0)
     fitted_count = float(fitted_weights.sum())
     at_cap = fitted & (final >= stock)
+    outside = purchased & ~sdlt_mask
     ids = np.asarray(source_ids) if source_ids is not None else None
+
+    def sources(mask: np.ndarray) -> int:
+        """Distinct source households behind a cell (rows without lineage)."""
+
+        return int(len(np.unique(ids[mask]))) if ids is not None else int(mask.sum())
+
+    # UKDS disclosure control (receipt_counts): a weighted figure one to nine
+    # source households carry is "<10", and so is anything derived from it.
+    fitted_sources = sources(fitted)
+    at_cap_sources = sources(at_cap)
+    eligible_sources = sources((stock >= minimum) & (weights > 0) & sdlt_mask)
     fitted_value = float(np.dot(prices, weights * sdlt_mask))
+    at_cap_share = float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
+    # The share at the cap is given only where neither side of it is small,
+    # since the rest of the fitted weight would give a small side back.
+    at_cap_small = 0 < min(at_cap_sources, fitted_sources - at_cap_sources) < 10
     receipt: dict[str, object] = {
         "property_type": target.property_type,
         "target_transactions": float(target.transactions),
         "target_value": float(target.value),
-        "fitted_transactions": fitted_count,
-        "fitted_value": fitted_value,
+        "fitted_transactions": small_cell_share(fitted_count, fitted_sources),
+        "fitted_value": small_cell_share(fitted_value, fitted_sources),
         "value_fit": "scaled_band_draws" if scale is not None else "stock_cap",
-        "value_shortfall_share": max(0.0, 1.0 - fitted_value / target.value),
-        "eligible_owner_weight": eligible_weight,
-        "event_rate": fitted_count / eligible_weight,
-        "price_scale": scale,
-        "weighted_share_at_stock_cap": (
-            float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
+        "value_shortfall_share": small_cell_share(
+            max(0.0, 1.0 - fitted_value / target.value), fitted_sources
         ),
-        "purchases_outside_sdlt_regions_weight": float(
-            weights[purchased & ~sdlt_mask].sum()
+        "eligible_owner_weight": small_cell_share(eligible_weight, eligible_sources),
+        "event_rate": small_cell_share(fitted_count / eligible_weight, fitted_sources),
+        "price_scale": (
+            None if scale is None else small_cell_share(scale, fitted_sources)
         ),
-        "purchaser_support": _support_band(
-            int(len(np.unique(ids[fitted]))) if ids is not None else int(fitted.sum())
+        "weighted_share_at_stock_cap": "<10" if at_cap_small else at_cap_share,
+        "stock_cap_support": extreme_count(at_cap_sources),
+        "purchases_outside_sdlt_regions_weight": small_cell_share(
+            float(weights[outside].sum()), sources(outside)
         ),
+        "outside_sdlt_regions_support": _support_band(sources(outside)),
+        "purchaser_support": _support_band(fitted_sources),
     }
     return UKPropertyPurchaseImputation(prices=prices, receipt=receipt)
 
