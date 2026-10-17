@@ -2218,6 +2218,49 @@ def _resample_like_materialize(frame, identity: dict):
     return sampled
 
 
+def _with_live_stored_inputs(frame):
+    """Move the donor's retired stored inputs to the installed engine's live ones.
+
+    :func:`microcosm.build.us_runtime.retired_stored_inputs.with_live_stored_inputs`
+    owns the rule; the engine is the installed policyengine-us, the one the
+    package stage checks the artifact against and records as built-with. Only
+    ACS-spine people may lack a WIC take-up decision: the staging builder
+    generates none for them (microcosm#1154), and every donor row carries its
+    own.
+    """
+
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.retired_stored_inputs import (
+        with_live_stored_inputs,
+    )
+    from microcosm.data import stored_inputs
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Refusing to write the consumer artifact: the person table has no "
+            f"{tag!r}, so it cannot show which people may lack a WIC decision."
+        )
+    acs_spine = person[tag].eq(ACS_2024_1YR_SPINE).fillna(False).to_numpy(dtype=bool)
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to write the consumer artifact: the installed "
+            "policyengine-us cannot be imported, so its retired stored inputs "
+            f"cannot be moved to the live ones: {error}"
+        ) from error
+    try:
+        return with_live_stored_inputs(
+            frame, engine_variables=engine.variables, may_lack_decision=acs_spine
+        )
+    except ValueError as error:
+        raise SystemExit(f"Refusing to write the consumer artifact: {error}") from error
+
+
 def _write_calibrated_artifact(
     args, weights: np.ndarray, identity: dict, settings: dict
 ) -> None:
@@ -2266,6 +2309,11 @@ def _write_calibrated_artifact(
         manifest_path=args.checkpoint_dir / "consumer_reviewed_null_fills.json",
         period=PERIOD,
     )
+    # microcosm#1263: the donor stores two retired engine inputs that the
+    # stored-inputs contract refuses at package time; store them as its
+    # register prescribes.
+    live_inputs = _with_live_stored_inputs(projected)
+    projected = live_inputs.frame
     calibrated = Frame(
         {entity: projected.table(entity) for entity in projected.entities},
         projected.schema,
@@ -2292,6 +2340,7 @@ def _write_calibrated_artifact(
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "live_stored_inputs": live_inputs.provenance,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -2567,10 +2616,42 @@ def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
     }
 
 
+def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
+    """The interim WIC take-up assumption for ACS people, when it was applied."""
+
+    wic = ((consumer_export or {}).get("live_stored_inputs") or {}).get("wic") or {}
+    assumed = wic.get("people_assumed_true")
+    if not assumed:
+        return None
+    return {
+        "id": "acs_wic_takeup_assumed_interim",
+        "status": "reviewed_interim_assumption",
+        "issue": "microcosm#1154",
+        "affected_spines": ["acs_2024_1yr"],
+        "column": wic.get("to"),
+        "people_assumed_true": assumed,
+        "reason": (
+            "The staging builder generates no WIC take-up decision for ACS "
+            "people, and the donor stores its decisions under the retired "
+            f"input name {wic.get('from')!r}, which the installed "
+            "policyengine-us ignores. The consumer artifact stores them as "
+            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
+            "person is set to take WIC up when eligible. That is the engine's "
+            "default and the assumption policyengine.py applies to the same "
+            "cells today; it is a modelling assumption, not observed "
+            "participation."
+        ),
+        "treatment": wic.get("flip_condition"),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
     spine_qa: dict,
+    *,
+    consumer_export: dict | None = None,
 ) -> list[dict]:
     """The reviewed-limitations register for the buildo-acs-local lineage.
 
@@ -2682,6 +2763,9 @@ def finalize_reviewed_limitations(
     social_security = _social_security_erasure_limitation(donor_release)
     if social_security is not None:
         limitations.append(social_security)
+    acs_wic = _acs_wic_takeup_limitation(consumer_export)
+    if acs_wic is not None:
+        limitations.append(acs_wic)
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
@@ -3024,7 +3108,9 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
-    limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
+    limitations = finalize_reviewed_limitations(
+        staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
+    )
     limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
         name
