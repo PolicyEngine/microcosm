@@ -77,6 +77,12 @@ def test_the_uc_drift_rationales_quote_the_spread_of_the_rows_they_cover():
     )
 
 
+def test_the_receipt_tool_streams_every_row_of_the_feed(tmp_path):
+    feed = tmp_path / "consumer_facts.jsonl"
+    feed.write_bytes(b'{"a": 1}\n\n{"b": "x"}\r\n   \n{"c": [1, 2]}')
+    assert parity_tool._load_jsonl(feed) == [{"a": 1}, {"b": "x"}, {"c": [1, 2]}]
+
+
 def test_a_receipt_without_uc_drift_rows_formats_no_uc_rationale():
     report = {
         "differences": [_row(f"{_UC_TOTALS}@N05000001", "fixture_only", 10.0, None)]

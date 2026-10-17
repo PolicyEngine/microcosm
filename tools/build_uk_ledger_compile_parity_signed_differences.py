@@ -584,11 +584,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_jsonl(path: Path) -> list[dict]:
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    # Stream the lines: the feed is several GB, and reading it whole held its
+    # text and every line beside the parsed rows. Both compiles read every
+    # row, so the parsed rows are still kept.
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 def _load_fixture(resource: str) -> dict:
