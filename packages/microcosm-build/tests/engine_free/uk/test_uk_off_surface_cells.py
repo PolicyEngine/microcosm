@@ -426,11 +426,12 @@ def test_the_uc_bridge_bound_refuses_a_caseload_far_from_its_cells():
         _uc_surface()
 
 
-def test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier():
+def test_the_uc_bridge_bound_refuses_authorities_whose_gb_total_is_short():
     # The caseload matches the constituencies, but Scotland's authority tier
-    # carries 60 of its 100: the authorities sum to 160 of 200. An exact
-    # signature group rescales them onto the constituencies first, so the
-    # bound reads their input totals (microcosm#1302 review).
+    # carries 60 of its 100: the authorities' GB total is 160 of 200. An
+    # exact signature group rescales them onto the constituencies first, so
+    # the bound reads the GB total as given (microcosm#1302 review); it bounds
+    # each grain's GB total, not each nation within it.
     with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.25 "):
         _uc_surface(gb=200.0)
 
