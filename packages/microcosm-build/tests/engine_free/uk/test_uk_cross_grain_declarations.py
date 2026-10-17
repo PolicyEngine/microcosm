@@ -45,6 +45,21 @@ def test_the_runtime_bridges_are_the_declared_bridges():
         assert entry["reason"].strip()
 
 
+@pytest.mark.parametrize("bound", [0.0, 1.0, -0.02, True, "0.02"])
+def test_a_bridge_bound_outside_zero_to_one_is_refused_by_its_kind(bound):
+    declarations = copy.deepcopy(load_uk_cross_grain_declarations())
+    (entry,) = [
+        bridge
+        for bridge in declarations["bridges"]
+        if bridge.get("max_factor_shift") is not None
+    ]
+    entry["max_factor_shift"] = bound
+    with pytest.raises(
+        ValueError, match=r"UK cross-grain bridge .* max_factor_shift in \(0, 1\)"
+    ):
+        uk_cross_grain_bridges(declarations)
+
+
 def test_a_local_target_with_no_route_is_refused():
     contract = _contract()
     added = copy.deepcopy(contract["ons.tenure.owned_outright"])

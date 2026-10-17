@@ -1453,6 +1453,13 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
         apply_uk_cross_grain_reconciliation(
             uc_surface(90.0), uc_bridge.higher_target_ids
         )
+    # Below one too: a GB caseload at 0.92 of its cells, the all-claims
+    # cells' old relation to the paid caseload, is refused rather than
+    # scaled onto them (microcosm#1302 review).
+    with pytest.raises(ValueError, match="max_factor_shift 0.02 from one"):
+        apply_uk_cross_grain_reconciliation(
+            uc_surface(41.4), uc_bridge.higher_target_ids
+        )
 
 
 def test_partially_bound_household_bridge_stays_unbound_with_reviewed_records():

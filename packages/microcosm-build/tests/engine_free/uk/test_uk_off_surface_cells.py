@@ -348,12 +348,11 @@ def _uc(name: str, level: str, area: str, value: float) -> TargetSpec:
 def unbounded_uc_bridge(monkeypatch):
     """The UK cross-grain rule with the bridges' factor bounds lifted.
 
-    The tests below leave Scotland's authority tier incomplete on purpose, to
-    show where an off-surface cell's share goes, so the GB caseload spreads
-    over its legs at factors far from one. The UC bridge refuses a factor
-    more than 2% from one (microcosm#1300), which
-    ``test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier`` shows;
-    these tests are about the shares, so they lift it.
+    The tests that take it put a GB caseload of 300 over 200 households, to
+    show where an off-surface cell's share goes at factors far from one. The
+    UC bridge refuses a factor more than 2% from one (microcosm#1300), as the
+    ``test_the_uc_bridge_bound_*`` tests show on the real rule; these are
+    about the shares, so they lift it.
     """
 
     from dataclasses import replace
@@ -374,13 +373,14 @@ def unbounded_uc_bridge(monkeypatch):
 
 
 def _uc_surface(
-    off_surface_cells=(), area_region_codes=None, deferred_cells=()
+    off_surface_cells=(), area_region_codes=None, deferred_cells=(), *, gb=300.0
 ) -> tuple[dict[str, float], dict]:
-    # A GB caseload of 300 over two constituencies of 100 (Scotland, Wales).
-    # Wales has its one authority; Scotland's tier carries one of two.
+    # A GB caseload (300 unless given) over two constituencies of 100
+    # (Scotland, Wales). Wales has its one authority; Scotland's tier carries
+    # one of two, at 60.
     registry = TargetRegistry(
         [
-            _uc("dwp.uc.households", "country", "K03000001", 300.0),
+            _uc("dwp.uc.households", "country", "K03000001", gb),
             _uc(
                 "dwp.uc.households_by_area@S14000001",
                 "constituency",
@@ -419,11 +419,34 @@ def _uc_surface(
     return dict(zip(surface["area_code"], surface["value"], strict=True)), receipt
 
 
-def test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier():
+def test_the_uc_bridge_bound_refuses_a_caseload_far_from_its_cells():
     # A GB caseload of 300 over 200 constituency households is not one
     # quantity at a factor of 1.5: the bridge refuses (microcosm#1300).
-    with pytest.raises(ValueError, match="max_factor_shift"):
+    with pytest.raises(ValueError, match=r"the constituency rows of leg .* by 1\.5 "):
         _uc_surface()
+
+
+def test_the_uc_bridge_bound_refuses_an_incomplete_authority_tier():
+    # The caseload matches the constituencies, but Scotland's authority tier
+    # carries 60 of its 100: the authorities sum to 160 of 200. An exact
+    # signature group rescales them onto the constituencies first, so the
+    # bound reads their input totals (microcosm#1302 review).
+    with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.25 "):
+        _uc_surface(gb=200.0)
+
+
+def test_the_uc_bridge_bound_counts_off_surface_cells_on_the_last_pass():
+    # With Scotland's other authority off the surface at 40, the authorities
+    # sum to the caseload. The first pass, without it, reads 160 of 200; the
+    # bound is checked on the pass that carries it, so the real rule accepts
+    # the surface and the bound authority keeps its 60.
+    target = "dwp.uc.households_by_area"
+    values, receipt = _uc_surface(
+        [_off("local_authority", "S12000034", 40.0, target_id=target)], gb=200.0
+    )
+    assert values["S12000033"] == pytest.approx(60.0)
+    assert values["W06000001"] == pytest.approx(100.0)
+    assert receipt["off_surface_cells"]["rows_added"] == 1
 
 
 def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours(
