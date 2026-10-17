@@ -22,19 +22,19 @@ def _committed_binding_now() -> date:
     """The latest approval in the committed local binding adjudications.
 
     A rowwise solve in a test reviews the register on this date rather than
-    today, so the register's expiry cannot fail a test on a later day
-    (microcosm#1278): every entry is in force on it, and an entry that is not
-    still fails, as a build's review would. The expiry tests pass their own
-    dates.
+    today, so the calendar cannot fail a test on a later day (microcosm#1278).
+    The review is a build's review on that day: a fence a fixture binds that
+    has lapsed by then still fails, and a dormant one does not, so a partial
+    renewal is judged as a build would judge it. Nothing is asserted here,
+    so a register change cannot break the collection of every module that
+    imports this. ``test_no_committed_local_adjudication_is_about_to_lapse``
+    keeps the calendar's warning; the expiry tests pass their own dates.
     """
 
     records = load_uk_reviewed_exclusion_register(
         None, resource=UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
     ).values()
-    latest_approval = max(record.approved_on for record in records)
-    earliest_expiry = min(record.expires_on for record in records)
-    assert latest_approval < earliest_expiry, (latest_approval, earliest_expiry)
-    return date.fromisoformat(latest_approval)
+    return date.fromisoformat(max(record.approved_on for record in records))
 
 
 COMMITTED_BINDING_NOW = _committed_binding_now()
