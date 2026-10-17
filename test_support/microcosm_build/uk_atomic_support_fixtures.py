@@ -283,7 +283,9 @@ def toy_private_rent_resources() -> dict[str, dict]:
 
     Each toy BRMA's list runs linearly from half to one and a half times its
     level, so a rank ``u`` reads ``level * (0.5 + u)`` inside the knots; the
-    counts put every toy region's private renters in the toy region's BRMAs.
+    counts put every toy region's private renters in the toy region's BRMAs,
+    London's with a different mix for each category, so that a scale which
+    ignored the category would not pass.
     """
     from microcosm.build.uk_runtime import private_rent_localisation as prl
 
@@ -309,17 +311,21 @@ def toy_private_rent_resources() -> dict[str, dict]:
         "categories": list(prl.CATEGORIES),
         "brmas": brmas,
     }
+    london_central = {"A": 90.0, "B": 70.0, "C": 50.0, "D": 30.0, "E": 20.0}
     regions = {
-        "LONDON": {"CENTRAL_LONDON": 50.0, "INNER_EAST_LONDON": 50.0},
-        "WALES": {"CARDIFF": 100.0},
-        "SCOTLAND": {"LOTHIAN": 100.0},
+        "LONDON": {
+            category: {
+                "CENTRAL_LONDON": central,
+                "INNER_EAST_LONDON": 100.0 - central,
+            }
+            for category, central in london_central.items()
+        },
+        "WALES": {category: {"CARDIFF": 100.0} for category in ("A", *prl.CATEGORIES)},
+        "SCOTLAND": {
+            category: {"LOTHIAN": 100.0} for category in ("A", *prl.CATEGORIES)
+        },
     }
-    counts = {
-        "cells": {
-            region: {category: dict(cells) for category in ("A", *prl.CATEGORIES)}
-            for region, cells in regions.items()
-        }
-    }
+    counts = {"cells": regions}
     return {"quantiles": quantiles, "counts": counts}
 
 

@@ -236,6 +236,46 @@ def test_region_scale_holds_the_frs_mean_on_the_census_mix() -> None:
     assert scales == {"LONDON": pytest.approx(frs_mean / level)}
 
 
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_renters_on_the_census_mix_keep_their_regions_frs_level(seed) -> None:
+    """Placed on the census mix, the weighted redrawn mean is the FRS mean.
+
+    London's toy counts put a different share of each category in Central
+    London. Renters placed in those shares, with ranks independent of where
+    they land, keep the region's weighted FRS mean rent within Monte-Carlo
+    noise: the scale's level is the expected rent on that mix.
+    """
+
+    rng = np.random.default_rng(seed)
+    n = 4_000
+    bedrooms = rng.choice([1, 2, 3, 4], size=n, p=[0.3, 0.35, 0.25, 0.1])
+    categories = prl.rent_categories(bedrooms)
+    central = {"B": 0.7, "C": 0.5, "D": 0.3, "E": 0.2}
+    brma = np.where(
+        rng.random(n) < np.vectorize(central.get)(categories),
+        "CENTRAL_LONDON",
+        "INNER_EAST_LONDON",
+    ).astype(object)
+    rent = rng.lognormal(np.log(15_000.0), 0.4, size=n)
+    weight = rng.uniform(0.5, 1.5, size=n)
+    keys = np.array([f"k{i}" for i in range(n)], dtype=object)
+    new, _ = prl.localise_rents(
+        spine_key=keys,
+        region=np.full(n, "LONDON"),
+        tenure_type=np.full(n, "RENT_PRIVATELY"),
+        rent=rent,
+        num_bedrooms=bedrooms,
+        brma=brma,
+        channel=np.full(n, "frs"),
+        weight=weight,
+        tie_uniform={str(key): float(rng.random()) for key in keys},
+        quantiles=_quantiles(),
+        counts=_counts(),
+    )
+    frs_mean = float(np.average(rent, weights=weight))
+    assert float(np.average(new, weights=weight)) == pytest.approx(frs_mean, rel=0.03)
+
+
 def test_localise_rents_reads_each_row_off_its_brma_at_its_rank() -> None:
     new, details = _localise()
     quantiles = _quantiles()
@@ -370,11 +410,14 @@ def test_private_rent_node_rewrites_the_renter_and_replays(
     renters = household[household["tenure_type"].astype(str) == "RENT_PRIVATELY"]
     others = household[household["tenure_type"].astype(str) != "RENT_PRIVATELY"]
     assert len(renters) == k and set(renters["brma"].astype(str)) == {"LOTHIAN"}
-    # One FRS renter in its cell: its rank is its tie-break and its region's
-    # scale returns its own rent as the region mean, so every clone reads the
-    # same rent and the region's mean rent is unchanged.
+    # One FRS renter in its cell: its rank u is its tie-break, and the region's
+    # scale sets the census-mix mean to its own spine rent of 9,000, so every
+    # clone reads 9,000 * (0.5 + u) off the linear toy list: one rent for all
+    # clones, and not the spine's.
     assert renters["rent"].nunique() == 1
-    assert float(renters["rent"].iloc[0]) > 0
+    rent = float(renters["rent"].iloc[0])
+    assert 4_500.0 < rent < 13_500.0
+    assert rent != pytest.approx(9_000.0)
     assert set(others["rent"]) == {0.0}
     receipt = run.nodes["uk.full.private_rent"].receipt
     assert receipt["weights"] == "unchanged"
@@ -410,18 +453,20 @@ def test_london_clones_read_their_own_areas_list(
     )
     household = run.population("uk.full.expand").table("household")
     london = household[household["region"].astype(str) == "LONDON"]
+    # Six clones, placed in both toy London BRMAs (two and four at this seed):
+    # each BRMA's clones read one rent, in the ratio of the two lists.
+    assert len(london) == 6
     by_brma = london.groupby(london["brma"].astype(str))["rent"].agg(["min", "max"])
-    assert set(by_brma.index) <= {"CENTRAL_LONDON", "INNER_EAST_LONDON"}
+    assert set(by_brma.index) == {"CENTRAL_LONDON", "INNER_EAST_LONDON"}
     assert (by_brma["min"] == by_brma["max"]).all()
-    if len(by_brma) == 2:
-        ratio = (
-            by_brma.loc["CENTRAL_LONDON", "min"]
-            / by_brma.loc["INNER_EAST_LONDON", "min"]
-        )
-        assert ratio == pytest.approx(
-            TOY_BRMA_RENT_LEVELS["CENTRAL_LONDON"]
-            / TOY_BRMA_RENT_LEVELS["INNER_EAST_LONDON"]
-        )
+    assert not np.isclose(london["rent"].astype(float), 20_000.0).any()
+    ratio = (
+        by_brma.loc["CENTRAL_LONDON", "min"] / by_brma.loc["INNER_EAST_LONDON", "min"]
+    )
+    assert ratio == pytest.approx(
+        TOY_BRMA_RENT_LEVELS["CENTRAL_LONDON"]
+        / TOY_BRMA_RENT_LEVELS["INNER_EAST_LONDON"]
+    )
 
 
 def test_none_mode_adds_no_private_rent_node(tmp_path) -> None:

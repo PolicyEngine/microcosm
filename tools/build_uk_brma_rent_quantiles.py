@@ -21,7 +21,11 @@ knots of the weekly rent and the mean they imply.
 A cell with fewer than 50 lets takes its own median and its nation and
 category's pooled shape; under 20, a log-additive BRMA plus category median
 fitted on its nation's cells. No uprating is applied: the rent node scales
-each region to its FRS level, so a factor common to a nation's list cancels.
+each region to its FRS level, so a factor common to a nation's list cancels
+within that nation. It does not cancel for the 16 LSOAs whose BRMA crosses
+the border: West Cheshire's 11 Welsh LSOAs read England's list under the
+Wales scale, and Monmouthshire's 4 and Brecon and Radnor's 1 English LSOAs
+read Wales's list, a year older, under English scales.
 
 The three lists are Chronicle raw-only registrations, verified against their
 manifests and the digests pinned here; the Scottish statistics are read from a
@@ -555,7 +559,10 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "uprating": (
                 "none: the rent node scales each FRS region's level, so a factor common "
-                "to a nation's list cancels; Wales's list is a year older than England's"
+                "to a nation's list cancels within the nation; Wales's list is a year "
+                "older than England's, which the 16 LSOAs of the cross-border BRMAs "
+                "(West Cheshire, Monmouthshire, Brecon and Radnor) read under the other "
+                "nation's scale"
             ),
             "scotland_mean_tolerance": SCOTTISH_MEAN_TOLERANCE,
         },

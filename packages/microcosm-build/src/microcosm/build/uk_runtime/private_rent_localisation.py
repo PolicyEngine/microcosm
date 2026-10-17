@@ -6,10 +6,14 @@ describes its FRS region, not the district the household is placed in. After
 geography, ``uk.full.private_rent`` keeps each private renter's rank among
 the FRS renters of its region and bedroom size and reads that quantile off
 the list of rents of the BRMA its assigned area sits in
-(``uk/brma_rent_quantiles.json``), scaled per FRS region so the region's mean
-rent stays at the FRS level (María's rulings of 2026-10-15/16): the lists set
-where rents sit within a region and their spread within a BRMA, not the
-level.
+(``uk/brma_rent_quantiles.json``), scaled per FRS region so that, on the
+census private-renter mix of the region's BRMAs, its mean rent is the FRS level
+(María's rulings of 2026-10-15/16, kept on 2026-10-17): the lists set where
+rents sit within a region and their spread within a BRMA, not the level.
+Placement follows all households, not renters, so at design weights a
+region's mean rent moves by the gap between the two mixes until
+calibration's tenure rows restore the renter mix; the receipts report that
+level as a check.
 
 Everything here is pure and depends on the standard library, numpy and
 pandas only, so the build tool can load this module by path; the graph
