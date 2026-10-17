@@ -88,6 +88,7 @@ from . import (
     full_measure,
     full_targets,
     ledger_targets,
+    measure_simulation,
     national_calibration,
     national_doctrine,
 )
@@ -479,6 +480,12 @@ class _NationalKernel(KernelBase):
             full_measure,
             full_targets,
             ledger_targets,
+            # full_targets applies the measure exclusions, and full_measure
+            # resolves the problem's measures, in measure_simulation; the
+            # dense target kernels hash it too (microcosm#1301). An edit there
+            # alone must re-key the national targets, the problem and all
+            # they feed.
+            measure_simulation,
             national_calibration,
             national_doctrine,
             support_floor_rules,

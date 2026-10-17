@@ -111,3 +111,14 @@ def test_national_target_kernel_hashes_the_same_compile_modules(monkeypatch):
         graph_national.UKNationalTargetKernel(), monkeypatch, graph_national
     )
     assert set(uk_target_compile_modules()) <= set(hashed)
+
+
+def test_national_target_kernels_hash_the_measure_simulation(monkeypatch):
+    """The national targets apply their measure exclusions, and the national
+    problem resolves its measures, in measure_simulation, as the dense line's
+    do (microcosm#1301), so an edit there alone re-keys both nodes."""
+    for kernel in (
+        graph_national.UKNationalTargetKernel(),
+        graph_national.UKNationalProblemKernel(resolver_factory=None),
+    ):
+        assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_national)
