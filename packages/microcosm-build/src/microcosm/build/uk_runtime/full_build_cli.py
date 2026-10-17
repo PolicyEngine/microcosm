@@ -780,8 +780,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "The calibrated gates, export and certification still run. Needs "
             "build 1's store named by --graph-store and an --out that holds no "
             "bundle, and refuses a gate clock (--gate-review-date, else "
-            "--review-date) before an in-line gate-only sign-off's approved_on. "
-            "Refused with --resume forbid."
+            "--review-date) outside the window of an entry the build depends "
+            "on: before an in-line gate-only or degenerate-register sign-off's "
+            "approved_on, or after the expiry of one of them or of a measure "
+            "exclusion the solve applied. Refused with --resume forbid."
         ),
     )
     parser.add_argument("--out", type=Path, required=True)

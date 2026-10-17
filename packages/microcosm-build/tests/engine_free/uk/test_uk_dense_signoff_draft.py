@@ -2110,6 +2110,128 @@ def test_the_generator_deferred_areas_are_read_from_its_source():
     }
 
 
+def test_the_gate_clock_entries_mirror_the_solve_reuse_guard(tmp_path, monkeypatch):
+    """The drafter bounds build 2's gate clock by the entries build 2's
+    solve-reuse guard holds it to (``rowwise_cli.solve_reuse_windows``): on the
+    same registers, the two agree entry for entry, line rule included. The
+    measure exclusions are left out: the drafter reads them from build 1's run
+    directory, the guard from the register the solve applied."""
+    from microcosm.build.uk_runtime import rowwise_cli, terminal_gates
+    from microcosm.build.uk_runtime import weighted_integrity as integrity
+
+    registers = build_1_registers()
+    national = ("national",)
+    registers["uk_target_fit"]["exclusions"].update(
+        {
+            "synthetic.national_only@2025": _entry(
+                "2026-10-01", "2026-10-29", lines=national
+            ),
+            "synthetic.every_line@2025": _entry("2026-10-01", "2026-10-30", lines=None),
+        }
+    )
+    registers["uk_local_target_fit"]["exclusions"][
+        "census_households/E14999999/households"
+    ] = _entry(APPROVED_ON, "2026-11-19")
+    registers["uk_local_area_support"]["exclusions"]["local_authority/E06999998"] = (
+        _entry("2026-10-01", "2026-12-01", lines=national)
+    )
+    registers["uk_local_area_support"]["bound_despite_support_floor"][
+        "synthetic_national_family"
+    ] = _entry("2026-09-10", "2026-11-05", lines=national)
+    synthetic = {
+        "synthetic_column": _entry("2026-10-02", "2027-04-02", lines=None),
+        "synthetic_national": _entry("2026-10-02", "2027-04-03", lines=national),
+    }
+    repo = make_repo(
+        tmp_path / "repo",
+        registers,
+        input_mass=input_mass_register({"synthetic-reference": synthetic}),
+        degenerate=degenerate_register(
+            {
+                "household.synthetic_constant": _entry("2026-09-01", "2027-03-01"),
+                "household.synthetic_national": _entry(
+                    "2026-09-01", "2027-03-02", lines=national
+                ),
+            }
+        ),
+    )
+
+    def register(path: Path):
+        return lambda: integrity.load_uk_reviewed_exclusion_register(
+            repo / path, resource=path.name
+        )
+
+    load_area = integrity.load_uk_local_area_support_exclusion_register
+    for module, name, loader in (
+        (
+            terminal_gates,
+            "uk_default_target_fit_reviewed_exclusions",
+            register(SPECS["uk_target_fit"].path),
+        ),
+        (
+            terminal_gates,
+            "uk_default_local_target_fit_reviewed_exclusions",
+            register(SPECS["uk_local_target_fit"].path),
+        ),
+        (
+            terminal_gates,
+            "uk_default_degenerate_reviewed_exclusions",
+            register(TOOL.DEGENERATE_REGISTER),
+        ),
+        (
+            integrity,
+            "uk_default_input_mass_reviewed_exclusions",
+            lambda: integrity.load_uk_reference_scoped_exclusion_register(
+                repo / TOOL.INPUT_MASS_REGISTER, resource=TOOL.INPUT_MASS_REGISTER.name
+            ),
+        ),
+        (
+            integrity,
+            "load_uk_local_area_support_exclusion_register",
+            lambda source, *, resource=None: load_area(
+                repo / SPECS["uk_local_area_support"].path
+            ),
+        ),
+    ):
+        monkeypatch.setattr(module, name, loader)
+
+    guard = rowwise_cli.solve_reuse_windows()
+    del guard["calibration_measure_exclusions.json"]
+    drafter = TOOL.gate_clock_entries(
+        {gate_id: registers[gate_id][spec.block] for gate_id, spec in SPECS.items()},
+        bound_despite=registers["uk_local_area_support"]["bound_despite_support_floor"],
+        input_mass=TOOL.input_mass_in_line(repo),
+    )
+    drafter["degenerate"] = TOOL.degenerate_in_line(repo)
+    area = SPECS["uk_local_area_support"].resource
+    labels = {
+        "uk_target_fit": (SPECS["uk_target_fit"].resource, ""),
+        "uk_local_target_fit": (SPECS["uk_local_target_fit"].resource, ""),
+        "uk_local_area_support": (area, "exclusions/"),
+        "bound_despite_support_floor": (area, "bound_despite_support_floor/"),
+        "uk_input_mass_parity": (TOOL.INPUT_MASS_REGISTER.name, ""),
+        "degenerate": (TOOL.DEGENERATE_REGISTER.name, ""),
+    }
+    drafted = {
+        (labels[source][0], labels[source][1] + key): (
+            date.fromisoformat(record.approved_on),
+            date.fromisoformat(record.expires_on),
+        )
+        for source, records in drafter.items()
+        for key, record in records.items()
+    }
+    guarded = {
+        (source, key): window
+        for source, entries in guard.items()
+        for key, window in entries.items()
+    }
+    assert drafted == guarded
+    # Both set the national line's entries aside but its bound family.
+    assert (area, "bound_despite_support_floor/synthetic_national_family") in guarded
+    assert not any("national_only" in key for _, key in guarded)
+    assert not any(key.endswith("synthetic_national") for _, key in guarded)
+
+
 def test_the_local_levels_are_the_full_gates_local_levels():
     from microcosm.build.uk_runtime.full_gates import _LOCAL_LEVELS
 

@@ -87,8 +87,8 @@ _REVIEWED_READERS = {
         "projected after the build"
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_cli.py": (
-        "the command line's refusal of a solve-reuse gate clock before an "
-        "in-line sign-off takes force, checked before any node runs"
+        "the command line's refusal of a solve-reuse gate clock outside an "
+        "in-line sign-off's window, checked before any node runs"
     ),
     "tools/measure_uk_atomic_assignment.py": ("a measurement tool that no build runs"),
     "tools/draft_uk_dense_signoff.py": (
@@ -272,8 +272,8 @@ def test_the_gate_only_set_is_the_gate_registers_in_lockstep():
 
 
 def test_the_solve_reuse_refusal_reads_every_gate_only_register():
-    """A second build is refused a gate clock before any in-line sign-off's
-    approval (``rowwise_cli.check_solve_reuse_arguments``, microcosm#1301), so
+    """A second build is refused a gate clock outside any in-line sign-off's
+    window (``rowwise_cli.check_solve_reuse_arguments``, microcosm#1301), so
     the sign-offs it reads must cover every gate-only register, as the local
     line's gates scope them."""
     from microcosm.build.uk_runtime import rowwise_cli

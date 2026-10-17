@@ -2431,29 +2431,68 @@ def test_the_gate_clock_lies_between_the_solve_clock_and_today(tmp_path):
     cli.validate_cli_args(arguments(tmp_path, "--review-date", future))
 
 
-def _signed(approved_on, *lines):
-    """A synthetic sign-off approved on ``approved_on``, scoped to ``lines``."""
+def _signed(approved_on, *lines, expires_on=None):
+    """A synthetic sign-off approved on ``approved_on``, scoped to ``lines``,
+    expiring 28 days later unless ``expires_on`` says otherwise."""
     from datetime import timedelta
 
     from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 
+    expires_on = approved_on + timedelta(days=28) if expires_on is None else expires_on
     return UKReviewedExclusion(
         reason="Synthetic sign-off.",
         approved_by="reviewer",
         adjudication="microcosm#1301",
         approved_on=approved_on.isoformat(),
-        expires_on=(approved_on + timedelta(days=28)).isoformat(),
+        expires_on=expires_on.isoformat(),
         release_lines=lines or None,
     )
 
 
-def _stand_in_registers(
-    monkeypatch, *, target_fit=None, local=None, input_mass=None, areas=None, bound=None
-):
-    """Stand synthetic gate-only registers in for the committed ones, so a
-    solve-reuse test never depends on what is signed on the day it runs."""
-    from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
+def _measure(name, approved_on, expires_on):
+    """A synthetic calibration measure exclusion, as the register loads it."""
+    return {
+        "name": name,
+        "reason": "Synthetic measure exclusion.",
+        "tracking": "microcosm#1301",
+        "approved_by": "reviewer",
+        "adjudication": "microcosm#1301",
+        "approved_on": approved_on.isoformat(),
+        "expires_on": expires_on.isoformat(),
+    }
 
+
+def _stand_in_registers(
+    monkeypatch,
+    *,
+    target_fit=None,
+    local=None,
+    input_mass=None,
+    areas=None,
+    bound=None,
+    degenerate=None,
+    measures=(),
+):
+    """Stand synthetic registers in for the committed ones the solve-reuse
+    guard reads, so a solve-reuse test never depends on what is signed on the
+    day it runs: the gate-only registers, the degenerate register and the
+    calibration measure exclusions."""
+    from microcosm.build.uk_runtime import (
+        measure_simulation,
+        terminal_gates,
+        weighted_integrity,
+    )
+
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_default_degenerate_reviewed_exclusions",
+        lambda: dict(degenerate or {}),
+    )
+    monkeypatch.setattr(
+        measure_simulation,
+        "load_uk_calibration_measure_exclusions",
+        lambda path=None: tuple(measures),
+    )
     monkeypatch.setattr(
         terminal_gates,
         "uk_default_target_fit_reviewed_exclusions",
@@ -2546,7 +2585,8 @@ def test_solve_reuse_refuses_a_gate_clock_before_an_in_line_sign_off(
     _stand_in_registers(
         monkeypatch,
         target_fit={
-            "national.in_force@2025": _signed(day(-30)),
+            # In force from before the solve clock through day 8.
+            "national.in_force@2025": _signed(day(-20)),
             # Scoped to the national line, so the local gates set it aside.
             "national.scoped@2025": _signed(day(9), "national"),
         },
@@ -2560,17 +2600,21 @@ def test_solve_reuse_refuses_a_gate_clock_before_an_in_line_sign_off(
     assert set(signoffs["target_fit_reviewed_exclusions.json"]) == {
         "national.in_force@2025"
     }
-    assert rowwise_cli.premature_gate_only_signoffs(solve) == {
-        "input_mass_reviewed_exclusions.json": {
-            "efrs-post-calibration/column": day(1).isoformat()
+    windows = rowwise_cli.solve_reuse_windows()
+    assert rowwise_cli.gate_clock_conflicts(solve, windows) == {
+        "premature": {
+            "input_mass_reviewed_exclusions.json": {
+                "efrs-post-calibration/column": day(1).isoformat()
+            },
+            "local_area_support_exclusions.json": {
+                "bound_despite_support_floor/census_households": day(5).isoformat(),
+                "exclusions/local_authority/E06999999": day(2).isoformat(),
+            },
+            "local_target_fit_reviewed_exclusions.json": {
+                "family/E06999999/metric": day(3).isoformat()
+            },
         },
-        "local_area_support_exclusions.json": {
-            "bound_despite_support_floor/census_households": day(5).isoformat(),
-            "exclusions/local_authority/E06999999": day(2).isoformat(),
-        },
-        "local_target_fit_reviewed_exclusions.json": {
-            "family/E06999999/metric": day(3).isoformat()
-        },
+        "expired": {},
     }
     reuse = (
         "--require-solve-reuse",
@@ -2584,7 +2628,11 @@ def test_solve_reuse_refuses_a_gate_clock_before_an_in_line_sign_off(
     message = str(refused.value)
     assert f"on {solve.isoformat()} (--review-date; no --gate-review-date" in message
     assert "before 4 in-line sign-off(s) take force" in message
-    assert f"Pass --gate-review-date on or after {day(5).isoformat()}" in message
+    assert (
+        f"Pass --gate-review-date on or after {day(5).isoformat()} and on or "
+        f"before {day(8).isoformat()}, the latest usable gate clock, when "
+        "target_fit_reviewed_exclusions.json:national.in_force@2025 expires."
+    ) in message
     with pytest.raises(ValueError, match=f"on or after {day(5).isoformat()}"):
         cli.validate_cli_args(
             arguments(tmp_path, *reuse, "--gate-review-date", day(4).isoformat())
@@ -2594,6 +2642,201 @@ def test_solve_reuse_refuses_a_gate_clock_before_an_in_line_sign_off(
     )
     # A build that reuses no solve keeps its unsplit clock as before.
     cli.validate_cli_args(arguments(tmp_path, "--review-date", solve.isoformat()))
+
+
+def _reuse_from(tmp_path, solve):
+    """A second build's arguments: build 1's store and solve clock."""
+    return (
+        "--require-solve-reuse",
+        "--graph-store",
+        str(_build_1_store(tmp_path)),
+        "--review-date",
+        solve.isoformat(),
+    )
+
+
+#: One entry per register the solve-reuse guard reads: (stand-in keyword, entry
+#: name, release lines, the refusal's label). The area-support gate
+#: window-checks its bound families whatever the line.
+_GUARDED_ENTRIES = (
+    (
+        "target_fit",
+        "national.lapsing@2025",
+        (),
+        "target_fit_reviewed_exclusions.json:national.lapsing@2025",
+    ),
+    (
+        "local",
+        "family/E06999999/metric",
+        ("local",),
+        "local_target_fit_reviewed_exclusions.json:family/E06999999/metric",
+    ),
+    (
+        "input_mass",
+        "column",
+        (),
+        "input_mass_reviewed_exclusions.json:efrs-post-calibration/column",
+    ),
+    (
+        "areas",
+        "local_authority/E06999999",
+        ("local",),
+        "local_area_support_exclusions.json:exclusions/local_authority/E06999999",
+    ),
+    (
+        "bound",
+        "census_households",
+        ("national",),
+        "local_area_support_exclusions.json:"
+        "bound_despite_support_floor/census_households",
+    ),
+    (
+        "degenerate",
+        "household.synthetic_constant",
+        ("local",),
+        "degenerate_reviewed_exclusions.json:household.synthetic_constant",
+    ),
+    (
+        "measures",
+        "obr.synthetic@2025",
+        None,
+        "calibration_measure_exclusions.json:obr.synthetic@2025",
+    ),
+)
+
+
+def _stand_in_one(monkeypatch, register, name, entry):
+    """Stand in registers holding ``entry`` alone, under ``name``."""
+    if register == "input_mass":
+        _stand_in_registers(
+            monkeypatch, input_mass={"efrs-post-calibration": {name: entry}}
+        )
+    elif register == "measures":
+        _stand_in_registers(monkeypatch, measures=[entry])
+    else:
+        _stand_in_registers(monkeypatch, **{register: {name: entry}})
+
+
+@pytest.mark.parametrize(("register", "name", "lines", "label"), _GUARDED_ENTRIES)
+def test_solve_reuse_refuses_a_gate_clock_past_an_expiry_it_depends_on(
+    tmp_path, monkeypatch, register, name, lines, label
+):
+    """An entry in force on build 1's clock may expire before build 2's: the
+    calibrated gates would fail it, or assembly refuse an expired measure
+    exclusion, after the solve replay. The gate clock is refused before it,
+    and the refusal names the entry and the latest usable gate clock, the end
+    of the range the sign-off drafter prints (microcosm#1301)."""
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+
+    def day(offset):
+        return solve + timedelta(days=offset)
+
+    entry = (
+        _measure(name, day(-5), day(3))
+        if register == "measures"
+        else _signed(day(-5), *lines, expires_on=day(3))
+    )
+    _stand_in_one(monkeypatch, register, name, entry)
+    reuse = _reuse_from(tmp_path, solve)
+    # On build 1's clock and on the expiry itself, the entry is in force.
+    for clock in (day(0), day(3)):
+        cli.validate_cli_args(
+            arguments(tmp_path, *reuse, "--gate-review-date", clock.isoformat())
+        )
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(
+            arguments(tmp_path, *reuse, "--gate-review-date", day(4).isoformat())
+        )
+    message = str(refused.value)
+    assert f"on {day(4).isoformat()} (--gate-review-date)" in message
+    assert (
+        "after 1 sign-off(s) the release depends on expired "
+        f"({label} ({day(3).isoformat()}))"
+    ) in message
+    assert (
+        f"Pass --gate-review-date on or after {solve.isoformat()} and on or "
+        f"before {day(3).isoformat()}, the latest usable gate clock, when "
+        f"{label} expires."
+    ) in message
+    solve_scoped = register in ("degenerate", "measures")
+    assert ("changes the solve and needs a third build" in message) is solve_scoped
+
+
+def test_solve_reuse_names_no_usable_gate_clock_when_the_windows_part(
+    tmp_path, monkeypatch
+):
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+
+    def day(offset):
+        return solve + timedelta(days=offset)
+
+    _stand_in_registers(
+        monkeypatch,
+        local={"family/E06999999/metric": _signed(day(5), "local")},
+        degenerate={
+            "household.synthetic_constant": _signed(
+                day(-30), "local", expires_on=day(3)
+            )
+        },
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                *_reuse_from(tmp_path, solve),
+                "--gate-review-date",
+                day(4).isoformat(),
+            )
+        )
+    message = str(refused.value)
+    assert (
+        "before 1 in-line sign-off(s) take force (local_target_fit_reviewed_"
+        f"exclusions.json:family/E06999999/metric ({day(5).isoformat()})) and "
+        "after 1 sign-off(s) the release depends on expired (degenerate_"
+        "reviewed_exclusions.json:household.synthetic_constant "
+        f"({day(3).isoformat()}))"
+    ) in message
+    assert (
+        f"No gate clock is usable: the latest approval, {day(5).isoformat()}, "
+        f"is after the earliest expiry, {day(3).isoformat()}, when "
+        "degenerate_reviewed_exclusions.json:household.synthetic_constant "
+        "expires."
+    ) in message
+    assert "changes the solve and needs a third build" in message
+
+
+def test_the_solve_reuse_guard_reads_the_measure_exclusions_the_solve_applies(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime import measure_simulation
+
+    _stand_in_registers(monkeypatch)
+    read = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "load_uk_calibration_measure_exclusions",
+        lambda path=None: read.append(path) or (),
+    )
+    store = str(_build_1_store(tmp_path))
+    cli.validate_cli_args(
+        arguments(tmp_path, "--require-solve-reuse", "--graph-store", store)
+    )
+    override = tmp_path / "measure_exclusions.json"
+    cli.validate_cli_args(
+        arguments(
+            tmp_path,
+            "--require-solve-reuse",
+            "--graph-store",
+            store,
+            "--measure-exclusions",
+            str(override),
+        )
+    )
+    assert read == [None, override]
 
 
 @pytest.mark.parametrize(

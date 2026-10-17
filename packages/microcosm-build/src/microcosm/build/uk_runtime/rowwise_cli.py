@@ -91,9 +91,11 @@ __all__ = [
     "candidate_identity_digest",
     "check_solve_reuse_arguments",
     "doctrine_bounds",
+    "earliest_expiry",
     "git_commit",
     "git_dirty",
     "gate_failures_by_criticality",
+    "gate_clock_conflicts",
     "gate_only_signoffs",
     "is_release_blocking",
     "local_vintage_census",
@@ -101,7 +103,6 @@ __all__ = [
     "new_candidate_build_id",
     "output_paths",
     "posture_of",
-    "premature_gate_only_signoffs",
     "record_candidate_attempt",
     "record_candidate_error",
     "refuse_dense_role_arguments",
@@ -109,6 +110,7 @@ __all__ = [
     "release_verdict",
     "resolve_role_arguments",
     "size_doctrine_drift",
+    "solve_reuse_windows",
     "rowwise_parameters",
     "validate_cli_args",
 ]
@@ -624,25 +626,211 @@ def gate_only_signoffs(
     }
 
 
-def premature_gate_only_signoffs(
-    gate_clock: date, *, line: str = _DENSE_GATE_LINE
-) -> dict[str, dict[str, str]]:
-    """Per gate-only register, its entries on ``line`` not in force at ``gate_clock``.
+#: The solve-scoped registers a solve-reusing build's gate clock is also held
+#: to (:func:`solve_reuse_windows`): a sign-off between the builds cannot
+#: renew them without changing the solve.
+_DEGENERATE_RESOURCE = "degenerate_reviewed_exclusions.json"
+_MEASURE_EXCLUSIONS_RESOURCE = "calibration_measure_exclusions.json"
+_SOLVE_SCOPED_RESOURCES = frozenset(
+    {_DEGENERATE_RESOURCE, _MEASURE_EXCLUSIONS_RESOURCE}
+)
 
-    Each maps to its ``approved_on``: the calibrated gates would fail it as
-    premature on that clock (microcosm#1301).
+
+def earliest_expiry(
+    sources: Mapping[str, Mapping[str, date]],
+) -> dict[str, Any] | None:
+    """The earliest expiry among dated entries, and every entry expiring on it.
+
+    ``sources`` maps a source (a register, or a block of one) to its entries'
+    expiries. An entry is honoured through its ``expires_on``, so the date is
+    the last gate clock, and the last day of assembly, that keeps every entry
+    in force. Returns ``{"date": <ISO date>, "set_by": [<source:name>, ...]}``,
+    or ``None`` without entries. The dense sign-off drafter
+    (``tools/draft_uk_dense_signoff.py``) prints it as the assembly deadline,
+    which ends build 2's gate-clock range, and the solve-reuse guard
+    (:func:`check_solve_reuse_arguments`) refuses a gate clock past it
+    (microcosm#1301).
     """
 
-    premature: dict[str, dict[str, str]] = {}
-    for resource, records in gate_only_signoffs(line).items():
-        found = {
-            name: record.approved_on
-            for name, record in sorted(records.items())
-            if record.premature(gate_clock)
+    dated = [
+        (day, f"{source}:{name}")
+        for source, entries in sources.items()
+        for name, day in entries.items()
+    ]
+    if not dated:
+        return None
+    earliest = min(day for day, _ in dated)
+    return {
+        "date": earliest.isoformat(),
+        "set_by": sorted(label for day, label in dated if day == earliest),
+    }
+
+
+def solve_reuse_windows(
+    line: str = _DENSE_GATE_LINE, *, measure_exclusions: str | Path | None = None
+) -> dict[str, dict[str, tuple[date, date]]]:
+    """Every approval window a solve-reusing build's gate clock must lie in.
+
+    Keyed by source, then by entry, to ``(approved_on, expires_on)``:
+
+    * the gate-only registers' entries the calibrated gates evaluate on
+      ``line`` (:func:`gate_only_signoffs`);
+    * the degenerate register's entries on ``line``: the register is
+      solve-scoped, as the release contract pins its digest, yet the
+      calibrated gates evaluate it on the gate clock;
+    * the calibration measure exclusions the solve applied
+      (``measure_exclusions``, else the packaged register), which assembly and
+      upload check on the day they run.
+
+    The dense sign-off drafter bounds build 2's gate clock by the same
+    entries, read from build 1's run directory and the drafted registers
+    (``tools/draft_uk_dense_signoff.py``, ``gate_clock_entries``), so the
+    range it prints is the range this guard admits (microcosm#1301).
+    """
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import _in_line
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_degenerate_reviewed_exclusions,
+    )
+
+    def window(approved_on: str, expires_on: str) -> tuple[date, date]:
+        return date.fromisoformat(approved_on), date.fromisoformat(expires_on)
+
+    windows = {
+        resource: {
+            name: window(record.approved_on, record.expires_on)
+            for name, record in records.items()
         }
-        if found:
-            premature[resource] = found
-    return premature
+        for resource, records in gate_only_signoffs(line).items()
+    }
+    degenerate, _out_of_line = _in_line(
+        uk_default_degenerate_reviewed_exclusions(),
+        EvidenceContext(artifacts={"release_line": line}),
+    )
+    windows[_DEGENERATE_RESOURCE] = {
+        name: window(record.approved_on, record.expires_on)
+        for name, record in degenerate.items()
+    }
+    windows[_MEASURE_EXCLUSIONS_RESOURCE] = {
+        entry["name"]: window(entry["approved_on"], entry["expires_on"])
+        for entry in load_uk_calibration_measure_exclusions(
+            None if measure_exclusions is None else Path(measure_exclusions)
+        )
+    }
+    return windows
+
+
+def gate_clock_conflicts(
+    gate_clock: date, windows: Mapping[str, Mapping[str, tuple[date, date]]]
+) -> dict[str, dict[str, dict[str, str]]]:
+    """The entries of ``windows`` out of their window at ``gate_clock``.
+
+    ``premature`` maps each source to its entries approved after the clock,
+    each to its ``approved_on``; ``expired`` maps each source to its entries
+    that expired before it, each to its ``expires_on``.
+    """
+
+    conflicts: dict[str, dict[str, dict[str, str]]] = {"premature": {}, "expired": {}}
+    for source, entries in sorted(windows.items()):
+        for name, (approved_on, expires_on) in sorted(entries.items()):
+            if gate_clock < approved_on:
+                conflicts["premature"].setdefault(source, {})[name] = (
+                    approved_on.isoformat()
+                )
+            elif gate_clock > expires_on:
+                conflicts["expired"].setdefault(source, {})[name] = (
+                    expires_on.isoformat()
+                )
+    return conflicts
+
+
+def _named_entries(found: Mapping[str, Mapping[str, str]], *, shown: int = 5) -> str:
+    labels = [
+        f"{source}:{name} ({day})"
+        for source, entries in found.items()
+        for name, day in entries.items()
+    ]
+    named = ", ".join(labels[:shown])
+    if len(labels) > shown:
+        named += f" and {len(labels) - shown} more"
+    return named
+
+
+def _gate_clock_refusal(
+    clock: date,
+    *,
+    clock_source: str,
+    solve_clock: date,
+    windows: Mapping[str, Mapping[str, tuple[date, date]]],
+    conflicts: Mapping[str, Mapping[str, Mapping[str, str]]],
+) -> str:
+    """The refusal of a solve-reuse gate clock outside an entry's window."""
+
+    premature, expired = conflicts["premature"], conflicts["expired"]
+    problems = []
+    if premature:
+        count = sum(len(entries) for entries in premature.values())
+        problems.append(
+            f"before {count} in-line sign-off(s) take force "
+            f"({_named_entries(premature)})"
+        )
+    if expired:
+        count = sum(len(entries) for entries in expired.values())
+        problems.append(
+            f"after {count} sign-off(s) the release depends on expired "
+            f"({_named_entries(expired)})"
+        )
+    earliest = max(
+        [solve_clock]
+        + [approved for entries in windows.values() for approved, _ in entries.values()]
+    )
+    deadline = earliest_expiry(
+        {
+            source: {name: expires for name, (_, expires) in entries.items()}
+            for source, entries in windows.items()
+        }
+    )
+    assert deadline is not None  # a conflict names an entry
+    set_by = deadline["set_by"]
+    named = ", ".join(set_by[:5]) + (
+        f" and {len(set_by) - 5} more" if len(set_by) > 5 else ""
+    )
+    when = f"when {named} {'expires' if len(set_by) == 1 else 'expire'}"
+    usable = earliest <= date.fromisoformat(deadline["date"])
+    if usable:
+        advice = (
+            f"Pass --gate-review-date on or after {earliest.isoformat()} and on "
+            f"or before {deadline['date']}, the latest usable gate clock, {when}."
+        )
+    else:
+        advice = (
+            f"No gate clock is usable: the latest approval, {earliest.isoformat()}, "
+            f"is after the earliest expiry, {deadline['date']}, {when}."
+        )
+    # The entries to renew: those expired, and when no clock is usable, those
+    # that expire first.
+    renew = set(expired) | (
+        set() if usable else {label.split(":", 1)[0] for label in set_by}
+    )
+    if renew:
+        advice += " A gate-only entry is renewed by a new sign-off" + (
+            "; renewing a degenerate-register entry or a measure exclusion "
+            "changes the solve and needs a third build."
+            if renew & _SOLVE_SCOPED_RESOURCES
+            else "."
+        )
+    return (
+        "--require-solve-reuse: the calibrated gates would evaluate their "
+        f"reviewed entries on {clock.isoformat()} ({clock_source}), "
+        + " and ".join(problems)
+        + ". They would fail an entry out of its window, and assembly and "
+        "upload would refuse an expired measure exclusion, but only after the "
+        "solve replay. " + advice
+    )
 
 
 def check_solve_reuse_arguments(
@@ -661,10 +849,14 @@ def check_solve_reuse_arguments(
     ``--graph-store`` too: the default lies under ``--out``, and a second
     build writes a new ``--out`` (``full_build_cli`` refuses one that holds a
     bundle), so the default holds no solve. And its gate clock, the solve's
-    unless ``--gate-review-date`` moves it, must put every in-line entry of
-    the gate-only registers in force (:func:`premature_gate_only_signoffs`).
-    Otherwise the calibrated gates fail the sign-off as premature, but only
-    after the solve replay.
+    unless ``--gate-review-date`` moves it, must lie in the window of every
+    entry the build depends on (:func:`solve_reuse_windows`): on or after
+    every in-line approval, and on or before the earliest expiry
+    (:func:`earliest_expiry`), the end of the gate-clock range the sign-off
+    drafter prints. Otherwise the calibrated gates fail the entry, premature
+    or expired, or assembly refuses an expired measure exclusion, but only
+    after the solve replay. The refusal names the entries out of their window
+    and the usable gate clocks.
     """
 
     gate_clock = getattr(args, "gate_review_date", None)
@@ -705,25 +897,23 @@ def check_solve_reuse_arguments(
             "--require-solve-reuse reads build 1's solve from build 1's store."
         )
     clock = args.review_date if gate_clock is None else gate_clock
-    premature = premature_gate_only_signoffs(clock)
-    if premature:
-        count = sum(len(entries) for entries in premature.values())
-        latest = max(day for entries in premature.values() for day in entries.values())
-        registers = "; ".join(
-            f"{resource}: {len(entries)}, latest approved_on {max(entries.values())}"
-            for resource, entries in sorted(premature.items())
-        )
-        source = (
-            "--review-date; no --gate-review-date was given"
-            if gate_clock is None
-            else "--gate-review-date"
-        )
+    windows = solve_reuse_windows(
+        measure_exclusions=getattr(args, "measure_exclusions", None)
+    )
+    conflicts = gate_clock_conflicts(clock, windows)
+    if conflicts["premature"] or conflicts["expired"]:
         raise ValueError(
-            "--require-solve-reuse: the calibrated gates would evaluate the "
-            f"gate-only registers on {clock.isoformat()} ({source}), before "
-            f"{count} in-line sign-off(s) take force ({registers}), and fail "
-            "them as premature after the solve replay. Pass --gate-review-date "
-            f"on or after {latest}, the latest approved_on."
+            _gate_clock_refusal(
+                clock,
+                clock_source=(
+                    "--review-date; no --gate-review-date was given"
+                    if gate_clock is None
+                    else "--gate-review-date"
+                ),
+                solve_clock=args.review_date,
+                windows=windows,
+                conflicts=conflicts,
+            )
         )
 
 

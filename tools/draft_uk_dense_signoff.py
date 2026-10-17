@@ -52,7 +52,9 @@ gate-only entry build 2's gates hold to its window after the sign-off: those
 on the local line, every ``bound_despite_support_floor`` family whatever its
 line, and the local line's input-mass entries, which the tool reads but never
 drafts. Build 2's gate-clock range ends there, and starts at the latest of
-build 1's clock and the approvals of the register entries named. A
+build 1's clock and the approvals of the register entries named; build 2's
+solve-reuse guard (``rowwise_cli.check_solve_reuse_arguments``) refuses a
+gate clock outside the same range before the solve replay. A
 ``--gate-clock`` past the solve-scoped expiries is refused: renewing either
 kind of entry changes the solve. An input-mass entry out of its window at the
 gate clock makes the draft unsignable until it is renewed by hand.
@@ -134,6 +136,7 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.gates import area_support_below_floor, area_support_gate
 from microcosm.build.uk_runtime.graph_national import UK_DENSE_UNBOUND_RELEASE_ID
 from microcosm.build.uk_runtime.graph_terminal import decode_full_gate_report
+from microcosm.build.uk_runtime.rowwise_cli import earliest_expiry
 from microcosm.build.uk_runtime.terminal_gates import uk_target_fit_gate
 from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
@@ -1292,12 +1295,12 @@ def gate_clock_entries(
     ``blocks`` (by gate id); every ``bound_despite_support_floor`` entry,
     whatever its line, since the area-support gate window-checks them all
     (``None`` when that register is not wired); and the input-mass entries
-    on the local line (:func:`input_mass_in_line`): the entries
-    ``rowwise_cli.gate_only_signoffs`` reads for the solve-reuse guard. With
-    the local line's degenerate-register entries and the measure exclusions
-    build 1's solve ran under, their latest approval and earliest expiry
-    bound build 2's gate clock, and the earliest expiry is the assembly
-    deadline (microcosm#1301).
+    on the local line (:func:`input_mass_in_line`). With the local line's
+    degenerate-register entries and the measure exclusions build 1's solve
+    ran under, their latest approval and earliest expiry bound build 2's gate
+    clock, and the earliest expiry is the assembly deadline. They mirror the
+    windows build 2's solve-reuse guard holds its gate clock to
+    (``rowwise_cli.solve_reuse_windows``), lockstep-tested (microcosm#1301).
     """
 
     entries = {gate_id: _scoped(block, gate_id) for gate_id, block in blocks.items()}
@@ -1318,21 +1321,11 @@ def assembly_deadline(
     gate-only register's gate id or block) to its entries' expiries. Build
     2's gate clock may not be later, and assembly and upload, which check
     the measure exclusions on the day they run, may not be either. Returns
-    the date and the ``source:name`` of every entry expiring on it.
+    the date and the ``source:name`` of every entry expiring on it, as the
+    solve-reuse guard computes it (``rowwise_cli.earliest_expiry``).
     """
 
-    dated = [
-        (day, f"{source}:{name}")
-        for source, entries in sources.items()
-        for name, day in entries.items()
-    ]
-    if not dated:
-        return None
-    earliest = min(day for day, _ in dated)
-    return {
-        "date": earliest.isoformat(),
-        "set_by": sorted(label for day, label in dated if day == earliest),
-    }
+    return earliest_expiry(sources)
 
 
 # ---------------------------------------------------------------------------
