@@ -449,6 +449,47 @@ def test_the_uc_bridge_bound_counts_off_surface_cells_on_the_last_pass():
     assert receipt["off_surface_cells"]["rows_added"] == 1
 
 
+_UC_AREA_TARGET = "dwp.uc.households_by_area"
+
+
+@pytest.mark.parametrize(
+    ("off_surface", "gb", "message"),
+    [
+        # Another target's cell moves no UC leg, so the pass that carries
+        # the off-surface cells adds no row; it still checks the bound.
+        (
+            _off("local_authority", "E06000001", 5.0),
+            300.0,
+            r"the constituency rows of leg .* by 1\.5 ",
+        ),
+        # Scotland's other authority joins the frame at 40, and the GB
+        # caseload is still 1.5 times the constituencies.
+        (
+            _off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET),
+            300.0,
+            r"the constituency rows of leg .* by 1\.5 ",
+        ),
+        # At 10 the constituencies match the caseload, but the authorities
+        # sum to 170 of 200 with the off-surface cell counted.
+        (
+            _off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET),
+            200.0,
+            r"the la rows of leg .* by 1\.17",
+        ),
+    ],
+    ids=["unrelated_cell", "uc_cell_far_caseload", "uc_cell_short_authorities"],
+)
+def test_the_uc_bridge_bound_refuses_on_the_pass_that_carries_off_surface_cells(
+    off_surface, gb, message
+):
+    # Every committed surface has off-surface cells, so the first pass only
+    # records the bridge's factor and the pass that carries them is the one
+    # that refuses (microcosm#1302 re-review). That pass runs whether or not
+    # an off-surface cell adds a row to the frame.
+    with pytest.raises(ValueError, match=message):
+        _uc_surface([off_surface], gb=gb)
+
+
 def test_the_surface_keeps_an_off_surface_cells_share_off_its_neighbours(
     unbounded_uc_bridge,
 ):
