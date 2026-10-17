@@ -790,6 +790,9 @@ class UKFullGateKernel(KernelBase):
         diagnostics = []
         support = []
         output_artifacts = {}
+        # BRMA rows whose model figures leave the build only with ten source
+        # households behind them (María's ruling of 2026-10-17).
+        withheld: frozenset[str] = frozenset()
         upstream_reports = {
             name: json.loads(context.artifacts[name].payload)
             for name in ("spine_assembled", "spine_transferred")
@@ -884,7 +887,28 @@ class UKFullGateKernel(KernelBase):
             )
             diagnostics = evidence.artifacts["target_diagnostics"]
             support = support_frame.to_dict(orient="records")
-            from .diagnostics import uk_calibration_diagnostics_payload
+            from .diagnostics import (
+                uk_calibration_diagnostics_payload,
+                uk_withheld_brma_rows,
+                uk_withhold_brma_figures,
+            )
+
+            withheld = frozenset(
+                uk_withheld_brma_rows(
+                    result,
+                    frame,
+                    diagnostics,
+                    {
+                        str(row["name"]): (
+                            "brma"
+                            if str(row["geography_level"])
+                            in {"brma", "statistical_scope"}
+                            else str(row["geography_level"])
+                        )
+                        for row in diagnostics
+                    },
+                )
+            )
             from .graph_targets import registry_from_payload
 
             selected_registry = registry_from_payload(
@@ -930,7 +954,9 @@ class UKFullGateKernel(KernelBase):
                     "calibration_diagnostics": encode_stage_evidence(
                         _json_safe(complete_diagnostics)
                     ),
-                    "target_diagnostics_csv": pd.DataFrame(diagnostics)
+                    "target_diagnostics_csv": pd.DataFrame(
+                        uk_withhold_brma_figures(diagnostics, withheld)
+                    )
                     .to_csv(index=False)
                     .encode(),
                     "area_support_csv": support_frame.to_csv(index=False).encode(),
@@ -944,6 +970,8 @@ class UKFullGateKernel(KernelBase):
         report = evaluate_phase(
             gates, phase=phase, context=evidence, registry=UK_GATE_REGISTRY
         )
+        from .diagnostics import uk_withhold_brma_figures, uk_withhold_gate_report_rows
+
         payload = {
             "schema_version": 1,
             "kind": "uk_full_gate_report",
@@ -951,9 +979,13 @@ class UKFullGateKernel(KernelBase):
             "sample_fraction": float(context.params["sample_fraction"]),
             "release_candidate": bool(context.params["release_candidate"]),
             "scope": uk_full_gate_scope_receipt(selection),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": uk_withhold_gate_report_rows(
+                gate_phase_report_payload(report, gates=gates), withheld
+            ),
             "upstream_phase_reports": upstream_reports,
-            "target_diagnostics": _json_safe(diagnostics),
+            "target_diagnostics": _json_safe(
+                uk_withhold_brma_figures(diagnostics, withheld)
+            ),
             "area_support": _json_safe(support),
             "artifacts": {name: value.key for name, value in context.artifacts.items()},
         }
