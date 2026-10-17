@@ -61,6 +61,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
     UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_TARGET_WEIGHT_RULES,
+    UK_LOCAL_WEIGHT_GRAIN,
     uk_local_target_loss_weights,
 )
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, area_groups_from_codes
@@ -371,14 +372,6 @@ def uk_target_value_basis(rows: UKTargetRows) -> tuple[str, ...]:
             )
         bases.append(basis)
     return tuple(bases)
-
-
-#: The grain a local row's loss share is taken in, where it is not its own.
-#: Scotland's 18 BRMA rent rows weigh inside the local-authority grain, in
-#: its private-rent family: a grain of their own would take a fifth of the
-#: loss for 18 rows and dilute the local energy and bus families below their
-#: floors (microcosm#1262).
-UK_LOCAL_WEIGHT_GRAIN: Mapping[str, str] = MappingProxyType({"brma": "la"})
 
 
 def _rule_grains(rows: UKTargetRows, *, nation: bool) -> tuple[str, ...]:

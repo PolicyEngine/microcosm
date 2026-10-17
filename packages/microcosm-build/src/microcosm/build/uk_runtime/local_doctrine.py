@@ -107,6 +107,21 @@ UK_LOCAL_TARGET_WEIGHT_RULE = "nation_grain_family_equal_sqrt_count"
 #: 2.5 % and 1.25 %, checked under the doctrine's row-metadata rules only (the
 #: ``uniform`` and ``grain_equal`` overrides carry no family and stay usable
 #: for experiments; a release candidate refuses them anyway).
+#: The grain a local row's loss share is taken in, where it is not its own.
+#: Scotland's 18 BRMA rent rows weigh inside the local-authority grain, in
+#: its private-rent family: a grain of their own would take a fifth of the
+#: loss for 18 rows and dilute the local energy and bus families below their
+#: floors (microcosm#1262). Every rule maps through it, ``grain_equal``
+#: included (the #1305 review).
+UK_LOCAL_WEIGHT_GRAIN: Mapping[str, str] = MappingProxyType({"brma": "la"})
+
+
+def uk_weight_grains(grain_labels: Sequence[str]) -> list[str]:
+    """Each row's weighting grain: its own, or the one it weighs inside."""
+
+    return [UK_LOCAL_WEIGHT_GRAIN.get(str(label), str(label)) for label in grain_labels]
+
+
 UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS: Mapping[str, float] = MappingProxyType(
     {
         "domestic_energy": 0.025,
@@ -322,7 +337,9 @@ def uk_local_target_loss_weights(
         uk_national_target_loss_weights,
     )
 
-    return uk_national_target_loss_weights(grain_labels, rule="family_equal")
+    return uk_national_target_loss_weights(
+        uk_weight_grains(grain_labels), rule="family_equal"
+    )
 
 
 def uk_local_doctrine_with_overrides(
