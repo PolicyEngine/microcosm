@@ -5632,3 +5632,70 @@ def test__given_window_ratio_operands_of_two_cells__then_each_sums_its_members()
     assert spec.value == pytest.approx((0.25 * 304.0 + 0.75 * 329.0) * 60.0 / 80.0)
     assert spec.metadata["ledger_value_numerator"] == "60.0"
     assert spec.metadata["ledger_value_denominator"] == "80.0"
+
+
+def _window_ratio_member_facts() -> list[dict]:
+    facts = _window_ratio_facts()[:3]
+    for key, measure_id, value in (
+        ("ind-a", "receipts_a", 40.0),
+        ("ind-a-again", "receipts_a", 20.0),
+        ("all-a", "all_receipts", 80.0),
+    ):
+        operand = _cy_window_fact(
+            key=key,
+            value=value,
+            opening_year=2024,
+            measure_id=measure_id,
+            assertion="observation",
+        )
+        operand["entity"] = {"name": "return", "role": "sdlt_land_transaction"}
+        facts.append(operand)
+    return facts
+
+
+def _window_ratio_member_reference(numerator: dict) -> LedgerTargetReference:
+    return _window_ratio_reference(
+        value_operands=(
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                **numerator,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "all_receipts",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        )
+    )
+
+
+def test__given_a_window_ratio_member_matched_twice__then_it_refuses() -> None:
+    # Two facts for one listed member and none for the other add up to the
+    # declared total; each member must still match exactly once.
+    reference = _window_ratio_member_reference(
+        {"source_measure_id": ["receipts_a", "receipts_b"], "expected_member_count": 2}
+    )
+    with pytest.raises(ValueError, match="matched 2 facts; expected exactly one"):
+        compile_ledger_target_references(
+            _window_ratio_member_facts(), [reference], country="uk"
+        )
+
+
+def test__given_a_window_ratio_list_unlike_its_count__then_it_refuses() -> None:
+    with pytest.raises(ValueError, match="exactly one list-valued selector"):
+        compile_ledger_target_references(
+            _window_ratio_member_facts(),
+            [
+                _window_ratio_member_reference(
+                    {
+                        "source_measure_id": ["receipts_a", "receipts_b", "receipts_c"],
+                        "expected_member_count": 2,
+                    }
+                )
+            ],
+            country="uk",
+        )

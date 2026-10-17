@@ -3117,6 +3117,17 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
                 f"{prefix}: operand {operand.get('role')!r} needs at least one "
                 "selector field besides its period."
             )
+        members = _window_ratio_member_keys(operand)
+        if (count > 1 or members) and (
+            len(members) != 1
+            or len({str(value) for value in operand[members[0]]}) != count
+            or len(operand[members[0]]) != count
+        ):
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} sums {count} "
+                "cell(s), so it names them in exactly one list-valued selector "
+                f"field of {count} distinct member(s), got {members!r}."
+            )
     if SOURCE_MEASURE_ID_BY_OPENING_YEAR in reference.ledger_selector:
         raise ValueError(
             f"{prefix} reads one series; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} is "
@@ -3137,6 +3148,18 @@ def _validate_calendar_year_window_scaled_by_ratio_reference(
 _WINDOW_RATIO_OPERAND_METADATA_KEYS = frozenset(
     ("role", "expected_member_count", "label")
 )
+
+
+def _window_ratio_member_keys(operand: Mapping[str, object]) -> list[str]:
+    """The operand's list-valued selector fields, which name its members."""
+
+    return sorted(
+        str(key)
+        for key, value in operand.items()
+        if key not in _WINDOW_RATIO_OPERAND_METADATA_KEYS
+        and key not in {"dimensions", "dimension_values"}
+        and isinstance(value, (list, tuple))
+    )
 
 
 def _window_ratio_operand_selectors(
@@ -3216,6 +3239,22 @@ def _resolve_calendar_year_window_scaled_by_ratio_reference_facts(
                 f"{operand.get('role')!r} matched {len(matches)} facts; expected "
                 f"exactly {expected}."
             )
+        # Each named member matches exactly once: two facts for one member
+        # and none for another would pass the total alone.
+        for key in _window_ratio_member_keys(operand):
+            for member in operand[key]:
+                hits = sum(
+                    1
+                    for fact in matches
+                    if str(member) in {str(v) for v in _selector_candidates(fact, key)}
+                )
+                if hits != 1:
+                    raise ValueError(
+                        f"Ledger target reference {reference.name!r}: "
+                        f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO} operand "
+                        f"{operand.get('role')!r} member {member!r} of {key!r} "
+                        f"matched {hits} facts; expected exactly one."
+                    )
         resolved.extend(sorted(matches, key=lambda fact: str(_fact_key(fact))))
     return tuple(resolved)
 
