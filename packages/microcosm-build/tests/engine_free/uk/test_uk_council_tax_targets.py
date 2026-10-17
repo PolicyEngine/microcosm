@@ -32,6 +32,13 @@ from tools.generate_uk_local_target_references import _area_signed_deferrals
 _TEST_PATHS = paths_for("microcosm-build")
 
 
+def _sha256(path: Path) -> str:
+    """The file's digest, read in chunks: the pinned feed is several GB."""
+
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def _crosswalk() -> dict:
     return json.loads(
         importlib_resources.files("microcosm.build.uk")
@@ -523,9 +530,11 @@ def _pinned_feed_facts() -> list[dict]:
     if not feed.is_file():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
     pin = load_uk_chronicle_feed()
-    assert hashlib.sha256(feed.read_bytes()).hexdigest() == pin.facts_sha256
+    assert _sha256(feed) == pin.facts_sha256
+    # Only the MHCLG rows are parsed: the compile reports every other
+    # reference unsupported, and the whole feed parses to tens of GB.
     with feed.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        return [json.loads(line) for line in handle if '"mhclg' in line]
 
 
 def test_composed_english_region_cells_sum_to_the_publisher_england_row() -> None:
