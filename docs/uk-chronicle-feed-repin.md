@@ -60,7 +60,13 @@ is built from feed facts too: the Census 2021 TS054 tenure record sets, the OBR
 non-owner-occupied share and the ONS HPSSA seat cells. Check that those facts
 are unchanged on the new pin, and rebuild the stock with
 `tools/build_uk_high_value_home_stock.py` if they are not; its provenance names
-the feed it was built from.
+the feed it was built from. The feed-gated
+`test_the_pinned_feed_carries_the_inputs_the_stock_was_built_from`
+(`tests/engine_free/uk/test_uk_high_value_homes.py`) runs the check: it
+fingerprints what the builder's own readers take from the pinned feed and
+compares it with the fingerprint recorded there for the feed the provenance
+names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
+the test reports it.
 
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
