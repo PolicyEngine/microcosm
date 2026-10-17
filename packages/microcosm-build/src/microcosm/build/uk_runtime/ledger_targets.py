@@ -332,6 +332,9 @@ def align_uk_local_registry_parity_fixture(
     exclusions.
     """
 
+    # The contract is read and checked once for the whole fixture, not once
+    # per row: the local fixture has tens of thousands of rows.
+    metric_targets = _uk_local_metric_targets()
     rows: list[dict[str, Any]] = []
     for row in fixture.get("rows", ()):
         if not isinstance(row, Mapping):
@@ -347,7 +350,9 @@ def align_uk_local_registry_parity_fixture(
             updated.get("geography_id")
             or (name.split("@", 1)[1] if "@" in name else "")
         )
-        target_id = _uk_local_metric_target_id(contract_metric, geography_id)
+        target_id = _uk_local_metric_target_id(
+            contract_metric, geography_id, metric_targets=metric_targets
+        )
         if target_id is not None:
             updated["name"] = f"{target_id}@{geography_id}"
             updated["contract_target_id"] = updated["name"]
@@ -420,10 +425,21 @@ def _uk_local_metric_targets() -> dict[str, tuple[tuple[str, tuple[str, ...]], .
     return {metric: tuple(sharers) for metric, sharers in entries.items()}
 
 
-def _uk_local_metric_target_id(metric_name: str, area_id: str) -> str | None:
-    """The contract target measuring ``metric_name`` for ``area_id``."""
+def _uk_local_metric_target_id(
+    metric_name: str,
+    area_id: str,
+    *,
+    metric_targets: Mapping[str, tuple[tuple[str, tuple[str, ...]], ...]] | None = None,
+) -> str | None:
+    """The contract target measuring ``metric_name`` for ``area_id``.
 
-    sharers = _uk_local_metric_targets().get(metric_name)
+    ``metric_targets`` is :func:`_uk_local_metric_targets`, passed in by a
+    caller that looks up many rows, since building it reads the contract.
+    """
+
+    if metric_targets is None:
+        metric_targets = _uk_local_metric_targets()
+    sharers = metric_targets.get(metric_name)
     if not sharers:
         return None
     if len(sharers) == 1 and not sharers[0][1]:
