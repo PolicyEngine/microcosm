@@ -49,15 +49,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+#: The report is licensed output and stays with the run, never in the checkout.
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 MIN_SOURCE_HOUSEHOLDS = 10
 WEEKS_IN_YEAR = 365.25 / 7
 
 #: DWP via CIH UK Housing Review 2026 table 111b, May 2025: private-rented UC
 #: households with a housing element whose LHA does not cover their rent.
+#: Copied by hand from the quotation on uk-data#521; no Chronicle fact
+#: carries the table, so the comparison is indicative.
 DWP_RENT_ABOVE_LHA_MAY_2025 = {"England": 0.521, "Wales": 0.630, "Scotland": 0.399}
 DWP_SOURCE = (
-    "CIH UK Housing Review 2026 table 111b (DWP Stat-Xplore), May 2025, as "
-    "quoted on uk-data#521"
+    "CIH UK Housing Review 2026 table 111b (from DWP Stat-Xplore), May 2025, "
+    "copied by hand from its quotation on uk-data#521 and not a registered "
+    "Chronicle fact: an indicative comparison"
 )
 
 REGION_NATION = {
@@ -265,8 +271,14 @@ def main(argv: Iterable[str] | None = None) -> int:
         report["changes_from_control"] = _difference(
             report["variants"]["built"], report["control"]
         )
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    out = args.out.resolve()
+    if out.is_relative_to(REPO_ROOT):
+        raise SystemExit(
+            f"{out} is inside the repository; the engine report is derived from "
+            "licensed microdata and stays with the run (UKDS CD137 clause 8)."
+        )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(f"wrote {args.out}")
     return 0
 

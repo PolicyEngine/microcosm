@@ -35,10 +35,22 @@ the licensed run outside the repository:
 - ``private_rent_summary.json`` keeps only aggregates that pass UKDS
   disclosure control (End User Licence CD137 clause 8, CD171 section 5.2.1).
   Every model cell is carried by at least ten distinct source households, or
-  reads "<10" with a complementary cell in its region withheld too; record
-  counts are rounded (``receipt_counts.rounded_count``); no figure describes
-  a single district or BRMA; and no unit-record value appears. Only this
-  file's figures may be quoted in a PR or a committed receipt.
+  reads "<10" with a complementary cell in its region withheld too; a cell
+  of spine values counts its FRS-channel households only, since an
+  SPI-channel row's spine rent is drawn from FRS donors. A district or BRMA
+  group is summarised only over at least ten cells, the top 1%'s weight
+  share only over at least ten rows and households, and an unweighted share
+  only where both sides rest on at least ten households. Record counts are
+  rounded (``receipt_counts.rounded_count``), no figure describes a single
+  district or BRMA, and no unit-record value appears. Only this file's
+  figures may be quoted in a PR or a committed receipt.
+
+Both files, and the pool table, are refused inside the repository.
+
+``region_level_at_design_weights`` is a named check. The region scale holds
+each region's FRS level on the census private-renter mix of its BRMAs, while
+placement follows all households, so at design weights a region's mean rent
+moves by the gap between the two mixes; calibration's tenure rows restore it.
 
 Usage::
 
@@ -64,6 +76,7 @@ import pandas as pd
 from microcosm.build.uk_runtime.local_targets import uk_brma_area_codes
 from microcosm.build.uk_runtime.private_rent_localisation import (
     CATEGORIES,
+    FRS_CHANNEL,
     NORTHERN_IRELAND,
     load_private_renter_counts,
     redraw_mask,
@@ -75,6 +88,13 @@ SUMMARY_SCHEMA_VERSION = 1
 
 #: A model cell needs this many distinct source households to be reported.
 MIN_SOURCE_HOUSEHOLDS = 10
+#: A district or BRMA group's statistics need this many cells, so that no
+#: summary describes one district (a one-cell median ratio times PIPR's
+#: published mean gives the model's district mean back).
+MIN_GROUP_CELLS = 10
+
+#: Licensed outputs stay with the run, never in the checkout.
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RENT_TARGET_IDS = ("ons.rent.private_rent", "ons.rent.private_rent_brma")
 
@@ -141,8 +161,43 @@ def floored_share(numerator: int, denominator: int) -> float | str | None:
     return math.floor(100 * numerator / denominator) / 100
 
 
+def outside_repository(path: Path, *, what: str) -> Path:
+    """Refuse a licensed output path inside the repository."""
+
+    resolved = path.resolve()
+    if resolved.is_relative_to(REPO_ROOT):
+        raise SystemExit(
+            f"{resolved} is inside the repository; {what} is derived from "
+            "licensed microdata and stays with the run, outside the checkout "
+            "(UKDS CD137 clause 8)."
+        )
+    return resolved
+
+
+def _carriers(values: Iterable[object]) -> int:
+    """Distinct source households, a blank key counting for none."""
+
+    series = pd.Series(np.asarray(list(values), dtype=object))
+    return int(series[series != ""].nunique())
+
+
+def with_carriers(frame: pd.DataFrame, *, frs_only: bool = False) -> pd.DataFrame:
+    """The frame with the source household each row's figures rest on.
+
+    An SPI-channel row's spine rent is the SPI housing shell's draw from FRS
+    donors, so a figure of spine values counts its FRS-channel households
+    only; elsewhere every distinct source household counts.
+    """
+
+    carrier = frame["source_key"].astype(str).to_numpy(dtype=object)
+    if frs_only:
+        channel = frame["channel"].astype(str).to_numpy()
+        carrier = np.where(channel == FRS_CHANNEL, carrier, "")
+    return frame.assign(carrier=carrier)
+
+
 def weighted_share(
-    mask: np.ndarray, weight: np.ndarray, source_key: np.ndarray
+    mask: np.ndarray, weight: np.ndarray, carrier: np.ndarray
 ) -> float | str | None:
     """A weighted share, or "<10" where one to nine source households carry it.
 
@@ -154,10 +209,27 @@ def weighted_share(
     if total <= 0:
         return None
     for side in (mask, ~mask):
-        carriers = len(pd.unique(source_key[side]))
+        carriers = _carriers(carrier[side])
         if 0 < carriers < MIN_SOURCE_HOUSEHOLDS:
             return "<10"
     return round(float(weight[mask].sum()) / total, 4)
+
+
+def unweighted_share(mask: np.ndarray, carrier: np.ndarray) -> float | str | None:
+    """A floored share of rows whose two sides each rest on ten households.
+
+    Clone rows are not households: 8 households with 25 clones each are 200
+    rows but 8 carriers, so either side resting on one to nine distinct
+    source households reads "<10".
+    """
+
+    mask = np.asarray(mask, dtype=bool)
+    carrier = np.asarray(carrier, dtype=object)
+    for side in (mask, ~mask):
+        carriers = _carriers(carrier[side])
+        if 0 < carriers < MIN_SOURCE_HOUSEHOLDS:
+            return "<10"
+    return floored_share(int(mask.sum()), int(mask.size))
 
 
 def suppress_cells(
@@ -346,7 +418,7 @@ def _mean_cell(rows: pd.DataFrame, *, rent: str = "rent") -> dict[str, Any]:
     weight = rows["weight"].to_numpy(dtype=float)
     total = float(weight.sum())
     return {
-        "source_households": int(rows["source_key"].nunique()),
+        "source_households": _carriers(rows["carrier"]),
         "mean_monthly_rent": round(
             float((weight * rows[rent].to_numpy(dtype=float)).sum()) / total / 12.0, 2
         )
@@ -515,9 +587,16 @@ def pipr_comparison(
             bucket["model"].append(float(cell["mean_monthly_rent"]))
             bucket["pipr"].append(float(published))
     summary = {}
-    for label, values in sorted(grouped.items()):
+    for label in sorted(set(grouped) | set(withheld)):
+        values = grouped.get(label, {"model": [], "pipr": []})
         model = np.asarray(values["model"])
         published = np.asarray(values["pipr"])
+        if model.size < MIN_GROUP_CELLS:
+            summary[label] = {
+                "withheld": f"fewer than {MIN_GROUP_CELLS} cells",
+                "cells_under_10_source_households": withheld.get(label, 0),
+            }
+            continue
         ratio = model / published
         summary[label] = {
             "cells": int(model.size),
@@ -547,6 +626,8 @@ def brma_mix(
     audit: dict[str, Any] = {}
     by_nation: dict[str, list[tuple[float, float]]] = {}
     for region, rows in renters.groupby("region", sort=True):
+        if _carriers(rows["carrier"]) < MIN_SOURCE_HOUSEHOLDS:
+            continue
         census: dict[str, float] = {}
         for category in CATEGORIES:
             for brma, count in (counts.get((str(region), category)) or {}).items():
@@ -582,17 +663,28 @@ def brma_mix(
 def weight_concentration(renters: pd.DataFrame) -> dict[str, Any]:
     """Effective sample size and the top 1%'s share of renters' weight."""
 
-    weight = np.sort(renters["weight"].to_numpy(dtype=float))[::-1]
+    raw = renters["weight"].to_numpy(dtype=float)
+    order = np.argsort(-raw, kind="stable")
+    weight = raw[order]
     total = float(weight.sum())
     if total <= 0:
         return {}
+    if _carriers(renters["carrier"]) < MIN_SOURCE_HOUSEHOLDS:
+        return {"withheld": "<10"}
     top = max(1, math.ceil(0.01 * weight.size))
+    top_carriers = _carriers(renters["carrier"].to_numpy(dtype=object)[order][:top])
+    # The slice must span ten rows and ten households, or it describes a few.
+    share = (
+        round(float(weight[:top].sum()) / total, 4)
+        if top >= MIN_SOURCE_HOUSEHOLDS and top_carriers >= MIN_SOURCE_HOUSEHOLDS
+        else "<10"
+    )
     return {
         "renter_rows": rounded_count(int(weight.size)),
         "effective_sample_size": rounded_count(
             int(round(total**2 / float(np.square(weight).sum())))
         ),
-        "top_1pct_weight_share": round(float(weight[:top].sum()) / total, 4),
+        "top_1pct_weight_share": share,
     }
 
 
@@ -600,7 +692,7 @@ def coherence(renters: pd.DataFrame, *, rent: str = "rent") -> dict[str, Any]:
     """Shares of renters whose reported HB, or subletting income, exceeds rent."""
 
     weight = renters["weight"].to_numpy(dtype=float)
-    source = renters["source_key"].to_numpy()
+    carrier = renters["carrier"].to_numpy(dtype=object)
     rents = renters[rent].to_numpy(dtype=float)
     out = {}
     for name, column in (
@@ -610,8 +702,8 @@ def coherence(renters: pd.DataFrame, *, rent: str = "rent") -> dict[str, Any]:
         values = renters[column].to_numpy(dtype=float)
         mask = values > rents
         out[name] = {
-            "weighted_share": weighted_share(mask, weight, source),
-            "unweighted_share": floored_share(int(mask.sum()), int(mask.size)),
+            "weighted_share": weighted_share(mask, weight, carrier),
+            "unweighted_share": unweighted_share(mask, carrier),
         }
     return out
 
@@ -658,8 +750,15 @@ def measure_households(
     pipr: Mapping[tuple[str, str, str], float],
     counts: Mapping[tuple[str, str], Mapping[str, float]],
     rent: str = "rent",
+    frs_carriers: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    renters = private_renters(frame, rent=rent)
+    """The household measures' summary and audit for one weighting.
+
+    ``frs_carriers`` counts only FRS-channel households as a figure's
+    carriers, for spine values (``with_carriers``).
+    """
+
+    renters = private_renters(with_carriers(frame, frs_only=frs_carriers), rent=rent)
     cells, cells_audit = rents_by_cell(renters, rent=rent)
     districts, districts_audit = pipr_comparison(renters, pipr, rent=rent)
     mix, mix_audit = brma_mix(renters, counts)
@@ -709,7 +808,9 @@ def measure_run(
         summary["design_weights"] = design
         audit["design_weights"] = design_audit
         spine = frame.assign(rent=frame["spine_rent"], brma=frame["spine_brma"])
-        before, before_audit = measure_households(spine, pipr=pipr, counts=counts)
+        before, before_audit = measure_households(
+            spine, pipr=pipr, counts=counts, frs_carriers=True
+        )
         summary["design_weights_spine_values"] = before
         audit["design_weights_spine_values"] = before_audit
         summary["matched"] = matched_change(frame)
@@ -719,26 +820,33 @@ def measure_run(
 def matched_change(frame: pd.DataFrame) -> dict[str, Any]:
     """The pool's BRMA and rent before and after the rewrite, row for row."""
 
-    gb = frame.loc[frame["region"] != NORTHERN_IRELAND]
+    gb = with_carriers(frame.loc[frame["region"] != NORTHERN_IRELAND])
     weight = gb["weight"].to_numpy(dtype=float)
-    source = gb["source_key"].to_numpy()
+    carrier = gb["carrier"].to_numpy(dtype=object)
     changed_brma = gb["brma"].to_numpy() != gb["spine_brma"].to_numpy()
     redrawn = redraw_mask(gb["region"], gb["tenure_type"], gb["spine_rent"])
     out: dict[str, Any] = {
-        "gb_rows_whose_brma_changed": weighted_share(changed_brma, weight, source),
-        "gb_rows_redrawn": weighted_share(redrawn, weight, source),
-        "region_mean_rent_after_over_before": {},
+        "gb_rows_whose_brma_changed": weighted_share(changed_brma, weight, carrier),
+        "gb_rows_redrawn": weighted_share(redrawn, weight, carrier),
+        "region_level_at_design_weights": {},
+        "region_level_note": (
+            "Each region's redrawn over spine mean rent of its private renters "
+            "at design weights. The scale holds the FRS level on the census "
+            "renter mix; placement follows all households, so a region moves by "
+            "the gap between the two mixes until calibration's tenure rows "
+            "restore it."
+        ),
     }
-    renters = gb.loc[redrawn]
+    # The spine rents rest on FRS-channel households (``with_carriers``).
+    renters = with_carriers(gb.loc[redrawn], frs_only=True)
     for region, rows in renters.groupby("region", sort=True):
-        carriers = int(rows["source_key"].nunique())
-        if carriers < MIN_SOURCE_HOUSEHOLDS:
-            out["region_mean_rent_after_over_before"][region] = "<10"
+        if _carriers(rows["carrier"]) < MIN_SOURCE_HOUSEHOLDS:
+            out["region_level_at_design_weights"][region] = "<10"
             continue
         w = rows["weight"].to_numpy(dtype=float)
         after = float((w * rows["rent"].to_numpy(dtype=float)).sum())
         before = float((w * rows["spine_rent"].to_numpy(dtype=float)).sum())
-        out["region_mean_rent_after_over_before"][region] = round(after / before, 4)
+        out["region_level_at_design_weights"][region] = round(after / before, 4)
     return out
 
 
@@ -771,7 +879,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     counts = _counts()
-    audit_dir = args.audit_dir or args.run / "audit-1262"
+    audit_dir = outside_repository(
+        args.audit_dir or args.run / "audit-1262", what="the private-rent audit"
+    )
     summary: dict[str, Any] = {
         "schema_version": SUMMARY_SCHEMA_VERSION,
         "disclosure": (

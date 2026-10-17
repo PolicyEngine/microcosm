@@ -32,6 +32,10 @@ import pandas as pd
 from microcosm.build.uk_runtime.property_localisation import spine_household_keys
 from microcosm.graph import ContentStore, RunManifest
 
+#: The pool table is licensed output and stays with the run, never in the
+#: checkout.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 POOL_NODE = "uk.full.pool"
 SPINE_NODE = "uk.full.spine_checkpoint"
 #: The key's source labels only need to agree between the spine and the pool.
@@ -116,7 +120,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     manifest = RunManifest.load(args.run / "build.graph.json", store)
     spine = spine_values(store, manifest)
     table = pool_table(store, manifest, spine)
-    out = args.out or args.run / "audit-1262" / "pool.npz"
+    out = (args.out or args.run / "audit-1262" / "pool.npz").resolve()
+    if out.is_relative_to(REPO_ROOT):
+        raise SystemExit(
+            f"{out} is inside the repository; the pool table holds per-household "
+            "rents, weights and source keys and stays with the run (UKDS CD137 "
+            "clause 8)."
+        )
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out, **table)
     print(f"wrote {out}")
