@@ -227,7 +227,10 @@ the new `gas_year` period type. Three selector families moved with the data, and
 - the local energy rows keep Great Britain's share of UK households as the interim for its share of
   the Energy Trends level. The Northern Ireland facts are now in the feed, on a basis DESNZ calls
   not directly comparable, and María ruled on 2026-10-16 that the interim stands until a change
-  stacked on this re-pin derives Great Britain's part from them.
+  stacked on this re-pin derives Great Britain's part from them. (microcosm#1306 retires it: Great
+  Britain's part is its share of DESNZ's sub-national consumption with Northern Ireland's
+  all-domestic row added, and that change regenerates the local compile-parity receipt's 694 kWh
+  rows.)
 
 Values move only for the UC area rows: each cell is its area's paid claims, where it was its
 all-claims count scaled by the GB paid share, so the cells keep the GB caseload's total and each
