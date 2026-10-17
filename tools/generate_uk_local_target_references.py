@@ -589,15 +589,14 @@ def _area_signed_deferrals(
                 "regions and Wales (microcosm.high_value_homes.over_*_by_region, "
                 "local line only) and at local-authority grain down to the "
                 "hvcts_la_household_floor rule (uk/local_small_cell_rule.json). "
-                "At constituency grain most cells hold fewer than 400 homes, "
-                "about two household weights at the ruled 150,000 households "
+                "At constituency grain most cells hold fewer than 400 homes "
                 "(289 of the 575 seats over £1m, 448 over £1.5m, 512 over £2m), "
-                "so the level is deferred whole rather than cell by cell: a cell "
-                "resting on one or two sample households is fitted by noise, and "
-                "the region rows control the stock the seats share. The seat "
-                "rank correlations of the uk_high_value_homes_benchmarks "
-                "diagnostic read the constituency stock out of sample "
-                "(microcosm#1301)."
+                "about two household weights at the ruled 150,000 households, so "
+                "their fit would be noise. The level is deferred whole rather "
+                "than cell by cell, and the region rows control the stock the "
+                "seats share. The seat rank correlations of the "
+                "uk_high_value_homes_benchmarks diagnostic read the "
+                "constituency stock out of sample (microcosm#1301)."
             ),
             area_ids=england_and_wales_constituencies,
             defer_if_compiles=True,
