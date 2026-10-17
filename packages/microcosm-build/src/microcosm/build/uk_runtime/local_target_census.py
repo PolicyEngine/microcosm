@@ -130,10 +130,12 @@ _HIGH_VALUE_HOME_STOCK_FENCE_ID = "high_value_home_stock_derived_estimate"
 _DESNZ_BASIS_FENCE_ID = "desnz_subnational_consumption_basis"
 _DESNZ_METERS_FENCE_ID = "desnz_meters_for_households"
 _DESNZ_STAGE_SHARE_FENCE_ID = "desnz_regional_meter_share_in_stage"
-_DESNZ_NI_INTERIM_FENCE_ID = "desnz_northern_ireland_interim_share"
-#: The DESNZ, LFS and census pages were fetched and checked on this date
+#: The DESNZ and census pages were fetched and checked on this date
 #: (microcosm#1207).
 _ENERGY_SOURCES_VERIFIED_ON = "2026-10-14"
+#: DESNZ's two Northern Ireland pages were fetched and checked on this date
+#: (microcosm#1278).
+_NI_ENERGY_SOURCES_VERIFIED_ON = "2026-10-17"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -241,7 +243,11 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "from raw-only Chronicle registrations, carried in the committed "
             "derived-facts resource; the frame measures the stored "
             "main_residence_value of owner households at the dataset period "
-            "against thresholds deflated to the same price basis."
+            "against thresholds deflated to the same price basis. The family "
+            "covers owner-occupiers' main residences only: second homes, let "
+            "property and homes owned by companies or non-residents are "
+            "outside it until the coverage decision (microcosm#1240 fix 6, "
+            "tracked on microcosm#1278)."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
@@ -264,6 +270,8 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         "sources": [
             "desnz_subnational_electricity_la",
             "desnz_subnational_gas_la",
+            "desnz_subnational_electricity_ni",
+            "desnz_subnational_gas_ni",
             "ons_census2021_ts041_households",
             "nrs_census2022_uv404_households",
         ],
@@ -271,7 +279,6 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             _DESNZ_BASIS_FENCE_ID,
             _DESNZ_METERS_FENCE_ID,
             _DESNZ_STAGE_SHARE_FENCE_ID,
-            _DESNZ_NI_INTERIM_FENCE_ID,
         ],
     },
     {
@@ -722,8 +729,9 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "binds the "
             "authority's consumption times one Great Britain factor "
             "(desnz.energy_trends.gb_domestic_level), so the cells keep "
-            "DESNZ's split at the stage's level. Northern Ireland is outside "
-            "the publication."
+            "DESNZ's split at the stage's level. Northern Ireland is "
+            "published separately (desnz_subnational_electricity_ni); its "
+            "row enters the factor only."
         ),
     },
     {
@@ -754,6 +762,63 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "(desnz.subnational.gas_meter_share). Orkney and Shetland are "
             "signed deferrals, the Isles of Scilly sits under the support "
             "floor."
+        ),
+    },
+    {
+        "source_id": "desnz_subnational_electricity_ni",
+        "publisher": "Department for Energy Security and Net Zero",
+        "product": (
+            "Subnational electricity consumption statistics in Northern "
+            "Ireland, 2009 to 2024 (updated 18 December 2025): Northern "
+            "Ireland's domestic consumption (kWh), all domestic meters "
+            "(microcosm#1278)."
+        ),
+        "url": (
+            "https://www.gov.uk/government/statistics/"
+            "sub-national-electricity-consumption-statistics-in-northern-ireland"
+        ),
+        "geographies": ["country"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _NI_ENERGY_SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record set "
+            "desnz.subnational.northern_ireland.electricity.domestic.y2024 "
+            "supplies Northern Ireland's row (N92000002) on the financial "
+            "year from April 2024, as reported. No cell binds it: it enters "
+            "Great Britain's share of the UK sub-national total, which sets "
+            "the kWh cells' factor (desnz.energy_trends.gb_domestic_level). "
+            "DESNZ calls Northern Ireland's figures not directly comparable "
+            "with Great Britain's."
+        ),
+    },
+    {
+        "source_id": "desnz_subnational_gas_ni",
+        "publisher": "Department for Energy Security and Net Zero",
+        "product": (
+            "Subnational gas consumption statistics in Northern Ireland, "
+            "2015 to 2024 (updated 18 December 2025): Northern Ireland's "
+            "weather-corrected domestic consumption (kWh), all domestic "
+            "meters (microcosm#1278)."
+        ),
+        "url": (
+            "https://www.gov.uk/government/statistics/"
+            "sub-national-gas-consumption-statistics-in-northern-ireland"
+        ),
+        "geographies": ["country"],
+        "latest_vintage": "2024",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _NI_ENERGY_SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record set "
+            "desnz.subnational.northern_ireland.gas.domestic.y2024 supplies "
+            "Northern Ireland's row (N92000002) on DESNZ's Northern Ireland "
+            "gas year labelled 2024. No cell binds it: it enters Great "
+            "Britain's share of the UK sub-national total, which sets the "
+            "kWh cells' factor. DESNZ calls Northern Ireland's figures not "
+            "directly comparable with Great Britain's."
         ),
     },
 )
@@ -970,6 +1035,11 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "authorities, not its level: one factor per fuel puts the cells on "
             "the stage's level (desnz.energy_trends.gb_domestic_level), and "
             "the cells keep the fact's own year (a matched-period hold). "
+            "Great Britain's part of the Energy Trends UK level is its share "
+            "of DESNZ's sub-national consumption with Northern Ireland's "
+            "all-domestic row added, whose electricity runs on financial years "
+            "and gas on Northern Ireland gas years, figures DESNZ calls not "
+            "directly comparable with Great Britain's. "
             "Binding needs an adjudication that the split is the target and "
             "the basis gap is not."
         ),
@@ -977,7 +1047,10 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "DESNZ sub-national electricity and gas consumption statistics "
             "methodology notes; DESNZ Energy Trends tables 4.1 and 5.5; "
             "microcosm#1207 plan rulings of 2026-10-14 (reconcile onto the "
-            "stage's level; local-authority grain only)."
+            "stage's level; local-authority grain only); DESNZ's Northern "
+            "Ireland sub-national electricity and gas statistics, with the "
+            "Northern Ireland sentence re-worded in by María on 2026-10-17 "
+            "(microcosm#1306 review)."
         ),
     },
     {
@@ -1016,31 +1089,6 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "authority": (
             "uk_runtime.energy_pricing (published_gas_connected_shares, "
             "published_energy_level); microcosm#1207 plan of 2026-10-14."
-        ),
-    },
-    {
-        "fence_id": _DESNZ_NI_INTERIM_FENCE_ID,
-        "fenced_fact_count": None,
-        "enforcement": FENCE_ENFORCEMENT_REVIEW,
-        "rule": (
-            "Energy Trends is a United Kingdom total and the sub-national "
-            "statistics cover Great Britain. Great Britain's part of the level "
-            "is taken at its share of UK households (ONS LFS, April to June of "
-            "the level's year). Northern Ireland's share of UK domestic gas is "
-            "well below its household share, so the interim puts Great "
-            "Britain's gas level low by about 1.5 per cent. Chronicle carries "
-            "Northern Ireland's domestic consumption since the abf0921 re-pin, "
-            "on a basis DESNZ calls not directly comparable with Great "
-            "Britain's, so the interim stands until a change that derives "
-            "Great Britain's part from those facts lands; the adjudication "
-            "lapses then."
-        ),
-        "authority": (
-            "PolicyEngine/chronicle#356 (filed 2026-10-14); microcosm#1207 plan "
-            "ruling of 2026-10-14 (the interim stands in, declared and "
-            "expiring); María's ruling of 2026-10-16 (microcosm#1300: the "
-            "interim stands past the re-pin until a change stacked on it "
-            "derives Great Britain's part from the Northern Ireland facts)."
         ),
     },
 )

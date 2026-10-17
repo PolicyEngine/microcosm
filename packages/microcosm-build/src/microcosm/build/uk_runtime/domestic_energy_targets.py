@@ -12,12 +12,12 @@ local-authority rows bind from them, each through a declared
   fuel puts Great Britain's authorities on the stage's own level, so they
   carry only DESNZ's split between areas. Energy Trends is a United Kingdom
   total and the sub-national statistics cover Great Britain: Great Britain's
-  share of UK households (ONS, Labour Force Survey, in the level's year)
-  stands in for its share of the level, a declared interim. Chronicle now
-  carries Northern Ireland's consumption (PolicyEngine/chronicle#356) on a
-  basis DESNZ calls not directly comparable with Great Britain's (Northern
-  Ireland's electricity runs on financial years), so reading the share from
-  it is a change of its own (microcosm#1300);
+  part of the level is its share of DESNZ's sub-national domestic consumption
+  with Northern Ireland's row added, so each factor is the UK level over the
+  UK sub-national total and both nations stay on DESNZ's sub-national basis
+  (microcosm#1278). DESNZ calls Northern Ireland's figures not directly
+  comparable with Great Britain's: its electricity runs on financial years
+  and its gas on Northern Ireland gas years;
 * gas-connected households (``desnz.subnational.gas_meter_share``): each
   authority's census households times its gas meters over its electricity
   meters, the share the stage already imposes by region, here by authority.
@@ -75,19 +75,27 @@ SUBNATIONAL_CONSUMPTION_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_KWH: "desnz.subnational.domestic_electricity_consumption",
     GAS_KWH: "desnz.subnational.domestic_gas_consumption",
 }
-#: ONS's household estimates from the Labour Force Survey: the nations'
-#: rows and the UK row of "Families and households in the UK" (Table 5).
-LFS_NATION_HOUSEHOLDS_CONCEPT = "ons.households_total"
-LFS_UK_HOUSEHOLDS_CONCEPT = "ons.families_households_table5.all_households"
+#: Northern Ireland's row of DESNZ's sub-national domestic consumption, all
+#: domestic meters: electricity on financial years from April (the publisher's
+#: opening-year label, not weather corrected) and gas on DESNZ's Northern
+#: Ireland gas years (15 May to 15 May from 2018, weather corrected). The year
+#: labelled Y pairs with Great Britain's year Y, as Great Britain's gas year
+#: pairs with its calendar-year electricity (microcosm#1278).
+NORTHERN_IRELAND_GEOGRAPHY_ID = "N92000002"
+NORTHERN_IRELAND_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "fiscal_year",
+    GAS_FUEL: "gas_year",
+}
 #: The meter year the gas-connected share is read for: the stage's own.
 GAS_METER_SHARE_PERIOD = 2024
 UK_ENERGY_LEVEL_BASIS = (
     "DESNZ Energy Trends domestic {fuel} consumption at actual temperature, "
     "United Kingdom, calendar {year} (the level the LCFS stage rakes to), times "
-    "Great Britain's share of UK households (ONS LFS {year}, an interim until "
-    "the share is read from Northern Ireland's published consumption), over DESNZ's "
-    "sub-national Great Britain total for {year}: the authorities keep DESNZ's "
-    "split between areas at the stage's level"
+    "Great Britain's share of DESNZ's sub-national domestic {fuel} consumption "
+    "with Northern Ireland's row added ({year}, all domestic meters; DESNZ calls "
+    "Northern Ireland's figures not directly comparable with Great Britain's), "
+    "over DESNZ's sub-national Great Britain total for {year}: the authorities "
+    "keep DESNZ's split between areas at the stage's level"
 )
 UK_GAS_METER_SHARE_BASIS = (
     "DESNZ sub-national domestic gas meters over electricity meters in the "
@@ -178,53 +186,54 @@ def _local_energy_rows(
     return rows_matching({"rows": list(rows)}, **criteria)
 
 
-def great_britain_household_share(
+def northern_ireland_consumption(
     year: int, *, rows: Sequence[Mapping[str, Any]] | None = None
-) -> tuple[float, dict[str, Any]]:
-    """Great Britain's share of UK households, ONS LFS, calendar ``year``."""
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Northern Ireland's DESNZ sub-national domestic consumption, per fuel.
 
-    nations = {
-        geography_id: _one_value(
+    The Northern Ireland row (all domestic meters) for the year labelled
+    ``year``, in each fuel's own period type. Great Britain's part of the
+    Energy Trends UK level is its share of the sub-national total with this
+    row added (microcosm#1278; Great Britain's share of UK households stood in
+    until Chronicle carried these rows).
+    """
+
+    consumption: dict[str, float] = {}
+    periods: dict[str, dict[str, Any]] = {}
+    for column, concept in SUBNATIONAL_CONSUMPTION_CONCEPTS.items():
+        fuel = FUEL_OF_COLUMN[column]
+        period_type = NORTHERN_IRELAND_PERIOD_TYPES[fuel]
+        consumption[column] = _one_value(
             _local_energy_rows(
                 rows,
-                concept=LFS_NATION_HOUSEHOLDS_CONCEPT,
-                geography_id=geography_id,
+                concept=concept,
+                geography_id=NORTHERN_IRELAND_GEOGRAPHY_ID,
+                period_type=period_type,
                 period_value=year,
+                dimensions={
+                    "metric": "consumption",
+                    "fuel": fuel,
+                    "domestic_scope": "all_domestic",
+                },
             ),
-            what=f"{UK_LOCAL_ENERGY_RESOURCE}: {geography_id} households {year}",
-            unit="count",
+            what=(
+                f"{UK_LOCAL_ENERGY_RESOURCE}: Northern Ireland {fuel} consumption "
+                f"{year}"
+            ),
+            unit="kwh",
         )
-        for geography_id in GREAT_BRITAIN_NATION_IDS
-    }
-    united_kingdom = _one_value(
-        _local_energy_rows(
-            rows,
-            concept=LFS_UK_HOUSEHOLDS_CONCEPT,
-            geography_id=UNITED_KINGDOM_GEOGRAPHY_ID,
-            period_value=year,
-        ),
-        what=f"{UK_LOCAL_ENERGY_RESOURCE}: UK households {year}",
-        unit="count",
-    )
-    great_britain = math.fsum(nations.values())
-    share = great_britain / united_kingdom
-    if not 0.0 < share < 1.0:
-        raise ValueError(
-            f"Great Britain's share of UK households in {year} is {share!r}, "
-            "not in (0, 1): the nations' rows exceed the UK row."
-        )
-    return share, {
+        periods[column] = {"period_type": period_type, "period_value": year}
+    return consumption, {
         "resource": UK_LOCAL_ENERGY_RESOURCE,
-        "period_value": year,
-        "nation_households": dict(sorted(nations.items())),
-        "united_kingdom_households": united_kingdom,
-        "great_britain_share": share,
-        "interim": (
-            "Northern Ireland's consumption is in the feed "
-            "(PolicyEngine/chronicle#356) on a basis DESNZ calls not directly "
-            "comparable with Great Britain's: until the share is read from it, "
-            "Great Britain's share of UK households stands in for its share of "
-            "the Energy Trends level"
+        "geography_id": NORTHERN_IRELAND_GEOGRAPHY_ID,
+        "consumption_kwh": consumption,
+        "periods": periods,
+        "comparability": (
+            "DESNZ calls Northern Ireland's sub-national statistics not directly "
+            "comparable with Great Britain's (methodology sections 4.3 and 5.3): "
+            "its electricity years run April to March and are not weather "
+            "corrected, and its gas meters are classed domestic by profile "
+            "marker. The share reads them as published."
         ),
     }
 
@@ -232,9 +241,15 @@ def great_britain_household_share(
 def gb_energy_level_factors(
     parameters: Mapping[str, Any] | None = None,
     *,
-    household_rows: Sequence[Mapping[str, Any]] | None = None,
+    local_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Per fuel: the stage's level in Great Britain over DESNZ's GB total."""
+    """Per fuel: the stage's level in Great Britain over DESNZ's GB total.
+
+    Great Britain's part of the UK level is its share of DESNZ's sub-national
+    consumption with Northern Ireland's row added, so the factor is the UK
+    level over the UK sub-national total. ``local_rows`` stands in for the
+    local energy resource's rows (tests).
+    """
 
     parameters = declared_energy_pricing() if parameters is None else parameters
     if str(parameters.get("level_period_type")) != "calendar_year":
@@ -244,7 +259,9 @@ def gb_energy_level_factors(
         )
     year = int(parameters["level_period_value"])
     level, level_receipt = published_energy_level(parameters)
-    share, share_receipt = great_britain_household_share(year, rows=household_rows)
+    northern_ireland, northern_ireland_receipt = northern_ireland_consumption(
+        year, rows=local_rows
+    )
     factors: dict[str, float] = {}
     by_fuel: dict[str, dict[str, Any]] = {}
     for column, concept in SUBNATIONAL_CONSUMPTION_CONCEPTS.items():
@@ -261,18 +278,21 @@ def gb_energy_level_factors(
             what=f"{UK_DESNZ_DOMESTIC_ENERGY_RESOURCE}: GB {fuel} consumption {year}",
             unit="kwh",
         )
+        share = total / (total + northern_ireland[column])
         great_britain_level = float(level[column]) * share
         factors[column] = great_britain_level / total
         by_fuel[column] = {
             "united_kingdom_level_kwh": float(level[column]),
+            "great_britain_share": share,
             "great_britain_level_kwh": great_britain_level,
             "subnational_great_britain_kwh": total,
+            "subnational_northern_ireland_kwh": northern_ireland[column],
             "factor": factors[column],
         }
     return factors, {
         "period_value": year,
         "level": level_receipt,
-        "great_britain_household_share": share_receipt,
+        "northern_ireland": northern_ireland_receipt,
         "by_fuel": by_fuel,
     }
 
@@ -305,16 +325,14 @@ def align_energy_to_stage_level(
     registry: TargetRegistry,
     *,
     parameters: Mapping[str, Any] | None = None,
-    household_rows: Sequence[Mapping[str, Any]] | None = None,
+    local_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
     """Put each authority's DESNZ consumption on the stage's Energy Trends level."""
 
     if reference.uprating_index != UK_ENERGY_LEVEL_INDEX_CONCEPT:
         return registry
     column = _fuel_column(reference)
-    factors, receipt = gb_energy_level_factors(
-        parameters, household_rows=household_rows
-    )
+    factors, receipt = gb_energy_level_factors(parameters, local_rows=local_rows)
     factor = factors[column]
     basis = UK_ENERGY_LEVEL_BASIS.format(
         fuel=FUEL_OF_COLUMN[column], year=receipt["period_value"]

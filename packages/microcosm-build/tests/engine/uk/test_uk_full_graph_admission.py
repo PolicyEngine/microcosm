@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.graph_terminal import (
     decode_full_gate_report,
     register_uk_full_gate_kernels,
     register_uk_terminal_kernels,
+    uk_terminal_only_code_hash,
 )
 from microcosm.graph import (
     ArtifactInput,
@@ -126,6 +127,14 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         engine_identity="fixture-engine",
         review_date="2026-09-10",
     )
+    # Only the calibrated gates key on the code only they run; the preflight,
+    # which the dense solve keys on, does not (microcosm#1306 review).
+    gate_nodes = {node.id: node for node in graph.nodes}
+    assert (
+        gate_nodes["uk.full.gates.calibrated"].params["terminal_code"]
+        == uk_terminal_only_code_hash()
+    )
+    assert "terminal_code" not in gate_nodes["uk.full.gates.preflight"].params
     final_gate = ArtifactInput(
         "full_gates", "uk.full.gates.calibrated", "gate_report", FULL_GATE_REPORT_TYPE
     )
