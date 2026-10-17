@@ -50,7 +50,8 @@ class CrossGrainBridge:
     another group rescales first is still bounded, but the legs inside the
     total are not bounded one by one: a group with no bound (an exact
     signature group putting one leg's authorities on its constituencies)
-    rescales them by whatever factor it needs.
+    rescales them by whatever factor it needs. The bound must lie in (0, 1):
+    at one or more it would accept every factor below one.
     """
 
     bridge_id: str
@@ -1032,12 +1033,12 @@ def _validate_rule(rule: CrossGrainRule) -> None:
         if bound is not None and (
             isinstance(bound, bool)
             or not isinstance(bound, int | float)
-            or not np.isfinite(bound)
-            or bound <= 0.0
+            or not 0.0 < bound < 1.0
         ):
             raise ValueError(
                 f"cross-grain bridge {bridge.bridge_id!r} declares max_factor_shift "
-                f"{bound!r}; a bound must be a finite positive number."
+                f"{bound!r}; a bound must be a number in (0, 1): at one or more "
+                "it would accept every factor below one."
             )
     for geography_id, legs in rule.parent_geography_legs.items():
         if not str(geography_id) or not legs or any(not str(leg) for leg in legs):
