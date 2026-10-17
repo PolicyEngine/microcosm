@@ -38,9 +38,13 @@ from microcosm.calibrate import (
 #: small-cell rules (uk/local_small_cell_rule.json), which defer 208 cells,
 #: and moved it to 24,269 (uk/local_target_reference_membership.json,
 #: ``active_reference_count``); microcosm#1207's DESNZ energy rows add 1,040
-#: authority cells, to 25,309.
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 25_309
-_LOCAL_GRAINS = ("constituency", "local_authority", "la")
+#: authority cells, to 25,309; microcosm#1262 binds Scotland's 18 PIPR BRMA
+#: cells, to 25,327.
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 25_327
+#: ``statistical_scope`` (the rowwise ``brma`` grain) is Scotland's PIPR BRMA
+#: rows, which the incumbent never fitted: they score candidate-only, as
+#: areas the incumbent lacks (microcosm#1262).
+_LOCAL_GRAINS = ("constituency", "local_authority", "la", "statistical_scope", "brma")
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -178,7 +182,7 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     if (
         not isinstance(grains, list)
         or not grains
-        or any(g not in ("constituency", "local_authority", "la") for g in grains)
+        or any(g not in _LOCAL_GRAINS for g in grains)
         or len(set(grains)) != len(grains)
     ):
         raise ValueError(
@@ -401,10 +405,7 @@ def score_uk_local_candidate(
             for s in target_registry.specs
         }
     )
-    if any(
-        grain not in ("constituency", "local_authority", "la")
-        for grain in fitted_grains
-    ):
+    if any(grain not in _LOCAL_GRAINS for grain in fitted_grains):
         raise ValueError("fitted target grains must identify the local surface.")
     holdout = _candidate_holdout(candidate_diagnostics)
     candidate, rows_outside_register = _candidate_estimates(

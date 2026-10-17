@@ -7,6 +7,7 @@ The legacy numerical functions remain the only implementations of the draws.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from collections.abc import Mapping
@@ -41,14 +42,17 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
+from microcosm.graph.randomness import keyed_uniform
 from microcosm.graph.weight_update import weight_update_receipt
 
 from . import (
     atomic_area_support,
     atomic_household_identity,
+    brma_area_layer,
     geography_ladder,
     local_authority_input,
     national_sampling,
+    private_rent_localisation,
     property_localisation,
     rowwise_dataset,
 )
@@ -72,6 +76,7 @@ from .local_authority_input import (
     verify_local_authority_engine_domain,
 )
 from .national_frame import UK_NATIONAL_SCHEMA
+from .receipt_counts import rounded_count
 from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_column
 
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
@@ -93,6 +98,21 @@ _PROPERTY_VALUE_COLUMNS = (
     "property_wealth",
 )
 _PROPERTY_BAND_COLUMNS = ("council_tax_band",)
+BRMA_LOCALISATION_MODES = brma_area_layer.BRMA_LOCALISATION_MODES
+#: Household columns the post-geography BRMA node reads (microcosm#1262).
+_BRMA_AREA_COLUMNS = ("atomic_area_system", "brma", "lsoa_code", "oa_code", "region")
+PRIVATE_RENT_LOCALISATION_MODES = (
+    private_rent_localisation.PRIVATE_RENT_LOCALISATION_MODES
+)
+#: Household columns the post-geography private-rent node reads (microcosm#1262).
+_PRIVATE_RENT_COLUMNS = (
+    "brma",
+    "household_support_channel",
+    "num_bedrooms",
+    "region",
+    "rent",
+    "tenure_type",
+)
 
 
 def context_frame(context: KernelContext) -> Frame:
@@ -623,6 +643,161 @@ class UKLocalAuthorityResolveKernel(_PopulationKernel):
         )
 
 
+class UKBRMAAreaKernel(_PopulationKernel):
+    """Read each placed Great Britain household's BRMA off its assigned area.
+
+    microcosm#1262: the spine's ``frs_brma`` stage draws a BRMA within the
+    household's FRS region before any household has an area, so every clone
+    carried one BRMA wherever it landed. The committed layer places every
+    England-and-Wales LSOA and Scottish output area in one BRMA, so a clone's
+    BRMA, LHA rate, local authority and constituency describe one place.
+    Northern Ireland has no open BRMA geography and keeps the spine's draw.
+    """
+
+    ref = "uk.full.geography.brma@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), brma_area_layer)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        payload = Path(
+            context.sources[brma_area_layer.BRMA_AREA_LAYER_SOURCE]
+        ).read_bytes()
+        layer = brma_area_layer.load_brma_area_layer(payload)
+        brma, counts = brma_area_layer.area_brmas(
+            layer=layer,
+            area_system=household["atomic_area_system"].to_numpy(),
+            lsoa_code=household["lsoa_code"].to_numpy(),
+            oa_code=household["oa_code"].to_numpy(),
+            region=household["region"].to_numpy(),
+            brma=household["brma"].to_numpy(),
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "brma"): pd.Series(brma, index=index, name="brma").astype(
+                    household["brma"].dtype
+                ),
+            },
+            receipt={
+                "rows_by_grain": {
+                    grain: rounded_count(count)
+                    for grain, count in sorted(counts.items())
+                    if grain != "changed"
+                },
+                "rows_changed": rounded_count(counts["changed"]),
+                "layer_sha256": hashlib.sha256(payload).hexdigest(),
+                "method": layer.method,
+            },
+        )
+
+
+class UKPrivateRentKernel(_PopulationKernel):
+    """Read each Great Britain private renter's rent off its BRMA's list of rents.
+
+    microcosm#1262: the spine's rent describes the source household's FRS
+    region. Every private renter with a positive rent, in either channel,
+    keeps its rank among the FRS renters of its region and bedroom size (one
+    keyed tie-break per spine household, shared by all of its pool clones)
+    and reads that quantile off its assigned BRMA's list for homes of its
+    size, scaled so the region's mean rent is the FRS level on the census
+    private-renter mix. Placement follows all households, so at design
+    weights the level moves with the gap between the two mixes, which
+    calibration's tenure rows close. Weights are untouched; owners, social
+    renters, zero rents and Northern Ireland keep their rents bit for bit. The
+    region scales and ranks stay inside the kernel; the receipt carries
+    rounded record counts only.
+    """
+
+    ref = "uk.full.private_rent@1"
+    capabilities = Capabilities(
+        determinism=Determinism.SEEDED,
+        seed_source=SeedSource.KEYED,
+        numeric=Numeric.PLATFORM_BITWISE,
+    )
+
+    def implementation_hash(self) -> str:
+        from . import household_lineage
+
+        return source_hash(
+            type(self),
+            private_rent_localisation,
+            property_localisation,
+            household_lineage,
+            atomic_household_identity,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        weights = np.asarray(context.weights["household"].values, dtype=float)
+        quantiles_payload = Path(
+            context.sources[private_rent_localisation.QUANTILES_SOURCE]
+        ).read_bytes()
+        counts_payload = Path(
+            context.sources[private_rent_localisation.COUNTS_SOURCE]
+        ).read_bytes()
+        quantiles = private_rent_localisation.load_rent_quantiles(quantiles_payload)
+        counts = private_rent_localisation.load_private_renter_counts(counts_payload)
+        stream = tuple(context.params["stream"])
+        keys = property_localisation.spine_household_keys(
+            household,
+            source=str(context.params["source"]),
+            source_vintage=str(context.params["source_vintage"]),
+        )
+        mask = private_rent_localisation.redraw_mask(
+            household["region"].to_numpy(),
+            household["tenure_type"].to_numpy(),
+            household["rent"].to_numpy(),
+        )
+        redrawn = sorted({str(key) for key in keys[mask]})
+        draws = keyed_uniform(
+            stream=stream, keys=[(key, "rent_rank") for key in redrawn]
+        )
+        new_rent, details = private_rent_localisation.localise_rents(
+            spine_key=keys,
+            region=household["region"].to_numpy(),
+            tenure_type=household["tenure_type"].to_numpy(),
+            rent=household["rent"].to_numpy(),
+            num_bedrooms=household["num_bedrooms"].to_numpy(),
+            brma=household["brma"].to_numpy(),
+            channel=household["household_support_channel"].to_numpy(),
+            weight=weights,
+            tie_uniform=dict(zip(redrawn, (float(v) for v in draws), strict=True)),
+            quantiles=quantiles,
+            counts=counts,
+            strict=bool(context.params.get("strict_cells", True)),
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "rent"): pd.Series(
+                    new_rent, index=index, name="rent"
+                ).astype(household["rent"].dtype),
+            },
+            receipt={
+                "rows_redrawn": rounded_count(details["rows_redrawn"]),
+                "spine_households_redrawn": rounded_count(
+                    details["spine_households_redrawn"]
+                ),
+                "cells_ranked_against_their_region": details["fallback_cells"],
+                "cells_ranked_against_great_britain": details["great_britain_cells"],
+                "regions_scaled": details["regions"],
+                "regions_scaled_on_great_britain": details[
+                    "regions_scaled_on_great_britain"
+                ],
+                "weights": "unchanged",
+                "quantiles_sha256": hashlib.sha256(quantiles_payload).hexdigest(),
+                "counts_sha256": hashlib.sha256(counts_payload).hexdigest(),
+                "method": private_rent_localisation.METHOD_VERSION,
+                "stream": list(stream),
+            },
+        )
+
+
 class UKPoolCheckpointKernel(_PopulationKernel):
     """Checkpoint the complete pool; refuse unless the shared atomic gate passed.
 
@@ -755,6 +930,9 @@ def append_uk_population_nodes(
     source_vintage: str | None = None,
     identity_source: str = "frs",
     property_localisation_mode: str = "none",
+    brma_localisation_mode: str = "none",
+    private_rent_localisation_mode: str = "none",
+    full_scale: bool = True,
 ) -> Graph:
     """Compose sampling → replication → identity → assignment → derivation → gate.
 
@@ -794,6 +972,16 @@ def append_uk_population_nodes(
         )
     if property_localisation_mode != "none" and geography_assignment != "atomic":
         raise ValueError("Property localisation needs the atomic geography assignment.")
+    if brma_localisation_mode not in BRMA_LOCALISATION_MODES:
+        raise ValueError(f"BRMA localisation must be one of {BRMA_LOCALISATION_MODES}.")
+    if brma_localisation_mode != "none" and geography_assignment != "atomic":
+        raise ValueError("Area BRMAs need the atomic geography assignment.")
+    if private_rent_localisation_mode not in PRIVATE_RENT_LOCALISATION_MODES:
+        raise ValueError(
+            f"Private rent localisation must be one of {PRIVATE_RENT_LOCALISATION_MODES}."
+        )
+    if private_rent_localisation_mode != "none" and brma_localisation_mode != "area":
+        raise ValueError("Private rents from the lists need the area BRMAs.")
     national_sampling.validate_sample_fraction(sample_fraction, label="UK full build")
     national_sampling.validate_sample_seed(sample_seed, label="UK full build")
     common = {"time_period": str(time_period)}
@@ -923,6 +1111,9 @@ def append_uk_population_nodes(
             identity_source=identity_source,
             source_vintage=source_vintage,
             property_localisation_mode=property_localisation_mode,
+            brma_localisation_mode=brma_localisation_mode,
+            private_rent_localisation_mode=private_rent_localisation_mode,
+            full_scale=full_scale,
         )
     nodes.extend(geography_nodes)
     declared = {s.name for s in graph.sources}
@@ -992,6 +1183,9 @@ def _atomic_geography_nodes(
     identity_source: str,
     source_vintage: str,
     property_localisation_mode: str = "none",
+    brma_localisation_mode: str = "none",
+    private_rent_localisation_mode: str = "none",
+    full_scale: bool = True,
 ) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
     """Identity-keyed assignment on the shared operators (release path order)."""
 
@@ -1050,6 +1244,22 @@ def _atomic_geography_nodes(
         description="Resolve the engine local_authority input from the derived GSS code.",
     )
     cells[("household", UK_LOCAL_AUTHORITY_INPUT_COLUMN)] = "string"
+    brma_nodes: tuple[Node, ...] = ()
+    brma_sources: tuple[SourceRef, ...] = ()
+    if brma_localisation_mode == "area":
+        brma_nodes, brma_sources = _brma_area_nodes(cells, common=common)
+    if private_rent_localisation_mode == "brma_list":
+        rent_nodes, rent_sources = _private_rent_nodes(
+            cells,
+            common=common,
+            seed=seed,
+            identity_source=identity_source,
+            source_vintage=source_vintage,
+            lineage_inputs=lineage_inputs,
+            strict=full_scale,
+        )
+        brma_nodes = (*brma_nodes, *rent_nodes)
+        brma_sources = (*brma_sources, *rent_sources)
     property_nodes: tuple[Node, ...] = ()
     property_sources: tuple[SourceRef, ...] = ()
     if property_localisation_mode == "price_paid":
@@ -1088,11 +1298,13 @@ def _atomic_geography_nodes(
             for system in atomic_area_support.SYSTEMS
         ),
         *property_sources,
+        *brma_sources,
     )
     return (
         identity,
         *shared[:-1],
         local_authority,
+        *brma_nodes,
         *property_nodes,
         shared[-1],
         gate,
@@ -1205,6 +1417,108 @@ def _property_localisation_nodes(
     return (value, band), sources
 
 
+def _brma_area_nodes(
+    cells: dict, *, common: Mapping
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1262 area-BRMA node, after the local-authority resolve."""
+
+    for column in _BRMA_AREA_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The area BRMA node needs the household column {column!r} on the pool."
+            )
+    node = Node(
+        id="uk.full.geography.brma",
+        kernel=UKBRMAAreaKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", tuple(sorted(_BRMA_AREA_COLUMNS))),),
+        outputs=(
+            Owned("household", "brma", cells[("household", "brma")], rewrite=True),
+        ),
+        sources=(brma_area_layer.BRMA_AREA_LAYER_SOURCE,),
+        params={**common, "method": brma_area_layer.METHOD_VERSION},
+        description="Read each placed Great Britain household's BRMA off its assigned area.",
+    )
+    source = SourceRef(
+        brma_area_layer.BRMA_AREA_LAYER_SOURCE,
+        "raw-bytes-v1",
+        "BRMA of every England-and-Wales LSOA and Scottish output area.",
+    )
+    return (node,), (source,)
+
+
+def _private_rent_nodes(
+    cells: dict,
+    *,
+    common: Mapping,
+    seed: int,
+    identity_source: str,
+    source_vintage: str,
+    lineage_inputs: tuple[str, ...],
+    strict: bool = True,
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1262 private-rent node, after the area-BRMA node.
+
+    ``strict`` holds at full scale; a sampled development rung relaxes it so
+    that a region its sample leaves without FRS renters ranks and scales on
+    Great Britain's (``private_rent_localisation.localise_rents``).
+    """
+
+    for column in _PRIVATE_RENT_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The private-rent node needs the household column {column!r} on the pool."
+            )
+    stream = (
+        "sha256-u53-v1",
+        private_rent_localisation.STREAM_EXPERIMENT,
+        0,
+        int(seed),
+    )
+    node = Node(
+        id="uk.full.private_rent",
+        kernel=UKPrivateRentKernel.ref,
+        population="uk.full.expand",
+        inputs=(
+            Slice(
+                "household", tuple(sorted({*lineage_inputs, *_PRIVATE_RENT_COLUMNS}))
+            ),
+        ),
+        outputs=(
+            Owned("household", "rent", cells[("household", "rent")], rewrite=True),
+        ),
+        sources=(
+            private_rent_localisation.QUANTILES_SOURCE,
+            private_rent_localisation.COUNTS_SOURCE,
+        ),
+        params={
+            **common,
+            "source": identity_source,
+            "source_vintage": source_vintage,
+            "stream": stream,
+            "method": private_rent_localisation.METHOD_VERSION,
+            "strict_cells": bool(strict),
+        },
+        description=(
+            "Read each Great Britain private renter's rent off its assigned BRMA's "
+            "list at its FRS rank, scaled to its region's FRS level."
+        ),
+    )
+    sources = (
+        SourceRef(
+            private_rent_localisation.QUANTILES_SOURCE,
+            "raw-bytes-v1",
+            "Weekly rent quantiles by BRMA and LHA category B to E.",
+        ),
+        SourceRef(
+            private_rent_localisation.COUNTS_SOURCE,
+            "raw-bytes-v1",
+            "Census private-rented households by FRS region, BRMA and bedrooms.",
+        ),
+    )
+    return (node,), sources
+
+
 def register_uk_population_kernels(registry: KernelRegistry) -> None:
     from microcosm.build.graph_atomic_geography import (
         register_atomic_geography_kernels,
@@ -1218,6 +1532,8 @@ def register_uk_population_kernels(registry: KernelRegistry) -> None:
         UKPropertyValueKernel(),
         UKPropertyBandKernel(),
         UKLocalAuthorityResolveKernel(),
+        UKBRMAAreaKernel(),
+        UKPrivateRentKernel(),
         UKLocationDrawKernel(),
         UKGeographyMappingKernel(),
         UKGeographyGateKernel(),

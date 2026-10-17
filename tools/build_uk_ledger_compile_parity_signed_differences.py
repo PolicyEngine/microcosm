@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from importlib import resources as importlib_resources
 from pathlib import Path
 
+import numpy as np
+
 from microcosm.build.gates import ledger_compile_parity_signed_differences
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
@@ -425,15 +427,18 @@ _UC_METRICS = frozenset(
 
 # Cite the issue in the repo's short form throughout: the live tree may not
 # name the retired data package (test_us_plan's incumbent-reference guard).
+#: The UC drift rationales' fixture/ours bands are read off the rows at each
+#: regeneration (``_uc_drift_rationales``), so a re-pin cannot leave them stale.
 _UC_TOTALS_DRIFT_RATIONALE = (
     "Fix-and-signed (Maria's ruling, PR #795): the fixture corrects "
     "uk-data#468 at extraction - the incumbent attaches local UC counts by "
     "row position against unrelated orderings, so its live y-frame is a "
     "permutation; the fixture joins the same publisher counts to their areas "
-    "by name instead. The residual per-area gap is the incumbent's uniform "
-    "national payment-distribution rescale (fixture/ours 0.8925-0.9003 "
-    "across all 982 total rows) plus sub-0.5% extract-vintage noise - the "
-    "same scaling class the SPI and age families carry."
+    "by name instead. Since the abf0921 re-pin (microcosm#1300) our cells "
+    "count each area's paid claims, while the incumbent scales all-claims "
+    "counts by one national payment share, so the residual per-area gap "
+    "({band}) is that difference in paid share between areas, plus "
+    "extract-vintage noise."
 )
 
 _UC_CHILDREN_DRIFT_RATIONALE = (
@@ -441,9 +446,9 @@ _UC_CHILDREN_DRIFT_RATIONALE = (
     "class: on top of the uk-data#468 alignment correction and the national "
     "rescale, the incumbent's child splits are a COUNTRY-share imputation "
     "(GB proportions applied to each area's total), while ours are the "
-    "published Stat-Xplore per-area child-count buckets. The per-area "
-    "scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic "
-    "variation in family size that the imputation flattens."
+    "published Stat-Xplore per-area child-count buckets of paid claims. The "
+    "per-area scatter ({band}) is the real geographic variation in family "
+    "size that the imputation flattens."
 )
 
 _UC_NI_FIXTURE_ONLY_RATIONALE = (
@@ -484,10 +489,22 @@ _EQUIV_INCOME_FIXTURE_ONLY_RATIONALE = (
 )
 
 _PRIVATE_RENT_FIXTURE_ONLY_RATIONALE = (
-    "Signed deferral: every PIPR fact in the pinned feed is dated 2026-06, "
-    "after the 2025 target period; Scotland is published at BRMA grain and "
-    "Northern Ireland is absent. chronicle#200 asks for the 2025 months, which "
-    "the package's preserved source rows already carry."
+    "Signed deferral: PIPR publishes no rent for these authorities. Scotland's "
+    "rents are published for its 18 Broad Rental Market Areas only and bind at "
+    "that grain (ons.rent.private_rent_brma, microcosm#1090, #1262); Northern "
+    "Ireland has a country mean only; and two English authorities are not "
+    "published. The incumbent's rows here are not published cells."
+)
+
+#: microcosm#1262: Scotland's PIPR rents bind at the 18 BRMAs, a grain the
+#: incumbent never fitted.
+_PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE = (
+    "ledger_only by construction: PIPR publishes Scotland's private rents for "
+    "its 18 Broad Rental Market Areas only, and Microcosm binds them at that "
+    "grain (ons.rent.private_rent_brma, microcosm#1090, #1262); the incumbent "
+    "fits no BRMA rows, so it carries no row to compare. The value is the "
+    "compiled calendar-2025 mean, which the bound total composes with the "
+    "BRMA's private renters."
 )
 
 _LEDGER_ONLY_RATIONALE = (
@@ -507,12 +524,6 @@ _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE = (
 )
 
 _LOCAL_DRIFT_RATIONALES = {
-    "uc_households": _UC_TOTALS_DRIFT_RATIONALE,
-    **{
-        metric: _UC_CHILDREN_DRIFT_RATIONALE
-        for metric in _UC_METRICS
-        if metric != "uc_households"
-    },
     **{f"age/{lower}_{lower + 10}": _AGE_DRIFT_RATIONALE for lower in range(0, 80, 10)},
     **{
         f"hmrc/{variable}/{measure}": _HMRC_DRIFT_RATIONALE
@@ -780,10 +791,13 @@ def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
             .read_text(encoding="utf-8")
         )
 
+    # The support floor's reviewed exclusions defer their areas' cells as
+    # signed deferrals too; their rationale, not a per-metric one, is the cause
+    # (#1305 review: two English UC cells read as Northern Ireland's).
     rule_ids = {
         str(rule["rule_id"])
         for rule in committed("local_small_cell_rule.json")["rules"]
-    }
+    } | {"local_authority_support_floor_excluded"}
     return {
         (str(deferral["target_id"]), str(area)): str(deferral["rationale"])
         for deferral in committed("local_target_reference_membership.json")[
@@ -791,6 +805,36 @@ def _small_cell_deferral_rationales() -> dict[tuple[str, str], str]:
         ]
         if deferral["reason_id"] in rule_ids
         for area in deferral["area_ids"]
+    }
+
+
+def _uc_drift_rationales(
+    report: dict[str, object], metric_by_target_id: dict[str, str]
+) -> dict[str, str]:
+    """The UC drift rationales, their fixture/ours bands read off the rows."""
+
+    ratios: dict[str, list[float]] = {"totals": [], "children": []}
+    for row in report.get("differences", ()):
+        if not isinstance(row, dict) or row.get("kind") != "calibration_drift":
+            continue
+        prefix = str(row.get("name", "")).partition("@")[0]
+        metric = metric_by_target_id.get(prefix, prefix)
+        fixture, ours = row.get("fixture_value"), row.get("ledger_value")
+        if metric not in _UC_METRICS or not fixture or not ours:
+            continue
+        group = "totals" if metric == "uc_households" else "children"
+        ratios[group].append(float(fixture) / float(ours))
+
+    def band(values: list[float]) -> str:
+        if not values:
+            return "no rows"
+        low, high = (float(value) for value in np.percentile(values, [5, 95]))
+        return f"p5-p95 fixture/ours {low:.3f}-{high:.3f} across {len(values)} rows"
+
+    children = _UC_CHILDREN_DRIFT_RATIONALE.format(band=band(ratios["children"]))
+    return {
+        "uc_households": _UC_TOTALS_DRIFT_RATIONALE.format(band=band(ratios["totals"])),
+        **{metric: children for metric in _UC_METRICS if metric != "uc_households"},
     }
 
 
@@ -805,6 +849,10 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
 
     metric_by_target_id = _local_metric_by_target_id()
     small_cells = _small_cell_deferral_rationales()
+    drift_rationales = {
+        **_LOCAL_DRIFT_RATIONALES,
+        **_uc_drift_rationales(report, metric_by_target_id),
+    }
     for row in report.get("differences", ()):
         if not isinstance(row, dict):
             continue
@@ -825,14 +873,16 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _COUNCIL_TAX_WALES_LEDGER_ONLY_RATIONALE
         elif metric == "housing/council_tax_net":
             row["reason"] = _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE
-        elif kind == "calibration_drift" and metric in _LOCAL_DRIFT_RATIONALES:
-            row["reason"] = _LOCAL_DRIFT_RATIONALES[metric]
+        elif kind == "calibration_drift" and metric in drift_rationales:
+            row["reason"] = drift_rationales[metric]
         elif kind == "fixture_only" and metric in _LOCAL_FIXTURE_ONLY_RATIONALES:
             row["reason"] = _LOCAL_FIXTURE_ONLY_RATIONALES[metric]
         elif kind == "ledger_only" and metric == "households":
             row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only" and metric.startswith("high_value_homes/"):
             row["reason"] = _DERIVED_STOCK_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and metric == "rent/private_rent_brma":
+            row["reason"] = _PRIVATE_RENT_BRMA_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 

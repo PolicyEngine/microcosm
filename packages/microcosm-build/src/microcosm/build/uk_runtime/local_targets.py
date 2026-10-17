@@ -41,11 +41,22 @@ from microcosm.build.uk_runtime.tenure_constants import (
 )
 from microcosm.build.uk_runtime.uc_relationships import uc_family_child_member
 
-AREA_TYPES = ("constituency", "la")
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, the grain ONS's Price
+#: Index of Private Rents publishes Scottish rents at (microcosm#1090, #1262).
+#: It is a partial grain: households outside Scotland carry no BRMA area.
+AREA_TYPES = ("constituency", "la", "brma")
 AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "constituency": "constituency",
     "la": "local_authority",
+    "brma": "statistical_scope",
 }
+#: Area types every household belongs to; a partial grain covers some only.
+FULL_AREA_TYPES = ("constituency", "la")
+PARTIAL_AREA_TYPES = ("brma",)
+#: The BRMA grain's metrics: Scotland's PIPR rents, 12 x the BRMA mean x its
+#: private renters, against the same household rent the local-authority rows
+#: read.
+BRMA_METRICS = ("rent/private_rent_brma",)
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
 #: SPI higher rate taxpayers by area (microcosm#1123): the engine's tax_band
 #: on adjusted net income less allowances, as HMRC classes a taxpayer by the
@@ -90,6 +101,7 @@ COUNTRY_TO_REGION = {
     "Northern Ireland": "NORTHERN_IRELAND",
 }
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
+UK_LOCAL_AREA_CROSSWALK_RESOURCE = "local_area_crosswalk.json"
 
 
 def load_uk_population_contract() -> dict[str, Any]:
@@ -101,6 +113,38 @@ def load_uk_population_contract() -> dict[str, Any]:
         .read_text()
     )
     return json.loads(payload)
+
+
+def _brma_name_by_area() -> dict[str, str]:
+    crosswalk = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_LOCAL_AREA_CROSSWALK_RESOURCE)
+        .read_text()
+    )
+    level = crosswalk["levels"][AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL["brma"]]
+    return {str(code): str(name) for code, name in level["brma_name_by_area"].items()}
+
+
+def uk_brma_area_roster() -> tuple[str, ...]:
+    """The BRMA grain's area codes, Scotland's 18 PIPR BRMAs (``S33...``)."""
+
+    return tuple(sorted(_brma_name_by_area()))
+
+
+def uk_brma_area_codes(brma: Sequence[object]) -> np.ndarray:
+    """Each household's BRMA area code on the BRMA grain, blank outside it.
+
+    The crosswalk names the BRMA of each of the grain's codes
+    (``brma_name_by_area``, from the area-to-BRMA layer), and a placed
+    household reads its BRMA off its assigned area (microcosm#1262), so a
+    Scottish household's code is its BRMA's; any other household belongs to
+    no area of the grain.
+    """
+
+    code_by_name = {name: code for code, name in _brma_name_by_area().items()}
+    return np.asarray(
+        [code_by_name.get(str(value), "") for value in brma], dtype=object
+    )
 
 
 def load_uk_local_geography_contract() -> dict[str, Any]:
@@ -119,6 +163,8 @@ def metric_names(
     _validate_area_type(area_type)
     if target_profile is not None:
         return metric_names_from_target_profile(target_profile, area_type)
+    if area_type == "brma":
+        return BRMA_METRICS
     names: list[str] = []
     for income_variable in INCOME_VARIABLES:
         names.append(f"hmrc/{income_variable}/amount")
@@ -303,6 +349,16 @@ def compute_household_metrics(
     matrix = pd.DataFrame()
     stored_period = period if input_period is None else input_period
 
+    if area_type == "brma":
+        tenure_type = _values(_calculate(sim, "tenure_type", period))
+        is_private_renter = (tenure_type == "RENT_PRIVATELY").astype(float)
+        benunit_rent = _values(_calculate(sim, "benunit_rent", period))
+        household_rent = _map_result(sim, benunit_rent, "benunit", "household")
+        matrix[BRMA_METRICS[0]] = household_rent * is_private_renter
+        return _indexed_metrics(
+            matrix, sim, area_type, period, household_ids, target_profile
+        )
+
     for income_variable in INCOME_VARIABLES:
         income_values = _values(_calculate(sim, income_variable, period))
         if income_variable == "self_employment_income":
@@ -436,6 +492,21 @@ def compute_household_metrics(
         matrix[electricity_metric] = energy[ELECTRICITY_KWH]
         matrix[gas_metric] = energy[GAS_KWH]
         matrix[connected_metric] = (gas_spend > 0).astype(float)
+
+    return _indexed_metrics(
+        matrix, sim, area_type, period, household_ids, target_profile
+    )
+
+
+def _indexed_metrics(
+    matrix: pd.DataFrame,
+    sim: Any,
+    area_type: str,
+    period: int | str | None,
+    household_ids: Sequence[Any] | None,
+    target_profile: Mapping[str, Any] | Any | None,
+) -> pd.DataFrame:
+    """Select the area type's metrics in order and index them by household."""
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]

@@ -39,7 +39,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
 )
-from microcosm.build.uk_runtime.local_targets import AREA_TYPES
+from microcosm.build.uk_runtime.local_targets import AREA_TYPES, PARTIAL_AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
@@ -544,16 +544,25 @@ def build_uk_rowwise_local_surface_matrix(
                 raise ValueError(
                     f"assigned_by_grain[{grain!r}] must align with metrics rows."
                 )
-        if any(not code.strip() for code in assigned.tolist()):
+        # A partial grain (Scotland's BRMAs) leaves the households outside its
+        # areas blank: they belong to no area of the grain and support none
+        # of its cells (microcosm#1262). A full grain refuses a blank.
+        blank = np.asarray([not code.strip() for code in assigned.tolist()], dtype=bool)
+        if blank.any() and grain not in PARTIAL_AREA_TYPES:
             raise ValueError(f"assigned_by_grain[{grain!r}] contains blank code(s).")
+        if blank.all():
+            raise ValueError(
+                f"assigned_by_grain[{grain!r}] assigns no household to an area."
+            )
         assigned_areas_by_grain[grain] = tuple(assigned.tolist())
+        placed = assigned[~blank]
 
         codes = tuple(str(code) for code in area_codes_by_grain[grain])
         if len(set(codes)) != len(codes):
             raise ValueError(f"area roster for {grain!r} must be unique.")
         if any(not code.strip() for code in codes):
             raise ValueError(f"area roster for {grain!r} contains blank code(s).")
-        off_roster_assignments = sorted(set(assigned.tolist()) - set(codes))
+        off_roster_assignments = sorted(set(placed.tolist()) - set(codes))
         if off_roster_assignments:
             raise ValueError(
                 f"assigned area(s) are not on the {grain!r} roster: "
@@ -575,7 +584,7 @@ def build_uk_rowwise_local_surface_matrix(
                 f"{unknown_metrics[:5]}."
             )
         covered = set(grain_surface["area_code"].astype(str))
-        uncovered = sorted(set(assigned.tolist()) - covered)
+        uncovered = sorted(set(placed.tolist()) - covered)
         if require_every_assigned_area_covered and uncovered:
             raise ValueError(
                 f"target surface does not cover assigned area(s) on {grain!r}: "
@@ -585,7 +594,7 @@ def build_uk_rowwise_local_surface_matrix(
         area_codes_normalized[grain] = codes
         code_index = {code: index for index, code in enumerate(codes)}
         household_area_index_by_grain[grain] = np.asarray(
-            [code_index[code] for code in assigned.tolist()], dtype=np.int32
+            [code_index.get(code, -1) for code in assigned.tolist()], dtype=np.int32
         )
 
     assert household_index is not None
@@ -1030,8 +1039,12 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     metric_columns: dict[tuple[str, str], np.ndarray] = {}
     for grain, codes in problem.area_codes_by_grain.items():
         code_index = {code: index for index, code in enumerate(codes)}
+        # A household outside a partial grain's areas has no index there.
         area_indices[grain] = np.asarray(
-            [code_index[code] for code in problem.assigned_areas_by_grain[grain]],
+            [
+                code_index[code] if code.strip() else -1
+                for code in problem.assigned_areas_by_grain[grain]
+            ],
             dtype=np.int32,
         )
         for index, name in enumerate(problem.metric_names_by_grain[grain]):

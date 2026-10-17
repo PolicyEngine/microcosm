@@ -49,6 +49,7 @@ def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
         "country": "E92000001",
         "local_authority": "E09000001",
         "constituency": "E14000001",
+        "brma": "S33000001",
     }
     return CalibrationHierarchy(
         provider=HierarchyNode("fixture", "Fixture provider"),
@@ -604,6 +605,15 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
             "n_within_10pct": 1,
             "pass_rate": 1.0,
         },
+        # Every level is written; Scotland's BRMA rows bind no target here.
+        {
+            "geography_level": "brma",
+            "n_targets": 0,
+            "n_scored": 0,
+            "n_skipped": 0,
+            "n_within_10pct": 0,
+            "pass_rate": None,
+        },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
 
@@ -1017,6 +1027,7 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "country",
         "local_authority",
         "constituency",
+        "brma",
     )
 
 
@@ -1124,3 +1135,132 @@ class TestSupportFamilyWeights:
         household = self._household(copies=True).drop(columns=["source_household_id"])
         with pytest.raises(ValueError, match="source_household_id"):
             uk_support_family_weights(household)
+
+
+def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
+    """María's ruling of 2026-10-17 (#1305 review): ten source households per BRMA row.
+
+    One BRMA row rests on three source households, the other on eleven. The
+    thin row stays in the payload with its model figures null and a note;
+    it counts as scored but never as passing, and stays out of the family
+    rollup, so nothing published can be differenced to recover it.
+    """
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": [1.0] * 6 + [0.0] * 8,
+            "wide_measure": [1.0] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=10.0,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="private_rent",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, measure in (
+            ("thin_brma_target", "thin_measure"),
+            ("wide_brma_target", "wide_measure"),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.arange(n, dtype=np.int64),
+                "person_household_id": np.arange(n, dtype=np.int64),
+            }
+        ),
+        "household": household,
+    }
+    frame = Frame(
+        tables,
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    support = pd.DataFrame(
+        columns=[
+            "geography_level",
+            "area_code",
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        ]
+    )
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        local_area_support=support,
+    )
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin, wide = rows["thin_brma_target"], rows["wide_brma_target"]
+    assert thin["final_estimate"] is None and thin["relative_error"] is None
+    assert thin["within_tolerance"] is None
+    assert "model_figures_withheld" in thin["metadata"]
+    assert wide["final_estimate"] == pytest.approx(14.0)
+    (brma,) = [
+        row
+        for row in payload["uk_diagnostics"]["target_pass_rates_by_geography_level"]
+        if row["geography_level"] == "brma"
+    ]
+    assert (brma["n_targets"], brma["n_scored"], brma["n_within_10pct"]) == (2, 2, 0)
+    (family,) = payload["uk_diagnostics"]["weakest_families"]
+    assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
+
+
+def test_written_rows_and_gate_reports_drop_a_withheld_rows_figures() -> None:
+    from microcosm.build.uk_runtime.diagnostics import (
+        uk_withhold_brma_figures,
+        uk_withhold_gate_report_rows,
+    )
+
+    withheld = frozenset({"thin@2025"})
+    rows = [
+        {"name": "thin@2025", "target": 10.0, "estimate": 6.0, "relative_error": -0.4},
+        {"name": "wide@2025", "target": 10.0, "estimate": 14.0, "relative_error": 0.4},
+    ]
+    thin, wide = uk_withhold_brma_figures(rows, withheld)
+    assert thin["estimate"] is None and thin["relative_error"] is None
+    assert thin["target"] == 10.0 and "model_figures_withheld" in thin
+    assert wide == rows[1] and rows[0]["estimate"] == 6.0
+    report = {
+        "phase": "terminal",
+        "outcomes": [
+            {
+                "id": "uk_local_target_fit",
+                "failures": [
+                    "thin@2025: relative_error=-0.4 exceeds 0.25; target=10.0, "
+                    "final_estimate=6.0.",
+                    "wide@2025: relative_error=0.4 exceeds 0.25; target=10.0, "
+                    "final_estimate=14.0.",
+                ],
+                "details": {
+                    "relative_errors": {"thin@2025": -0.4, "wide@2025": 0.4},
+                    "worst_offenders": ["thin@2025", "wide@2025"],
+                },
+            }
+        ],
+    }
+    (outcome,) = uk_withhold_gate_report_rows(report, withheld)["outcomes"]
+    assert outcome["failures"][0].startswith("thin@2025: outside its fit tolerance")
+    assert "6.0" not in outcome["failures"][0]
+    assert outcome["failures"][1] == report["outcomes"][0]["failures"][1]
+    assert outcome["details"]["relative_errors"] == {"wide@2025": 0.4}
+    assert outcome["details"]["worst_offenders"] == ["wide@2025"]
+    assert uk_withhold_gate_report_rows(report, frozenset()) == report

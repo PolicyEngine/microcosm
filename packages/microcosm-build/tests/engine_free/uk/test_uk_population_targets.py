@@ -228,8 +228,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # targets; microcosm#1207 adds the three DESNZ local-authority energy
     # targets and DfT BUS01a journeys for London and the eight other English
     # regions; microcosm#1095 keeps DWP's five-or-more-children count as a
-    # diagnostic beside the two-child-limit rows.
-    assert len(resource["targets"]) == 414
+    # diagnostic beside the two-child-limit rows; microcosm#1262 binds
+    # Scotland's PIPR rents at BRMA grain.
+    assert len(resource["targets"]) == 415
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -244,7 +245,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 356
-    assert len(profile_scope) == 58
+    assert len(profile_scope) == 59
     assert target_ids[:356] == registry_scope
     assert target_ids[356:] == profile_scope
 
@@ -284,9 +285,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 58
+    assert parity["contract_target_count"] == 59
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 33
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 34
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -436,7 +437,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 414
+    assert len(target_ids) == 415
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -937,7 +938,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 414
+    assert len(targets) == 415
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

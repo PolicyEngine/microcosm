@@ -975,7 +975,10 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
-        assert len(passed) == 21
+        # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
+        # rewrite (microcosm#1262; its enum_domain binding is stubbed here).
+        assert len(passed) == 22
+        assert "uk_local_brma_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -1673,9 +1676,10 @@ class TestPreflightBindings:
         # Great Britain, three rows), 1,040 of them compiled: the support
         # floor defers five, Orkney and Shetland's gas-connected cells are
         # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
-        # kWh row.
-        assert result.details["candidate_targets"] == 25_309
-        assert result.details["reference_targets"] == 27_115
+        # kWh row. microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all
+        # compiled.
+        assert result.details["candidate_targets"] == 25_327
+        assert result.details["reference_targets"] == 27_133
         # Only the 1,806 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
@@ -2054,6 +2058,64 @@ class TestEnumDomainResolution:
             {"columns": ["student_loan_plan"]},
         )
         assert result.passed
+
+    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+        self,
+    ) -> None:
+        """microcosm#1305 review: the unstubbed binding, then the classification.
+
+        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
+        a value outside the engine's enum fails it, and the failure stops even
+        a development build (no candidate is exported).
+        """
+
+        import enum
+
+        from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
+        from microcosm.build.uk_runtime import full_gates
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        person, benunit, household = _tables()
+        household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
+            : len(household)
+        ]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class BRMAName(enum.Enum):
+            CARDIFF = "CARDIFF"
+            LOTHIAN = "LOTHIAN"
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "brma"
+                return BRMAName
+
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_local_brma_enum_domain"
+        )
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            entry.parameters,
+        )
+        assert not result.passed
+        report = GatePhaseReport(
+            entry.phase,
+            (
+                GateOutcome(
+                    entry=entry, status=GateStatus.FAILED, result=result, reason=None
+                ),
+            ),
+        )
+        for fraction in (0.1, 1.0):
+            outcome = full_gates.classify_full_gate_outcomes(
+                report, sample_fraction=fraction, release_candidate=False
+            )
+            assert outcome["artifact_permitted"] is False
+            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
 
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain

@@ -65,6 +65,23 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
+#: A BRMA row's model figures leave the build only when at least this many
+#: distinct source households carry them (María's ruling of 2026-10-17 on the
+#: #1305 review, UKDS CD137 clause 8); the support gate covers constituencies
+#: and authorities, not the partial BRMA grain.
+UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
+#: The fields of a target row that the model's weights produce.
+_MODEL_FIGURE_FIELDS = (
+    "initial_estimate",
+    "final_estimate",
+    "relative_error",
+    "within_tolerance",
+    "final_capped_scaled_error",
+    "final_loss_contribution",
+)
+_WITHHELD_NOTE = (
+    "model figures withheld: fewer than 10 distinct source households carry this row"
+)
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -801,15 +818,20 @@ def uk_zero_weight_strata(
     return rows
 
 
+#: Adapter and Ledger spellings of a diagnostics level: the rowwise area
+#: type ``la``, and ``statistical_scope``, the Ledger level of PIPR's Scottish
+#: BRMA rows, the only targets the contract binds at it (microcosm#1262).
+_GEOGRAPHY_LEVEL_ALIASES = {"la": "local_authority", "statistical_scope": "brma"}
+
+
 def _normalize_geography_level(value: object) -> str:
     raw = getattr(value, "value", value)
     level = str(raw).strip().lower()
-    if level == "la":
-        level = "local_authority"
+    level = _GEOGRAPHY_LEVEL_ALIASES.get(level, level)
     if level not in UK_TARGET_GEOGRAPHY_LEVELS:
         raise ValueError(
             f"Unknown UK target geography level {raw!r}; expected one of "
-            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or adapter alias 'la')."
+            f"{UK_TARGET_GEOGRAPHY_LEVELS} (or alias 'la' or 'statistical_scope')."
         )
     return level
 
@@ -930,10 +952,108 @@ def _declared_target_partition(
     return declared, compiled, skipped_names
 
 
+def uk_withheld_brma_rows(
+    result: CalibrationResult,
+    frame: Frame,
+    target_rows: Sequence[Mapping[str, object]],
+    geography_levels: Mapping[str, str],
+) -> set[str]:
+    """The BRMA rows whose model figures rest on fewer than ten source households.
+
+    A row's carriers are the distinct ``source_household_id`` values of the
+    positive-weight households with a nonzero entry in its problem row, as
+    the area support counts them.
+    """
+
+    names = [
+        str(row["name"])
+        for row in target_rows
+        if geography_levels.get(str(row["name"])) == "brma"
+    ]
+    if not names:
+        return set()
+    household = frame.table("household")
+    if "source_household_id" not in household.columns:
+        raise ValueError(
+            "UK BRMA diagnostics need household source_household_id to count "
+            "each row's carriers."
+        )
+    sources = household["source_household_id"].to_numpy()
+    positive = np.asarray(result.weights, dtype=float) > 0
+    matrix = result.problem.matrix.tocsr()
+    index = {str(name): position for position, name in enumerate(result.problem.names)}
+    withheld = set()
+    for name in names:
+        position = index.get(name)
+        if position is None:
+            raise ValueError(f"UK BRMA diagnostic {name!r} has no problem row.")
+        columns = matrix.indices[matrix.indptr[position] : matrix.indptr[position + 1]]
+        columns = columns[positive[columns]]
+        if len(pd.unique(sources[columns])) < UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS:
+            withheld.add(name)
+    return withheld
+
+
+def uk_withhold_brma_figures(
+    rows: Sequence[Mapping[str, object]],
+    withheld: frozenset[str],
+    *,
+    fields: Sequence[str] = ("estimate", "relative_error", "abs_relative_error"),
+) -> list[dict[str, object]]:
+    """Copies of written target rows with a withheld row's model figures blank."""
+
+    out = []
+    for row in rows:
+        copy = dict(row)
+        if str(copy.get("name")) in withheld:
+            for field in fields:
+                if field in copy:
+                    copy[field] = None
+            copy["model_figures_withheld"] = _WITHHELD_NOTE
+        out.append(copy)
+    return out
+
+
+def uk_withhold_gate_report_rows(
+    report_payload: Mapping[str, object], withheld: frozenset[str]
+) -> dict[str, object]:
+    """A gate report with a withheld row's errors and estimates taken out.
+
+    The fit gates quote each failing row's target and final estimate and list
+    every checked row's relative error; a withheld BRMA row keeps its name and
+    its failure, without the figures.
+    """
+
+    if not withheld:
+        return dict(report_payload)
+    outcomes = []
+    for outcome in report_payload.get("outcomes") or []:
+        failures = []
+        for line in outcome.get("failures") or []:
+            name = next((w for w in withheld if str(line).startswith(f"{w}:")), None)
+            failures.append(
+                line
+                if name is None
+                else f"{name}: outside its fit tolerance; {_WITHHELD_NOTE}."
+            )
+        details = dict(outcome.get("details") or {})
+        errors = details.get("relative_errors")
+        if isinstance(errors, Mapping):
+            details["relative_errors"] = {
+                key: value for key, value in errors.items() if key not in withheld
+            }
+        worst = details.get("worst_offenders")
+        if isinstance(worst, list):
+            details["worst_offenders"] = [key for key in worst if key not in withheld]
+        outcomes.append({**outcome, "failures": failures, "details": details})
+    return {**report_payload, "outcomes": outcomes}
+
+
 def _target_pass_rates(
     target_rows: list[dict[str, object]],
     skipped_names: Sequence[str],
     geography_levels: Mapping[str, str],
+    withheld: frozenset[str] = frozenset(),
 ) -> list[dict[str, object]]:
     counts = {
         level: {
@@ -947,6 +1067,11 @@ def _target_pass_rates(
     for row in target_rows:
         name = str(row["name"])
         level = geography_levels[name]
+        if name in withheld:
+            # Scored, never counted as passing: its outcome stays unknowable.
+            counts[level]["n_targets"] += 1
+            counts[level]["n_scored"] += 1
+            continue
         raw_error = row.get("relative_error")
         if not isinstance(raw_error, (int, float)) or isinstance(raw_error, bool):
             raise ValueError(
@@ -1028,7 +1153,17 @@ def uk_calibration_diagnostics_payload(
     declared, _, skipped = _declared_target_partition(result, target_rows, registry)
     geography = _geography_mapping(declared, target_geography_levels)
     weights = uk_weight_summary(result_weights)
-    pass_rates = _target_pass_rates(target_rows, skipped, geography)
+    withheld = frozenset(uk_withheld_brma_rows(result, frame, target_rows, geography))
+    for row in target_rows:
+        if str(row["name"]) in withheld:
+            for field in _MODEL_FIGURE_FIELDS:
+                if field in row:
+                    row[field] = None
+            row["metadata"] = {
+                **dict(row.get("metadata") or {}),
+                "model_figures_withheld": _WITHHELD_NOTE,
+            }
+    pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
     strata = uk_zero_weight_strata(
         household,
         result_weights,
@@ -1047,7 +1182,11 @@ def uk_calibration_diagnostics_payload(
         },
     }
     if local_area_support is not None:
-        uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)
+        # A withheld row stays out of every rollup, so that no family total
+        # can be differenced against the published rows to recover it.
+        uk_diagnostics["weakest_families"] = uk_weakest_families(
+            [row for row in target_rows if str(row["name"]) not in withheld]
+        )
         uk_diagnostics["weakest_areas_by_fit"] = uk_weakest_areas_by_fit(
             target_rows,
             local_area_support,

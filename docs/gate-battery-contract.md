@@ -240,7 +240,7 @@ remains spec-only.
 
 UK evaluates the declaration through four producer scopes: spine,
 calibration seam, national release cut, and local candidate. The first three
-compose the national release certification. The six local-candidate entries
+compose the national release certification. The seven local-candidate entries
 are explicitly classified as excluded from that certification until the
 local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
