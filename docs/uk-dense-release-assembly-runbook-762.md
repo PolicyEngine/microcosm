@@ -213,12 +213,19 @@ sha256, plus any `--class-note` sentence and, for an area, its name. What the
 tool cannot template it checks in three ways, and only these three:
 
 - `--approved-by` must be a GitHub login (letters, digits and hyphens, at most
-  39 characters, starting with a letter or digit) and nothing else.
+  39 characters) that starts with a letter and holds at most one run of
+  digits: `juaristi22` passes, `4521` and `rows-7-of-50` do not.
 - `--class-note` text, `--area-name` names and `--adjudication` may carry
-  digits only inside issue references (`#1301`, `microcosm#1301`,
-  `PolicyEngine/microcosm#1301`, with no digits in the owner or repository
-  name) and ISO dates (`YYYY-MM-DD`), and never a `%`. Anything else, like a
-  reviewer that is not a login, is refused before the build is read.
+  digits only inside an issue reference of an allowlisted repository
+  (`microcosm#1301`, `chronicle#359`, `uk-data#521` or `PolicyEngine/<repo>#N`,
+  each optionally anchored `#issuecomment-<id>`), a GitHub URL of a
+  PolicyEngine issue or pull request (`https://github.com/PolicyEngine/<repo>/issues/<N>`
+  or `.../pull/<N>`, optionally `#issuecomment-<id>`) and an ISO date of a real
+  day in 2000-2099, and never a percent sign in any form. A bare `#N`, another
+  repository's short form (write `PolicyEngine/policyengine.py#553`), a comment
+  cited as "issue comment <id>" and any other number (`K=15`, `150,000
+  households`, a plan code such as `c9`, a bare year) are refused, before the
+  build is read.
 - The drafted entries then go through the release contract's disclosure walk,
   and a finding refuses the draft, though on a release directory the walk only
   warns. On text, the walk catches only an area's support worded with its
@@ -240,6 +247,10 @@ unsignable:
 - an entry out of its window, or a `bound_despite_support_floor` approval out
   of its window, is renewed by hand, keeping its reviewed wording and lines.
   Then draft again.
+
+Likewise, an input-mass entry on the local line that is out of its window at
+the gate clock makes the draft unsignable: the tool never drafts input-mass
+entries, so renew it by hand and draft again.
 
 **Outputs**, in `--out`, which must lie outside every git work tree (the tool
 refuses one inside this checkout or any other, and `.gitignore` also covers
@@ -269,8 +280,12 @@ the tool's standard output and kept as flags in `PRIVATE_review.csv`.
 The tool also prints the range of gate clocks build 2 may use, and the receipt
 and `PR_BODY.md` give the **assembly deadline**, where that range ends: the
 earliest expiry among the measure exclusions build 1's solve ran under, the
-local line's degenerate-register entries and the gate-only entries the local
-line stands on after the sign-off. Build 2, its verification and the release
+local line's degenerate-register entries and every gate-only entry build 2's
+gates hold to its window after the sign-off: those on the local line, every
+`bound_despite_support_floor` family whatever its line, and the local line's
+input-mass entries. The range starts at the latest of build 1's clock and
+those entries' approvals, and build 2 refuses a `--gate-review-date` outside
+it before anything runs. Build 2, its verification and the release
 assembly must all run by that date. Assembly and upload check the measure
 exclusions on the day they run, and renewing a measure exclusion or a
 degenerate-register entry changes the solve, so it would need a third build.
@@ -297,8 +312,11 @@ uv run --no-sync python tools/build_uk_full.py <build 1's other arguments> \
   --gate-review-date <inside the range the draft printed> --require-solve-reuse
 ```
 
-- `--out` must be a new directory. Reusing build 1's overwrites build 1's
-  bundle, which `--verify` and the draft receipt still need.
+- `--out` must be a new directory: one holding `build.json`, `failure.json` or
+  any `logbook-spool/*.json` row is refused before the attempt opens, so a
+  retry after a failed build 2 also needs a new `--out`. Build 1's would lose
+  its bundle, which `--verify` and the draft receipt still need; a failed
+  attempt's would end up with two Logbook rows, which `--verify` refuses.
 - `--logbook-prev-row-digest` must name the tail of the `uk/local` Logbook
   chain when build 2 starts. That is build 1's row digest (the `row_digest` of
   the one row in `<build-1>/logbook-spool/`, which is also the file's name),
@@ -311,7 +329,14 @@ uv run --no-sync python tools/build_uk_full.py <build 1's other arguments> \
   reuse.
 
 The calibrated gates evaluate their reviewed exclusions on the gate clock,
-which may not precede `--review-date` or be later than today. Every node
+which may not precede `--review-date` or be later than today. With
+`--require-solve-reuse` it must also lie in the range the draft printed:
+before anything runs, the build refuses a gate clock before the approval of an
+in-line gate-only or degenerate-register entry, or after the expiry of one of
+them or of a measure exclusion the solve applied, and names those entries and
+the usable range. An expired gate-only entry is renewed by a new sign-off;
+renewing an expired degenerate-register entry or measure exclusion changes the
+solve and needs a third build. Every node
 before the calibrated gates is required from the store, and a miss stops the
 build with `SolveReuseError` naming the missing nodes before anything
 computes. A miss means something that keys the solve changed between the
@@ -340,9 +365,11 @@ Verification fails unless all of these hold:
 - no release-blocking gate failed;
 - the signed local report passes the dense release contract;
 - with `--draft-receipt`, every drafted entry is committed, no retired one is,
-  and every rescoped one is committed for the national line only;
+  and every rescoped one is committed for the national line only and otherwise
+  unchanged (the receipt keeps it as committed before the sign-off);
 - the assembly deadline, computed as the draft computes it from build 2's
-  measure exclusions and the checkout's registers, has not passed.
+  measure exclusions and the checkout's registers (every bound family and the
+  local line's input-mass entries included), has not passed.
 
 It warns when build 2 did not reuse build 1's solve, when its per-row errors
 differ, when the disclosure walk a release directory gets finds a per-area
