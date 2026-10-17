@@ -911,6 +911,22 @@ FIGURE_PROBES = (
     # Digits in a URL that is not a PolicyEngine issue or pull request.
     "https://example.org/households/4521",
     "https://github.com/PolicyEngine/microcosm/pull/1307/commits/4521abc",
+    # The third review of microcosm#1307: a citation of a known repository
+    # standing as the figure, beside what it counts or belongs to.
+    "household microcosm#4521 carries weight microcosm#312",
+    "the area has uk-data#7 rows",
+    # A repository off the known list, in a reference or a URL's path.
+    "PolicyEngine/rows#7 against PolicyEngine/floor#50",
+    "https://github.com/PolicyEngine/rows/issues/7",
+    "https://github.com/PolicyEngine/households/pull/4521",
+    # A count after a reference, or run into a comment anchor's id or after it.
+    "microcosm#1301 7",
+    "https://github.com/PolicyEngine/microcosm/issues/1301#issuecomment-623235999212",
+    "https://github.com/PolicyEngine/microcosm/issues/1301#issuecomment-6232359992 7",
+    # A count run into a file URL's line anchor.
+    "https://github.com/PolicyEngine/microcosm/blob/main/docs/rows.md#L37",
+    # A date-shaped figure far from the drafting date.
+    "reviewed 2045-12-31",
 )
 
 
@@ -921,6 +937,20 @@ def test_free_text_stating_a_figure_is_refused(text):
 
 
 @pytest.mark.parametrize(
+    ("text", "word"),
+    [
+        ("household microcosm#4521 carries weight microcosm#312", "microcosm#4521"),
+        ("the area has uk-data#7 rows", "uk-data#7"),
+        ("cell https://github.com/PolicyEngine/microcosm/issues/37", "issues/37"),
+    ],
+)
+def test_a_citation_beside_what_a_figure_counts_reads_as_the_figure(text, word):
+    with pytest.raises(TOOL.InputError, match="reads as that figure") as refused:
+        TOOL.figure_free(text, "--adjudication")
+    assert word in str(refused.value)
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "microcosm#1301 ruling of 2026-10-16",
@@ -928,21 +958,29 @@ def test_free_text_stating_a_figure_is_refused(text):
         "PolicyEngine/policyengine.py#553 (see microcosm#1301)",
         "Synthetic reviewer note without figures.",
         "chronicle#359 and uk-data#521, after microcosm#1300",
-        "microcosm#1301#issuecomment-6232359992",
-        "PolicyEngine/microcosm#1301#issuecomment-6232359992 (the ruling)",
         "https://github.com/PolicyEngine/microcosm/issues/1301#issuecomment-6232359992",
         "the plan (https://github.com/PolicyEngine/microcosm/pull/1307), 2026-10-17",
+        # The third review of microcosm#1307: a lower-case owner, review
+        # anchors and a file URL with digits in its path.
+        "policyengine/microcosm#1301 and https://github.com/policyengine/chronicle/issues/359",
+        "https://github.com/PolicyEngine/microcosm/pull/1307#discussion_r2412345678",
+        "https://github.com/PolicyEngine/microcosm/pull/1307#pullrequestreview-3345678901",
+        "the runbook (https://github.com/PolicyEngine/microcosm/blob/main/docs/"
+        "uk-dense-release-assembly-runbook-762.md).",
     ],
 )
-def test_free_text_with_only_issue_references_and_dates_is_accepted(text):
+def test_free_text_with_only_citations_and_dates_is_accepted(text):
     assert TOOL.figure_free(text, "--adjudication") == text
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        # Cite the comment by its anchor instead (microcosm#1301#issuecomment-N).
+        # Cite the comment by its URL's anchor instead.
         "microcosm#1301 (issue comment 6232359992)",
+        # An anchor stands only in a URL.
+        "microcosm#1301#issuecomment-6232359992",
+        "PolicyEngine/microcosm#1301#issuecomment-6232359992 (the ruling)",
         "K=15",
         "150,000 households",
         "plan arm c9",
@@ -956,6 +994,28 @@ def test_a_number_outside_a_reference_or_date_is_refused(text):
     code or a count from a figure. The manual scan stays the backstop."""
     with pytest.raises(TOOL.InputError, match="a bare #N is refused"):
         TOOL.figure_free(text, "--adjudication")
+
+
+@pytest.mark.parametrize(
+    ("day", "accepted"),
+    [
+        ("2025-10-21", True),
+        ("2027-10-23", True),
+        ("2025-10-20", False),
+        ("2027-10-24", False),
+    ],
+)
+def test_a_date_must_lie_within_a_year_of_the_drafting_date(day, accepted):
+    """366 days either side of the day the tool runs (pinned here to the
+    gate clock), or of the ``today`` a caller gives."""
+    text = f"reviewed {day}"
+    if accepted:
+        assert TOOL.figure_free(text, "--adjudication") == text
+    else:
+        with pytest.raises(TOOL.InputError, match="a bare #N is refused"):
+            TOOL.figure_free(text, "--adjudication")
+    with pytest.raises(TOOL.InputError, match="a bare #N is refused"):
+        TOOL.figure_free(text, "--adjudication", today=date(2030, 1, 1))
 
 
 @pytest.mark.parametrize(
@@ -1022,6 +1082,11 @@ def test_the_drafted_entries_still_get_the_release_disclosure_walk():
         "7-rows",
         "rows-7-of-50",
         "household4521-weight312",
+        # And with one digit run (the third review of microcosm#1307): only a
+        # known reviewer's login may hold digits.
+        "rows-7",
+        "ess7",
+        "w312",
     ],
 )
 def test_approved_by_must_be_a_github_login(repo, tmp_path, capsys, login):
@@ -1034,7 +1099,15 @@ def test_approved_by_must_be_a_github_login(repo, tmp_path, capsys, login):
 
 @pytest.mark.parametrize(
     "login",
-    ["juaristi22", "MaxGhenis", "vahid-ahmadi", "synthetic-reviewer", "r", "r" * 39],
+    [
+        "juaristi22",
+        "Juaristi22",
+        "MaxGhenis",
+        "vahid-ahmadi",
+        "synthetic-reviewer",
+        "r",
+        "r" * 39,
+    ],
 )
 def test_a_github_login_is_accepted(login):
     assert TOOL.github_login(login, "--approved-by") == login
