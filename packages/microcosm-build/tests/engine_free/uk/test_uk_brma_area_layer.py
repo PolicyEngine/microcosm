@@ -308,7 +308,39 @@ def test_area_brmas_fails_closed(column, index, value, message) -> None:
 
 
 # ----------------------------------------------------------------------------
-# The mounted supports
+# The supports, pinned and mounted
+
+#: The pinned atomic supports' (area, FRS region) pairs, digested so that CI,
+#: which mounts no supports, still checks the committed layer against them
+#: (#1305 review): England and Wales by LSOA, Scotland by output area. The
+#: mounted test below re-derives each digest from the supports themselves.
+_SUPPORT_REGION_PAIRS = {
+    "ew_lsoa21": (
+        "6ab8c492bfe60ac840bb5e3e023f7286c850c7eac9cf433e7ea39fa16ea02394",
+        35_672,
+    ),
+    "scotland_oa22": (
+        "ca880b30b485a18660a1a6545155c00db42e4e518a955347f9085884407e0f44",
+        46_363,
+    ),
+}
+
+
+def _pairs_digest(pairs) -> tuple[str, int]:
+    lines = sorted({f"{area}\t{region}" for area, region in pairs})
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest(), len(lines)
+
+
+@pytest.mark.parametrize("grain", sorted(_SUPPORT_REGION_PAIRS))
+def test_the_layer_places_every_pinned_support_area_in_its_own_region(grain) -> None:
+    layer = json.loads(_payload())
+    pairs = [
+        (code, region)
+        for region, brmas in layer["brmas"][grain].items()
+        for codes in brmas.values()
+        for code in codes
+    ]
+    assert _pairs_digest(pairs) == _SUPPORT_REGION_PAIRS[grain]
 
 
 def _mounted(system: str) -> bytes:
@@ -334,3 +366,14 @@ def test_every_mounted_area_has_a_brma_in_its_own_region(system) -> None:
     grain = "ew_lsoa21" if system == EW else "scotland_oa22"
     assert counts[grain] == len(area_system)
     assert set(out) <= set(layer.brma_by_area[grain].values())
+    key = "lsoa_code" if system == EW else "area"
+    assert (
+        _pairs_digest(
+            zip(
+                support.arrays[key].astype(str),
+                support.arrays["frs_region"].astype(str),
+                strict=True,
+            )
+        )
+        == _SUPPORT_REGION_PAIRS[grain]
+    )
