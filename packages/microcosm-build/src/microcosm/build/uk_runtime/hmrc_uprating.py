@@ -361,6 +361,26 @@ def _engine_version() -> str:
     return str(engine_parameter_pins()["engine"]["version"])
 
 
+def assert_installed_engine_is_pinned() -> str:
+    """Refuse a UK build on a policyengine-uk other than the pinned one.
+
+    The release freezes its engine (María's ruling of 2026-10-16): uv.lock pins
+    it for CI, but the UK extras accept any later release, so a build checks
+    the installed version against the engine its pins were taken from. An
+    environment without policyengine-uk is left to the caller's own import.
+    """
+
+    installed = installed_engine_version()
+    pinned = _engine_version()
+    if installed != "absent" and installed != pinned:
+        raise RuntimeError(
+            f"policyengine-uk {installed} is installed, but the UK build is pinned "
+            f"to {pinned} ({UK_ENGINE_PINS_RESOURCE}); sync the lock, or move the "
+            f"lock and re-pin with {UK_ENGINE_PINS_TOOL} together."
+        )
+    return installed
+
+
 def _opening_year(spec: Any, reference: LedgerTargetReference) -> int:
     period_type = str(spec.metadata.get("ledger_period_type") or "")
     if period_type not in _ANNUAL_PERIOD_TYPES:
