@@ -273,6 +273,18 @@ def test_the_rank_basis_refuses_a_declaration_mismatch() -> None:
         property_localisation.main_residence_rank_basis(staged, declared=False)
 
 
+def test_a_cell_is_banded_on_its_source_households() -> None:
+    # Twelve support copies of two source households: past ten rows, but
+    # the cell rests on fewer than ten sources and reads "<10".
+    household = pd.DataFrame(
+        {"household_source_id": np.repeat([7, 8], 6), "household_id": np.arange(12)}
+    )
+    mask = np.ones(12, dtype=bool)
+    assert rhv.source_count(household, mask) == 2
+    assert rhv._support_band(rhv.source_count(household, mask)) == "<10"
+    assert rhv.source_count(household.drop(columns="household_source_id"), mask) == 12
+
+
 def test_the_release_drops_the_rank_basis() -> None:
     assert rhv.RANK_BASIS_COLUMN in UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
 
