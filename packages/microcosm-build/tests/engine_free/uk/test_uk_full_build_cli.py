@@ -685,7 +685,11 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     assert manifest["solve"]["target_weight_rule_override"] == {}
     assert manifest["solve"]["n_households"] == 2
     assert manifest["solve"]["pool_households"] == 2
-    assert manifest["fit"]["rotated_holdout"]["n_folds"] == 5
+    # The rotated holdout is an opt-in diagnostic (microcosm#1301): a release
+    # candidate that did not request it records the skip marker.
+    assert manifest["parameters"]["skip_holdout"] is True
+    assert manifest["fit"]["rotated_holdout"]["skipped"] is True
+    assert manifest["diagnostics"]["rotated_holdout"] == {"skipped": True}
     assert manifest["fit"]["local_by_family"][0]["family"] == "census_households"
     assert manifest["weights"]["realized_max_weight_ratio_vs_design"] == 1.0
     assert manifest["weights"]["household_weight_kind"] == "calibrated"
@@ -709,6 +713,39 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
         path = Path(entry["path"])
         assert path.parent == out and path.is_file()
         assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
+
+
+def test_release_candidate_holdout_is_opt_in(tmp_path, monkeypatch):
+    """microcosm#1301: a release candidate validates without the holdout and
+    records that it was not requested; --rotated-holdout runs it."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    release = arguments(tmp_path, "--release-candidate")
+    cli.validate_cli_args(release)
+    assert release.skip_holdout is True
+    assert rowwise_parameters(release, source_year=2024)["skip_holdout"] is True
+    rotated = arguments(tmp_path, "--release-candidate", "--rotated-holdout")
+    cli.validate_cli_args(rotated)
+    assert rotated.skip_holdout is False
+    assert rowwise_parameters(rotated, source_year=2024)["skip_holdout"] is False
+    national = cli.parse_args(_national_argv(tmp_path))
+    assert national.skip_holdout is False
+    assert rowwise_parameters(national, source_year=2024)["skip_holdout"] is False
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--skip-holdout")
+
+
+def test_a_requested_holdout_projects_its_measured_folds(tmp_path):
+    pytest.importorskip("tables")
+    args = arguments(tmp_path, "--release-candidate", "--rotated-holdout")
+    build = prepared(tmp_path, release_candidate=True, rotated_holdout=True)
+    assert cli.execute_full_build(build, args) == 0
+    manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
+    assert manifest["parameters"]["skip_holdout"] is False
+    assert manifest["fit"]["rotated_holdout"]["n_folds"] == 5
+    assert "skipped" not in manifest["fit"]["rotated_holdout"]
+    assert manifest["diagnostics"]["rotated_holdout"]["n_folds"] == 5
 
 
 def test_blocked_gate_projects_an_unreleasable_manifest(tmp_path):
@@ -1499,6 +1536,60 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
     ).is_file()
 
 
+def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
+    tmp_path, monkeypatch, capsys
+):
+    """A best-effort refresh that fails after read-back passed fails nothing.
+
+    Read-back's verdict owns the delivery's error code (microcosm#1301), so
+    the run closes as built: no failure receipt, the manifest gains its
+    verified staging delivery, and the Logbook row is spooled.
+    """
+
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    class RefreshFailsHub(_FakeHub):
+        read_back_started = False
+
+        def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
+            if filename.startswith("runs/"):
+                self.read_back_started = True
+            return super().hf_hub_download(
+                repo_id=repo_id, filename=filename, repo_type=repo_type, **kwargs
+            )
+
+        def upload_file(self, **kwargs):
+            if self.read_back_started:
+                raise RuntimeError("503 token=do-not-record")
+            super().upload_file(**kwargs)
+
+    hub = RefreshFailsHub()
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-upload-interval-seconds",
+        "0",
+        "--staging-read-back",
+        staging=None,
+    )
+
+    assert status == 0
+    assert hub.read_back_started
+    assert not (out / "failure.json").exists()
+    err = capsys.readouterr().err
+    assert "staging upload failed" in err and "do-not-record" not in err
+    delivery = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staging_delivery"]
+    assert delivery["read_back"] == "passed"
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_attempts"] > delivery["upload_successes"] > 0
+    rows = spool_rows(out)
+    assert len(rows) == 1 and rows[0].disposition == "iterating"
+
+
 def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
     tmp_path, monkeypatch
 ):
@@ -2269,7 +2360,9 @@ def test_sized_dense_builds_take_the_doctrine_size_defaults(tmp_path):
     assert unsized.refit_l2_lambda is None
     assert cli.cli_size_l2(unsized, "refit") is None
 
-    sized = arguments(tmp_path, "--dataset-households", "100000")
+    sized = arguments(
+        tmp_path, "--dataset-households", str(doctrine.UK_LOCAL_DATASET_HOUSEHOLDS)
+    )
     cli.validate_cli_args(sized)
     assert sized.selection_pi_hi == doctrine.UK_LOCAL_SIZE_SELECTION_PI_HI == 0.5
     assert sized.baseline_pi_floor == doctrine.UK_LOCAL_SIZE_BASELINE_PI_FLOOR == 0.5
@@ -2281,7 +2374,7 @@ def test_sized_dense_builds_take_the_doctrine_size_defaults(tmp_path):
     explicit = arguments(
         tmp_path,
         "--dataset-households",
-        "100000",
+        str(doctrine.UK_LOCAL_DATASET_HOUSEHOLDS),
         "--selection-pi-hi",
         "0.95",
         "--baseline-pi-floor",
@@ -2303,3 +2396,718 @@ def test_the_doctrine_is_k15_2000_epochs_nation_grain():
         "nation_grain_family_equal_sqrt_count"
     )
     assert doctrine.UK_LOCAL_MAX_WEIGHT_RATIO == 10.0
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1301: the gate clock and the solve-reuse guard of a second build
+# ---------------------------------------------------------------------------
+
+
+def test_the_gate_clock_lies_between_the_solve_clock_and_today(tmp_path):
+    from datetime import date, timedelta
+
+    today = date.today()
+    solve = (today - timedelta(days=3)).isoformat()
+    args = arguments(
+        tmp_path, "--review-date", solve, "--gate-review-date", today.isoformat()
+    )
+    cli.validate_cli_args(args)
+    assert cli._gate_review_date(args) == today
+    unsplit = arguments(tmp_path, "--review-date", solve)
+    cli.validate_cli_args(unsplit)
+    assert cli._gate_review_date(unsplit) == date.fromisoformat(solve)
+    early = (today - timedelta(days=4)).isoformat()
+    with pytest.raises(ValueError, match=f"--gate-review-date {early} precedes"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--review-date", solve, "--gate-review-date", early)
+        )
+    future = (today + timedelta(days=1)).isoformat()
+    with pytest.raises(ValueError, match="later than today"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--review-date", solve, "--gate-review-date", future)
+        )
+    # A future solve clock on its own stays admitted: a build that does not
+    # split the clocks may still evaluate on a planned sign-off date.
+    cli.validate_cli_args(arguments(tmp_path, "--review-date", future))
+
+
+def _signed(approved_on, *lines, expires_on=None):
+    """A synthetic sign-off approved on ``approved_on``, scoped to ``lines``,
+    expiring 28 days later unless ``expires_on`` says otherwise."""
+    from datetime import timedelta
+
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
+
+    expires_on = approved_on + timedelta(days=28) if expires_on is None else expires_on
+    return UKReviewedExclusion(
+        reason="Synthetic sign-off.",
+        approved_by="reviewer",
+        adjudication="microcosm#1301",
+        approved_on=approved_on.isoformat(),
+        expires_on=expires_on.isoformat(),
+        release_lines=lines or None,
+    )
+
+
+def _measure(name, approved_on, expires_on):
+    """A synthetic calibration measure exclusion, as the register loads it."""
+    return {
+        "name": name,
+        "reason": "Synthetic measure exclusion.",
+        "tracking": "microcosm#1301",
+        "approved_by": "reviewer",
+        "adjudication": "microcosm#1301",
+        "approved_on": approved_on.isoformat(),
+        "expires_on": expires_on.isoformat(),
+    }
+
+
+def _stand_in_registers(
+    monkeypatch,
+    *,
+    target_fit=None,
+    local=None,
+    input_mass=None,
+    areas=None,
+    bound=None,
+    degenerate=None,
+    measures=(),
+):
+    """Stand synthetic registers in for the committed ones the solve-reuse
+    guard reads, so a solve-reuse test never depends on what is signed on the
+    day it runs: the gate-only registers, the degenerate register and the
+    calibration measure exclusions."""
+    from microcosm.build.uk_runtime import (
+        measure_simulation,
+        terminal_gates,
+        weighted_integrity,
+    )
+
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_default_degenerate_reviewed_exclusions",
+        lambda: dict(degenerate or {}),
+    )
+    monkeypatch.setattr(
+        measure_simulation,
+        "load_uk_calibration_measure_exclusions",
+        lambda path=None: tuple(measures),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_default_target_fit_reviewed_exclusions",
+        lambda: dict(target_fit or {}),
+    )
+    monkeypatch.setattr(
+        terminal_gates,
+        "uk_default_local_target_fit_reviewed_exclusions",
+        lambda: dict(local or {}),
+    )
+    monkeypatch.setattr(
+        weighted_integrity,
+        "uk_default_input_mass_reviewed_exclusions",
+        lambda: dict(input_mass or {}),
+    )
+    monkeypatch.setattr(
+        weighted_integrity,
+        "load_uk_local_area_support_exclusion_register",
+        lambda source, *, resource="local_area_support_exclusions.json": {
+            "exclusions": dict(areas or {}),
+            "bound_despite_support_floor": dict(bound or {}),
+        },
+    )
+
+
+@pytest.fixture
+def unsigned_registers(monkeypatch):
+    _stand_in_registers(monkeypatch)
+
+
+def _build_1_store(tmp_path) -> Path:
+    """Build 1's graph store, outside its --out, as the two-build recipe names it."""
+    store = tmp_path / "store"
+    store.mkdir(exist_ok=True)
+    return store
+
+
+def test_solve_reuse_is_refused_with_resume_forbid(tmp_path, unsigned_registers):
+    store = str(_build_1_store(tmp_path))
+    for extra in ((), ("--resume", "require")):
+        args = arguments(
+            tmp_path, "--require-solve-reuse", "--graph-store", store, *extra
+        )
+        cli.validate_cli_args(args)
+        assert args.require_solve_reuse is True
+    assert arguments(tmp_path).require_solve_reuse is False
+    with pytest.raises(ValueError, match="--resume forbid"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--require-solve-reuse",
+                "--graph-store",
+                store,
+                "--resume",
+                "forbid",
+            )
+        )
+
+
+def test_solve_reuse_names_build_1s_graph_store(tmp_path, unsigned_registers):
+    """The default store lies under --out, which a second build gives a new
+    directory, so it would hold no solve (microcosm#1301)."""
+    with pytest.raises(ValueError, match="needs --graph-store naming build 1's"):
+        cli.validate_cli_args(arguments(tmp_path, "--require-solve-reuse"))
+    missing = tmp_path / "no-such-store"
+    with pytest.raises(ValueError, match="is not a directory"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--require-solve-reuse", "--graph-store", str(missing))
+        )
+    assert not missing.exists()
+    # Build 1 may still take the default store.
+    cli.validate_cli_args(arguments(tmp_path))
+
+
+def test_solve_reuse_refuses_a_gate_clock_before_an_in_line_sign_off(
+    tmp_path, monkeypatch
+):
+    """A second build left on build 1's clock would replay the solve and then
+    fail every sign-off approved since as premature. It is refused before
+    anything runs, with the clock that puts them all in force (microcosm#1301)."""
+    from datetime import date, timedelta
+
+    from microcosm.build.uk_runtime import rowwise_cli
+
+    solve = date.today() - timedelta(days=10)
+
+    def day(offset):
+        return solve + timedelta(days=offset)
+
+    _stand_in_registers(
+        monkeypatch,
+        target_fit={
+            # In force from before the solve clock through day 8.
+            "national.in_force@2025": _signed(day(-20)),
+            # Scoped to the national line, so the local gates set it aside.
+            "national.scoped@2025": _signed(day(9), "national"),
+        },
+        local={"family/E06999999/metric": _signed(day(3), "local")},
+        input_mass={"efrs-post-calibration": {"column": _signed(day(1))}},
+        areas={"local_authority/E06999999": _signed(day(2), "local")},
+        # The area-support gate window-checks these whatever the line.
+        bound={"census_households": _signed(day(5), "national")},
+    )
+    signoffs = rowwise_cli.gate_only_signoffs()
+    assert set(signoffs["target_fit_reviewed_exclusions.json"]) == {
+        "national.in_force@2025"
+    }
+    windows = rowwise_cli.solve_reuse_windows()
+    assert rowwise_cli.gate_clock_conflicts(solve, windows) == {
+        "premature": {
+            "input_mass_reviewed_exclusions.json": {
+                "efrs-post-calibration/column": day(1).isoformat()
+            },
+            "local_area_support_exclusions.json": {
+                "bound_despite_support_floor/census_households": day(5).isoformat(),
+                "exclusions/local_authority/E06999999": day(2).isoformat(),
+            },
+            "local_target_fit_reviewed_exclusions.json": {
+                "family/E06999999/metric": day(3).isoformat()
+            },
+        },
+        "expired": {},
+    }
+    reuse = (
+        "--require-solve-reuse",
+        "--graph-store",
+        str(_build_1_store(tmp_path)),
+        "--review-date",
+        solve.isoformat(),
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(arguments(tmp_path, *reuse))
+    message = str(refused.value)
+    assert f"on {solve.isoformat()} (--review-date; no --gate-review-date" in message
+    assert "before 4 in-line sign-off(s) take force" in message
+    assert (
+        f"Pass --gate-review-date on or after {day(5).isoformat()} and on or "
+        f"before {day(8).isoformat()}, the latest usable gate clock, when "
+        "target_fit_reviewed_exclusions.json:national.in_force@2025 expires."
+    ) in message
+    with pytest.raises(ValueError, match=f"on or after {day(5).isoformat()}"):
+        cli.validate_cli_args(
+            arguments(tmp_path, *reuse, "--gate-review-date", day(4).isoformat())
+        )
+    cli.validate_cli_args(
+        arguments(tmp_path, *reuse, "--gate-review-date", day(5).isoformat())
+    )
+    # A build that reuses no solve keeps its unsplit clock as before.
+    cli.validate_cli_args(arguments(tmp_path, "--review-date", solve.isoformat()))
+
+
+def _reuse_from(tmp_path, solve):
+    """A second build's arguments: build 1's store and solve clock."""
+    return (
+        "--require-solve-reuse",
+        "--graph-store",
+        str(_build_1_store(tmp_path)),
+        "--review-date",
+        solve.isoformat(),
+    )
+
+
+#: One entry per register the solve-reuse guard reads: (stand-in keyword, entry
+#: name, release lines, the refusal's label). The area-support gate
+#: window-checks its bound families whatever the line.
+_GUARDED_ENTRIES = (
+    (
+        "target_fit",
+        "national.lapsing@2025",
+        (),
+        "target_fit_reviewed_exclusions.json:national.lapsing@2025",
+    ),
+    (
+        "local",
+        "family/E06999999/metric",
+        ("local",),
+        "local_target_fit_reviewed_exclusions.json:family/E06999999/metric",
+    ),
+    (
+        "input_mass",
+        "column",
+        (),
+        "input_mass_reviewed_exclusions.json:efrs-post-calibration/column",
+    ),
+    (
+        "areas",
+        "local_authority/E06999999",
+        ("local",),
+        "local_area_support_exclusions.json:exclusions/local_authority/E06999999",
+    ),
+    (
+        "bound",
+        "census_households",
+        ("national",),
+        "local_area_support_exclusions.json:"
+        "bound_despite_support_floor/census_households",
+    ),
+    (
+        "degenerate",
+        "household.synthetic_constant",
+        ("local",),
+        "degenerate_reviewed_exclusions.json:household.synthetic_constant",
+    ),
+    (
+        "measures",
+        "obr.synthetic@2025",
+        None,
+        "calibration_measure_exclusions.json:obr.synthetic@2025",
+    ),
+)
+
+
+def _stand_in_one(monkeypatch, register, name, entry):
+    """Stand in registers holding ``entry`` alone, under ``name``."""
+    if register == "input_mass":
+        _stand_in_registers(
+            monkeypatch, input_mass={"efrs-post-calibration": {name: entry}}
+        )
+    elif register == "measures":
+        _stand_in_registers(monkeypatch, measures=[entry])
+    else:
+        _stand_in_registers(monkeypatch, **{register: {name: entry}})
+
+
+@pytest.mark.parametrize(("register", "name", "lines", "label"), _GUARDED_ENTRIES)
+def test_solve_reuse_refuses_a_gate_clock_past_an_expiry_it_depends_on(
+    tmp_path, monkeypatch, register, name, lines, label
+):
+    """An entry in force on build 1's clock may expire before build 2's: the
+    calibrated gates would fail it, or assembly refuse an expired measure
+    exclusion, after the solve replay. The gate clock is refused before it,
+    and the refusal names the entry and the latest usable gate clock, the end
+    of the range the sign-off drafter prints (microcosm#1301)."""
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+
+    def day(offset):
+        return solve + timedelta(days=offset)
+
+    entry = (
+        _measure(name, day(-5), day(3))
+        if register == "measures"
+        else _signed(day(-5), *lines, expires_on=day(3))
+    )
+    _stand_in_one(monkeypatch, register, name, entry)
+    reuse = _reuse_from(tmp_path, solve)
+    # On build 1's clock and on the expiry itself, the entry is in force.
+    for clock in (day(0), day(3)):
+        cli.validate_cli_args(
+            arguments(tmp_path, *reuse, "--gate-review-date", clock.isoformat())
+        )
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(
+            arguments(tmp_path, *reuse, "--gate-review-date", day(4).isoformat())
+        )
+    message = str(refused.value)
+    assert f"on {day(4).isoformat()} (--gate-review-date)" in message
+    assert (
+        "after 1 sign-off(s) the release depends on expired "
+        f"({label} ({day(3).isoformat()}))"
+    ) in message
+    assert (
+        f"Pass --gate-review-date on or after {solve.isoformat()} and on or "
+        f"before {day(3).isoformat()}, the latest usable gate clock, when "
+        f"{label} expires."
+    ) in message
+    solve_scoped = register in ("degenerate", "measures")
+    assert ("changes the solve and needs a third build" in message) is solve_scoped
+
+
+#: The registers whose line rule the guard shares with the calibrated gates
+#: (``battery_bindings._in_line``): (stand-in keyword, entry name).
+_LINE_SCOPED_ENTRIES = (
+    ("target_fit", "national.synthetic@2025"),
+    ("local", "family/E06999999/metric"),
+    ("input_mass", "column"),
+    ("areas", "local_authority/E06999999"),
+    ("degenerate", "household.synthetic_constant"),
+)
+
+
+@pytest.mark.parametrize("window", ["premature", "expired"])
+@pytest.mark.parametrize(("register", "name"), _LINE_SCOPED_ENTRIES)
+def test_the_solve_reuse_guard_holds_each_register_to_the_local_line(
+    tmp_path, monkeypatch, register, name, window
+):
+    """An entry out of its window on the gate clock refuses it only where the
+    calibrated gates evaluate it: an entry scoped to the national line stands
+    aside, as those gates set it aside, and the same entry on the local line,
+    or on every line, refuses the gate clock. Dropping the line rule for any
+    register the guard reads fails this test (microcosm#1301)."""
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+    clock = solve + timedelta(days=5)
+    approved, expires = (
+        (clock + timedelta(days=1), clock + timedelta(days=29))
+        if window == "premature"
+        else (solve - timedelta(days=20), clock - timedelta(days=1))
+    )
+    reuse = (*_reuse_from(tmp_path, solve), "--gate-review-date", clock.isoformat())
+    _stand_in_one(
+        monkeypatch, register, name, _signed(approved, "national", expires_on=expires)
+    )
+    cli.validate_cli_args(arguments(tmp_path, *reuse))
+    phrase = "take force" if window == "premature" else "the release depends on expired"
+    for lines in (("local",), ()):
+        _stand_in_one(
+            monkeypatch, register, name, _signed(approved, *lines, expires_on=expires)
+        )
+        with pytest.raises(ValueError, match=phrase):
+            cli.validate_cli_args(arguments(tmp_path, *reuse))
+
+
+def test_solve_reuse_names_no_usable_gate_clock_when_the_windows_part(
+    tmp_path, monkeypatch
+):
+    from datetime import date, timedelta
+
+    solve = date.today() - timedelta(days=10)
+
+    def day(offset):
+        return solve + timedelta(days=offset)
+
+    _stand_in_registers(
+        monkeypatch,
+        local={"family/E06999999/metric": _signed(day(5), "local")},
+        degenerate={
+            "household.synthetic_constant": _signed(
+                day(-30), "local", expires_on=day(3)
+            )
+        },
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                *_reuse_from(tmp_path, solve),
+                "--gate-review-date",
+                day(4).isoformat(),
+            )
+        )
+    message = str(refused.value)
+    assert (
+        "before 1 in-line sign-off(s) take force (local_target_fit_reviewed_"
+        f"exclusions.json:family/E06999999/metric ({day(5).isoformat()})) and "
+        "after 1 sign-off(s) the release depends on expired (degenerate_"
+        "reviewed_exclusions.json:household.synthetic_constant "
+        f"({day(3).isoformat()}))"
+    ) in message
+    assert (
+        f"No gate clock is usable: the latest approval, {day(5).isoformat()}, "
+        f"is after the earliest expiry, {day(3).isoformat()}, when "
+        "degenerate_reviewed_exclusions.json:household.synthetic_constant "
+        "expires."
+    ) in message
+    assert "changes the solve and needs a third build" in message
+
+
+def test_the_solve_reuse_guard_reads_the_measure_exclusions_the_solve_applies(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime import measure_simulation
+
+    _stand_in_registers(monkeypatch)
+    read = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "load_uk_calibration_measure_exclusions",
+        lambda path=None: read.append(path) or (),
+    )
+    store = str(_build_1_store(tmp_path))
+    cli.validate_cli_args(
+        arguments(tmp_path, "--require-solve-reuse", "--graph-store", store)
+    )
+    override = tmp_path / "measure_exclusions.json"
+    cli.validate_cli_args(
+        arguments(
+            tmp_path,
+            "--require-solve-reuse",
+            "--graph-store",
+            store,
+            "--measure-exclusions",
+            str(override),
+        )
+    )
+    assert read == [None, override]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [("--gate-review-date", "today"), ("--require-solve-reuse",)],
+)
+def test_national_role_refuses_the_gate_clock_and_the_reuse_guard(tmp_path, extra):
+    from datetime import date
+
+    extra = tuple(date.today().isoformat() if x == "today" else x for x in extra)
+    national = cli.parse_args(_national_argv(tmp_path, *extra))
+    with pytest.raises(ValueError, match=extra[0]):
+        cli.validate_cli_args(national)
+
+
+def _with_calibrated_params(build, **params):
+    """The synthetic build with the calibrated gate node re-parameterised."""
+    graph = build.full.graph
+    nodes = tuple(
+        replace(node, params={**node.params, **params})
+        if node.id == "uk.full.gates.calibrated"
+        else node
+        for node in graph.nodes
+    )
+    return replace(build, full=replace(build.full, graph=replace(graph, nodes=nodes)))
+
+
+def test_the_solve_subgraph_is_every_strict_ancestor_of_the_calibrated_gates(
+    tmp_path,
+):
+    graph = prepared(tmp_path, size_households=2).full.graph
+    solve = {node.id for node in cli._solve_subgraph(graph).nodes}
+    assert solve == {
+        node.id for node in cli._through(graph, "uk.full.gates.calibrated").nodes
+    } - {"uk.full.gates.calibrated"}
+    assert {
+        "uk.full.calibrated",
+        "uk.full.gates.preflight",
+        "uk.full.holdout",
+        "uk.full.problem",
+    } <= solve
+    assert not solve & {"uk.full.export.prepare", "uk.full.gates.calibrated"}
+
+
+def test_required_solve_reuse_reruns_only_the_calibrated_gates(tmp_path, monkeypatch):
+    """A second build at a gate-only sign-off, into a new --out on build 1's
+    store: the gates re-run on a later clock while every solve node replays
+    from the store, and build 1's bundle stays as it was (microcosm#1301)."""
+    pytest.importorskip("tables")
+    store = str(_build_1_store(tmp_path))
+    first = arguments(tmp_path, "--dataset-households", "2", "--graph-store", store)
+    assert cli.execute_full_build(prepared(tmp_path, size_households=2), first) == 0
+    marker = (first.out / "build.json").read_bytes()
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay recomputed a solve node")
+
+    for kernel in (Fixture, Holdout, Targets, Population, SizeReceipt):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    evaluated = []
+    original = Evidence.run
+
+    def gates_only(self, context):
+        evaluated.append(context.params["phase"])
+        return original(self, context)
+
+    monkeypatch.setattr(Evidence, "run", gates_only)
+    args = arguments(
+        tmp_path,
+        "--dataset-households",
+        "2",
+        "--graph-store",
+        store,
+        "--require-solve-reuse",
+        "--out",
+        str(tmp_path / "build-2"),
+    )
+    second = _with_calibrated_params(
+        prepared(tmp_path, size_households=2), review_date="2026-10-16"
+    )
+    assert cli.execute_full_build(second, args) == 0
+    assert evaluated == ["terminal"]
+    assert (args.out / "build.json").is_file()
+    assert (first.out / "build.json").read_bytes() == marker
+    execution = json.loads((args.out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert execution["nodes_reused"] > 0 and execution["nodes_computed"] > 0
+
+
+def test_required_solve_reuse_fails_before_the_gates_on_a_store_miss(
+    tmp_path, monkeypatch, unsigned_registers
+):
+    """The preflight is stored but the solve is not: the build stops with a
+    SolveReuseError naming what is missing, and neither solves nor gates."""
+    build = prepared(tmp_path)
+    graph = build.full.graph
+    store = _build_1_store(tmp_path)
+    cli.run_graph(
+        cli.compile_graph(cli._through(graph, "uk.full.gates.preflight")),
+        sources=build.sources,
+        store=cli.ContentStore(store),
+        kernels=build.kernels,
+    )
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--require-solve-reuse",
+        "--graph-store",
+        str(store),
+        build=build,
+    )
+    assert status == 1
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "SolveReuseError"
+    assert "'uk.full.holdout'" in failure["message"]
+    assert "'uk.full.gates.calibrated'" not in failure["message"]
+    assert "target_fit_reviewed_exclusions.json" in failure["message"]
+    assert not (out / cli.FULL_GATE_REPORT_FILENAME).exists()
+
+
+def test_required_solve_reuse_on_an_empty_store_fails_at_the_preflight(
+    tmp_path, monkeypatch, unsigned_registers
+):
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--require-solve-reuse",
+        "--graph-store",
+        str(_build_1_store(tmp_path)),
+    )
+    assert status == 1
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "SolveReuseError"
+    assert "'uk.full.gates.preflight'" in failure["message"]
+
+
+def _files(directory: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(directory)): path.read_bytes()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
+
+
+@pytest.mark.parametrize(
+    "marker", ["build.json", "failure.json", "logbook-spool/row.json"]
+)
+def test_solve_reuse_refuses_an_out_that_holds_any_attempt(tmp_path, marker):
+    """A published bundle, a failed attempt's sidecar or any Logbook spool row
+    each refuse a second build's --out: a retry beside a failed attempt would
+    spool a second attempt's row there (microcosm#1301)."""
+    store = str(_build_1_store(tmp_path))
+    args = arguments(tmp_path, "--require-solve-reuse", "--graph-store", store)
+    out = Path(args.out)
+    # Other files, and a spool without rows, hold no attempt.
+    (out / "logbook-spool").mkdir(parents=True)
+    (out / "logbook-spool" / "row.json.tmp").write_text("{}")
+    (out / "notes.txt").write_text("operator notes")
+    cli.refuse_occupied_solve_reuse_output(args)
+    (out / marker).write_text("{}")
+    with pytest.raises(FileExistsError) as refused:
+        cli.refuse_occupied_solve_reuse_output(args)
+    assert f"already holds a build attempt ({marker})" in str(refused.value)
+    # A build that reuses no solve keeps the occupied-output rules it had.
+    cli.refuse_occupied_solve_reuse_output(arguments(tmp_path))
+
+
+def test_solve_reuse_refuses_a_retry_into_a_failed_attempts_out(
+    tmp_path, monkeypatch, unsigned_registers
+):
+    """A failed second build leaves failure.json and a Logbook row in its
+    --out. A retry into it is refused before its attempt opens, so the
+    directory keeps one attempt, as --verify and the assembler need."""
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    reuse = ("--require-solve-reuse", "--graph-store", str(_build_1_store(tmp_path)))
+    status, out = run_dense_main(tmp_path, monkeypatch, *reuse)
+    assert status == 1
+    assert (out / "failure.json").is_file()
+    (row,) = sorted((out / "logbook-spool").glob("*.json"))
+    before = _files(out)
+    with pytest.raises(FileExistsError) as refused:
+        run_dense_main(tmp_path, monkeypatch, *reuse)
+    assert (
+        f"already holds a build attempt (failure.json, logbook-spool/{row.name})"
+        in str(refused.value)
+    )
+    assert _files(out) == before
+
+
+def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
+    tmp_path, monkeypatch, unsigned_registers
+):
+    """Build 2 into build 1's --out would replace the bundle its sign-off was
+    drafted from. It is refused before the attempt opens and writes nothing
+    there; a dry run is not refused, and a new --out runs (microcosm#1301)."""
+    pytest.importorskip("tables")
+    store = str(_build_1_store(tmp_path))
+    status, out = run_dense_main(tmp_path, monkeypatch, "--graph-store", store)
+    assert status == 0
+    before = _files(out)
+    reuse = ("--require-solve-reuse", "--graph-store", store)
+    with pytest.raises(
+        FileExistsError, match=r"already holds a build attempt \(build\.json"
+    ):
+        run_dense_main(tmp_path, monkeypatch, *reuse)
+    assert _files(out) == before
+    assert run_dense_main(tmp_path, monkeypatch, *reuse, "--dry-run")[0] == 0
+    assert _files(out) == before
+    second = tmp_path / "build-2"
+    status, written = run_dense_main(
+        tmp_path, monkeypatch, *reuse, "--out", str(second)
+    )
+    assert (status, written) == (0, second)
+    assert (second / "build.json").is_file()
+    assert _files(out) == before

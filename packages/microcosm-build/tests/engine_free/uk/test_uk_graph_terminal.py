@@ -369,11 +369,21 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
         item.name for item in preflight.artifact_inputs
     }
     final = graph.node("uk.full.gates.calibrated")
+    # microcosm#1301: the preflight feeds the solve and keys on the solve
+    # fingerprint under its own kernel; the calibrated gates keep the full one.
+    assert preflight.kernel == "uk.full-gates.preflight@1"
+    assert final.kernel == "uk.full-gates@1"
     assert final.population == full.calibration.population
     inputs = {item.name: item for item in final.artifact_inputs}
     assert inputs["problem"].producer == full.calibration.problem_producer
     assert inputs["solution"].artifact == (
         "solution" if households is None else "refit_solution"
+    )
+    # microcosm#1301: the holdout's fold searches share the size search's
+    # warm start and L0 floor, both holdout parameters.
+    holdout = graph.node("uk.full.holdout").params
+    assert holdout["selection_l0_search_floor"] == (
+        None if households is None else 1e-10
     )
 
 
@@ -386,7 +396,7 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates
     from microcosm.build.uk_runtime.graph_terminal import (
-        UKFullGateKernel,
+        UKFullPreflightGateKernel,
         decode_full_gate_report,
     )
     from microcosm.graph.canonical import canonical_json
@@ -440,9 +450,9 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
         )
 
     monkeypatch.setattr(full_gates, "build_full_gate_context", forbidden)
-    result = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
-        context
-    )
+    result = UKFullPreflightGateKernel(
+        coverage_engine=object(), engine_identity="fixture"
+    ).run(context)
     report, enforcement = decode_full_gate_report(result.artifacts["gate_report"])
     assert report.phase == "preflight"
     assert len(report.outcomes) == 5
@@ -592,6 +602,190 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         key: value for key, value in result.items() if key != "graph_binding"
     } == expected
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
+
+
+def test_holdout_kernel_refuses_a_floor_its_folds_cannot_honour():
+    """microcosm#1301: each fold's size search runs under the doctrine's L0
+    floor, so a holdout keyed on another floor refuses before any fold."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    context = SimpleNamespace(
+        params={"skip_holdout": False, "selection_l0_search_floor": 1e-7},
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64)
+        },
+    )
+    with pytest.raises(ValueError, match="L0 floor of 1e-07"):
+        UKFullHoldoutKernel().run(context)
+
+
+def test_holdout_kernel_records_an_unrequested_holdout(monkeypatch):
+    """microcosm#1301: the rotated holdout is an opt-in diagnostic; the kernel
+    records the skip with its reason and runs no fold."""
+    import json
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    monkeypatch.setattr(
+        graph_targets,
+        "reconstruct_uk_full_problem_inputs",
+        lambda context: pytest.fail("a skipped holdout reconstructs no problem"),
+    )
+    context = SimpleNamespace(
+        params={"skip_holdout": True},
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
+            "problem": SimpleNamespace(payload=b"unread", key="b" * 64),
+        },
+    )
+    result = json.loads(UKFullHoldoutKernel().run(context).artifacts["holdout"])
+    assert result["skipped"] is True and result["report_only"] is True
+    assert result["reason"] == (
+        "Not requested: opt-in diagnostic; no out-of-sample claim."
+    )
+    assert result["graph_binding"]["original_problem_artifact"] == "b" * 64
+
+
+def test_full_gate_nodes_skip_the_holdout_unless_requested():
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
+    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+
+    raw = uk_spine_graph(source_mode="split")
+    config = UKFullBuildConfig(calibration_year=2025)
+    full = uk_full_graph(
+        config,
+        spine=raw,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    )
+    common = {
+        "calibration": full.calibration,
+        "spine_stage_names": uk_spine_endpoint(raw).stage_names,
+        "engine_identity": "fixture-engine",
+        "review_date": "2026-09-10",
+    }
+    default = append_uk_full_gate_nodes(full.graph, **common)
+    assert default.node("uk.full.holdout").params["skip_holdout"] is True
+    requested = append_uk_full_gate_nodes(full.graph, **common, skip_holdout=False)
+    assert requested.node("uk.full.holdout").params["skip_holdout"] is False
+    assert requested.node("uk.full.holdout").description.startswith(
+        "Optional (--rotated-holdout)"
+    )
+
+
+def _gate_nodes(**extra):
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
+    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+
+    raw = uk_spine_graph(source_mode="split")
+    config = UKFullBuildConfig(calibration_year=2025)
+    full = uk_full_graph(
+        config,
+        spine=raw,
+        review_date="2026-09-10",
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    )
+    return append_uk_full_gate_nodes(
+        full.graph,
+        calibration=full.calibration,
+        spine_stage_names=uk_spine_endpoint(raw).stage_names,
+        engine_identity="fixture-engine",
+        review_date="2026-09-10",
+        **extra,
+    )
+
+
+def test_only_the_calibrated_gates_take_the_gate_clock():
+    """microcosm#1301: the solve clock keys the solve; the gate clock only the
+    calibrated gates, so a later sign-off date re-runs the gates alone."""
+    default = _gate_nodes()
+    same = _gate_nodes(gate_review_date="2026-09-10")
+    later = _gate_nodes(gate_review_date="2026-10-02")
+    # Absent, or equal to the solve clock, the calibrated parameters are
+    # byte-identical to a build that never named a gate clock.
+    assert default == same
+    assert default.node("uk.full.gates.calibrated").params["review_date"] == (
+        "2026-09-10"
+    )
+    assert later.node("uk.full.gates.calibrated").params == {
+        **default.node("uk.full.gates.calibrated").params,
+        "review_date": "2026-10-02",
+    }
+    changed = {node.id for node in later.nodes if node != default.node(node.id)}
+    assert changed == {"uk.full.gates.calibrated"}
+    for node in ("uk.full.gates.preflight", "uk.full.target_compilation"):
+        assert later.node(node).params["review_date"] == "2026-09-10", node
+
+
+def test_a_gate_clock_before_the_solve_clock_is_refused():
+    with pytest.raises(ValueError, match="precedes the solve review date"):
+        _gate_nodes(gate_review_date="2026-09-09")
+
+
+@pytest.mark.parametrize("phase", ["preflight", "terminal"])
+def test_each_gate_kernel_refuses_the_other_phase(phase):
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import (
+        UKFullGateKernel,
+        UKFullPreflightGateKernel,
+    )
+
+    kernel = (UKFullGateKernel if phase == "preflight" else UKFullPreflightGateKernel)(
+        coverage_engine=object(), engine_identity="fixture"
+    )
+    context = SimpleNamespace(params={"phase": phase, "engine_identity": "fixture"})
+    with pytest.raises(ValueError, match=f"phase only, not '{phase}'"):
+        kernel.run(context)
+
+
+def test_both_gate_kernels_are_registered():
+    from microcosm.build.uk_runtime.graph_terminal import (
+        UKFullGateKernel,
+        UKFullHoldoutKernel,
+        UKFullPreflightGateKernel,
+        register_uk_full_gate_kernels,
+    )
+    from microcosm.graph import KernelRegistry
+
+    registry = KernelRegistry()
+    register_uk_full_gate_kernels(
+        registry, coverage_engine=object(), engine_identity="fixture"
+    )
+    assert type(registry.get(UKFullPreflightGateKernel.ref)) is (
+        UKFullPreflightGateKernel
+    )
+    assert type(registry.get(UKFullGateKernel.ref)) is UKFullGateKernel
+    assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
 def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
@@ -925,7 +1119,7 @@ def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
     skipped = {
         "report_only": True,
         "skipped": True,
-        "reason": "Explicit development request; no holdout claim.",
+        "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
         "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
     }
     assert diagnostics_rotated_holdout(skipped) == {"skipped": True}
@@ -948,3 +1142,54 @@ def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
     assert "graph_binding" not in shaped
     assert shaped == {k: v for k, v in measured.items() if k != "graph_binding"}
     assert "graph_binding" in measured  # the artifact's report is left intact
+
+
+def test_the_candidate_manifest_records_the_exclusions_each_signed_gate_stood_on():
+    """microcosm#1301: the full gate report does not ship, so the candidate
+    manifest records the names each signed-exclusion gate stood on, leaving
+    out dormant entries as the release assembler does."""
+    from microcosm.build.uk_runtime.graph_terminal import (
+        _gate_rows,
+        _reviewed_exclusions_stood_on,
+    )
+    from microcosm.data.contract import _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+    document = {
+        "report": {
+            "outcomes": [
+                {
+                    "id": "uk_target_fit",
+                    "details": {
+                        "reviewed_exclusions": {
+                            "synthetic.row_b@2025": {"reason": "synthetic"},
+                            "synthetic.row_a@2025": {"reason": "synthetic"},
+                        },
+                        "dormant_exclusions": [],
+                    },
+                },
+                {
+                    "id": "uk_input_mass_parity",
+                    "details": {
+                        "reviewed_exclusions": {
+                            "synthetic_column": "synthetic reason",
+                            "synthetic_dormant": "never measured",
+                        },
+                        "dormant_exclusions": ["synthetic_dormant"],
+                    },
+                },
+                # A gate outside the signed set is not recorded.
+                {
+                    "id": "uk_weight_ratio",
+                    "details": {"reviewed_exclusions": {"synthetic": "x"}},
+                },
+            ]
+        }
+    }
+    record = _reviewed_exclusions_stood_on(_gate_rows(document))
+    assert tuple(record) == _UK_DENSE_SIGNED_EXCLUSION_GATES
+    assert record == {
+        "uk_target_fit": ["synthetic.row_a@2025", "synthetic.row_b@2025"],
+        # The report lacks the gate: it stood on none.
+        "uk_local_target_fit": [],
+        "uk_input_mass_parity": ["synthetic_column"],
+    }

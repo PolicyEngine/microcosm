@@ -241,7 +241,12 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "from raw-only Chronicle registrations, carried in the committed "
             "derived-facts resource; the frame measures the stored "
             "main_residence_value of owner households at the dataset period "
-            "against thresholds deflated to the same price basis."
+            "against thresholds deflated to the same price basis. The English "
+            "region and Wales rows of the same estimate "
+            "(microcosm.high_value_homes.*_by_region) bind on the local line "
+            "only, as the cross-grain control for these cells, except the "
+            "North East and Wales rows over £2m, which are signed out below "
+            "the 400-home floor (microcosm#1301)."
         ),
         "sources": ["hmlr_price_paid_derived_stock"],
         "adjudications": [_HIGH_VALUE_HOME_STOCK_FENCE_ID],
@@ -538,7 +543,9 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "dwelling sold since 1995, uprated by the local-authority and "
             "property-type UK HPI to the frame's price basis, placed through the "
             "NSPL and the committed atomic support, with the census owner-occupied "
-            "share and a VOA stock-coverage correction (microcosm#1240)."
+            "share and a VOA stock-coverage correction (microcosm#1240). The same "
+            "resource's English region and Wales rows control the area cells on "
+            "the local line (microcosm#1301)."
         ),
         "url": "https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads",
         "geographies": ["constituency", "la"],
@@ -945,7 +952,10 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "authority ratio of about 1.5, and with it the England "
             "owner-occupied count over 2 million sits about a sixth above "
             "the OBR-implied figure (the no-correction and no-control "
-            "variants are receipted in uk/high_value_home_stock.provenance.json)."
+            "variants are receipted in uk/high_value_home_stock.provenance.json). "
+            "The English region and Wales rows of the same estimate bind on the "
+            "local line only, as the cross-grain control for the area cells, so "
+            "the fence covers them too (microcosm#1301)."
         ),
         "authority": (
             "HM Land Registry Price Paid Data guidance; UK HPI methodology; "

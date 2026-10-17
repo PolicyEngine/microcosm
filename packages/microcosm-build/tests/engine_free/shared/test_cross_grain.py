@@ -195,10 +195,23 @@ def test_bridge_bound_is_two_sided_and_strict(control, shift, refused):
         assert leg["factor_on_input_totals"] == control / 80.0
 
 
-@pytest.mark.parametrize("bound", [0.0, -0.1, float("nan"), float("inf"), True])
-def test_bridge_bound_must_be_a_finite_positive_number(bound):
-    with pytest.raises(ValueError, match="finite positive number"):
+@pytest.mark.parametrize(
+    "bound", [0.0, -0.1, float("nan"), float("inf"), True, 1.0, 1, 1.5]
+)
+def test_bridge_bound_must_be_a_number_between_zero_and_one(bound):
+    # A bound of one or more never refuses a factor below one: the operator
+    # refuses it, as the UK loader does (microcosm#1302 re-review).
+    with pytest.raises(ValueError, match=r"a bound must be a number in \(0, 1\)"):
         apply_cross_grain_reconciliation(*_bounded_surface(100.0, bound))
+
+
+def test_bridge_bound_just_below_one_is_accepted():
+    # Factors of 1.25 and 0.75 sit well inside a bound of 0.99.
+    for control in (100.0, 60.0):
+        reconciled, _ = apply_cross_grain_reconciliation(
+            *_bounded_surface(control, 0.99)
+        )
+        assert reconciled["value"].sum() == pytest.approx(2 * control)
 
 
 def test_a_pass_that_is_not_the_last_records_the_bound_without_refusing():

@@ -139,6 +139,7 @@ __all__ = [
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
     "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
+    "UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
@@ -163,6 +164,11 @@ UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json"
 UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = "target_fit_reviewed_exclusions.json"
+# The local-area battery's own target-fit register (microcosm#1301): keyed by
+# the local gate's family/area_code/metric cell names, read by that gate only.
+UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = (
+    "local_target_fit_reviewed_exclusions.json"
+)
 
 # Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
 # the weighted input surface emitted from the pinned enhanced-FRS artifact by

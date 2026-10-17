@@ -19,3 +19,8 @@ tools/route_a/route_a.env
 
 # Finder metadata — never payload
 .DS_Store
+
+# Dense sign-off drafts (tools/draft_uk_dense_signoff.py): the private review
+# file holds licensed-data review values and is never committed
+PRIVATE_review.csv
+signoff-draft/

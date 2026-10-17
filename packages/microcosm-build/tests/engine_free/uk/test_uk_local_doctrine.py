@@ -117,6 +117,35 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     }
 
 
+def test_size_doctrine_is_150000_households_searched_down_to_1e_10() -> None:
+    # microcosm#1124 as amended for microcosm#1301: the sized release ships
+    # 150,000 households under the unchanged size settings, and the size
+    # search's L0 floor sits below the solver's default 1e-7. Moving either is
+    # a doctrine revision: edit the constant, its note, and this pin.
+    from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
+    from microcosm.build.uk_runtime.local_doctrine import (
+        UK_LOCAL_DATASET_HOUSEHOLDS,
+        UK_LOCAL_L0_SEARCH_FLOOR,
+        uk_local_size_doctrine,
+    )
+    from microcosm.calibrate.solve import DEFAULT_L0_SEARCH_BRACKET
+
+    assert UK_LOCAL_DATASET_HOUSEHOLDS == 150_000
+    assert UK_LOCAL_L0_SEARCH_FLOOR == 1e-10
+    assert uk_local_size_doctrine() == {
+        "dataset_households": 150_000,
+        "selection_pi_hi": 0.5,
+        "baseline_pi_floor": 0.5,
+        "refit_l2_lambda": 0.0215748772773509,
+        "refit_l2_anchor": "uniform",
+        "refit_l2_basis": "chi_square",
+        "selection_l2": None,
+    }
+    # The UK bracket lowers only the floor; the solver's default is unchanged.
+    assert DEFAULT_L0_SEARCH_BRACKET == (1e-7, 10.0)
+    assert uk_size_search_bracket() == (1e-10, 10.0)
+
+
 def test_grain_equal_weights_give_each_grain_one_equal_share() -> None:
     labels = ["national", "national", "constituency", "la", "la", "la"]
     weights = uk_local_target_loss_weights(labels, rule="grain_equal")

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     load_uk_local_area_crosswalk,
     load_uk_local_target_reference_membership,
     uk_cross_grain_coverage_receipt,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
@@ -206,8 +208,13 @@ def load_uk_full_target_inputs(
         if include_validation_periods
         else [year]
     )
+    # microcosm#1240: the high-value homes family binds Microcosm-derived facts
+    # (HM Land Registry stock counts) beside the Chronicle feed at local grain,
+    # and its region rows (microcosm#1301) at national grain.
+    derived = load_uk_high_value_home_stock_facts()
+    facts = (*artifact.facts, *derived.rows)
     for period in national_periods:
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+        compilation = compile_uk_target_registry(facts, target_period=period)
         if compilation.unsupported:
             if period == year:
                 raise ValueError(
@@ -219,13 +226,9 @@ def load_uk_full_target_inputs(
             )
         national_registries[period] = compilation.registry
         national_unsupported[period] = tuple(compilation.unsupported)
-    # microcosm#1240: the high-value homes family binds Microcosm-derived facts
-    # (HM Land Registry stock counts) beside the Chronicle feed at local grain.
-    derived = load_uk_high_value_home_stock_facts()
-    local_facts = (*artifact.facts, *derived.rows)
     for period in local_periods:
         compilation = compile_uk_local_target_registry(
-            local_facts, target_period=period, crosswalk=crosswalk
+            facts, target_period=period, crosswalk=crosswalk
         )
         if compilation.unsupported:
             if period == year:
@@ -243,10 +246,13 @@ def load_uk_full_target_inputs(
     # count, and the register the solve binds (and the frozen scoring register
     # it is checked against) carries the reconciled values. The validation
     # periods stay as compiled: compile parity measures the facts themselves.
-    compiled_version = national_registries[year].version
-    band_edges, national_reconciliation = reconcile_uk_national_registry(
-        national_registries[year]
+    # The solve surface first drops what the local line does not bind
+    # (``calibration_lines``, microcosm#1301); today no target narrows it.
+    line_registry, calibration_line = uk_registry_on_calibration_line(
+        national_registries[year], line="local"
     )
+    compiled_version = line_registry.version
+    band_edges, national_reconciliation = reconcile_uk_national_registry(line_registry)
     frozen_version = None
     if register_json is not None:
         frozen = TargetRegistry.from_json(Path(register_json))
@@ -323,6 +329,7 @@ def load_uk_full_target_inputs(
             "measure_exclusion_count": len(exclusion_receipt),
             "exclusions_evaluated_on": evaluated_on.isoformat(),
             "band_edge_registry_reconciled": True,
+            "calibration_line": calibration_line,
             "compiled_local_reference_count": len(local_registries[year].specs),
             "local_registry_version": local_registries[year].version,
             "validation_periods": {
@@ -360,7 +367,10 @@ def load_uk_national_target_inputs(
     diagnostic run; the compiled register less the measure exclusions is the
     solve surface and the full compiled register keeps the band edges;
     ``register_json`` requires the re-derived scoring surface to be the frozen
-    one. No local registry and no ladder: the national line has neither.
+    one. No local registry and no ladder: the national line has neither. The
+    references whose contract target binds on the local line only
+    (``calibration_lines``) compile but leave the surface before
+    reconciliation; ``register_completeness.calibration_line`` receipts them.
     """
 
     artifact = load_ledger_consumer_artifact(
@@ -381,18 +391,27 @@ def load_uk_national_target_inputs(
     if type(year) is not int or year <= 0:
         raise ValueError("calibration_year must be a positive integer.")
     evaluated_on = exclusion_evaluation_date(exclusions_evaluated_on)
-    compilation = compile_uk_target_registry(artifact.facts, target_period=year)
+    # Every committed reference compiles here, the high-value homes region rows
+    # on their Microcosm-derived facts included (microcosm#1301); those rows
+    # bind on the local line only, so the national surface drops them before
+    # reconciliation, the exclusions and the frozen-register check, and its
+    # registry is the one it was without them.
+    derived = load_uk_high_value_home_stock_facts()
+    compilation = compile_uk_target_registry(
+        chain(artifact.facts, derived.rows), target_period=year
+    )
     if compilation.unsupported:
         raise ValueError(
             f"{len(compilation.unsupported)} national target references failed "
             f"to compile for {year}: {compilation.unsupported!r}."
         )
+    line_registry, calibration_line = uk_registry_on_calibration_line(
+        compilation.registry, line="national"
+    )
     exclusions = load_uk_calibration_measure_exclusions(
         None if measure_exclusions is None else Path(measure_exclusions)
     )
-    reconciled, national_reconciliation = reconcile_uk_national_registry(
-        compilation.registry
-    )
+    reconciled, national_reconciliation = reconcile_uk_national_registry(line_registry)
     # The joint path runs the coverage check on its local surface; the
     # national line has none, so it runs the same check here.
     national_reconciliation = {
@@ -438,15 +457,24 @@ def load_uk_national_target_inputs(
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
         "ledger_provenance": _ledger_provenance(artifact),
+        "derived_fact_provenance": {
+            "high_value_home_stock_facts": {
+                "rows": len(derived.rows),
+                "rows_sha256": derived.rows_sha256,
+                "inputs_sha256": derived.inputs_sha256,
+                "generator": dict(derived.generator),
+            }
+        },
         "register_completeness": {
-            "compiled_registry_version": compilation.registry.version,
+            "compiled_registry_version": line_registry.version,
             "reconciled_registry_version": reconciled.version,
             "approved_registry_version": registry.version,
             "frozen_registry_version": frozen_version,
-            "compiled_reference_count": len(compilation.registry.specs),
+            "compiled_reference_count": len(line_registry.specs),
             "approved_reference_count": len(registry.specs),
             "measure_exclusion_count": len(exclusion_receipt),
             "exclusions_evaluated_on": evaluated_on.isoformat(),
             "band_edge_registry_reconciled": True,
+            "calibration_line": calibration_line,
         },
     }

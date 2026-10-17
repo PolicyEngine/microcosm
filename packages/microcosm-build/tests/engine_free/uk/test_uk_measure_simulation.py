@@ -645,6 +645,10 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "obr.fuel_duties_cars": 1,
     "ons.household_electricity_expenditure": 1,
     "ons.household_gas_expenditure": 1,
+    # microcosm#1301 (2026-10-16): employer NICs, gross of the Employment
+    # Allowance in the engine and priced on FY2025-26 rules over a window that
+    # takes a quarter of FY2024-25, held out as a measured diagnostic.
+    "obr.ni_employer": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -670,8 +674,9 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3).
-    assert len(names) == len(set(names)) == 56
+    # 65 less the nine payment bands the support floor covers (microcosm#1095 U3),
+    # plus the employer NICs diagnostic (microcosm#1301).
+    assert len(names) == len(set(names)) == 57
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -778,6 +783,9 @@ def test_packaged_exclusions_load():
     # (María's ruling on microcosm#1271) is no target since 2026-10-16, but a
     # diagnostic beside the two-child-limit rows, so no exclusion names it and
     # only the housing-element renewal carries that date.
+    assert sorted(
+        e["name"] for e in exclusions if e["approved_on"] == "2026-10-16"
+    ) == ["obr.ni_employer"]
     assert sorted(
         e["name"] for e in exclusions if e["approved_on"] == "2026-10-14"
     ) == sorted(_UC_ELEMENT_REGISTER_ROWS)
@@ -894,6 +902,44 @@ def test_packaged_exclusions_load():
         "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
     ):
         assert riding not in excluded, riding
+
+
+def test_employer_nics_are_a_measured_diagnostic():
+    # microcosm#1301 (María's ruling of 2026-10-16): the engine's ni_employer
+    # is gross of the Employment Allowance, which OBR's receipts are net of,
+    # and the row's calendar-2025 window takes a quarter of FY2024-25 that the
+    # engine prices on FY2025-26 rules. Modelling the allowance alone would
+    # close only part of the gap, so the row leaves the objective as a
+    # diagnostic until a locked engine nets the allowance out. The other two
+    # class rows stay bound beside it.
+    from datetime import date
+
+    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    entry = exclusions["obr.ni_employer"]
+    assert entry["tracking"] == "policyengine-uk#2459"
+    assert entry["approved_by"] == "juaristi22"
+    assert entry["approved_on"] == "2026-10-16"
+    # Three months, the window of the 2026-10-08 engine-factor diagnostic.
+    assert entry["expires_on"] == "2027-01-16"
+    vat = exclusions["obr.vat"]
+    assert (
+        date.fromisoformat(entry["expires_on"])
+        - date.fromisoformat(entry["approved_on"])
+    ).days == (
+        date.fromisoformat(vat["expires_on"]) - date.fromisoformat(vat["approved_on"])
+    ).days
+    for phrase in (
+        "Employment Allowance",
+        "calendar-2025 window",
+        "FY2025-26 rules",
+        "diagnostic",
+        "never fitted",
+    ):
+        assert phrase in entry["reason"], phrase
+    assert "microcosm#1301" in entry["adjudication"]
+    assert "policyengine-uk#2459" in entry["adjudication"]
+    assert "obr.ni_employee" not in exclusions
+    assert "obr.ni_self_employed" not in exclusions
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
@@ -1654,6 +1700,133 @@ def test_a_persisted_bus_boarding_column_is_refused(monkeypatch, tmp_path: Path)
 def test_the_resolver_routes_bus_boardings_to_households(monkeypatch, tmp_path: Path):
     resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
     for name in ("bus_in_london_boardings", "other_local_bus_boardings"):
+        assert resolver.entity_for(name) == "household"
+        assert resolver.knows("household", name)
+        assert not resolver.knows("person", name)
+
+
+#: microcosm#1301: the three high-value homes region measures and the
+#: threshold each reads.
+_HIGH_VALUE_HOME_MEASURES = {
+    "owner_occupied_home_over_gbp_1m": "over_gbp_1m",
+    "owner_occupied_home_over_gbp_1_5m": "over_gbp_1_5m",
+    "owner_occupied_home_over_gbp_2m": "over_gbp_2m",
+}
+
+
+def _high_value_home_frame() -> FrameStub:
+    """Synthetic households straddling the frame-basis thresholds."""
+
+    from microcosm.build.uk_runtime.high_value_homes import (
+        uk_high_value_home_thresholds,
+    )
+
+    basis = {
+        threshold.threshold_id: threshold.basis_gbp
+        for threshold in uk_high_value_home_thresholds()
+    }
+    frame = FrameStub()
+    frame._tables["person"] = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            "person_benunit_id": [10, 20, 30, 40, 50],
+            "person_household_id": [100, 200, 300, 400, 500],
+        }
+    )
+    frame._tables["household"] = pd.DataFrame(
+        {
+            "household_id": [100, 200, 300, 400, 500],
+            "main_residence_value": [
+                basis["over_gbp_2m"] + 1.0,  # owner over every threshold
+                basis["over_gbp_1m"] + 1.0,  # owner over the lowest only
+                basis["over_gbp_1m"],  # owner exactly at the threshold
+                basis["over_gbp_2m"] + 1.0,  # private renter: never counted
+                np.nan,  # owner without a stored value
+            ],
+            "tenure_type": [
+                "OWNED_OUTRIGHT",
+                "OWNED_WITH_MORTGAGE",
+                "OWNED_OUTRIGHT",
+                "RENT_PRIVATELY",
+                "OWNED_OUTRIGHT",
+            ],
+        }
+    )
+    return frame
+
+
+def test_high_value_home_measures_mask_stored_owner_values_by_threshold():
+    """Each measure is the shared mask on the stored value and tenure (#1301)."""
+
+    frame = _high_value_home_frame()
+    expected = {
+        "owner_occupied_home_over_gbp_1m": [1.0, 1.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_1_5m": [1.0, 0.0, 0.0, 0.0, 0.0],
+        "owner_occupied_home_over_gbp_2m": [1.0, 0.0, 0.0, 0.0, 0.0],
+    }
+    for variable, threshold_id in _HIGH_VALUE_HOME_MEASURES.items():
+        # No engine: the stored columns are read off the frame, never uprated.
+        values, route = compute_uk_measure_input(
+            frame, None, "household", variable, 2025
+        )
+        assert values.tolist() == expected[variable], variable
+        assert route == f"frame_columns:high_value_home_mask:{threshold_id}"
+    assert measure_simulation._HIGH_VALUE_HOME_MEASURES == _HIGH_VALUE_HOME_MEASURES
+    with pytest.raises(KeyError, match="household-only"):
+        compute_uk_measure_input(
+            frame, None, "person", "owner_occupied_home_over_gbp_1m", 2025
+        )
+
+
+def test_high_value_home_measures_need_the_stored_columns():
+    frame = _high_value_home_frame()
+    frame._tables["household"] = frame._tables["household"].drop(
+        columns=["tenure_type"]
+    )
+    with pytest.raises(ValueError, match=r"\['tenure_type'\]"):
+        compute_uk_measure_input(
+            frame, None, "household", "owner_occupied_home_over_gbp_2m", 2025
+        )
+
+
+def test_the_contract_binds_each_region_row_on_its_threshold_measure():
+    """The bound value variables are the measures, threshold for threshold."""
+
+    targets = measure_simulation._uk_contract_targets()
+    bound = {
+        target_id: target["bindings"]["policyengine"]["value_variable"]
+        for target_id, target in targets.items()
+        if target_id.startswith("microcosm.high_value_homes.")
+    }
+    assert set(bound.values()) == set(_HIGH_VALUE_HOME_MEASURES)
+    for target_id, variable in bound.items():
+        threshold_id = _HIGH_VALUE_HOME_MEASURES[variable]
+        selector = targets[target_id]["ledger_selector"]
+        assert selector["record_set_spec_id"].endswith(f".{threshold_id}.v1")
+
+
+def test_a_persisted_high_value_home_column_is_refused(monkeypatch, tmp_path: Path):
+    frame = _high_value_home_frame()
+    frame._tables["household"]["owner_occupied_home_over_gbp_1m"] = [1.0] * 5
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="must not be persisted"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+        )
+
+
+def test_the_resolver_routes_high_value_home_measures_to_households(
+    monkeypatch, tmp_path: Path
+):
+    resolver = _resolver_over(SimulationStub({}), monkeypatch, tmp_path)
+    for name in _HIGH_VALUE_HOME_MEASURES:
         assert resolver.entity_for(name) == "household"
         assert resolver.knows("household", name)
         assert not resolver.knows("person", name)
