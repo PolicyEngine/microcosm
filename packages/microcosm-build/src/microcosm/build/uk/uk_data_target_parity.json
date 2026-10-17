@@ -344,7 +344,7 @@
         "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
         "policyengine_uk_data.targets.sources.local_income"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py. Since uk-data#529 the incumbent's local calibration logs this count but does not train on it (datasets/create_datasets.py VALIDATION_ONLY_LOCAL_TARGETS, outside the inventory's scope): HMRC's annual counts include part-year earners the FRS records as out of work. Microcosm still binds it under the hmrc_spi_frame_model_proxy fence; whether to follow is a ruling owed on microcosm#1095.",
       "status": "ported_local_declared"
     },
     {
@@ -971,7 +971,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.dwp_housing_benefit"
       ],
-      "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490): Housing Benefit spending and claims over Pension Credit qualifying age, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026); Microcosm binds the same DWP line as dwp.hb.amount_pension_age and the pension-age caseloads dwp.hb.households_pension_age (all tenures, social and private rented) from Stat-Xplore.",
+      "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490): Housing Benefit spending and claims over Pension Credit qualifying age, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026); Microcosm binds the same DWP line as dwp.hb.amount_pension_age and the pension-age caseloads dwp.hb.households_pension_age (all tenures, social and private rented) from Stat-Xplore. The age split differs: uk-data counts a unit as pension-age when the claimant or partner has reached State Pension age and neither is on Universal Credit, Income Support, income-based Jobseeker's Allowance or income-related Employment and Support Allowance (the pension-age regulations, which policyengine-uk 2.132.6 encodes as housing_benefit_pension_age_regulations_apply), while Microcosm's four rows filter on eldest_adult_age >= 66 alone, a variable policyengine-uk marks deprecated, so a unit on one of those benefits falls in Microcosm's pension-age rows. Re-binding on the regulations variable goes with microcosm#867.",
       "status": "ported_national"
     },
     {
@@ -1155,7 +1155,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.ons_labour_market"
       ],
-      "evidence": "uk-data targets/sources/ons_labour_market.py (uk-data#529): LFS employees and self-employed, UK, four-quarter averages, bound on the FRS employment_status; no Chronicle ONS labour-market package.",
+      "evidence": "uk-data targets/sources/ons_labour_market.py (uk-data#529): LFS employees and self-employed, UK, four-quarter averages, bound on the FRS employment_status; no Chronicle ONS labour-market package. The same change made the local employment-income count validation-only (local_contract.hmrc.employment_income.count).",
       "fence": {
         "origin": "uk-data tied the counts of employees and the self-employed to the LFS because HMRC's annual counts of employment-income taxpayers include part-year earners.",
         "purpose": "Anchor the stock of employed people at a point in time, not only annual taxpayer counts.",
@@ -1207,7 +1207,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:667-756 (_parse_tv_licence and the static rows before get_targets); Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
+      "evidence": "uk-data targets/sources/obr.py:620 (_parse_tv_licence) and 668-684 (the private-school and salary-sacrifice static rows before get_targets); Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
       "status": "ported_national"
     },
     {
