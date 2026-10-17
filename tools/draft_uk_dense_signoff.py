@@ -65,7 +65,10 @@ contract, it warns, without failing, when the disclosure walk finds a per-area
 support figure in that report. It fails once the assembly deadline has passed
 and warns from two days before it. With
 ``--build-1`` it also reports whether build 2 reused build 1's solve and
-reproduced its per-row errors.
+reproduced its per-row errors. With ``--draft-receipt`` it checks that the
+sign-off committed what was drafted: every added or renewed entry, no retired
+one, and each rescoped entry scoped to the national line and otherwise as it
+was committed before the sign-off, which the receipt keeps.
 
 Outputs go to ``--out``, which must lie outside every git work tree:
 
@@ -79,7 +82,8 @@ Nothing is committed, pushed or posted.
 
 Disclosure (UKDS): the patch, the receipt and the PR body carry target and
 area identifiers, counts, policy constants, the reviewer's login and their
-free text. Reasons are templated and never quote an error, an estimate or a
+free text; the receipt also keeps the committed text of the entries it
+rescopes. Reasons are templated and never quote an error, an estimate or a
 support figure, and the reports' failure lines are never copied.
 ``--approved-by`` must be a GitHub login that starts with a letter and holds
 at most one run of digits. The free text (``--class-note``, ``--area-name``,
@@ -854,6 +858,11 @@ class RegisterDraft:
         patch, so a count of such cells next to it brackets a named sub-GOR
         estimate (microcosm#1301); the local counts go to the private review
         file and the tool's standard output (:meth:`fit_bands`) only.
+
+        Each rescoped entry is kept as committed before the sign-off
+        (``rescoped_from``), so that ``--verify`` can check that the sign-off
+        changed nothing in it but its release lines. Those entries are
+        committed register text, not build 1's evidence.
         """
 
         summary: dict[str, Any] = {
@@ -863,6 +872,9 @@ class RegisterDraft:
             "keep": sorted(self.keep),
             "remove": sorted(self.remove),
             "rescope": sorted(self.rescope),
+            "rescoped_from": {
+                key: dict(self.before[key]) for key in sorted(self.rescope)
+            },
             "review": sorted(self.review),
             "conflicts": sorted(self.conflicts),
             "held": sorted(self.held),
@@ -2496,6 +2508,51 @@ def run_draft(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _rescope_changes(
+    summary: Mapping[str, Any], block: Mapping[str, Mapping[str, Any]]
+) -> list[str]:
+    """How the committed rescoped entries differ from their drafted rescope.
+
+    The draft scopes an entry the national line may stand on to that line,
+    unchanged otherwise (:func:`_rescope`), and keeps it as committed before
+    the sign-off (:meth:`RegisterDraft.summary`). Every field but
+    ``release_lines`` must still match: the national line reads the entry,
+    and a sign-off that edited it would change the national line's approval
+    under cover of the local line's.
+    """
+
+    recorded = summary.get("rescoped_from") or {}
+    unrecorded: list[str] = []
+    changed: list[str] = []
+    for key in summary.get("rescope", ()):
+        committed = block.get(key)
+        if committed is None:
+            continue
+        before = recorded.get(key)
+        if not isinstance(before, Mapping):
+            unrecorded.append(key)
+            continue
+        fields = sorted(
+            name
+            for name in {*before, *committed} - {"release_lines"}
+            if before.get(name) != committed.get(name)
+        )
+        if fields:
+            changed.append(f"{key} ({', '.join(fields)})")
+    problems = []
+    if unrecorded:
+        problems.append(
+            "the draft receipt does not record the committed entries it "
+            f"rescoped, {unrecorded}; draft again"
+        )
+    if changed:
+        problems.append(
+            "entries drafted for the national line only changed beyond their "
+            f"release lines: {changed}"
+        )
+    return problems
+
+
 def _receipt_matches(entry: Mapping[str, Any], record: UKReviewedExclusion) -> bool:
     return all(
         entry.get(name) == getattr(record, name)
@@ -2694,6 +2751,9 @@ def verify(
                     f"{gate_id}: entries drafted for the national line only are "
                     f"not committed so {unscoped}"
                 )
+            failures.extend(
+                f"{gate_id}: {line}" for line in _rescope_changes(summary, block)
+            )
     deadline = assembly_deadline(
         {
             "measure_exclusion": build_2.measure_exclusions,

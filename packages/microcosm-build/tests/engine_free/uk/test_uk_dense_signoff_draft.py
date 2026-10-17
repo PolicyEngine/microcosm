@@ -1756,6 +1756,55 @@ def test_verify_fails_a_rescope_committed_on_every_line(tmp_path):
     ) in result["failures"]
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expires_on", "2026-12-31"),
+        ("reason", "Synthetic reason reworded in the sign-off."),
+        ("adjudication", "microcosm#1301 (another review)"),
+        ("approved_by", "another-reviewer"),
+    ],
+)
+def test_verify_fails_a_rescope_that_changed_the_entry(tmp_path, field, value):
+    # The national line still reads a rescoped entry: the sign-off may scope
+    # it to that line and change nothing else in it.
+    entry = _entry("2026-10-01", "2026-10-29", lines=None)
+    registers = build_1_registers()
+    registers["uk_target_fit"]["exclusions"][UNSCOPED_KEY] = entry
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    receipt_path = tmp_path / "draft" / "signoff_draft.json"
+    signed = _signed_off(build, repo, tmp_path)
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["registers"]["uk_target_fit"]["rescoped_from"] == {
+        UNSCOPED_KEY: entry
+    }
+    signed["uk_target_fit"]["exclusions"][UNSCOPED_KEY][field] = value
+    make_repo(repo, signed)
+    build_2 = write_run(
+        tmp_path / "build-2", registers=signed, attempt_id=ATTEMPT_2, clock=GATE_CLOCK
+    )
+    status, result = verify(
+        build_2, repo, tmp_path, "--draft-receipt", str(receipt_path)
+    )
+    assert status == 1
+    assert (
+        "uk_target_fit: entries drafted for the national line only changed "
+        f"beyond their release lines: ['{UNSCOPED_KEY} ({field})']"
+    ) in result["failures"]
+    # A receipt that does not record the committed entry cannot vouch for it.
+    del receipt["registers"]["uk_target_fit"]["rescoped_from"]
+    receipt_path.write_text(json.dumps(receipt))
+    status, result = verify(
+        build_2, repo, tmp_path, "--draft-receipt", str(receipt_path)
+    )
+    assert status == 1
+    assert any(
+        "the draft receipt does not record the committed entries it rescoped" in line
+        for line in result["failures"]
+    ), result["failures"]
+
+
 # ---------------------------------------------------------------------------
 # Lockstep with the repository
 # ---------------------------------------------------------------------------
