@@ -1619,6 +1619,123 @@ def test_publication_repeats_the_contract_warnings_and_proceeds(
         )
 
     assert prepared.release_id == release_dir.name
+    assert prepared.contract_warnings == ("synthetic.json carries a synthetic finding",)
+
+
+#: Contract warnings as the dense line's disclosure walk words them: a file
+#: and the paths in it, never a value (microcosm#1301).
+_CONTRACT_WARNINGS = [
+    "synthetic.json carries 1 per-area support figure(s) (rows, ESS or distinct "
+    "sources), which a dense release should withhold (microcosm#1301); first "
+    "at ['areas[0].rows'].",
+    "other.json cannot be read and walked as JSON, so the disclosure walk "
+    "cannot rule out a per-area support figure in it (microcosm#1301).",
+]
+
+
+class _TagMessageHub(FakeHub):
+    """The fake Hub, keeping each tag's message as the Hub's annotated tags do."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tag_messages: dict[str, str | None] = {}
+
+    def create_tag(self, *, tag_message=None, **kwargs) -> None:
+        super().create_tag(**kwargs)
+        self.tag_messages[kwargs["tag"]] = tag_message
+
+
+def test_preflight_verdict_lists_the_contract_warnings(
+    release_dir: Path, artifact_root: Path, monkeypatch, capsys
+) -> None:
+    """--preflight-only puts the contract's warnings in its JSON verdict, not
+    only on stderr, and still passes: the walk warns, never refuses (review
+    of microcosm#1307)."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: _CONTRACT_WARNINGS,
+    )
+    monkeypatch.setattr(release_module, "_hf_api", lambda: pytest.fail("Hub client"))
+
+    with pytest.warns(UserWarning, match="release contract: synthetic.json carries"):
+        status = publish_cli.main(
+            [
+                str(release_dir),
+                "--artifact-root",
+                str(artifact_root),
+                "--preflight-only",
+            ]
+        )
+
+    assert status == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "valid": True,
+        "published": False,
+        "contract_warnings": _CONTRACT_WARNINGS,
+    }
+
+
+def test_publication_reports_the_contract_warnings_and_counts_them_on_the_tag(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A publication past the contract's warnings lists them in its printed
+    verdict, and its tag records how many there were but none of them; no
+    uploaded file carries them (review of microcosm#1307)."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: _CONTRACT_WARNINGS,
+    )
+    hub = _TagMessageHub()
+    hub._download_dir = tmp_path / "hub-cache"
+    monkeypatch.setattr(release_module, "_hf_api", lambda: hub)
+
+    with pytest.warns(UserWarning, match="release contract: other.json cannot"):
+        status = publish_cli.main(
+            [
+                str(release_dir),
+                "--artifact-root",
+                str(artifact_root),
+                "--no-latest",
+                "--tag-only",
+            ]
+        )
+
+    assert status == 0
+    verdict = json.loads(capsys.readouterr().out)
+    assert verdict["release_id"] == RELEASE_ID
+    assert verdict["contract_warnings"] == _CONTRACT_WARNINGS
+    message = hub.tag_messages[RELEASE_ID]
+    assert message is not None
+    assert "published past 2 release contract warning(s)" in message
+    for warning in _CONTRACT_WARNINGS:
+        assert warning.split(" ")[0] not in message
+    assert "areas[0]" not in message
+    assert not any(b"contract_warnings" in content for _, content in hub.uploads)
+    assert not any(b"areas[0].rows" in content for _, content in hub.uploads)
+
+
+def test_publication_without_warnings_leaves_the_tag_and_verdict_unchanged(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    tagged = _TagMessageHub()
+    tagged._download_dir = hub._download_dir
+
+    pointer = publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=tagged,
+        artifact_root=artifact_root,
+        update_latest=False,
+        tag_only=True,
+    )
+
+    assert "contract_warnings" not in pointer
+    assert tagged.tag_messages == {RELEASE_ID: None}
 
 
 @pytest.mark.parametrize("evidence", [False, True])
