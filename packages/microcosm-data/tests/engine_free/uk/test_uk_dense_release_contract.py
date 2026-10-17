@@ -1387,6 +1387,23 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
     assert "expired 2026-10-03" in failures
 
 
+#: Placeholder area codes no area carries, so a fixture that pairs an area
+#: with support figures never reads as a real area's figures.
+_AREA = "E06999999"
+_OTHER_AREA = "E06999998"
+#: The synthetic support figures the refusal tests inject; no failure may
+#: repeat one.
+_FIGURES = ("37", "23.75", "29", "41")
+
+
+def _failure_lines(release_dir: Path) -> str:
+    """The contract's failures without the release directory's own path,
+    which a figure could appear in by chance."""
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    return "\n".join(excinfo.value.failures)
+
+
 #: The area-support details a signed report may ship: the floors an excused
 #: area misses and its signed record, and area counts by level.
 _FLOOR_ONLY_DETAILS = {
@@ -1399,7 +1416,7 @@ _FLOOR_ONLY_DETAILS = {
         "local_authority": {"areas_checked": 2, "areas_below_floor": 1}
     },
     "reviewed_exclusions": {
-        "local_authority/E06000053": {
+        f"local_authority/{_AREA}": {
             "shortfalls": ["rows < 50", "ESS < 50"],
             "record": {"reason": "synthetic reviewed exclusion"},
         }
@@ -1418,7 +1435,7 @@ def test_floor_only_area_support_details_ship(tmp_path: Path) -> None:
 
 def _with_figures(details: dict) -> dict:
     figures = json.loads(json.dumps(details))
-    figures["reviewed_exclusions"]["local_authority/E06000053"].update(
+    figures["reviewed_exclusions"][f"local_authority/{_AREA}"].update(
         rows=37, ess=23.75, sources=29
     )
     return figures
@@ -1427,8 +1444,6 @@ def _with_figures(details: dict) -> dict:
 @pytest.mark.parametrize(
     "inject,expected",
     [
-        ("manifest_area_row", "per-area support figure(s)"),
-        ("manifest_minimum", "minimum(s) of an area support figure"),
         ("summary_shortfall_text", "string(s) stating an area's measured support"),
         ("signed_report_figures", "per-area support figure(s)"),
     ],
@@ -1448,65 +1463,156 @@ def test_dense_release_refuses_per_area_support_figures(
         name = "uk_local_gates.json"
     else:
         release_dir = write_dense_bundle(tmp_path)
-        if inject == "summary_shortfall_text":
-            name = "gate_summary.json"
-            path = release_dir / name
-            summary = json.loads(path.read_text())
-            summary["diagnostic_gates"]["uk_local_area_support"] = {
-                "failures": ["local_authority/E06000053: rows 37 < 50"]
-            }
-        else:
-            name = "release_manifest.json"
-            path = release_dir / name
-            summary = json.loads(path.read_text())
-            if inject == "manifest_area_row":
-                summary["reviewed_limitations"].append(
-                    {
-                        "id": "synthetic_area_note",
-                        "areas": [{"area_code": "E06000053", "sources": 29}],
-                    }
-                )
-            else:
-                summary["support"] = {"min_nonzero_households": 37}
+        name = "gate_summary.json"
+        path = release_dir / name
+        summary = json.loads(path.read_text())
+        summary["diagnostic_gates"]["uk_local_area_support"] = {
+            "failures": [f"local_authority/{_AREA}: rows 37 < 50"]
+        }
         path.write_text(json.dumps(summary))
         _refresh_packaging_checksums(release_dir)
 
-    failures = _failures(release_dir)
+    failures = _failure_lines(release_dir)
     assert expected in failures
     assert name in failures
     # The refusal names where the figure is, never its value.
-    for figure in ("37", "23.75", "29"):
+    for figure in _FIGURES:
         assert figure not in failures
 
 
-def test_disclosure_walker_allows_floors_counts_and_weights() -> None:
+_FIGURE = "per-area support figure(s)"
+_EXTREME = "minimum(s), maximum(s) or median(s) of an area support figure"
+
+#: The shapes an area's support figures could take in a shipped document
+#: (microcosm#1301), each injected into the release manifest under one key.
+_SUPPORT_FIGURE_SHAPES = {
+    "record_by_area_code": ("areas", [{"area_code": _AREA, "sources": 29}], _FIGURE),
+    "record_by_geography_id": (
+        "areas",
+        [{"geography_id": _AREA, "rows": 37}],
+        _FIGURE,
+    ),
+    "record_by_code": ("areas", [{"code": _AREA, "ess": 23.75}], _FIGURE),
+    "list_in_a_record": ("areas", [{"area_code": _AREA, "rows": [37]}], _FIGURE),
+    "figure_as_text": (
+        "areas",
+        [{"area_code": _AREA, "nonzero_households": "37"}],
+        _FIGURE,
+    ),
+    "code_keyed_map": ("support_by_area", {"ess": {_AREA: 23.75}}, _FIGURE),
+    "code_keyed_map_by_level": (
+        "support_by_area",
+        {"sources": {"local_authority": {_AREA: 29}}},
+        _FIGURE,
+    ),
+    "level_prefixed_code_keys": (
+        "support_by_area",
+        {"rows": {f"local_authority/{_AREA}": [37]}},
+        _FIGURE,
+    ),
+    "parallel_lists": (
+        "support_table",
+        {
+            "area_code": [_AREA, _OTHER_AREA],
+            "nonzero_source_households": [29, 41],
+        },
+        _FIGURE,
+    ),
+    "pandas_columns": (
+        "support_table",
+        {"geography_id": {"0": _AREA}, "effective_sample_size": {"0": 23.75}},
+        _FIGURE,
+    ),
+    "code_column": ("support_table", {"code": [_AREA], "rows": [37]}, _FIGURE),
+    "minimum": ("support", {"min_nonzero_households": 37}, _EXTREME),
+    "maximum": ("support", {"max_nonzero_source_households": 29}, _EXTREME),
+    "median": ("support", {"median_effective_sample_size": 23.75}, _EXTREME),
+    "minimum_by_level": (
+        "support",
+        {"minimum_rows": {"local_authority": 37}},
+        _EXTREME,
+    ),
+    "maxima_in_a_list": ("support", {"maximum_ess": [23.75, 41]}, _EXTREME),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_SUPPORT_FIGURE_SHAPES))
+def test_dense_release_refuses_support_figures_in_every_shape(
+    tmp_path: Path, shape: str
+) -> None:
+    """Records keyed by any area identifier, code-keyed maps, columnar tables,
+    lists and the extremes of a figure are refused alike (microcosm#1301)."""
+
+    key, value, expected = _SUPPORT_FIGURE_SHAPES[shape]
+    release_dir = write_dense_bundle(tmp_path)
+    _rewrite_manifest(release_dir, lambda manifest: manifest.__setitem__(key, value))
+    failures = _failure_lines(release_dir)
+    assert "release_manifest.json carries" in failures and expected in failures
+    # The refusal names where the figures are, never their values.
+    assert f"first at ['{key}" in failures
+    for figure in _FIGURES:
+        assert figure not in failures
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b'{"support": {"rows": ', b'{"rows": NaN}', b'{"rows": "\xc3\x28"}'],
+    ids=["truncated", "non-standard-constant", "undecodable"],
+)
+def test_dense_release_refuses_a_json_document_it_cannot_walk(
+    tmp_path: Path, content: bytes
+) -> None:
+    """A document the walk cannot read could hide a figure, so it fails."""
+
+    release_dir = write_dense_bundle(tmp_path)
+    (release_dir / "support_notes.json").write_bytes(content)
+    assert (
+        "support_notes.json cannot be read and walked as JSON, so the disclosure "
+        "walk cannot rule out"
+    ) in _failures(release_dir)
+
+
+def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:
     shipped = {
         "area_support": {
             "floors": {"minimum_rows": 50, "minimum_distinct_sources": 50},
-            "below_floor": {"local_authority": ["E06000053"]},
+            "below_floor": {"local_authority": [_AREA]},
         },
         "support": {"areas_checked": 2, "areas_below_floor": 1},
-        "weights": {"effective_sample_size": 3.5, "max_weight": 4.0},
+        "weights": {
+            "effective_sample_size": 3.5,
+            "max_weight": 4.0,
+            "median_positive_weight": 1.0,
+        },
         "worst_areas": [
             {
-                "area_code": "E06000053",
+                "area_code": _AREA,
                 "worst_abs_relative_error": 0.4,
                 "support_below_floor": True,
             }
         ],
-        "failures": ["local_authority/E06000053: rows < 50, ESS < 50"],
+        "failures": [f"local_authority/{_AREA}: rows < 50, ESS < 50"],
+        # Per-cell estimates ship, however the cell's area is keyed.
+        "local_rows": [{"geography_id": _AREA, "candidate_estimate": 100.0}],
+        "rows": [{"area_code": _AREA, "estimate": 5.0}],
+        # A ``code`` that holds no area code identifies no area.
+        "code": {"git_commit": "a" * 40, "git_dirty": False},
+        "diagnostic_warnings": [{"code": "synthetic_warning", "rows": 3}],
+        # Counts of target rows, and a declared bound, are not support figures.
+        "fit": {"local_by_family": [{"family": "synthetic", "rows": 12}]},
+        "parameters": {"maximum_max_to_median_ratio": 100.0},
     }
     assert dc._uk_dense_disclosure_failures("shipped.json", shipped) == []
 
 
 def test_the_area_support_block_names_only_excused_areas() -> None:
-    excused = [{"id": "area_support_exclusion:local_authority/E06000053"}]
+    excused = [{"id": f"area_support_exclusion:local_authority/{_AREA}"}]
     failures: list[str] = []
     dc._check_area_support_block(
         {
             "gate": "uk_local_area_support",
             "floors": {"minimum_rows": 50},
-            "below_floor": {"local_authority": ["E06000053"]},
+            "below_floor": {"local_authority": [_AREA]},
         },
         excused,
         failures,
@@ -1515,7 +1621,7 @@ def test_the_area_support_block_names_only_excused_areas() -> None:
 
     failures = []
     dc._check_area_support_block(
-        {"below_floor": {"local_authority": ["E09000001"]}, "rows": {"E09000001": 3}},
+        {"below_floor": {"local_authority": [_OTHER_AREA]}, "rows": {_OTHER_AREA: 3}},
         excused,
         failures,
     )
@@ -1523,5 +1629,5 @@ def test_the_area_support_block_names_only_excused_areas() -> None:
     assert any("without a reviewed area_support_exclusion" in f for f in failures)
 
     failures = []
-    dc._check_area_support_block({"below_floor": ["E06000053"]}, excused, failures)
+    dc._check_area_support_block({"below_floor": [_AREA]}, excused, failures)
     assert any("must map each geography level" in f for f in failures)

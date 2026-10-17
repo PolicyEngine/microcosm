@@ -5071,11 +5071,23 @@ _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
 )
 # An area key: a GSS code, bare or under its level ("local_authority/E06000053").
 _UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?[EKLMNSW]\d{8}$")
-# A minimum of a support figure over areas ("min_nonzero_households",
-# "minimum_effective_sample_size") is the weakest area's figure. Only the
-# declared floors, under a "floors" key, may use these names.
-_UK_SUPPORT_MINIMUM_KEY_RE = re.compile(
-    r"^min(?:imum)?_[a-z_]*(?:households|rows|sources|sample_size|ess)$"
+# The fields that make a mapping one area's record, or, holding a list or a
+# pandas {row: value} column, a table's area column. ``code`` counts only
+# when it holds an area code: build manifests and warnings use the name too.
+_UK_AREA_ID_KEYS = ("area_code", "geography_id")
+# A minimum, maximum or median of a support figure over areas
+# ("min_nonzero_households", "maximum_rows", "median_effective_sample_size")
+# is one area's figure. Only the declared floors, under a "floors" key, may
+# use these names.
+_UK_SUPPORT_EXTREME_KEY_RE = re.compile(
+    r"^(?:min|minimum|max|maximum|median)_[a-z_]*"
+    r"(?:households|rows|sources|sample_size|ess)$"
+)
+# A pandas row index: DataFrame.to_dict() writes a column as {"0": value, ...}.
+_UK_ROW_INDEX_RE = re.compile(r"^\d+$")
+# A number written as text, as a document converted from a CSV carries it.
+_UK_NUMERIC_TEXT_RE = re.compile(
+    r"^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?\s*$", re.IGNORECASE
 )
 # A shortfall worded with the area's measured value ("rows 7 < 50"); the gate
 # names only the floor it misses ("rows < 50").
@@ -5085,48 +5097,112 @@ _UK_SUPPORT_FIGURE_TEXT_RE = re.compile(
 _UK_DISCLOSURE_PATHS_SHOWN = 5
 
 
+def _uk_names_an_area(value: object) -> bool:
+    """Whether ``value`` is an area code, or a column holding one."""
+
+    if isinstance(value, str):
+        return _UK_AREA_KEY_RE.fullmatch(value) is not None
+    if isinstance(value, Mapping):
+        value = list(value.values())
+    return isinstance(value, list) and any(
+        isinstance(item, str) and _UK_AREA_KEY_RE.fullmatch(item) is not None
+        for item in value
+    )
+
+
 def _uk_dense_disclosure_failures(name: str, payload: object) -> list[str]:
     """Per-area support figures in one shipped JSON document (microcosm#1301).
 
-    Three shapes are refused, wherever they sit, strings included:
-    a support figure in a per-area record (a mapping with an ``area_code``,
-    or the value under an area key), a minimum of a support figure outside
-    the declared floors, and a shortfall worded with the measured value. The
-    failures name where the figures are, never their values.
+    An area's rows, Kish ESS or distinct sources (a number, or a number
+    written as text) is refused wherever it sits:
+
+    - under its name in an area's record (a mapping with an ``area_code`` or
+      a ``geography_id``, or a ``code`` holding an area code), or under its
+      name anywhere beneath an area key;
+    - under its name in a table with an area column, as parallel lists or
+      as pandas ``{row: value}`` columns;
+    - under an area key beneath its name (``{"ess": {"E06000001": 41.2}}``),
+      through any level keys and lists between them;
+    - as a minimum, maximum or median of a figure, however nested, outside
+      the declared floors;
+    - in a string that states an area's measured support ("rows 7 < 50").
+
+    The failures name where the figures are, never their values.
     """
 
-    found: dict[str, list[str]] = {"figure": [], "minimum": [], "text": []}
+    found: dict[str, list[str]] = {"figure": [], "extreme": [], "text": []}
 
-    def walk(value: object, path: str, parent_key: str, per_area: bool) -> None:
+    def number(value: object) -> bool:
+        if isinstance(value, str):
+            return _UK_NUMERIC_TEXT_RE.fullmatch(value) is not None
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def walk(
+        value: object,
+        path: str,
+        label: str,
+        *,
+        area: bool,
+        figure: bool,
+        extreme: bool,
+        floors: bool,
+    ) -> None:
+        # ``label`` is the key the value sits under, or its column's name for
+        # a list item or a pandas row. ``area`` holds inside an area's record
+        # or table and beneath an area key; ``figure``, ``extreme`` and
+        # ``floors`` hold beneath a key naming a support figure, an extreme
+        # of one, or the declared floors.
         if isinstance(value, Mapping):
-            per_area = per_area or "area_code" in value
+            area = (
+                area
+                or any(key in value for key in _UK_AREA_ID_KEYS)
+                or _uk_names_an_area(value.get("code"))
+            )
             for raw_key, child in value.items():
                 key = str(raw_key)
-                child_path = f"{path}.{key}" if path else key
-                if isinstance(child, (int, float)) and not isinstance(child, bool):
-                    if per_area and key in _UK_AREA_SUPPORT_FIGURE_KEYS:
-                        found["figure"].append(child_path)
-                    elif (
-                        _UK_SUPPORT_MINIMUM_KEY_RE.fullmatch(key)
-                        and parent_key != "floors"
-                    ):
-                        found["minimum"].append(child_path)
                 walk(
                     child,
-                    child_path,
-                    key,
-                    per_area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
+                    f"{path}.{key}" if path else key,
+                    label if _UK_ROW_INDEX_RE.fullmatch(key) else key,
+                    area=area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
+                    figure=figure or key in _UK_AREA_SUPPORT_FIGURE_KEYS,
+                    extreme=extreme
+                    or _UK_SUPPORT_EXTREME_KEY_RE.fullmatch(key) is not None,
+                    floors=floors or key == "floors",
                 )
-        elif isinstance(value, list):
+            return
+        if isinstance(value, list):
             for index, child in enumerate(value):
-                walk(child, f"{path}[{index}]", parent_key, per_area)
+                walk(
+                    child,
+                    f"{path}[{index}]",
+                    label,
+                    area=area,
+                    figure=figure,
+                    extreme=extreme,
+                    floors=floors,
+                )
+            return
+        kind = None
+        if number(value):
+            if (area and label in _UK_AREA_SUPPORT_FIGURE_KEYS) or (
+                figure and _UK_AREA_KEY_RE.fullmatch(label)
+            ):
+                kind = "figure"
+            elif extreme and not floors:
+                kind = "extreme"
         elif isinstance(value, str) and _UK_SUPPORT_FIGURE_TEXT_RE.search(value):
-            found["text"].append(path or "<document>")
+            kind = "text"
+        if kind is not None:
+            found[kind].append(path or "<document>")
 
-    walk(payload, "", "", False)
+    walk(payload, "", "", area=False, figure=False, extreme=False, floors=False)
     wording = {
         "figure": "per-area support figure(s) (rows, ESS or distinct sources)",
-        "minimum": "minimum(s) of an area support figure outside the floors",
+        "extreme": (
+            "minimum(s), maximum(s) or median(s) of an area support figure "
+            "outside the floors"
+        ),
         "text": "string(s) stating an area's measured support",
     }
     return [
@@ -5141,16 +5217,24 @@ def _check_uk_dense_disclosure(release_dir: Path, failures: list[str]) -> None:
     """No shipped JSON document carries a per-area support figure (microcosm#1301).
 
     Every ``*.json`` in the release directory is walked, the signed gate
-    report and the release manifest's strings included. A document that does
-    not parse is reported by the check that owns it.
+    report and the release manifest's strings included. A document the walk
+    cannot read fails, since a figure in it could not be ruled out.
     """
 
     for path in sorted(release_dir.glob("*.json")):
         try:
-            payload = json.loads(path.read_text())
-        except (OSError, ValueError):
+            payload = json.loads(
+                path.read_bytes(), parse_constant=_reject_json_constant
+            )
+            found = _uk_dense_disclosure_failures(path.name, payload)
+        except (OSError, ValueError, RecursionError):
+            failures.append(
+                f"{path.name} cannot be read and walked as JSON, so the "
+                "disclosure walk cannot rule out a per-area support figure in "
+                "it (microcosm#1301)."
+            )
             continue
-        failures.extend(_uk_dense_disclosure_failures(path.name, payload))
+        failures.extend(found)
 
 
 def _check_local_area_release_manifest(
