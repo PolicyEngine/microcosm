@@ -1228,8 +1228,14 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
             coverage_engine=object(), engine_identity="fixture"
         ).implementation_hash()
         assert not hashed[-1] & high_value, kernel.__name__
-    graph_terminal.uk_terminal_only_code_hash()
+    # The hash is memoised per process; its undecorated body hashes the two
+    # high-value homes modules.
+    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
     assert hashed[-1] == high_value
+    first = graph_terminal.uk_terminal_only_code_hash()
+    calls = len(hashed)
+    assert graph_terminal.uk_terminal_only_code_hash() == first
+    assert len(hashed) == calls
 
 
 def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:

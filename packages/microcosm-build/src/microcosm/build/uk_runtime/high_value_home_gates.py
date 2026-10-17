@@ -166,12 +166,27 @@ def _suppress_small_cells(
     return shipped, sorted(withheld)
 
 
-def _obr_fiscal_england(row: Mapping[str, Any], concept: str) -> bool:
+def _mapping(value: Any) -> Mapping[str, Any]:
+    """A row field read as a mapping; anything else reads as empty."""
+    return value if isinstance(value, Mapping) else {}
+
+
+def _finite_count(value: Any) -> float | None:
+    """A non-negative, finite number, or ``None``."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
+def _obr_fiscal_england(row: Any, concept: str) -> bool:
     """Whether a vendored OBR row is ``concept`` for England on a fiscal year."""
     return (
-        row.get("concept") == concept
-        and (row.get("period") or {}).get("type") == OBR_PERIOD_TYPE
-        and (row.get("geography") or {}).get("id") == ENGLAND_CODE
+        isinstance(row, Mapping)
+        and row.get("concept") == concept
+        and _mapping(row.get("period")).get("type") == OBR_PERIOD_TYPE
+        and _mapping(row.get("geography")).get("id") == ENGLAND_CODE
     )
 
 
@@ -192,25 +207,28 @@ def _obr_band_counts(
     for row in obr_rows or ():
         if not _obr_fiscal_england(row, OBR_PROPERTIES_CONCEPT):
             continue
-        dimensions = row.get("dimensions") or {}
-        if str((row.get("period") or {}).get("value")) != str(period):
+        dimensions = _mapping(row.get("dimensions"))
+        if str(_mapping(row.get("period")).get("value")) != str(period):
             continue
         if dimensions.get("behaviour_basis") != basis:
             continue
         record = row.get("source_record_id")
         band = str(
             dimensions.get("property_value_band")
-            or (row.get("layout") or {}).get("groupby_value_id")
+            or _mapping(row.get("layout")).get("groupby_value_id")
             or ""
         )
+        count = _finite_count(row.get("value"))
         if band not in _OBR_BAND_IDS:
             problems.append(f"row {record!r} names an unknown band {band!r}")
         elif row.get("unit") != "count":
             problems.append(f"row {record!r} is in {row.get('unit')!r}, not a count")
+        elif count is None:
+            problems.append(f"row {record!r} carries no finite, non-negative count")
         elif band in out:
             problems.append(f"rows repeat band {band!r}")
         else:
-            out[band] = float(row["value"])
+            out[band] = count
     return out, problems
 
 
@@ -232,7 +250,7 @@ def _obr_non_owner_share(
     same_year = [
         row
         for row in rows
-        if str((row.get("period") or {}).get("value")) == str(period)
+        if str(_mapping(row.get("period")).get("value")) == str(period)
     ]
     chosen = same_year or rows
     if not chosen:
@@ -240,13 +258,13 @@ def _obr_non_owner_share(
     if len(chosen) > 1:
         return {"status": "ambiguous_rows", "share": None}
     row = chosen[0]
-    share = float(row["value"]) / 100.0
-    if row.get("unit") != "percent" or not 0.0 <= share < 1.0:
+    percent = _finite_count(row.get("value"))
+    if row.get("unit") != "percent" or percent is None or not percent < 100.0:
         return {"status": "malformed_row", "share": None}
     return {
         "status": "available",
-        "share": share,
-        "fiscal_year": str((row.get("period") or {}).get("value")),
+        "share": percent / 100.0,
+        "fiscal_year": str(_mapping(row.get("period")).get("value")),
     }
 
 
@@ -386,17 +404,22 @@ def uk_high_value_home_evidence(
     )
 
     # 2. Regional split of owner-occupied homes over £2m, England. The gate
-    # evaluates every region; the shipped shares suppress regions resting on
-    # fewer than ``SMALL_CELL_SOURCES`` distinct source households (with a
-    # second region suppressed when only one would be).
+    # evaluates every region; the shipped shares withhold a region resting on
+    # fewer than ``SMALL_CELL_SOURCES`` distinct source households, and
+    # further regions until the withheld ones rest together on that floor,
+    # since the shares sum to one. The split counts homes over the derived
+    # stock's threshold (``stored > basis``), as its rows do; the bands above
+    # count from £2m at April-2026 prices, as OBR's do, so the two sets can
+    # differ at the boundary.
     over_2m = owner & england & positive & (stored > two_m.basis_gbp)
     frame_region = _weighted_counts(region, weights, over_2m)
     region_sources = {
         code: set(source[over_2m & (region == code)].tolist()) for code in frame_region
     }
     frame_total = sum(frame_region.values())
-    # The total ships beside the shares, so it is withheld on the same floor:
-    # with it, the shares would give back every region's count.
+    # The evidence summary carries the total beside the shares, so it is
+    # withheld on the same floor: with it, the shares would give back every
+    # region's count.
     frame_total_shipped = (
         frame_total
         if len(set(source[over_2m].tolist())) >= SMALL_CELL_SOURCES or not frame_total

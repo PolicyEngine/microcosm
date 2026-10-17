@@ -525,6 +525,43 @@ def test_obr_leg_reports_a_share_it_cannot_read(defect: str, status: str) -> Non
     assert "owner_occupied_sensitivity_total" not in obr
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "status"),
+    [
+        ("value", None, "malformed_rows"),
+        ("value", "n/a", "malformed_rows"),
+        ("value", float("nan"), "malformed_rows"),
+        ("value", -5.0, "malformed_rows"),
+        ("period", "2028", "incomplete_rows"),
+        ("dimensions", ["static"], "incomplete_rows"),
+    ],
+)
+def test_obr_leg_reports_unreadable_fields_without_raising(
+    field: str, value, status: str
+) -> None:
+    # A missing, non-numeric, NaN or negative count, or a field that is not a
+    # mapping, is reported, never raised and never "available"
+    # (microcosm#1306 review).
+    rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
+    _matching_row(rows, "over_gbp_5m")[field] = value
+    obr = _evidence_with_obr(rows).summary["obr"]
+    assert obr["status"] == status
+    assert "all_properties" not in obr
+
+
+@pytest.mark.parametrize("value", [None, "40%", float("nan"), 100.0])
+def test_obr_leg_reports_an_unreadable_share_without_raising(value) -> None:
+    rows = copy.deepcopy(list(high_value_homes.load_vendored_obr_hvcts_facts()))
+    share = next(
+        r for r in rows if r["concept"] == "obr.hvcts_costing.non_owner_occupied_share"
+    )
+    share["value"] = value
+    obr = _evidence_with_obr(rows).summary["obr"]
+    assert obr["status"] == "available"
+    assert obr["non_owner_occupied_share"] is None
+    assert obr["non_owner_occupied_share_status"] == "malformed_row"
+
+
 def test_small_cell_suppression_withholds_a_thin_total() -> None:
     # One band on five sources and the rest empty: the total is that band,
     # so both go (microcosm#1306 review).
