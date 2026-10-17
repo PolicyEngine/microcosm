@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime import (
     uk_ladder_area_support_summary,
     uk_national_frame,
 )
+from microcosm.build.uk_runtime.uprating_holds import UK_HOLD_EXPIRY_NOTICE_DAYS
 from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_reviewed_exclusion_register,
 )
@@ -2135,3 +2136,29 @@ def test_progress_lines_cover_the_dense_solve_the_probes_and_the_refit():
     assert len(sink) == 4
     with pytest.raises(ValueError, match="every"):
         uk_solve_progress_callback(sink.append, every=0)
+
+
+def test_no_committed_local_adjudication_is_about_to_lapse() -> None:
+    # The rowwise tests review the register on its latest approval
+    # (COMMITTED_BINDING_NOW), not today, so nothing else in CI shows that
+    # the local adjudications are about to lapse (microcosm#1306 review):
+    # this fails UK_HOLD_EXPIRY_NOTICE_DAYS days before the earliest expiry,
+    # as the uprating holds' clock does, while the builds still pass. It is a
+    # clock on purpose. Clear it by renewing the adjudication in
+    # uk/local_binding_adjudications.json with a new approval and window, or
+    # by retiring its fence.
+    records = load_uk_reviewed_exclusion_register(
+        None, resource=UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
+    )
+    earliest = min(date.fromisoformat(record.expires_on) for record in records.values())
+    lapsing = sorted(
+        fence
+        for fence, record in records.items()
+        if date.fromisoformat(record.expires_on) == earliest
+    )
+    days_left = (earliest - date.today()).days
+    assert days_left > UK_HOLD_EXPIRY_NOTICE_DAYS, (
+        f"UK local binding adjudications {lapsing} expire on "
+        f"{earliest.isoformat()}, in {days_left} day(s); a build binding their "
+        "families refuses from the next day."
+    )

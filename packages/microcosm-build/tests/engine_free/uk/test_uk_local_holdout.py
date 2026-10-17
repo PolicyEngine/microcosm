@@ -75,6 +75,28 @@ def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
     assert payload["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP
 
 
+def test_rotated_local_holdout_passes_its_date_to_every_fold(monkeypatch) -> None:
+    # The refusal below stops at the first fold, so this shows the later
+    # folds receive the date too (microcosm#1306 review).
+    from microcosm.build.uk_runtime import local_rowwise
+
+    frame, problem = _frame_and_problem()
+    seen = []
+    real = local_rowwise.solve_uk_rowwise_weights_under_doctrine
+
+    def recording(*args, **kwargs):
+        seen.append(kwargs.get("now"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(
+        local_rowwise, "solve_uk_rowwise_weights_under_doctrine", recording
+    )
+    rotated_uk_local_holdout(
+        frame, problem, epochs=2, solve_seed=17, now=COMMITTED_BINDING_NOW
+    )
+    assert seen == [COMMITTED_BINDING_NOW] * 5
+
+
 def test_rotated_local_holdout_reviews_every_fold_on_its_date() -> None:
     # microcosm#1278: the holdout passes its review date to each fold's solve,
     # so a date past the committed register's windows is refused there.
