@@ -1594,6 +1594,15 @@ _SUPPORT_FIGURE_SHAPES = {
         _EXTREME,
     ),
     "maxima_in_a_list": ("support", {"maximum_ess": [23.75, 41]}, _EXTREME),
+    "name_in_upper_case": ("areas", [{"area_code": _AREA, "ESS": 23.75}], _FIGURE),
+    "n_rows": ("areas", [{"geography_id": _AREA, "n_rows": 37}], _FIGURE),
+    "statistic_after_the_name": ("support", {"rows_min": 37}, _EXTREME),
+    "smallest": ("support", {"smallest_nonzero_households": 29}, _EXTREME),
+    "statistics_under_the_name": (
+        "support",
+        {"effective_sample_size": {"min": 23.75, "p10": 29}},
+        _EXTREME,
+    ),
 }
 
 
@@ -1663,8 +1672,58 @@ def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:
         # Counts of target rows, and a declared bound, are not support figures.
         "fit": {"local_by_family": [{"family": "synthetic", "rows": 12}]},
         "parameters": {"maximum_max_to_median_ratio": 100.0},
+        # Names that merely end in "ess" are not ESS.
+        "subset_relations": [{"max_excess": 0.0}],
+        "details": {"maximum_owner_share_without_main_residence_excess": 0.05},
+        # Region, nation and UK support is a GOR-level aggregate, not an area's.
+        "support_by_region": {"ess": {"E12000001": 4100.0, "W92000004": 2300.0}},
+        "regions": [{"area_code": "K02000001", "rows": 41000}],
     }
     assert dc._uk_dense_disclosure_findings("shipped.json", shipped) == []
+
+
+def test_a_real_shaped_candidate_manifest_draws_no_warning(tmp_path: Path) -> None:
+    """The build's candidate manifest carries a cross-grain relation's
+    ``max_excess`` and a spine gate's excess bound, which an over-broad
+    pattern once read as ESS extremes; neither is an area support figure
+    (microcosm#1301)."""
+
+    release_dir = write_dense_bundle(tmp_path)
+    path = release_dir / "rowwise_candidate_manifest.json"
+    candidate = json.loads(path.read_text())
+    relation = {
+        "grain": "local_authority",
+        "part": "synthetic.part",
+        "whole": "synthetic.whole",
+        "part_total": 90.0,
+        "whole_total": 100.0,
+        "max_excess": 0.0,
+        "geographies_tested": 2,
+        "status": "consistent",
+    }
+    candidate["cross_grain"] = {"subset_relations": [relation]}
+    candidate["solve"]["cross_grain"] = {"subset_relations": [relation]}
+    candidate["identity"]["spine"] = {
+        "spine_provenance": {
+            "spine_gate_report": {
+                "payload": {
+                    "gates": {
+                        "uk_stage_was_wealth_coherence": {
+                            "details": {
+                                "maximum_owner_share_without_main_residence_excess": (
+                                    0.05
+                                ),
+                                "owner_share_without_main_residence_value": 0.01,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    path.write_text(json.dumps(candidate))
+    _refresh_packaging_checksums(release_dir)
+    assert validate_release_dir(release_dir) == []
 
 
 def test_the_area_support_block_names_only_excused_areas() -> None:

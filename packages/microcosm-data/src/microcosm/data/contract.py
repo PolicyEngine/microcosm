@@ -5065,9 +5065,11 @@ def _check_area_support_block(
 # area's rows, Kish ESS and distinct source households, under each name the
 # support table, the support gate and the diagnostics have used for them.
 # Weights and per-cell estimates are not support figures and ship as they are.
+# Names match whatever their case.
 _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
     {
         "rows",
+        "n_rows",
         "ess",
         "sources",
         "assigned_households",
@@ -5076,19 +5078,36 @@ _UK_AREA_SUPPORT_FIGURE_KEYS = frozenset(
         "effective_sample_size",
     }
 )
-# An area key: a GSS code, bare or under its level ("local_authority/E06000053").
-_UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?[EKLMNSW]\d{8}$")
+# An area key: a GSS code below the region, bare or under its level
+# ("local_authority/E06000053"). Region, nation and UK codes (E12, E92, N92,
+# S92, W92, K0x) name no area: a region's support is a GOR-level aggregate.
+_UK_AREA_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?!E12|[ENSW]92|K0\d)[EKLMNSW]\d{8}$")
+_UK_REGION_KEY_RE = re.compile(r"^(?:[a-z_]+/)?(?:E12|[ENSW]92|K0\d)\d{6}$")
 # The fields that make a mapping one area's record, or, holding a list or a
-# pandas {row: value} column, a table's area column. ``code`` counts only
-# when it holds an area code: build manifests and warnings use the name too.
+# pandas {row: value} column, a table's area column, unless they hold only
+# region, nation or UK codes. ``code`` counts only when it holds an area
+# code: build manifests and warnings use the name too.
 _UK_AREA_ID_KEYS = ("area_code", "geography_id")
-# A minimum, maximum or median of a support figure over areas
-# ("min_nonzero_households", "maximum_rows", "median_effective_sample_size")
-# is one area's figure. Only the declared floors, under a "floors" key, may
-# use these names.
+# A minimum, maximum, median or other order statistic of a support figure
+# over areas ("min_nonzero_households", "rows_min", "smallest_ess",
+# "median_effective_sample_size") is one area's figure. The names are whole
+# support-figure stems, so a parameter merely ending in "ess" ("max_excess")
+# is not one. Only the declared floors, under a "floors" key, may use them.
+_UK_SUPPORT_FIGURE_STEMS = (
+    r"(?:rows|n_rows|ess|sources|distinct_sources|assigned_households"
+    r"|nonzero_households|nonzero_source_households|effective_sample_size"
+    r"|sample_size)"
+)
 _UK_SUPPORT_EXTREME_KEY_RE = re.compile(
-    r"^(?:min|minimum|max|maximum|median)_[a-z_]*"
-    r"(?:households|rows|sources|sample_size|ess)$"
+    r"^(?:(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest)_"
+    rf"{_UK_SUPPORT_FIGURE_STEMS}"
+    rf"|{_UK_SUPPORT_FIGURE_STEMS}_(?:min|minimum|max|maximum|median))$"
+)
+# The same statistic keyed under a figure's name ({"ess": {"min": ...,
+# "p10": ...}}).
+_UK_SUPPORT_STATISTIC_KEY_RE = re.compile(
+    r"^(?:min|minimum|max|maximum|median|smallest|lowest|largest|highest"
+    r"|p\d{1,2}|q\d)$"
 )
 # A pandas row index: DataFrame.to_dict() writes a column as {"0": value, ...}.
 _UK_ROW_INDEX_RE = re.compile(r"^\d+$")
@@ -5099,7 +5118,7 @@ _UK_NUMERIC_TEXT_RE = re.compile(
 # A shortfall worded with the area's measured value ("rows 7 < 50"); the gate
 # names only the floor it misses ("rows < 50").
 _UK_SUPPORT_FIGURE_TEXT_RE = re.compile(
-    r"\b(?:rows|ESS|distinct sources)\s+\d[\d.]*(?:e[+-]?\d+)?\s*<"
+    r"\b(?:rows|ESS|distinct sources)\s+\d[\d.]*(?:e[+-]?\d+)?\s*<", re.IGNORECASE
 )
 _UK_DISCLOSURE_PATHS_SHOWN = 5
 
@@ -5117,22 +5136,44 @@ def _uk_names_an_area(value: object) -> bool:
     )
 
 
+def _uk_names_only_regions(value: object) -> bool:
+    """Whether ``value`` is a region, nation or UK code, or a column of only those."""
+
+    if isinstance(value, str):
+        return _UK_REGION_KEY_RE.fullmatch(value) is not None
+    if isinstance(value, Mapping):
+        value = list(value.values())
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(
+            isinstance(item, str) and _UK_REGION_KEY_RE.fullmatch(item) is not None
+            for item in value
+        )
+    )
+
+
 def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
     """Per-area support figures in one shipped JSON document (microcosm#1301).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
-    written as text) is found wherever it sits:
+    written as text, under its name in any case) is found wherever it sits:
 
     - under its name in an area's record (a mapping with an ``area_code`` or
       a ``geography_id``, or a ``code`` holding an area code), or under its
       name anywhere beneath an area key;
     - under its name in a table with an area column, as parallel lists or
       as pandas ``{row: value}`` columns;
-    - under an area key beneath its name (``{"ess": {"E06000001": 41.2}}``),
+    - under an area key beneath its name (``{"ess": {"E06999999": 41.2}}``),
       through any level keys and lists between them;
-    - as a minimum, maximum or median of a figure, however nested, outside
-      the declared floors;
+    - as a minimum, maximum, median or other order statistic of a figure
+      (``min_rows``, ``rows_min``, ``{"ess": {"p10": ...}}``), however
+      nested, outside the declared floors;
     - in a string that states an area's measured support ("rows 7 < 50").
+
+    Region, nation and UK codes name no area. The walk reads key names and
+    the shortfall wording only: a figure under another name, in other prose,
+    or in a file that is not JSON is not found.
 
     The findings name where the figures are, never their values.
     """
@@ -5162,20 +5203,24 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
         if isinstance(value, Mapping):
             area = (
                 area
-                or any(key in value for key in _UK_AREA_ID_KEYS)
+                or any(
+                    key in value and not _uk_names_only_regions(value[key])
+                    for key in _UK_AREA_ID_KEYS
+                )
                 or _uk_names_an_area(value.get("code"))
             )
             for raw_key, child in value.items():
                 key = str(raw_key)
+                name = key.lower()
                 walk(
                     child,
                     f"{path}.{key}" if path else key,
                     label if _UK_ROW_INDEX_RE.fullmatch(key) else key,
                     area=area or _UK_AREA_KEY_RE.fullmatch(key) is not None,
-                    figure=figure or key in _UK_AREA_SUPPORT_FIGURE_KEYS,
+                    figure=figure or name in _UK_AREA_SUPPORT_FIGURE_KEYS,
                     extreme=extreme
-                    or _UK_SUPPORT_EXTREME_KEY_RE.fullmatch(key) is not None,
-                    floors=floors or key == "floors",
+                    or _UK_SUPPORT_EXTREME_KEY_RE.fullmatch(name) is not None,
+                    floors=floors or name == "floors",
                 )
             return
         if isinstance(value, list):
@@ -5192,11 +5237,18 @@ def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
             return
         kind = None
         if number(value):
-            if (area and label in _UK_AREA_SUPPORT_FIGURE_KEYS) or (
+            if (area and label.lower() in _UK_AREA_SUPPORT_FIGURE_KEYS) or (
                 figure and _UK_AREA_KEY_RE.fullmatch(label)
             ):
                 kind = "figure"
-            elif extreme and not floors:
+            elif not floors and (
+                extreme
+                or (
+                    figure
+                    and _UK_SUPPORT_STATISTIC_KEY_RE.fullmatch(label.lower())
+                    is not None
+                )
+            ):
                 kind = "extreme"
         elif isinstance(value, str) and _UK_SUPPORT_FIGURE_TEXT_RE.search(value):
             kind = "text"
