@@ -779,7 +779,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "naming the missing nodes rather than re-solve (microcosm#1301). "
             "The calibrated gates, export and certification still run. Needs "
             "build 1's store named by --graph-store and an --out that holds no "
-            "bundle, and refuses a gate clock (--gate-review-date, else "
+            "earlier attempt (no build.json, failure.json or Logbook spool "
+            "row), and refuses a gate clock (--gate-review-date, else "
             "--review-date) outside the window of an entry the build depends "
             "on: before an in-line gate-only or degenerate-register sign-off's "
             "approved_on, or after the expiry of one of them or of a measure "
@@ -1390,14 +1391,19 @@ def _run_solve_phase(compiled, *, required: bool, **kwargs):
 
 
 def refuse_occupied_solve_reuse_output(args: argparse.Namespace) -> None:
-    """Refuse a solve-reuse build into an ``--out`` that holds a bundle.
+    """Refuse a solve-reuse build into an ``--out`` that holds an attempt.
 
     A second build writes its own bundle beside build 1's (microcosm#1301).
     Publishing into build 1's ``--out`` would replace the bundle its
     sign-off was drafted from, which ``draft_uk_dense_signoff.py --verify
     --build-1`` compares build 2 with. A directory holds a bundle once its
     ``build.json`` completion marker is published, whether the build passed,
-    was blocked or was refused. As on the national line
+    was blocked or was refused. A failed attempt leaves ``failure.json`` and
+    a Logbook spool row (``logbook-spool/*.json``) instead, and a retry into
+    that ``--out`` would spool a second attempt's row beside the first:
+    ``--verify`` refuses a run directory whose spool names two attempts, and
+    the assembler takes the last row by file name. So any of the three
+    refuses the directory. As on the national line
     (:func:`refuse_occupied_national_output`), the refusal runs before the
     attempt opens and writes nothing into the directory. Dry runs write
     nothing and are not refused.
@@ -1405,13 +1411,27 @@ def refuse_occupied_solve_reuse_output(args: argparse.Namespace) -> None:
 
     if not getattr(args, "require_solve_reuse", False):
         return
-    marker = Path(args.out) / "build.json"
-    if marker.is_file():
+    out = Path(args.out)
+    held = [
+        path.relative_to(out).as_posix()
+        for path in (
+            out / "build.json",
+            out / "failure.json",
+            *sorted((out / "logbook-spool").glob("*.json")),
+        )
+        if path.is_file()
+    ]
+    if held:
+        shown = ", ".join(held[:3]) + (
+            f" and {len(held) - 3} more" if len(held) > 3 else ""
+        )
         raise FileExistsError(
             f"--require-solve-reuse: --out {args.out} already holds a build "
-            f"bundle ({marker.name}). A second build publishes a new bundle, and "
-            "here it would replace build 1's; pass a new --out and name build "
-            "1's store with --graph-store."
+            f"attempt ({shown}). A second build publishes its own bundle and "
+            "Logbook row: here it would replace build 1's bundle, or spool its "
+            "row beside an earlier attempt's, and --verify refuses a run "
+            "directory whose spool names two attempts. Pass a new --out and "
+            "name build 1's store with --graph-store."
         )
 
 

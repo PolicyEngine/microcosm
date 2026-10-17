@@ -3035,6 +3035,56 @@ def _files(directory: Path) -> dict[str, bytes]:
     }
 
 
+@pytest.mark.parametrize(
+    "marker", ["build.json", "failure.json", "logbook-spool/row.json"]
+)
+def test_solve_reuse_refuses_an_out_that_holds_any_attempt(tmp_path, marker):
+    """A published bundle, a failed attempt's sidecar or any Logbook spool row
+    each refuse a second build's --out: a retry beside a failed attempt would
+    spool a second attempt's row there (microcosm#1301)."""
+    store = str(_build_1_store(tmp_path))
+    args = arguments(tmp_path, "--require-solve-reuse", "--graph-store", store)
+    out = Path(args.out)
+    # Other files, and a spool without rows, hold no attempt.
+    (out / "logbook-spool").mkdir(parents=True)
+    (out / "logbook-spool" / "row.json.tmp").write_text("{}")
+    (out / "notes.txt").write_text("operator notes")
+    cli.refuse_occupied_solve_reuse_output(args)
+    (out / marker).write_text("{}")
+    with pytest.raises(FileExistsError) as refused:
+        cli.refuse_occupied_solve_reuse_output(args)
+    assert f"already holds a build attempt ({marker})" in str(refused.value)
+    # A build that reuses no solve keeps the occupied-output rules it had.
+    cli.refuse_occupied_solve_reuse_output(arguments(tmp_path))
+
+
+def test_solve_reuse_refuses_a_retry_into_a_failed_attempts_out(
+    tmp_path, monkeypatch, unsigned_registers
+):
+    """A failed second build leaves failure.json and a Logbook row in its
+    --out. A retry into it is refused before its attempt opens, so the
+    directory keeps one attempt, as --verify and the assembler need."""
+
+    def forbidden(*args):
+        raise AssertionError("A required solve replay computed a node")
+
+    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+        monkeypatch.setattr(kernel, "run", forbidden)
+    reuse = ("--require-solve-reuse", "--graph-store", str(_build_1_store(tmp_path)))
+    status, out = run_dense_main(tmp_path, monkeypatch, *reuse)
+    assert status == 1
+    assert (out / "failure.json").is_file()
+    (row,) = sorted((out / "logbook-spool").glob("*.json"))
+    before = _files(out)
+    with pytest.raises(FileExistsError) as refused:
+        run_dense_main(tmp_path, monkeypatch, *reuse)
+    assert (
+        f"already holds a build attempt (failure.json, logbook-spool/{row.name})"
+        in str(refused.value)
+    )
+    assert _files(out) == before
+
+
 def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
     tmp_path, monkeypatch, unsigned_registers
 ):
@@ -3047,7 +3097,9 @@ def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
     assert status == 0
     before = _files(out)
     reuse = ("--require-solve-reuse", "--graph-store", store)
-    with pytest.raises(FileExistsError, match="already holds a build bundle"):
+    with pytest.raises(
+        FileExistsError, match=r"already holds a build attempt \(build\.json"
+    ):
         run_dense_main(tmp_path, monkeypatch, *reuse)
     assert _files(out) == before
     assert run_dense_main(tmp_path, monkeypatch, *reuse, "--dry-run")[0] == 0

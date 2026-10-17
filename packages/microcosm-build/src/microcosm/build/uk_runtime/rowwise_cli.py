@@ -847,11 +847,11 @@ def check_solve_reuse_arguments(
     ``--require-solve-reuse`` needs the solve from the graph store, which
     ``--resume forbid`` refuses to read. It needs build 1's store named by
     ``--graph-store`` too: the default lies under ``--out``, and a second
-    build writes a new ``--out`` (``full_build_cli`` refuses one that holds a
-    bundle), so the default holds no solve. And its gate clock, the solve's
-    unless ``--gate-review-date`` moves it, must lie in the window of every
-    entry the build depends on (:func:`solve_reuse_windows`): on or after
-    every in-line approval, and on or before the earliest expiry
+    build writes a new ``--out`` (``full_build_cli`` refuses one that holds an
+    earlier attempt), so the default holds no solve. And its gate clock, the
+    solve's unless ``--gate-review-date`` moves it, must lie in the window of
+    every entry the build depends on (:func:`solve_reuse_windows`): on or
+    after every in-line approval, and on or before the earliest expiry
     (:func:`earliest_expiry`), the end of the gate-clock range the sign-off
     drafter prints. Otherwise the calibrated gates fail the entry, premature
     or expired, or assembly refuses an expired measure exclusion, but only
