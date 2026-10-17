@@ -580,8 +580,8 @@ def test_assembler_stages_a_contract_valid_dense_release(
         "size_doctrine",
     } & set(limitations)
     assert limitations["engine_measurement"]["blocks"] == 1
-    # The signed exclusions are named with their reasons; the measured error
-    # stays in the build's gate report, which the release does not ship.
+    # The signed exclusions are named with their register reasons, copied
+    # verbatim; the gate's measured error for the row is not copied.
     signed = limitations[f"reviewed_exclusion:uk_target_fit:{SIGNED_TARGET}"]
     assert signed["summary"] == "synthetic reviewed gap"
     assert signed["approved_by"] == "synthetic_reviewer"

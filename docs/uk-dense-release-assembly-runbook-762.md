@@ -406,8 +406,10 @@ the names each of the three gates stood on in the candidate manifest
 (`reviewed_exclusions_stood_on`), which the release ships and hash-joins, and
 the contract holds the coverage's names to that record: a hand edit that drops
 a `uk_target_fit` or `uk_input_mass_parity` name from both the coverage and the
-limitations is refused. The limitations carry names and reasons, never the
-measured errors.
+limitations is refused. Each limitation carries the exclusion's name and its
+register reason, copied verbatim; the gate's measured error for the row is not
+copied, but a reason can cite figures of its own (the input-mass register's
+reasons cite national totals).
 
 Assembly and every later directory validation require measured clean code
 (`code.git_dirty` exactly `false`) and full measure-exclusion provenance.

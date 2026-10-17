@@ -17,8 +17,8 @@ The rotated holdout and the incumbent comparison are opt-in diagnostics
 does not claim: no out-of-sample fit unless the holdout ran, no incumbent
 comparison unless ``--incumbent-manifest`` attaches the score and the
 surface evaluation (recorded, not enforced), how the engine measured the
-file, the size record, and the names and reasons of the reviewed exclusions
-the gates stood on.
+file, the size record, and the reviewed exclusions the gates stood on, by
+name with their register reasons copied verbatim.
 """
 
 from __future__ import annotations
@@ -68,9 +68,9 @@ _DATASET_FILENAME = f"{_DATASET_KEY}.h5"
 _ATTEMPT_SUFFIX = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _RUNTIME_PACKAGES = ("policyengine-core", "policyengine-uk", "microcosm-data")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-#: The gates whose reviewed exclusions the manifest names (names and reasons
-#: only; the measured errors stay in the build's gate report). The contract
-#: owns the tuple, since it checks the names (microcosm#1301).
+#: The gates whose reviewed exclusions the manifest names, each with its
+#: register reason copied verbatim (see ``_signed_exclusion_limitations``).
+#: The contract owns the tuple, since it checks the names (microcosm#1301).
 _SIGNED_EXCLUSION_GATES = _UK_DENSE_SIGNED_EXCLUSION_GATES
 
 
@@ -277,8 +277,12 @@ def _signed_exclusion_limitations(
 ) -> list[dict[str, object]]:
     """The reviewed exclusions the release's fit gates stood on.
 
-    Names and reasons only: the measured errors stay in the build's gate
-    report, which the release does not ship.
+    Each carries its name and its register entry's reason (cut at 300
+    characters), approver, adjudication and expiry, copied verbatim from the
+    full gate report. The gate's own measurement of the row, such as its
+    relative error, is not copied. That is not a no-figures guarantee: a
+    reason is reviewer prose and can cite figures of its own, as the
+    input-mass register's reasons cite national totals and percentages.
     """
 
     report = _mapping(full_report.get("report"), "full gate report.report")
