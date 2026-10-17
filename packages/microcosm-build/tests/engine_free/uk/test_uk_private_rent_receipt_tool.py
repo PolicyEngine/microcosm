@@ -195,11 +195,14 @@ def test_renters_are_gb_private_with_positive_rent_and_carry_a_category() -> Non
 
 
 def test_a_mix_matching_the_census_has_no_distance() -> None:
-    renters = _frame(
-        [
-            (3.0, "WALES", "RENT_PRIVATELY", 9_000.0, 2, "CARDIFF", "W06000015", "a"),
-            (1.0, "WALES", "RENT_PRIVATELY", 9_000.0, 2, "SWANSEA", "W06000011", "b"),
-        ]
+    renters = tool.with_carriers(
+        _frame(
+            [
+                (1.0, "WALES", "RENT_PRIVATELY", 9_000.0, 2, brma, "W06000015", key)
+                for key, brma in [(f"c{i}", "CARDIFF") for i in range(9)]
+                + [(f"s{i}", "SWANSEA") for i in range(3)]
+            ]
+        )
     ).assign(category="C", nation="Wales")
     counts = {("WALES", "C"): {"CARDIFF": 300.0, "SWANSEA": 100.0}}
     summary, audit = tool.brma_mix(renters, counts)
@@ -217,7 +220,7 @@ def test_the_matched_change_reads_each_row_against_its_spine_value() -> None:
     out = tool.matched_change(frame)
     assert out["gb_rows_redrawn"] == 1.0
     assert out["gb_rows_whose_brma_changed"] == "<10"
-    assert out["region_mean_rent_after_over_before"] == {"WALES": 1.1}
+    assert out["region_level_at_design_weights"] == {"WALES": 1.1}
 
 
 def test_a_pool_table_without_the_spine_values_is_refused(tmp_path) -> None:
@@ -225,3 +228,101 @@ def test_a_pool_table_without_the_spine_values_is_refused(tmp_path) -> None:
     np.savez(path, weight=np.ones(2), region=np.array(["WALES", "WALES"]))
     with pytest.raises(ValueError, match="lacks"):
         tool.load_pool(path)
+
+
+# ----------------------------------------------------------------------------
+# The quotable summary (microcosm#1305 review)
+
+
+def _renter(key: str, *, region="LONDON", bedrooms=1, weight=1.0, rent=12_000.0):
+    return (
+        weight,
+        region,
+        "RENT_PRIVATELY",
+        rent,
+        bedrooms,
+        "INNER_EAST_LONDON",
+        "E09000002",
+        key,
+    )
+
+
+def _summary(frame: pd.DataFrame, **kwargs) -> dict:
+    summary, _ = tool.measure_households(frame, pipr={}, counts={}, **kwargs)
+    return summary
+
+
+def test_a_thin_region_category_cell_reads_under_ten_and_withholds_a_complement():
+    rows = (
+        [_renter(f"b{i}", bedrooms=1) for i in range(12)]
+        + [_renter(f"c{i}", bedrooms=2) for i in range(15)]
+        + [_renter(f"d{i}", bedrooms=3) for i in range(4)]
+        + [_renter(f"e{i}", bedrooms=4) for i in range(20)]
+    )
+    london = _summary(_frame(rows))["rents_by_cell"]["region"]["LONDON"]
+    assert london["D"] == {"withheld": "<10"}
+    assert london["B"] == {"withheld": "complement"}
+    assert london["C"]["source_households"] == 20
+    assert london["all"]["mean_monthly_rent"] == 1000.0
+
+
+def test_district_groups_need_ten_cells_of_ten_households():
+    pipr = {("la", f"E0900000{i}", "B"): 1_000.0 for i in range(1, 10)}
+    rows = [
+        (*_renter(f"k{area}-{i}")[:6], f"E0900000{area}", f"k{area}-{i}")
+        for area in range(1, 10)
+        for i in range(12)
+    ]
+    rows += [(*_renter(f"thin{i}")[:6], "E09000001", f"thin{i}") for i in range(3)]
+    summary, audit = tool.measure_households(_frame(rows), pipr=pipr, counts={})
+    group = summary["pipr_by_district_and_bedrooms"]["la England"]
+    # Nine districts pass the household floor: too few to summarise.
+    assert group == {
+        "withheld": "fewer than 10 cells",
+        "cells_under_10_source_households": 0,
+    }
+    assert len(audit["pipr_by_district_and_bedrooms"]) == 9
+
+
+def test_the_top_one_percent_share_needs_ten_rows_and_ten_households():
+    # 2,000 renters: the top 20 rows are clones of two households.
+    rows = [_renter(f"r{i}") for i in range(1_980)]
+    rows += [_renter(f"top{i % 2}", weight=50.0) for i in range(20)]
+    weights = _summary(_frame(rows))["weights"]
+    assert weights["top_1pct_weight_share"] == "<10"
+    rows[-20:] = [_renter(f"top{i}", weight=50.0) for i in range(20)]
+    assert isinstance(_summary(_frame(rows))["weights"]["top_1pct_weight_share"], float)
+    assert _summary(_frame([_renter(f"r{i}") for i in range(9)]))["weights"] == {
+        "withheld": "<10"
+    }
+
+
+def test_coherence_counts_households_not_clone_rows():
+    # 8 of 800 households, 25 clones each, report HB above their rent.
+    frame = _frame([_renter(f"h{i}") for i in range(800) for _ in range(25)])
+    frame.loc[
+        frame["source_key"].isin([f"h{i}" for i in range(8)]),
+        "housing_benefit_reported",
+    ] = 20_000.0
+    out = _summary(frame)["coherence"]["housing_benefit_reported_above_rent"]
+    assert out == {"weighted_share": "<10", "unweighted_share": "<10"}
+
+
+def test_spine_values_count_frs_channel_households_only():
+    frame = _frame(
+        [_renter(f"f{i}") for i in range(4)] + [_renter(f"s{i}") for i in range(6)]
+    )
+    frame.loc[4:, "channel"] = "spi"
+    every = _summary(frame)["rents_by_cell"]["nation"]["England"]
+    assert every["source_households"] == 10
+    frs = _summary(frame, frs_carriers=True)["rents_by_cell"]["nation"]["England"]
+    assert frs == {"withheld": "<10"}
+
+
+def test_licensed_outputs_are_refused_inside_the_repository(tmp_path):
+    with pytest.raises(SystemExit, match="inside the repository"):
+        tool.outside_repository(tool.REPO_ROOT / "audit-1262", what="the audit")
+    assert (
+        tool.outside_repository(tmp_path / "audit-1262", what="the audit")
+        == (tmp_path / "audit-1262").resolve()
+    )
