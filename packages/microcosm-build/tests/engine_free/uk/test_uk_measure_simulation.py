@@ -726,12 +726,14 @@ def test_packaged_exclusions_load():
     # mechanism receipts (#882) and moved to the 2026-12-08 clock; the
     # savings-interest row moved to the 2026-09-22 concept clock; the two
     # plan-2 borrower rows were renewed one month on 2026-10-02 (microcosm#1063
-    # stack), so nothing remains on the 2026-09-03 clock.
+    # stack), so nothing remains on the 2026-09-03 clock. The plan-2 rows
+    # track microcosm#1278 since microcosm#868 closed (María's ruling of
+    # 2026-10-17).
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
-        "slc.borrowers.plan_2_liable": "microcosm#868",
-        "slc.borrowers.plan_2_above_threshold": "microcosm#868",
+        "slc.borrowers.plan_2_liable": "microcosm#1278",
+        "slc.borrowers.plan_2_above_threshold": "microcosm#1278",
         "dwp.jsa_claimants": "microcosm#869",
     }
     assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
