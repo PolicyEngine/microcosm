@@ -361,6 +361,55 @@ def _engine_version() -> str:
     return str(engine_parameter_pins()["engine"]["version"])
 
 
+def _engine_importable() -> bool:
+    """Whether ``policyengine_uk`` imports here, with or without its metadata."""
+
+    import importlib.util
+
+    return importlib.util.find_spec("policyengine_uk") is not None
+
+
+def assert_installed_engine_is_pinned() -> str:
+    """Refuse a UK build on a policyengine-uk other than the pinned one.
+
+    The release freezes its engine (María's ruling of 2026-10-16): uv.lock pins
+    it for CI, but the UK extras accept any later release, so a build checks
+    the installed version against the engine its pins were taken from. The
+    check runs in ``spine_build._rules_engine``, which gives the spine build
+    its engine and which ``full_build_cli.prepare_full_build`` and
+    ``prepare_national_build`` call before they solve, and at the start of the
+    release-cut battery the certifier runs. The HMRC calibration helpers'
+    default simulation factory, which no build path calls, checks too. The
+    tools that regenerate committed surfaces (the coverage manifest, the H2
+    fixture, the reports) do not: CI's ``--check`` jobs and the H2 parity run
+    them on the lock.
+
+    The match is exact, so a post-release or a local build of the pinned
+    version (``2.134.4.post1``, ``2.134.4+local``) is refused as well. An
+    importable policyengine-uk without distribution metadata is refused, since
+    its version cannot be read. An environment without policyengine-uk is
+    left to the caller's own import.
+    """
+
+    installed = installed_engine_version()
+    pinned = _engine_version()
+    if installed == "absent":
+        if _engine_importable():
+            raise RuntimeError(
+                "policyengine-uk imports but carries no distribution metadata, so "
+                f"its version cannot be checked against the pinned {pinned} "
+                f"({UK_ENGINE_PINS_RESOURCE}); install it from the lock."
+            )
+        return installed
+    if installed != pinned:
+        raise RuntimeError(
+            f"policyengine-uk {installed} is installed, but the UK build is pinned "
+            f"to {pinned} ({UK_ENGINE_PINS_RESOURCE}); sync the lock, or move the "
+            f"lock and re-pin with {UK_ENGINE_PINS_TOOL} together."
+        )
+    return installed
+
+
 def _opening_year(spec: Any, reference: LedgerTargetReference) -> int:
     period_type = str(spec.metadata.get("ledger_period_type") or "")
     if period_type not in _ANNUAL_PERIOD_TYPES:

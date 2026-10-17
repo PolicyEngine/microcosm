@@ -703,6 +703,11 @@ def _rules_engine() -> PolicyEngineUKEngine:
             "build_uk_frs_spine requires the microcosm-build 'uk' extra "
             "(policyengine-uk). Run: uv sync --all-packages --extra uk"
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return PolicyEngineUKEngine()
 
 

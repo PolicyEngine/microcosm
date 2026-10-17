@@ -462,6 +462,11 @@ def _default_simulation_factory(dataset: Any) -> Any:
         raise ImportError(
             "HMRC target materialization requires policyengine-uk."
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return Microsimulation(dataset=dataset)
 
 
