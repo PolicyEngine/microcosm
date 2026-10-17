@@ -623,6 +623,50 @@ def test_public_outputs_carry_no_figures(build_1, repo, tmp_path, capsys):
     assert "98765" not in content
 
 
+def test_local_fit_bands_reach_only_the_private_file_and_the_terminal(tmp_path, capsys):
+    # A local cell signed just beyond the bound (stale risk) and one just
+    # inside it (near bound): with its key in the patch, a public count of
+    # the first would bracket a named local estimate.
+    local = (
+        ("census_households", "E14000001", "households", -0.2521),
+        ("census_households", "E14000002", "households", 0.2451),
+        ("synthetic_income", "E06000001", "count", 0.1233),
+    )
+    registers = build_1_registers()
+    repo = make_repo(tmp_path / "repo", registers)
+    build = write_run(tmp_path / "build-1", registers=registers, local=local)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    for gate_id in ("uk_local_target_fit", "uk_local_area_support"):
+        summary = receipt["registers"][gate_id]
+        assert "stale_risk_count" not in summary, gate_id
+        assert "near_bound_count" not in summary, gate_id
+    national = receipt["registers"]["uk_target_fit"]
+    assert (national["stale_risk_count"], national["near_bound_count"]) == (1, 1)
+
+    body = (out / "PR_BODY.md").read_text()
+    assert "| Register | Added | Renewed | Kept | Retired | For review |" in body
+    assert "Stale-risk |" not in body and "Near-bound |" not in body
+    assert "National target-fit rows: 1 stale-risk, 1 near-bound." in body
+    assert "Local target-fit cells" in body
+    disclosure = body.strip().splitlines()[-1]
+    assert disclosure.startswith("Disclosure: this body carries ")
+    assert "the national register's stale-risk and near-bound counts" in disclosure
+    assert "the local registers' stale-risk and near-bound counts" in disclosure
+
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["fit_band_counts"] == {
+        "uk_target_fit": {"stale_risk": 1, "near_bound": 1},
+        "uk_local_target_fit": {"stale_risk": 1, "near_bound": 1},
+    }
+    private = pd.read_csv(out / "PRIVATE_review.csv", skiprows=1, dtype=str)
+    cells = private[private["gate"] == "uk_local_target_fit"].set_index("key")
+    assert cells.loc["census_households/E14000001/households", "stale_risk"] == "True"
+    assert cells.loc["census_households/E14000002/households", "near_bound"] == "True"
+
+
 def test_a_non_signable_failure_writes_no_patch(repo, tmp_path):
     build = write_run(
         tmp_path / "build-1",
@@ -737,14 +781,112 @@ def test_a_generator_without_its_own_deferrals_makes_areas_unsignable(
     assert "uk_local_area_support" not in receipt["registers"]
 
 
-def test_a_class_note_stating_measured_support_is_refused(
-    build_1, repo, tmp_path, capsys
+#: Reviewer text that states a figure (synthetic): each must be refused.
+FIGURE_PROBES = (
+    "7 rows against the 50-row floor",
+    "ESS=3.2",
+    "sources 4 < 50",
+    "12 percent above its target",
+    "household 4521 weight 312.5",
+    "a share of twelve %",
+    "ESS-3.2#1301",
+    "reviewed 2026-02-30",
+)
+
+
+@pytest.mark.parametrize("text", FIGURE_PROBES)
+def test_free_text_stating_a_figure_is_refused(text):
+    with pytest.raises(TOOL.InputError, match="--adjudication"):
+        TOOL.figure_free(text, "--adjudication")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "microcosm#1301 ruling of 2026-10-16",
+        "PolicyEngine/policyengine-uk#2459 and #1301, reviewed 2026-10-16.",
+        "policyengine.py#553 (see microcosm#1301)",
+        "Synthetic reviewer note without figures.",
+    ],
+)
+def test_free_text_with_only_issue_references_and_dates_is_accepted(text):
+    assert TOOL.figure_free(text, "--adjudication") == text
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--class-note", "local_authority/*=Synthetic: 7 rows against the floor."),
+        ("--area-name", "E06000001=Synthetic household 4521 weight 312.5"),
+        ("--adjudication", "microcosm#1301: ESS=3.2 on build 1"),
+        ("--adjudication", "Synthetic: 12% above its target"),
+    ],
+)
+def test_each_free_text_argument_is_checked_before_the_build_is_read(
+    repo, tmp_path, capsys, flag, value
 ):
+    # No run directory exists: the refusal names the flag, not the build.
+    out = tmp_path / "draft"
+    assert draft(tmp_path / "no-build", repo, out, flag, value) == 2
+    assert flag in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_an_adjudication_citing_issues_and_dates_is_drafted(build_1, repo, tmp_path):
+    adjudication = "microcosm#1301 ruling of 2026-10-16"
+    note = "census_households/*=Reviewed under PolicyEngine/microcosm#1301."
+    out = tmp_path / "draft"
+    assert (
+        draft(build_1, repo, out, "--adjudication", adjudication, "--class-note", note)
+        == 0
+    )
+    apply_patch(repo, out / "signoff.patch")
+    after = read_registers(repo)
+    for gate_id in SPECS:
+        for entry in after[gate_id]["exclusions"].values():
+            assert entry["adjudication"] == adjudication
+    cell = after["uk_local_target_fit"]["exclusions"][
+        "census_households/E14000001/households"
+    ]
+    assert cell["reason"].endswith(" Reviewed under PolicyEngine/microcosm#1301.")
+
+
+def test_the_drafted_entries_still_get_the_release_disclosure_walk():
     # The signed local report build 2 ships carries every reason its gates
-    # stand on, so the drafted reasons get the release's disclosure walk.
-    note = "local_authority/*=Synthetic note: rows 7 < 50 on build 1."
-    assert draft(build_1, repo, tmp_path / "draft", "--class-note", note) == 2
-    assert "measured support" in capsys.readouterr().err
+    # stand on, so the drafted entries get the release's disclosure walk too.
+    spec = SPECS["uk_local_area_support"]
+    drafted = TOOL.RegisterDraft(spec=spec, before={})
+    drafted.entries["local_authority/E06000001"] = _entry(
+        APPROVED_ON, "2026-11-19", reason="Synthetic reason stating rows 7 < 50."
+    )
+    (failure,) = TOOL.drafted_disclosure_failures({spec.gate_id: drafted})
+    assert "measured support" in failure
+
+
+@pytest.mark.parametrize(
+    "login",
+    [
+        "juaristi22 (rows 7 of 50)",
+        "Synthetic Reviewer",
+        "reviewer@example.org",
+        "-reviewer",
+        " juaristi22",
+        "r" * 40,
+    ],
+)
+def test_approved_by_must_be_a_github_login(repo, tmp_path, capsys, login):
+    # No run directory exists: the refusal names the flag, not the build.
+    out = tmp_path / "draft"
+    assert draft(tmp_path / "no-build", repo, out, f"--approved-by={login}") == 2
+    assert "--approved-by must be a GitHub login" in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "login", ["juaristi22", "MaxGhenis", "synthetic-reviewer", "r", "r" * 39]
+)
+def test_a_github_login_is_accepted(login):
+    assert TOOL.github_login(login, "--approved-by") == login
 
 
 def test_a_signable_gate_that_failed_closed_is_refused(repo, tmp_path, capsys):
@@ -858,6 +1000,36 @@ def test_the_review_registers_load_from_the_package():
 def test_out_inside_the_repository_is_refused(build_1, repo, capsys):
     assert draft(build_1, repo, repo / "signoff") == 2
     assert "inside the repository" in capsys.readouterr().err
+
+
+def _work_tree(path: Path) -> Path:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    path.mkdir(parents=True)
+    git(path, "init", "--quiet")
+    return path
+
+
+@pytest.mark.parametrize("relative", ["signoff", "not/made/yet"])
+def test_out_inside_another_git_work_tree_is_refused(
+    build_1, repo, tmp_path, capsys, relative
+):
+    # Another checkout or a sign-off worktree: the private review file would
+    # be one `git add` from a commit there.
+    out = _work_tree(tmp_path / "other-checkout") / relative
+    assert draft(build_1, repo, out) == 2
+    assert "inside the git work tree" in capsys.readouterr().err
+    assert not out.exists()
+    status = TOOL.main(
+        ["--verify", str(build_1), "--repo-root", str(repo), "--out", str(out)]
+    )
+    assert status == 2
+    assert "inside the git work tree" in capsys.readouterr().err
+
+
+def test_the_gitignore_covers_the_private_review_file():
+    ignored = (REPOSITORY / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert {"PRIVATE_review.csv", "signoff-draft/"} <= set(ignored)
 
 
 def test_a_build_that_passed_needs_nothing(tmp_path, capsys):

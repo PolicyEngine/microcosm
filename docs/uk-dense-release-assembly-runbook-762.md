@@ -178,10 +178,25 @@ row, and refuses any of these:
   its window, and of local entries that no row earns.
 
 Fit entries expire after 28 days and area entries after 3 months. Each reason
-cites the build-1 attempt id and the full gate report's sha256. The reasons
-carry no figures: the draft runs them through the release contract's
-disclosure walk, `--class-note` text included. The degenerate register is
-never touched.
+is templated: it names the key, the gate's bound or the floors the area
+missed (policy constants), the build-1 attempt id and the full gate report's
+sha256, plus any `--class-note` sentence and, for an area, its name. What the
+tool cannot template it checks in three ways, and only these three:
+
+- `--approved-by` must be a GitHub login (letters, digits and hyphens, at most
+  39 characters, starting with a letter or digit) and nothing else.
+- `--class-note` text, `--area-name` names and `--adjudication` may carry
+  digits only inside issue references (`#1301`, `microcosm#1301`,
+  `PolicyEngine/microcosm#1301`, with no digits in the owner or repository
+  name) and ISO dates (`YYYY-MM-DD`), and never a `%`. Anything else, like a
+  reviewer that is not a login, is refused before the build is read.
+- The drafted entries then go through the release contract's disclosure walk.
+  On text, the walk refuses only an area's support worded with its measured
+  value, such as `rows 7 < 50`.
+
+None of these checks catches a figure written in words, so scan the outputs as
+described under "The sign-off PR" below. The degenerate register is never
+touched.
 
 The local reference generator keeps its own support-floor constants,
 lockstep-tested against the area register. So the tool never edits the
@@ -196,24 +211,36 @@ unsignable:
   of its window, is renewed by hand, keeping its reviewed wording and lines.
   Then draft again.
 
-**Outputs:**
+**Outputs**, in `--out`, which must lie outside every git work tree (the tool
+refuses one inside this checkout or any other, and `.gitignore` also covers
+`PRIVATE_review.csv` and `signoff-draft/`):
 
 - `signoff.patch`: the registers, their key-set pins (the two target-fit
   registers' in `test_uk_terminal_gates.py`, the area exclusions' in
   `test_uk_weighted_integrity.py`) and a changelog fragment;
 - `signoff_draft.json`: the receipt;
-- `PR_BODY.md`: counts only;
-- `PRIVATE_review.csv`: mode 0600, holding per-row errors and per-area support
-  figures. Never commit or post it.
+- `PR_BODY.md`: gate ids, build 1's attempt id and report digest, register
+  entry counts, the national register's stale-risk and near-bound counts, the
+  reviewer, the adjudication, policy dates and the tests to run;
+- `PRIVATE_review.csv`: mode 0600, holding per-row errors, every fit row's
+  stale-risk and near-bound flags and per-area support figures. Never commit
+  or post it.
 
-The draft also counts stale-risk rows: signed rows within one point above the
-25% bound, which build 2 fails as stale unless it reproduces build 1 exactly.
-It prints the range of gate clocks build 2 may use.
+The draft also counts stale-risk rows (signed rows within one point above the
+25% bound, which build 2 fails as stale unless it reproduces build 1 exactly)
+and near-bound rows (unsigned rows within one point below it). Only the
+national register's counts reach `PR_BODY.md` and the receipt. A local cell's
+key is in the patch, so a public count of signed cells next to the bound would
+bracket a named sub-GOR estimate: the local registers' counts are printed on
+the tool's standard output and kept as flags in `PRIVATE_review.csv`. The tool
+also prints the range of gate clocks build 2 may use.
 
 **The sign-off PR.** Branch from build 1's commit and `git apply` the patch.
-Run the tests `PR_BODY.md` lists and scan the body for disclosure before
-posting it. Merge with a merge commit, so that build 2's commit stays in
-main's history.
+Run the tests `PR_BODY.md` lists. Before committing the patch or posting the
+body, scan both `signoff.patch` (every drafted reason, the adjudication and
+the reviewer) and `PR_BODY.md` for disclosure: no estimate, error, weight or
+support figure, in digits or in words. Merge with a merge commit, so that
+build 2's commit stays in main's history.
 
 ### Second build: reuse the first build's solve (microcosm#1301)
 

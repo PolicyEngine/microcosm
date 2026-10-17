@@ -52,22 +52,28 @@ key must be exported). With
 ``--build-1`` it also reports whether build 2 reused build 1's solve and
 reproduced its per-row errors.
 
-Outputs go to ``--out``, which must lie outside the repository:
+Outputs go to ``--out``, which must lie outside every git work tree:
 
 * ``signoff.patch``: the registers, the pins and a changelog fragment. Apply it
   with ``git apply`` on a branch from build 1's commit.
 * ``signoff_draft.json``: the receipt.
-* ``PR_BODY.md``: counts only.
+* ``PR_BODY.md``: entry counts, gate ids and policy dates.
 * ``PRIVATE_review.csv``: mode 0600, never committed or posted.
 
 Nothing is committed, pushed or posted.
 
 Disclosure (UKDS): the patch, the receipt and the PR body carry target and
-area identifiers, counts and policy constants only. Reasons are templated and
-never quote an error, an estimate or a support figure, and the reports'
-failure lines are never copied. Per-row errors and per-area support figures go
-to the private review file only. The area-support table's ``max_weight``
-column is never read.
+area identifiers, counts, policy constants, the reviewer's login and their
+free text. Reasons are templated and never quote an error, an estimate or a
+support figure, and the reports' failure lines are never copied.
+``--approved-by`` must be a GitHub login. The free text (``--class-note``,
+``--area-name``, ``--adjudication``) may carry digits only in issue references
+and ISO dates, and no ``%``; the drafted entries then get the release
+contract's disclosure walk. Of the stale-risk and near-bound counts, the
+receipt and the PR body carry the national register's only: the local
+registers' bracket named sub-GOR estimates, so they go to standard output
+and, with per-row errors and per-area support figures, to the private review
+file. The area-support table's ``max_weight`` column is never read.
 """
 
 from __future__ import annotations
@@ -81,6 +87,8 @@ import hashlib
 import json
 import math
 import os
+import re
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -134,6 +142,16 @@ FIT_WINDOW_DAYS = 28
 AREA_WINDOW_MONTHS = 3
 MAX_WINDOW_DAYS = 92
 STALE_RISK_MARGIN = 0.01
+
+#: The only digits reviewer free text may carry (:func:`figure_free`): issue
+#: references (``#1301``, ``microcosm#1301``, ``PolicyEngine/microcosm#1301``,
+#: whose owner and repository names hold no digits) and ISO dates of real days.
+_ISSUE_REFERENCE_RE = re.compile(
+    r"(?:[A-Za-z][A-Za-z_.-]*/)?(?:[A-Za-z][A-Za-z_.-]*)?#[0-9]+"
+)
+_ISO_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+#: A GitHub login, the only form ``--approved-by`` takes (:func:`github_login`).
+_GITHUB_LOGIN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}")
 
 #: Release-blocking gates whose entries are signed by hand in the sign-off PR.
 HAND_SIGNED_GATES = {
@@ -721,7 +739,16 @@ class RegisterDraft:
         return bool(self.add or self.renew or self.remove)
 
     def summary(self) -> dict[str, Any]:
-        return {
+        """The receipt's record of the register: keys and actions.
+
+        Only the national register's stale-risk and near-bound counts are
+        recorded. A local cell signed just beyond the bound has its key in the
+        patch, so a count of such cells next to it brackets a named sub-GOR
+        estimate (microcosm#1301); the local counts go to the private review
+        file and the tool's standard output (:meth:`fit_bands`) only.
+        """
+
+        summary: dict[str, Any] = {
             "register": self.spec.path.as_posix(),
             "add": sorted(self.add),
             "renew": sorted(self.renew),
@@ -731,9 +758,16 @@ class RegisterDraft:
             "conflicts": sorted(self.conflicts),
             "held": sorted(self.held),
             "notes": dict(sorted(self.notes.items())),
-            "stale_risk_count": len(self.stale_risk),
-            "near_bound_count": len(self.near_bound),
         }
+        if self.spec.kind == "national_row":
+            summary["stale_risk_count"] = len(self.stale_risk)
+            summary["near_bound_count"] = len(self.near_bound)
+        return summary
+
+    def fit_bands(self) -> dict[str, int]:
+        """Stale-risk and near-bound counts, for the operator's terminal."""
+
+        return {"stale_risk": len(self.stale_risk), "near_bound": len(self.near_bound)}
 
 
 def _in_force(record: UKReviewedExclusion, clock: date) -> bool:
@@ -1412,11 +1446,46 @@ def drafted_disclosure_failures(drafts: Mapping[str, RegisterDraft]) -> list[str
 # ---------------------------------------------------------------------------
 
 
-def _refuse_inside_repo(out: Path, repo_root: Path) -> None:
-    if out.resolve().is_relative_to(repo_root.resolve()):
+def _refuse_committable(out: Path, repo_root: Path) -> None:
+    """Refuse an ``--out`` that git could commit (microcosm#1301).
+
+    The private review file must never be committable: not in this
+    repository, nor in any other git work tree, such as another checkout or a
+    sign-off worktree. ``git rev-parse --show-toplevel`` runs from ``--out``
+    or its nearest existing ancestor, with git's own variables removed from
+    the environment so that only the filesystem decides.
+    """
+
+    out = out.resolve()
+    if out.is_relative_to(repo_root.resolve()):
         raise InputError(
             f"--out {out} lies inside the repository; the private review file "
             "must never be committable."
+        )
+    probe = out
+    while not probe.is_dir():
+        probe = probe.parent
+    try:
+        found = subprocess.run(
+            ["git", "-C", str(probe), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={
+                name: value
+                for name, value in os.environ.items()
+                if not name.startswith("GIT_")
+            },
+        )
+    except OSError as error:
+        raise InputError(
+            "git is needed to check that --out lies outside every git work tree."
+        ) from error
+    if found.returncode == 0:
+        raise InputError(
+            f"--out {out} lies inside the git work tree {found.stdout.strip()}; "
+            "the private review file must never be committable, so write the "
+            "draft outside every git work tree."
         )
 
 
@@ -1510,7 +1579,11 @@ _TABLE_LABELS = {
 
 
 def pr_body(receipt: Mapping[str, Any]) -> str:
-    """The sign-off PR's body: counts, gate ids and policy dates only."""
+    """The sign-off PR's body: counts, gate ids and policy dates only.
+
+    Of the stale-risk and near-bound counts, only the national register's are
+    printed (:meth:`RegisterDraft.summary`).
+    """
 
     build = receipt["build_1"]
     window = receipt["window"]
@@ -1549,22 +1622,27 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
         "release fence. A build in which a signed row passes fails its entry "
         "as stale.",
         "",
-        "| Register | Added | Renewed | Kept | Retired | For review | Stale-risk | Near-bound |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Register | Added | Renewed | Kept | Retired | For review |",
+        "|---|---|---|---|---|---|",
     ]
     for gate_id, summary in receipt["registers"].items():
         lines.append(
             f"| {_TABLE_LABELS[gate_id]} | {len(summary['add'])} | "
             f"{len(summary['renew'])} | {len(summary['keep'])} | "
-            f"{len(summary['remove'])} | {len(summary['review'])} | "
-            f"{summary['stale_risk_count']} | {summary['near_bound_count']} |"
+            f"{len(summary['remove'])} | {len(summary['review'])} |"
         )
+    national = receipt["registers"].get("uk_target_fit")
+    if national is not None:
+        lines += [
+            "",
+            f"National target-fit rows: {national['stale_risk_count']} "
+            f"stale-risk, {national['near_bound_count']} near-bound. Stale-risk "
+            f"counts signed rows within {receipt['stale_risk_margin']:g} above "
+            "the bound, which build 2 fails as stale if it does not reproduce "
+            "build 1 exactly; near-bound counts unsigned rows within the same "
+            "margin below it. The local registers' counts are not printed here.",
+        ]
     lines += [
-        "",
-        f"Stale-risk counts signed rows within {receipt['stale_risk_margin']:g} "
-        "above the bound, which build 2 fails as stale if it does not reproduce "
-        "build 1 exactly; near-bound counts unsigned rows within the same "
-        "margin below it.",
         "",
         f"Window: approved {window['approved_on']} by {window['approved_by']}, "
         f"adjudication {window['adjudication']}; fit entries expire "
@@ -1606,8 +1684,13 @@ def pr_body(receipt: Mapping[str, Any]) -> str:
         ]
     lines += [
         "",
-        "Disclosure: counts and gate ids only. Per-row errors and per-area "
-        "support figures stay in the private review file outside the repository.",
+        "Disclosure: this body carries gate ids and their predicted verdicts, "
+        "build 1's attempt id and report digest, register entry counts, the "
+        "national register's stale-risk and near-bound counts, the reviewer, "
+        "the adjudication, policy dates and test paths. Per-row errors, the "
+        "local registers' stale-risk and near-bound counts and per-area "
+        "support figures stay in the private review file outside every git "
+        "work tree.",
         "",
     ]
     return "\n".join(lines)
@@ -1645,19 +1728,72 @@ def _changelog(receipt: Mapping[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _real_day(text: str) -> bool:
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def figure_free(text: str, label: str) -> str:
+    """``text`` unchanged, or refused when it may state a figure (microcosm#1301).
+
+    Reviewer free text lands in the committed registers and the PR body,
+    where nothing else checks it: the contract's disclosure walk catches only
+    an area's support worded with its measured value. So the text may carry
+    a digit only inside an issue reference (``#1301``, ``microcosm#1301``,
+    ``PolicyEngine/microcosm#1301``) or an ISO date of a real day, and never a
+    ``%``. A figure written in words passes; the manual scan covers that.
+    """
+
+    if "%" in text:
+        raise InputError(f"{label} must carry no figures ('%'): {text!r}.")
+    rest = _ISO_DATE_RE.sub(
+        lambda match: "" if _real_day(match.group()) else match.group(), text
+    )
+    rest = _ISSUE_REFERENCE_RE.sub("", rest)
+    if any(character.isnumeric() for character in rest):
+        raise InputError(
+            f"{label} may carry digits only in issue references (#1301, "
+            "microcosm#1301, PolicyEngine/microcosm#1301) and ISO dates "
+            f"(YYYY-MM-DD), so that it states no figure: {text!r}."
+        )
+    return text
+
+
+def github_login(value: str | None, label: str) -> str:
+    """``value`` unchanged when it is a GitHub login, else refused (microcosm#1301).
+
+    The reviewer lands in every drafted entry and the PR body, so it is a
+    login and nothing else: no spaces, no other text, and so no figure.
+    """
+
+    if value is None or _GITHUB_LOGIN_RE.fullmatch(value) is None:
+        raise InputError(
+            f"{label} must be a GitHub login (letters, digits and hyphens, at "
+            f"most 39 characters, starting with a letter or digit), got {value!r}."
+        )
+    return value
+
+
 def _pairs(values: Sequence[str], label: str) -> list[tuple[str, str]]:
+    """``KEY=TEXT`` arguments; only the text, which is published, is checked."""
+
     pairs = []
     for value in values:
         key, separator, text = value.partition("=")
         if not separator or not key.strip() or not text.strip():
             raise InputError(f"{label} must be KEY=TEXT, got {value!r}.")
-        if "%" in text:
-            raise InputError(f"{label} text must carry no figures ('%'): {value!r}.")
-        pairs.append((key.strip(), text.strip()))
+        pairs.append((key.strip(), figure_free(text.strip(), label)))
     return pairs
 
 
-def _window(args: argparse.Namespace, evidence: BuildEvidence) -> Window:
+def _window(
+    args: argparse.Namespace, evidence: BuildEvidence, *, adjudication: str
+) -> Window:
+    """The approval window; ``adjudication`` is the checked ``--adjudication``."""
+
     approved_on = _iso(args.approved_on, "--approved-on")
     expires_on = (
         _iso(args.expires_on, "--expires-on")
@@ -1675,7 +1811,7 @@ def _window(args: argparse.Namespace, evidence: BuildEvidence) -> Window:
     approved_by = (args.approved_by or "").strip()
     if not approved_by:
         raise InputError("--approved-by is required.")
-    adjudication = (args.adjudication or "").strip() or (
+    adjudication = adjudication or (
         f"microcosm#1301 (build-1 attempt {evidence.attempt_id}; sign-off "
         f"{approved_on.isoformat()})"
     )
@@ -1712,11 +1848,15 @@ def _window(args: argparse.Namespace, evidence: BuildEvidence) -> Window:
 def run_draft(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve()
     out = (args.out or Path(args.run_dir) / "signoff-draft").resolve()
-    _refuse_inside_repo(out, repo_root)
-    evidence = load_build(args.run_dir, allow_dev_build=args.allow_dev_build)
-    window = _window(args, evidence)
+    _refuse_committable(out, repo_root)
+    # The reviewer's login and free text are checked before the build is read.
+    github_login(args.approved_by, "--approved-by")
     notes = _pairs(args.class_note, "--class-note")
-    names = _area_names(dict(_pairs(args.area_name, "--area-name")))
+    name_overrides = dict(_pairs(args.area_name, "--area-name"))
+    adjudication = figure_free((args.adjudication or "").strip(), "--adjudication")
+    evidence = load_build(args.run_dir, allow_dev_build=args.allow_dev_build)
+    window = _window(args, evidence, adjudication=adjudication)
+    names = _area_names(name_overrides)
     wiring = register_wiring()
     deferred: frozenset[str] = frozenset()
     if wiring["uk_local_area_support"] is None:
@@ -1955,6 +2095,13 @@ def run_draft(args: argparse.Namespace) -> int:
                     }
                     for gate, summary in receipt["registers"].items()
                 },
+                # For the operator only: the local counts stay out of the
+                # receipt and the PR body (RegisterDraft.summary).
+                "fit_band_counts": {
+                    gate: draft.fit_bands()
+                    for gate, draft in drafts.items()
+                    if draft.spec.kind != "area"
+                },
                 "gate_clock_range": receipt["gate_clock_range"],
             },
             indent=1,
@@ -2146,7 +2293,7 @@ def verify(
 def run_verify(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve()
     out = (args.out or Path(args.verify) / "signoff-verify").resolve()
-    _refuse_inside_repo(out, repo_root)
+    _refuse_committable(out, repo_root)
     build_2 = load_build(args.verify, allow_dev_build=args.allow_dev_build)
     build_1 = (
         load_build(args.build_1, allow_dev_build=args.allow_dev_build)
@@ -2180,7 +2327,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--draft-receipt", type=Path, help="with --verify: the draft's receipt"
     )
-    parser.add_argument("--approved-by")
+    parser.add_argument("--approved-by", help="the reviewer's GitHub login")
     parser.add_argument("--approved-on", help="YYYY-MM-DD")
     parser.add_argument(
         "--expires-on",
@@ -2190,7 +2337,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--area-support-expires-on",
         help=f"area entries' expiry (default --approved-on + {AREA_WINDOW_MONTHS} months)",
     )
-    parser.add_argument("--adjudication")
+    parser.add_argument(
+        "--adjudication",
+        help="the entries' adjudication (digits only in issue references and "
+        "ISO dates)",
+    )
     parser.add_argument(
         "--gate-clock",
         help="build 2's planned --gate-review-date (default --approved-on)",
@@ -2202,11 +2353,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="GLOB=TEXT",
-        help="a sentence appended to the reasons of keys matching GLOB (no figures)",
+        help="a sentence appended to the reasons of keys matching GLOB (digits "
+        "only in issue references and ISO dates)",
     )
-    parser.add_argument("--area-name", action="append", default=[], metavar="CODE=NAME")
+    parser.add_argument(
+        "--area-name",
+        action="append",
+        default=[],
+        metavar="CODE=NAME",
+        help="an area's name in its reasons (the --class-note digit check)",
+    )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
-    parser.add_argument("--out", type=Path, help="output directory, outside the repo")
+    parser.add_argument(
+        "--out", type=Path, help="output directory, outside every git work tree"
+    )
     parser.add_argument(
         "--allow-dev-build",
         action="store_true",
