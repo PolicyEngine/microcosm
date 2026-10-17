@@ -1031,15 +1031,16 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "Britain's gas level low by about 1.5 per cent. Chronicle carries "
             "Northern Ireland's domestic consumption since the abf0921 re-pin, "
             "on a basis DESNZ calls not directly comparable with Great "
-            "Britain's, so the interim stands until the change that reads the "
-            "share from those facts lands; the adjudication lapses then."
+            "Britain's, so the interim stands until a change that derives "
+            "Great Britain's part from those facts lands; the adjudication "
+            "lapses then."
         ),
         "authority": (
             "PolicyEngine/chronicle#356 (filed 2026-10-14); microcosm#1207 plan "
             "ruling of 2026-10-14 (the interim stands in, declared and "
             "expiring); María's ruling of 2026-10-16 (microcosm#1300: the "
-            "interim stands past the re-pin until the change stacked on it "
-            "reads the share from the Northern Ireland facts)."
+            "interim stands past the re-pin until a change stacked on it "
+            "derives Great Britain's part from the Northern Ireland facts)."
         ),
     },
 )

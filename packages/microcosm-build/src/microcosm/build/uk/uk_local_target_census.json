@@ -155,11 +155,11 @@
       "rule": "The lcfs stage already imposes the same published ratio by region (gas meters over electricity meters by FRS region), so the authority cells constrain a quantity the stage set: within a region they add the split between authorities, and the region's weighted share follows from them. The kWh cells likewise sit on the level the stage raked to. An adjudication names this overlap."
     },
     {
-      "authority": "PolicyEngine/chronicle#356 (filed 2026-10-14); microcosm#1207 plan ruling of 2026-10-14 (the interim stands in, declared and expiring); Mar\u00eda's ruling of 2026-10-16 (microcosm#1300: the interim stands past the re-pin until the change stacked on it reads the share from the Northern Ireland facts).",
+      "authority": "PolicyEngine/chronicle#356 (filed 2026-10-14); microcosm#1207 plan ruling of 2026-10-14 (the interim stands in, declared and expiring); Mar\u00eda's ruling of 2026-10-16 (microcosm#1300: the interim stands past the re-pin until a change stacked on it derives Great Britain's part from the Northern Ireland facts).",
       "enforcement": "review_required_before_binding",
       "fence_id": "desnz_northern_ireland_interim_share",
       "fenced_fact_count": null,
-      "rule": "Energy Trends is a United Kingdom total and the sub-national statistics cover Great Britain. Great Britain's part of the level is taken at its share of UK households (ONS LFS, April to June of the level's year). Northern Ireland's share of UK domestic gas is well below its household share, so the interim puts Great Britain's gas level low by about 1.5 per cent. Chronicle carries Northern Ireland's domestic consumption since the abf0921 re-pin, on a basis DESNZ calls not directly comparable with Great Britain's, so the interim stands until the change that reads the share from those facts lands; the adjudication lapses then."
+      "rule": "Energy Trends is a United Kingdom total and the sub-national statistics cover Great Britain. Great Britain's part of the level is taken at its share of UK households (ONS LFS, April to June of the level's year). Northern Ireland's share of UK domestic gas is well below its household share, so the interim puts Great Britain's gas level low by about 1.5 per cent. Chronicle carries Northern Ireland's domestic consumption since the abf0921 re-pin, on a basis DESNZ calls not directly comparable with Great Britain's, so the interim stands until a change that derives Great Britain's part from those facts lands; the adjudication lapses then."
     }
   ],
   "census_kind": "uk_local_target_census",
