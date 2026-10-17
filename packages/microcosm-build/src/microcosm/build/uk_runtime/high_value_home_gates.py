@@ -23,7 +23,7 @@ payload or the release bundle (UKDS disclosure control).
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +55,9 @@ HVCTS_BANDS_2026: tuple[tuple[float, float, str], ...] = (
 )
 OBR_PROPERTIES_CONCEPT = "obr.hvcts_costing.properties_in_scope"
 OBR_NON_OWNER_SHARE_CONCEPT = "obr.hvcts_costing.non_owner_occupied_share"
+#: The costing note's tables run on fiscal years; a row stamped otherwise is
+#: not the note's.
+OBR_PERIOD_TYPE = "fiscal_year"
 _OBR_BAND_IDS = frozenset((*(band_id for _, _, band_id in HVCTS_BANDS_2026), "total"))
 SUPPORT_BANDS: tuple[tuple[str, int, int], ...] = (
     ("<10", 0, 10),
@@ -74,9 +77,10 @@ REQUIRED_COLUMNS = (
     "main_residence_value",
     "source_household_id",
 )
-#: What the family and its evidence cover until the coverage decision of
-#: microcosm#1240 fix 6: carried in the evidence summary and both gates'
-#: details, so every reading of these figures names its scope.
+#: What the family and its evidence cover until the coverage decision
+#: (microcosm#1240 fix 6, tracked on microcosm#1278 since #1240 closed into
+#: it): carried in the evidence summary and both gates' details, so every
+#: reading of these figures names its scope.
 HIGH_VALUE_HOME_SCOPE: Mapping[str, str] = {
     "label": "owner_occupied_main_residences_only",
     "note": (
@@ -84,7 +88,7 @@ HIGH_VALUE_HOME_SCOPE: Mapping[str, str] = {
         "Second homes, let property and homes owned by companies or "
         "non-residents are outside this family and this evidence; the OBR "
         "costing note puts the properties in scope that are not owner-occupied "
-        "at 40 per cent (microcosm#1240 fix 6)."
+        "at 40 per cent (microcosm#1278)."
     ),
 }
 
@@ -125,58 +129,73 @@ ENGLAND_CODE = "E92000001"
 
 
 def _suppress_small_cells(
-    values: Mapping[str, float], sources: Mapping[str, int]
+    values: Mapping[str, float], sources: Mapping[str, Collection[Any]]
 ) -> tuple[dict[str, float | None], list[str]]:
-    """Null every cell under the distinct-source floor, plus one more when only one is.
+    """Null every cell, and the total, that rests on too few distinct sources.
 
-    An empty cell discloses nothing and stays. A single suppressed cell could
-    be recovered from the others and the total, so the smallest remaining
-    non-empty cell goes with it (complementary suppression). The caller keeps
-    the exact values for the gate's own evaluation; only the shipped copy is
-    suppressed.
+    ``sources`` maps each key to the distinct source households behind it. A
+    cell or ``total`` resting on fewer than ``SMALL_CELL_SOURCES`` is withheld;
+    an empty cell discloses nothing and stays. While the total ships (as a
+    ``total`` key, or implicitly when the values are shares summing to one),
+    the withheld cells' sum is the total less the shipped cells, so they must
+    rest together on the floor: the smallest remaining non-empty cell is
+    withheld until they do, and the total goes when none is left
+    (complementary suppression). The caller keeps the exact values for the
+    gate's own evaluation; only the shipped copy is suppressed.
     """
-    suppressed = [
-        key
-        for key in values
-        if key != "total" and 0 < int(sources.get(key, 0)) < SMALL_CELL_SOURCES
-    ]
-    if len(suppressed) == 1:
-        remaining = [
-            key
-            for key in values
-            if key != "total" and key not in suppressed and int(sources.get(key, 0)) > 0
-        ]
-        if remaining:
-            suppressed.append(min(remaining, key=lambda key: int(sources.get(key, 0))))
+
+    def resting_on(keys: Sequence[str]) -> int:
+        return len({source for key in keys for source in sources.get(key, ())})
+
+    cells = [key for key in values if key != "total" and resting_on([key]) > 0]
+    withheld = [key for key in cells if resting_on([key]) < SMALL_CELL_SOURCES]
+    total_withheld = (
+        "total" in values and 0 < resting_on(["total"]) < SMALL_CELL_SOURCES
+    )
+    while not total_withheld and withheld and resting_on(withheld) < SMALL_CELL_SOURCES:
+        remaining = [key for key in cells if key not in withheld]
+        if not remaining:
+            total_withheld = "total" in values
+            break
+        withheld.append(min(remaining, key=lambda key: (resting_on([key]), key)))
+    if total_withheld:
+        withheld.append("total")
     shipped = {
-        key: (None if key in suppressed else value) for key, value in values.items()
+        key: (None if key in withheld else value) for key, value in values.items()
     }
-    return shipped, sorted(suppressed)
+    return shipped, sorted(withheld)
+
+
+def _obr_fiscal_england(row: Mapping[str, Any], concept: str) -> bool:
+    """Whether a vendored OBR row is ``concept`` for England on a fiscal year."""
+    return (
+        row.get("concept") == concept
+        and (row.get("period") or {}).get("type") == OBR_PERIOD_TYPE
+        and (row.get("geography") or {}).get("id") == ENGLAND_CODE
+    )
 
 
 def _obr_band_counts(
     obr_rows: Sequence[Mapping[str, Any]] | None, *, period: str, basis: str
-) -> dict[str, float]:
+) -> tuple[dict[str, float], list[str]]:
     """Table 1.1 (static) or 1.2 (post_behaviour) counts by band id, in properties.
 
-    Reads the vendored fact rows: the concept, the fiscal year, the behaviour
-    basis and England select a row; its band is the ``property_value_band``
-    dimension, or the group-by value for the total. A row that matches but
-    names an unknown band or unit, or repeats a band, is refused rather than
-    skipped.
+    Reads the vendored fact rows: the concept, England, the fiscal year and
+    the behaviour basis select a row; its band is the ``property_value_band``
+    dimension, or the group-by value for the total. Returns the counts and the
+    problems found: a matching row that names an unknown band or unit, or
+    repeats a band, is reported rather than raised, since the leg runs in the
+    terminal phase after the solve.
     """
-    if not obr_rows:
-        return {}
     out: dict[str, float] = {}
-    for row in obr_rows:
-        if row.get("concept") != OBR_PROPERTIES_CONCEPT:
+    problems: list[str] = []
+    for row in obr_rows or ():
+        if not _obr_fiscal_england(row, OBR_PROPERTIES_CONCEPT):
             continue
         dimensions = row.get("dimensions") or {}
         if str((row.get("period") or {}).get("value")) != str(period):
             continue
         if dimensions.get("behaviour_basis") != basis:
-            continue
-        if (row.get("geography") or {}).get("id") != ENGLAND_CODE:
             continue
         record = row.get("source_record_id")
         band = str(
@@ -185,46 +204,130 @@ def _obr_band_counts(
             or ""
         )
         if band not in _OBR_BAND_IDS:
-            raise ValueError(
-                f"OBR HVCTS row {record!r} names an unknown band {band!r}."
-            )
-        if row.get("unit") != "count":
-            raise ValueError(
-                f"OBR HVCTS row {record!r} is in {row.get('unit')!r}, not a count."
-            )
-        if band in out:
-            raise ValueError(f"OBR HVCTS rows repeat band {band!r} for {period}.")
-        out[band] = float(row["value"])
-    return out
+            problems.append(f"row {record!r} names an unknown band {band!r}")
+        elif row.get("unit") != "count":
+            problems.append(f"row {record!r} is in {row.get('unit')!r}, not a count")
+        elif band in out:
+            problems.append(f"rows repeat band {band!r}")
+        else:
+            out[band] = float(row["value"])
+    return out, problems
 
 
 def _obr_non_owner_share(
-    obr_rows: Sequence[Mapping[str, Any]] | None,
-) -> float | None:
+    obr_rows: Sequence[Mapping[str, Any]] | None, *, period: str
+) -> dict[str, Any]:
     """The costing note's non-owner-occupied share of properties in scope.
 
-    The vendored row is in percent; the share is returned as a fraction, or
-    ``None`` when the rows carry no such fact.
+    The vendored row is in percent and the share is returned as a fraction,
+    with the fiscal year it is stated for: the leg's own year when the rows
+    carry one, else the one year they do (the note states it once, for
+    2028-29), so a later year's comparison names the year its share is from.
     """
     rows = [
         row
         for row in obr_rows or ()
-        if row.get("concept") == OBR_NON_OWNER_SHARE_CONCEPT
+        if _obr_fiscal_england(row, OBR_NON_OWNER_SHARE_CONCEPT)
     ]
-    if not rows:
-        return None
-    if len(rows) > 1:
-        raise ValueError("OBR HVCTS rows carry more than one non-owner-occupied share.")
-    row = rows[0]
-    if row.get("unit") != "percent":
-        raise ValueError(
-            "OBR HVCTS non-owner-occupied share is in "
-            f"{row.get('unit')!r}, not percent."
-        )
+    same_year = [
+        row
+        for row in rows
+        if str((row.get("period") or {}).get("value")) == str(period)
+    ]
+    chosen = same_year or rows
+    if not chosen:
+        return {"status": "no_matching_rows", "share": None}
+    if len(chosen) > 1:
+        return {"status": "ambiguous_rows", "share": None}
+    row = chosen[0]
     share = float(row["value"]) / 100.0
-    if not 0.0 <= share < 1.0:
-        raise ValueError(f"OBR HVCTS non-owner-occupied share {share} is out of range.")
-    return share
+    if row.get("unit") != "percent" or not 0.0 <= share < 1.0:
+        return {"status": "malformed_row", "share": None}
+    return {
+        "status": "available",
+        "share": share,
+        "fiscal_year": str((row.get("period") or {}).get("value")),
+    }
+
+
+def _obr_leg(
+    obr_rows: Sequence[Mapping[str, Any]] | None,
+    *,
+    period: str,
+    basis: str,
+    shipped_bands: Mapping[str, float | None],
+    facts: UKHighValueHomeStockFacts,
+) -> dict[str, Any]:
+    """The informational OBR comparison, or the status saying why it is absent.
+
+    The comparison needs every band and the total of one table, once each.
+    Anything less reports a status (``awaiting_vendored_facts``,
+    ``no_matching_rows``, ``incomplete_rows`` or ``malformed_rows``) rather
+    than raising, so a bad re-vendor cannot abort the terminal phase after the
+    solve. The ratios read the shipped (suppressed) frame counts.
+    """
+    if not obr_rows:
+        return {"status": "awaiting_vendored_facts"}
+    selection: dict[str, Any] = {"period": period, "basis": basis}
+    obr, problems = _obr_band_counts(obr_rows, period=period, basis=basis)
+    if problems:
+        return {"status": "malformed_rows", **selection, "problems": problems}
+    if not obr:
+        return {"status": "no_matching_rows", **selection}
+    missing = sorted(_OBR_BAND_IDS - set(obr))
+    if missing:
+        return {"status": "incomplete_rows", **selection, "missing_bands": missing}
+    share = _obr_non_owner_share(obr_rows, period=period)
+    non_owner = share["share"]
+    leg: dict[str, Any] = {
+        "status": "available",
+        **selection,
+        "all_properties": obr,
+        "non_owner_occupied_share": non_owner,
+        "non_owner_occupied_share_status": share["status"],
+        "non_owner_occupied_share_fiscal_year": share.get("fiscal_year"),
+        "frame_over_all_properties_ratio": {
+            band: (
+                shipped_bands[band] / obr[band]
+                if obr[band] and shipped_bands.get(band) is not None
+                else None
+            )
+            for band in shipped_bands
+        },
+    }
+    if non_owner is not None:
+        sensitivity = obr["total"] * (1.0 - non_owner)
+        leg["owner_occupied_sensitivity_total"] = sensitivity
+        # The frame's England owner-occupied total over 2m beside the note's
+        # owner-occupied sensitivity (its total less the non-owner-occupied
+        # share): the like-for-like level check.
+        leg["frame_over_owner_occupied_sensitivity"] = (
+            shipped_bands["total"] / sensitivity
+            if sensitivity and shipped_bands.get("total") is not None
+            else None
+        )
+    # The derived stock's own England totals over 2m beside Table 1.1: the
+    # all-tenure private-sector count is the like-for-like comparison (Table
+    # 1.1 counts every residential property in scope). The stock build sets
+    # the owner-occupied share of England's 2m+ stock to one less this same
+    # OBR share (tools/build_uk_high_value_home_stock.py), so the
+    # owner-occupied count over the sensitivity would repeat this ratio and is
+    # not reported.
+    derived_england = {
+        measure: facts.rows_at(
+            level="country", measure_id=measure, threshold_id="over_gbp_2m"
+        ).get(ENGLAND_CODE)
+        for measure in ("private_sector_dwellings", "owner_occupied_homes")
+    }
+    leg["derived_stock_england_over_2m"] = {
+        **derived_england,
+        "private_sector_over_obr_all_properties": (
+            derived_england["private_sector_dwellings"] / obr["total"]
+            if obr["total"] and derived_england["private_sector_dwellings"]
+            else None
+        ),
+    }
+    return leg
 
 
 def uk_high_value_home_evidence(
@@ -257,85 +360,30 @@ def uk_high_value_home_evidence(
     positive = weights > 0
 
     # 1. England owner-occupied counts by surcharge band at April-2026 prices.
-    # The shipped counts are suppressed where a band rests on fewer than
-    # ``SMALL_CELL_SOURCES`` distinct source households, with a second band
-    # suppressed when only one would be, so the total cannot recover it.
+    # The shipped counts withhold a band, or the total, resting on fewer than
+    # ``SMALL_CELL_SOURCES`` distinct source households, and withhold further
+    # bands until the withheld ones rest together on that floor, so the total
+    # cannot give their sum back.
     bands: dict[str, float] = {}
-    band_sources: dict[str, int] = {}
+    band_sources: dict[str, set[Any]] = {}
     for lower, upper, band_id in HVCTS_BANDS_2026:
         mask = owner & england & positive & (value_2026 >= lower) & (value_2026 < upper)
         bands[band_id] = float(weights[mask].sum())
-        band_sources[band_id] = int(pd.Series(source[mask]).nunique())
+        band_sources[band_id] = set(source[mask].tolist())
     bands["total"] = float(sum(bands[band_id] for _, _, band_id in HVCTS_BANDS_2026))
-    band_sources["total"] = int(
-        pd.Series(
-            source[owner & england & positive & (value_2026 >= HVCTS_BANDS_2026[0][0])]
-        ).nunique()
+    band_sources["total"] = set(
+        source[
+            owner & england & positive & (value_2026 >= HVCTS_BANDS_2026[0][0])
+        ].tolist()
     )
     shipped_bands, suppressed_bands = _suppress_small_cells(bands, band_sources)
-    obr = _obr_band_counts(obr_rows, period=obr_period, basis=obr_basis)
-    obr_leg: dict[str, Any] = {"status": "awaiting_vendored_facts"}
-    if obr_rows and not obr:
-        obr_leg = {
-            "status": "no_matching_rows",
-            "period": obr_period,
-            "basis": obr_basis,
-        }
-    if obr:
-        non_owner = _obr_non_owner_share(obr_rows)
-        obr_leg = {
-            "status": "available",
-            "period": obr_period,
-            "basis": obr_basis,
-            "all_properties": obr,
-            "non_owner_occupied_share": non_owner,
-            "frame_over_all_properties_ratio": {
-                band: (
-                    shipped_bands[band] / obr[band]
-                    if obr.get(band) and shipped_bands.get(band) is not None
-                    else None
-                )
-                for band in bands
-            },
-        }
-        if non_owner is not None:
-            sensitivity = obr.get("total", 0.0) * (1.0 - non_owner)
-            obr_leg["owner_occupied_sensitivity_total"] = sensitivity
-            # The frame's England owner-occupied total over 2m beside the
-            # note's owner-occupied sensitivity (its total less the
-            # non-owner-occupied share): the like-for-like level check.
-            obr_leg["frame_over_owner_occupied_sensitivity"] = (
-                shipped_bands["total"] / sensitivity
-                if sensitivity and shipped_bands.get("total") is not None
-                else None
-            )
-        # The derived stock's own England totals over 2m beside Table 1.1: the
-        # all-tenure private-sector count is the like-for-like comparison
-        # (Table 1.1 counts every residential property in scope), and the
-        # owner-occupied count is what the local family binds.
-        derived_england = {
-            measure: facts.rows_at(
-                level="country", measure_id=measure, threshold_id="over_gbp_2m"
-            ).get(ENGLAND_CODE)
-            for measure in ("private_sector_dwellings", "owner_occupied_homes")
-        }
-        obr_total = float(obr.get("total") or 0.0)
-        obr_leg["derived_stock_england_over_2m"] = {
-            **derived_england,
-            "private_sector_over_obr_all_properties": (
-                derived_england["private_sector_dwellings"] / obr_total
-                if obr_total and derived_england["private_sector_dwellings"]
-                else None
-            ),
-            "owner_occupied_over_obr_owner_occupied": (
-                derived_england["owner_occupied_homes"]
-                / (obr_total * (1.0 - non_owner))
-                if obr_total
-                and non_owner is not None
-                and derived_england["owner_occupied_homes"]
-                else None
-            ),
-        }
+    obr_leg = _obr_leg(
+        obr_rows,
+        period=obr_period,
+        basis=obr_basis,
+        shipped_bands=shipped_bands,
+        facts=facts,
+    )
 
     # 2. Regional split of owner-occupied homes over £2m, England. The gate
     # evaluates every region; the shipped shares suppress regions resting on
@@ -344,10 +392,16 @@ def uk_high_value_home_evidence(
     over_2m = owner & england & positive & (stored > two_m.basis_gbp)
     frame_region = _weighted_counts(region, weights, over_2m)
     region_sources = {
-        code: int(pd.Series(source[over_2m & (region == code)]).nunique())
-        for code in frame_region
+        code: set(source[over_2m & (region == code)].tolist()) for code in frame_region
     }
     frame_total = sum(frame_region.values())
+    # The total ships beside the shares, so it is withheld on the same floor:
+    # with it, the shares would give back every region's count.
+    frame_total_shipped = (
+        frame_total
+        if len(set(source[over_2m].tolist())) >= SMALL_CELL_SOURCES or not frame_total
+        else None
+    )
     frame_shares = (
         {code: value / frame_total for code, value in frame_region.items()}
         if frame_total
@@ -523,7 +577,7 @@ def uk_high_value_home_evidence(
             # so the gate keeps the value out of its details and message.
             "largest_gap_in_suppressed_region": largest_gap_evaluated
             > largest_gap_shipped,
-            "frame_total": frame_total,
+            "frame_total": frame_total_shipped,
             "derived_total": derived_total,
         },
         "seat_rank_correlation": correlations,
