@@ -164,6 +164,23 @@ def degenerate_register(entries: dict | None = None) -> dict:
     }
 
 
+def input_mass_register(references: dict | None = None) -> dict:
+    """An input-mass register; by default one entry on every line, expiring
+    after every drafted entry. The tool reads it and never drafts into it."""
+
+    return {
+        "schema_version": 3,
+        "description": "Synthetic input-mass register.",
+        "references": {
+            "synthetic-reference": {
+                "synthetic_column": _entry("2026-10-02", "2027-04-02", lines=None)
+            }
+        }
+        if references is None
+        else references,
+    }
+
+
 def build_1_registers() -> dict:
     """The committed registers build 1 stood on."""
 
@@ -251,7 +268,12 @@ def _dump(payload: dict, indent: int) -> str:
 
 
 def make_repo(
-    root: Path, registers: dict, *, deferred=(), degenerate: dict | None = None
+    root: Path,
+    registers: dict,
+    *,
+    deferred=(),
+    degenerate: dict | None = None,
+    input_mass: dict | None = None,
 ) -> Path:
     for gate_id, payload in registers.items():
         path = root / SPECS[gate_id].path
@@ -262,6 +284,7 @@ def make_repo(
         (TOOL.WEIGHTED_INTEGRITY_TEST, AREA_PIN_SOURCE),
         (TOOL.LOCAL_REFERENCE_GENERATOR, generator_source(deferred)),
         (TOOL.DEGENERATE_REGISTER, _dump(degenerate or degenerate_register(), 1)),
+        (TOOL.INPUT_MASS_REGISTER, _dump(input_mass or input_mass_register(), 2)),
     ):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1414,6 +1437,160 @@ def test_solve_scoped_expiries_cap_the_gate_clock_and_set_the_deadline(
     body = (out / "PR_BODY.md").read_text()
     assert f"**Assembly deadline: {deadline}**, when `{set_by}` expires" in body
     assert f"on or before {deadline}." in body
+
+
+def _national_bound_family(approved_on: str, expires_on: str) -> dict:
+    """Build 1's registers with a bound family scoped to the national line."""
+
+    registers = build_1_registers()
+    registers["uk_local_area_support"]["bound_despite_support_floor"][
+        "synthetic_national_family"
+    ] = _entry(approved_on, expires_on, lines=("national",))
+    return registers
+
+
+def _input_mass(approved_on: str, expires_on: str, *, lines=None) -> dict:
+    return input_mass_register(
+        {
+            "synthetic-reference": {
+                "synthetic_column": _entry(approved_on, expires_on, lines=lines)
+            }
+        }
+    )
+
+
+INPUT_MASS_KEY = "synthetic-reference/synthetic_column"
+
+
+@pytest.mark.parametrize(
+    ("registers", "input_mass", "extra", "clock_range", "set_by"),
+    [
+        # The area-support gate window-checks a bound family whatever its line.
+        (
+            _national_bound_family("2026-09-10", "2026-11-05"),
+            None,
+            (),
+            [APPROVED_ON, "2026-11-05"],
+            ["bound_despite_support_floor:synthetic_national_family"],
+        ),
+        (
+            _national_bound_family("2026-10-23", "2026-12-23"),
+            None,
+            ("--gate-clock", "2026-10-24"),
+            ["2026-10-23", "2026-11-19"],
+            None,
+        ),
+        # The input-mass gate holds its in-line entries to their windows.
+        (
+            build_1_registers(),
+            _input_mass("2026-10-02", "2026-11-03"),
+            (),
+            [APPROVED_ON, "2026-11-03"],
+            [f"uk_input_mass_parity:{INPUT_MASS_KEY}"],
+        ),
+        (
+            build_1_registers(),
+            _input_mass("2026-10-23", "2027-04-23"),
+            ("--gate-clock", "2026-10-24"),
+            ["2026-10-23", "2026-11-19"],
+            None,
+        ),
+        # An input-mass entry scoped to the national line stands aside.
+        (
+            build_1_registers(),
+            _input_mass("2026-10-23", "2026-11-03", lines=("national",)),
+            ("--gate-clock", "2026-10-24"),
+            [APPROVED_ON, "2026-11-19"],
+            None,
+        ),
+    ],
+)
+def test_every_bound_family_and_input_mass_entry_bounds_the_gate_clock(
+    tmp_path, registers, input_mass, extra, clock_range, set_by
+):
+    repo = make_repo(tmp_path / "repo", registers, input_mass=input_mass)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out, *extra) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["gate_clock_range"] == clock_range
+    deadline = receipt["assembly_deadline"]
+    assert deadline["date"] == clock_range[1]
+    if set_by is not None:
+        assert deadline["set_by"] == set_by
+    body = (out / "PR_BODY.md").read_text()
+    assert f"on or after {clock_range[0]} and on or before {clock_range[1]}." in body
+
+
+def test_a_degenerate_entry_approved_after_build_1_starts_the_gate_clock(tmp_path):
+    # The calibrated gates hold the degenerate register's local entries to
+    # their windows on the gate clock, as the solve-reuse guard does.
+    registers = build_1_registers()
+    repo = make_repo(
+        tmp_path / "repo",
+        registers,
+        degenerate=degenerate_register(
+            {"household.synthetic_constant": _entry("2026-10-23", "2027-03-01")}
+        ),
+    )
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out, "--gate-clock", "2026-10-24") == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["gate_clock_range"] == ["2026-10-23", "2026-11-19"]
+
+
+def test_an_input_mass_entry_out_of_its_window_makes_the_draft_unsignable(tmp_path):
+    # Signed by hand, never drafted: renewing it is the reviewer's to do.
+    registers = build_1_registers()
+    repo = make_repo(
+        tmp_path / "repo", registers, input_mass=_input_mass("2026-09-01", "2026-10-21")
+    )
+    build = write_run(tmp_path / "build-1", registers=registers)
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 1
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["not_signable"]["uk_input_mass_parity"] == (
+        "input_mass_reviewed_exclusions.json entries are outside their window "
+        f"at the gate clock ({INPUT_MASS_KEY}); the tool never drafts them, so "
+        "renew them by hand and draft again"
+    )
+    assert not (out / "signoff.patch").exists()
+
+
+@pytest.mark.parametrize(
+    ("registers", "input_mass", "set_by"),
+    [
+        (
+            _national_bound_family("2026-09-10", "2026-10-30"),
+            None,
+            "bound_despite_support_floor:synthetic_national_family",
+        ),
+        (
+            build_1_registers(),
+            _input_mass("2026-10-02", "2026-10-30"),
+            f"uk_input_mass_parity:{INPUT_MASS_KEY}",
+        ),
+    ],
+)
+def test_verify_holds_the_assembly_deadline_to_every_gated_entry(
+    tmp_path, monkeypatch, registers, input_mass, set_by
+):
+    repo = make_repo(tmp_path / "repo", registers, input_mass=input_mass)
+    build = write_run(tmp_path / "build-1", registers=registers)
+    signed = _signed_off(build, repo, tmp_path)
+    build_2 = write_run(
+        tmp_path / "build-2", registers=signed, attempt_id=ATTEMPT_2, clock=GATE_CLOCK
+    )
+    status, result = verify(build_2, repo, tmp_path)
+    assert status == 0, result["failures"]
+    assert result["assembly_deadline"] == {"date": "2026-10-30", "set_by": [set_by]}
+    monkeypatch.setattr(TOOL, "_today", lambda: date(2026, 10, 31))
+    status, result = verify(build_2, repo, tmp_path)
+    assert status == 1
+    assert any(
+        "assembly deadline 2026-10-30 has passed" in line for line in result["failures"]
+    )
 
 
 def test_a_gate_clock_past_a_solve_scoped_expiry_is_refused(repo, tmp_path, capsys):

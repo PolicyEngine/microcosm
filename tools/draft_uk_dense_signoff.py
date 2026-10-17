@@ -47,10 +47,15 @@ a third build is needed.
 
 The receipt and the PR body give the assembly deadline: the earliest expiry
 among the measure exclusions build 1's solve ran under (as its run directory
-receipts them), the local line's degenerate-register entries and the in-line
-gate-only entries after the sign-off. Build 2's gate-clock range ends there,
-and a ``--gate-clock`` past the solve-scoped expiries is refused: renewing
-either kind of entry changes the solve.
+receipts them), the local line's degenerate-register entries and every
+gate-only entry build 2's gates hold to its window after the sign-off: those
+on the local line, every ``bound_despite_support_floor`` family whatever its
+line, and the local line's input-mass entries, which the tool reads but never
+drafts. Build 2's gate-clock range ends there, and starts at the latest of
+build 1's clock and the approvals of the register entries named. A
+``--gate-clock`` past the solve-scoped expiries is refused: renewing either
+kind of entry changes the solve. An input-mass entry out of its window at the
+gate clock makes the draft unsignable until it is renewed by hand.
 
 Verify, after build 2::
 
@@ -170,6 +175,14 @@ TARGET_SURFACE_FILENAME = "uk.full.target_compilation.surface.json"
 #: The degenerate register: solve-scoped, since the release contract pins its
 #: digest, yet the calibrated gates evaluate it on build 2's gate clock.
 DEGENERATE_REGISTER = UK_RESOURCES / "degenerate_reviewed_exclusions.json"
+#: The input-mass register: gate-only, but its entries are signed by hand
+#: (:data:`HAND_SIGNED_GATES`), so the tool only reads it. Its gate fails an
+#: entry out of its window at build 2's gate clock.
+INPUT_MASS_REGISTER = UK_RESOURCES / "input_mass_reviewed_exclusions.json"
+INPUT_MASS_GATE = "uk_input_mass_parity"
+#: The area-support register's block of bound families, which its gate
+#: window-checks whatever an entry's release lines.
+BOUND_DESPITE_BLOCK = "bound_despite_support_floor"
 LOCAL_LINE = "local"
 NATIONAL_LINE = "national"
 #: The geography levels whose targets the local surface materializes
@@ -1214,8 +1227,8 @@ def _expiries(records: Mapping[str, UKReviewedExclusion]) -> dict[str, date]:
     }
 
 
-def degenerate_expiries(repo_root: Path) -> dict[str, date]:
-    """The local line's degenerate-register entries at ``repo_root``, by expiry.
+def degenerate_in_line(repo_root: Path) -> dict[str, UKReviewedExclusion]:
+    """The local line's degenerate-register entries at ``repo_root``.
 
     The register is solve-scoped, so build 2 stands on build 1's entries, and
     its calibrated gates evaluate them on the gate clock: one out of its
@@ -1224,12 +1237,76 @@ def degenerate_expiries(repo_root: Path) -> dict[str, date]:
 
     payload = _read_json(repo_root / DEGENERATE_REGISTER, DEGENERATE_REGISTER.name)
     try:
-        records = _scoped(payload.get("exclusions") or {}, DEGENERATE_REGISTER.name)
+        return _scoped(payload.get("exclusions") or {}, DEGENERATE_REGISTER.name)
     except (TypeError, ValueError) as error:
         raise InputError(
             f"{DEGENERATE_REGISTER.name} does not load: {error}"
         ) from error
-    return _expiries(records)
+
+
+def degenerate_expiries(repo_root: Path) -> dict[str, date]:
+    """:func:`degenerate_in_line`, by expiry."""
+
+    return _expiries(degenerate_in_line(repo_root))
+
+
+def input_mass_in_line(repo_root: Path) -> dict[str, UKReviewedExclusion]:
+    """The input-mass register's entries on the local line at ``repo_root``.
+
+    Keyed ``<reference>/<column>`` over every reference, as
+    ``rowwise_cli.gate_only_signoffs`` keys them for the solve-reuse guard.
+    The tool never drafts them (:data:`HAND_SIGNED_GATES`), but build 2's
+    input-mass gate fails one out of its window at the gate clock, so their
+    windows bound that clock too (microcosm#1301).
+    """
+
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        load_uk_reference_scoped_exclusion_register,
+    )
+
+    try:
+        register = load_uk_reference_scoped_exclusion_register(
+            repo_root / INPUT_MASS_REGISTER, resource=INPUT_MASS_REGISTER.name
+        )
+    except (OSError, TypeError, ValueError) as error:
+        raise InputError(
+            f"{INPUT_MASS_REGISTER.name} does not load: {error}"
+        ) from error
+    return {
+        f"{reference}/{column}": record
+        for reference, records in register.items()
+        for column, record in records.items()
+        if record.applies_on(LOCAL_LINE)
+    }
+
+
+def gate_clock_entries(
+    blocks: Mapping[str, Mapping[str, Any]],
+    *,
+    bound_despite: Mapping[str, Any] | None,
+    input_mass: Mapping[str, UKReviewedExclusion],
+) -> dict[str, dict[str, UKReviewedExclusion]]:
+    """Every gate-only entry build 2's calibrated gates hold to its window.
+
+    By source: the entries on the local line of each register block in
+    ``blocks`` (by gate id); every ``bound_despite_support_floor`` entry,
+    whatever its line, since the area-support gate window-checks them all
+    (``None`` when that register is not wired); and the input-mass entries
+    on the local line (:func:`input_mass_in_line`): the entries
+    ``rowwise_cli.gate_only_signoffs`` reads for the solve-reuse guard. With
+    the local line's degenerate-register entries and the measure exclusions
+    build 1's solve ran under, their latest approval and earliest expiry
+    bound build 2's gate clock, and the earliest expiry is the assembly
+    deadline (microcosm#1301).
+    """
+
+    entries = {gate_id: _scoped(block, gate_id) for gate_id, block in blocks.items()}
+    if bound_despite is not None:
+        entries[BOUND_DESPITE_BLOCK] = coerce_reviewed_exclusions(
+            bound_despite, label=BOUND_DESPITE_BLOCK
+        )
+    entries[INPUT_MASS_GATE] = dict(input_mass)
+    return entries
 
 
 def assembly_deadline(
@@ -1840,8 +1917,8 @@ def _deadline_lines(receipt: Mapping[str, Any]) -> list[str]:
         f"**Assembly deadline: {deadline['date']}**, when {_named(set_by)} "
         f"{'expires' if len(set_by) == 1 else 'expire'}: the earliest expiry "
         "among the measure exclusions build 1's solve ran under, the local "
-        "line's degenerate-register entries and the gate-only entries the "
-        "local line stands on. Build 2, its `--verify` and the release "
+        "line's degenerate-register entries and the gate-only entries build "
+        "2's gates hold to their windows. Build 2, its `--verify` and the release "
         "assembly must all run by then. Assembly and upload refuse a measure "
         "exclusion past its expiry, and renewing one, or a degenerate-register "
         "entry, changes the solve.",
@@ -2184,9 +2261,10 @@ def run_draft(args: argparse.Namespace) -> int:
     window = _window(args, evidence, adjudication=adjudication)
     # The solve-scoped expiries no sign-off can move: renewing either kind of
     # entry changes the solve, and build 2 must reuse build 1's.
+    degenerate = degenerate_in_line(repo_root)
     solve_scoped = {
         "measure_exclusion": evidence.measure_exclusions,
-        "degenerate": degenerate_expiries(repo_root),
+        "degenerate": _expiries(degenerate),
     }
     solve_deadline = assembly_deadline(solve_scoped)
     if solve_deadline is not None and window.gate_clock > date.fromisoformat(
@@ -2289,6 +2367,21 @@ def run_draft(args: argparse.Namespace) -> int:
             )
         drafts[spec.gate_id] = draft
 
+    # The input-mass entries are signed by hand, never drafted, yet build 2's
+    # input-mass gate fails one out of its window at the gate clock.
+    input_mass = input_mass_in_line(repo_root)
+    lapsed = sorted(
+        key
+        for key, record in input_mass.items()
+        if not _in_force(record, window.gate_clock)
+    )
+    if lapsed:
+        not_signable[INPUT_MASS_GATE] = (
+            f"{INPUT_MASS_REGISTER.name} entries are outside their window at the "
+            f"gate clock ({', '.join(lapsed)}); the tool never drafts them, so "
+            "renew them by hand and draft again"
+        )
+
     leaks = drafted_disclosure_failures(drafts)
     if leaks:
         raise InputError(" ".join(leaks))
@@ -2387,16 +2480,13 @@ def run_draft(args: argparse.Namespace) -> int:
         for kind, keys in touched.items()
         for key in keys
     }
-    # Every gate-only entry build 2's calibrated gates evaluate on the local
-    # line, after the sign-off.
-    in_line_after = {
-        draft.spec.gate_id: _scoped(draft.after(), draft.spec.resource)
-        for draft in drafts.values()
-    }
-    if "uk_local_area_support" in drafts:
-        in_line_after["bound_despite_support_floor"] = _scoped(
-            bound_despite, "bound_despite_support_floor"
-        )
+    # Every gate-only entry build 2's calibrated gates hold to its window on
+    # the local line, after the sign-off.
+    in_line_after = gate_clock_entries(
+        {gate_id: draft.after() for gate_id, draft in drafts.items()},
+        bound_despite=bound_despite if "uk_local_area_support" in drafts else None,
+        input_mass=input_mass,
+    )
     deadline = assembly_deadline(
         {
             **solve_scoped,
@@ -2421,7 +2511,7 @@ def run_draft(args: argparse.Namespace) -> int:
                 [evidence.clock.isoformat()]
                 + [
                     record.approved_on
-                    for records in in_line_after.values()
+                    for records in (*in_line_after.values(), degenerate)
                     for record in records.values()
                 ]
             ),
@@ -2606,19 +2696,17 @@ def verify(
         )
     wiring = register_wiring()
     stood_on: dict[str, int] = {}
-    in_line: dict[str, Mapping[str, UKReviewedExclusion]] = {}
+    blocks: dict[str, Mapping[str, Any]] = {}
+    bound_despite: Mapping[str, Any] | None = None
     for spec in REGISTERS:
         if wiring[spec.gate_id] is not None:
             continue
         details = build_2.details(spec.gate_id)
         payload = _read_json(repo_root / spec.path, spec.resource)
         records = _scoped(payload[spec.block], spec.resource)
-        in_line[spec.gate_id] = records
+        blocks[spec.gate_id] = payload[spec.block]
         if spec.kind == "area":
-            in_line["bound_despite_support_floor"] = _scoped(
-                payload.get("bound_despite_support_floor") or {},
-                "bound_despite_support_floor",
-            )
+            bound_despite = payload.get(BOUND_DESPITE_BLOCK) or {}
         used = details.get("reviewed_exclusions") or {}
         for name in (
             "stale_exclusions",
@@ -2754,6 +2842,11 @@ def verify(
             failures.extend(
                 f"{gate_id}: {line}" for line in _rescope_changes(summary, block)
             )
+    in_line = gate_clock_entries(
+        blocks,
+        bound_despite=bound_despite,
+        input_mass=input_mass_in_line(repo_root),
+    )
     deadline = assembly_deadline(
         {
             "measure_exclusion": build_2.measure_exclusions,
