@@ -46830,28 +46830,6 @@
       }
     },
     {
-      "name": "microcosm.high_value_homes.over_2m_by_region@E12000001",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
-        "geography_level": "region",
-        "geography_id": "E12000001"
-      },
-      "entity": "household",
-      "measure": "microcosm.high_value_homes.over_2m_by_region@E12000001",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
-        "measure_kind": "prepared_column",
-        "geography_level": "region",
-        "geography_id": "E12000001",
-        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
-        "cross_grain_grain": "region"
-      }
-    },
-    {
       "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
       "ledger_selector": {
         "source_name": "microcosm",
@@ -47024,28 +47002,6 @@
         "geography_level": "region",
         "geography_id": "E12000009",
         "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
-        "cross_grain_grain": "region"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_2m_by_region@W92000004",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
-        "geography_level": "country",
-        "geography_id": "W92000004"
-      },
-      "entity": "household",
-      "measure": "microcosm.high_value_homes.over_2m_by_region@W92000004",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_2m_by_region",
-        "measure_kind": "prepared_column",
-        "geography_level": "country",
-        "geography_id": "W92000004",
-        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
         "cross_grain_grain": "region"
       }
     }

@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 1341,
   "contract_target_count": 359,
-  "active_reference_count": 1321,
+  "active_reference_count": 1319,
   "status_counts": {
-    "active": 1321,
+    "active": 1319,
     "no_fact_at_or_before_period": 5,
-    "signed_excluded": 15
+    "signed_excluded": 17
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -30029,15 +30029,14 @@
       "candidates": [
         {
           "name": "microcosm.high_value_homes.over_2m_by_region@E12000001",
-          "status": "active",
+          "status": "signed_excluded",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 202.945,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_d1bc01be0274a8fa5b533a31"
+          "signed_row": {
+            "dimension": "geography_id",
+            "value": "E12000001"
+          },
+          "signed_rationale": "The North East's derived stock of owner-occupied homes over \u00a32m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every \u00a32m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's \u00a31m and \u00a31.5m rows, which count these homes, stay bound, as do the other regions' \u00a32m rows."
         },
         {
           "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
@@ -30137,15 +30136,14 @@
         },
         {
           "name": "microcosm.high_value_homes.over_2m_by_region@W92000004",
-          "status": "active",
+          "status": "signed_excluded",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "country",
-          "geography_id": "W92000004",
-          "resolved_period": 2025,
-          "resolved_value": 262.486,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "microcosm_derived_fact_high_value_home_stock_v1_86363151d716e7a8f94adecb"
+          "signed_row": {
+            "dimension": "geography_id",
+            "value": "W92000004"
+          },
+          "signed_rationale": "Wales's derived stock of owner-occupied homes over \u00a32m is below the 400-home floor of the local small-cell rule (hvcts_la_household_floor in local_small_cell_rule.json), which already defers every \u00a32m local-authority cell there. That is about one household weight at the ruled 150,000 households, so the row's fit would be noise, and a gate-only sign-off, which is public, would narrow an estimate expected to rest on fewer than 10 records. Signed out of the region fan-out; the same area's \u00a31m and \u00a31.5m rows, which count these homes, stay bound, as do the other regions' \u00a32m rows."
         }
       ]
     }
@@ -30203,7 +30201,7 @@
     {
       "family": "high_value_homes",
       "status": "active_england_and_wales_region_tier_local_line_only",
-      "active_reference_count": 30,
+      "active_reference_count": 28,
       "signed_rationale": "The three high-value homes region targets (owner-occupied homes over \u00a31m, \u00a31.5m and \u00a32m at April-2026 prices) fan out over the England-and-Wales part of the region tier, the nine English regions and Wales (area_scope: Price Paid covers neither Scotland nor Northern Ireland), and select the Microcosm-derived stock the constituency and local-authority cells bind, merged beside the feed from uk/high_value_home_stock_facts.json (microcosm#1240). Each row is the cross-grain control for its area cells. They bind on the local line only (calibration_lines): the national line and the release-cut certifier drop them after the compile, since the national spine's main_residence_value is the WAS donor's, not a Land Registry placement (microcosm#1301)."
     },
     {

@@ -53,9 +53,10 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-# microcosm#1301: the references include the 30 high-value homes region cells,
-# which load_uk_national_target_inputs drops after the compile.
-ACTIVE_REFERENCE_COUNT = 1321
+# microcosm#1301: the references include the high-value homes region cells (30
+# less the two signed out below the small-cell floor), which
+# load_uk_national_target_inputs drops after the compile.
+ACTIVE_REFERENCE_COUNT = 1319
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:

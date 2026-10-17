@@ -72,7 +72,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1321
+ACTIVE_REFERENCE_COUNT = 1319
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -897,9 +897,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1321,
+        "active": 1319,
         "no_fact_at_or_before_period": 5,
-        "signed_excluded": 15,
+        "signed_excluded": 17,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -1028,9 +1028,10 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "high_value_homes",
             "status": "active_england_and_wales_region_tier_local_line_only",
-            # Three thresholds over the nine English regions and Wales
-            # (microcosm#1301).
-            "active_reference_count": 30,
+            # Three thresholds over the nine English regions and Wales, less
+            # the North East and Wales rows over £2m, signed out below the
+            # small-cell floor (microcosm#1301).
+            "active_reference_count": 28,
             "signed_rationale": (
                 "The three high-value homes region targets (owner-occupied "
                 "homes over £1m, £1.5m and £2m at April-2026 prices) fan out "
@@ -1728,6 +1729,14 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     for target_id in two_level:
         rows = by_contract[target_id]
         cells = [row["metadata"]["geography_id"] for row in rows]
+        # The North East and Wales rows over £2m sit below the local
+        # small-cell floor and are signed out of the fan-out (microcosm#1301):
+        # they stay in its roster and leave the references.
+        signed_out = (
+            {"E12000001", "W92000004"}
+            if target_id == "microcosm.high_value_homes.over_2m_by_region"
+            else set()
+        )
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
         # LFS household estimates cover England's regions only: their binding
@@ -1741,7 +1750,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         if target_id in high_value_homes:
             # Price Paid covers England and Wales only: area_scope keeps the
             # English regions and Wales at country level (microcosm#1301).
-            assert cells == [*english, "W92000004"], target_id
+            assert cells == [
+                code for code in [*english, "W92000004"] if code not in signed_out
+            ], target_id
         else:
             assert cells == (tier_codes if uk_wide else english), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
@@ -1781,7 +1792,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                     for operand in row["value_operands"]
                 } == {members}
         pins = membership["geography_pins"][target_id]
-        assert [cell["geography_id"] for cell in pins["geography_fanout"]] == cells
+        assert [
+            cell["geography_id"]
+            for cell in pins["geography_fanout"]
+            if cell["geography_id"] not in signed_out
+        ] == cells
         if target_id in mhclg:
             assert (
                 sum(
@@ -1791,14 +1806,24 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                 == 296
             )
         candidates = membership["targets"][target_id]["candidates"]
-        assert [entry["geography_id"] for entry in candidates] == cells
-        assert {entry["status"] for entry in candidates} == {"active"}
+        assert [
+            entry["geography_id"] for entry in candidates if entry["status"] == "active"
+        ] == cells
+        assert {
+            entry["signed_row"]["value"]
+            for entry in candidates
+            if entry["status"] == "signed_excluded"
+        } == signed_out
+        assert {entry["status"] for entry in candidates} == (
+            {"active", "signed_excluded"} if signed_out else {"active"}
+        )
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
     # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
-    # cells (microcosm#1123), and 30 high-value homes cells, three thresholds
-    # over England's regions and Wales (microcosm#1301).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 654
+    # cells (microcosm#1123), and 28 high-value homes cells, three thresholds
+    # over England's regions and Wales less the two signed out below the
+    # small-cell floor (microcosm#1301).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 652
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
