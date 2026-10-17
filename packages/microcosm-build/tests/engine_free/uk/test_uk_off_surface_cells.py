@@ -588,3 +588,26 @@ def test_a_small_cell_deferral_the_runs_ladder_does_not_carry_is_left_out(
         _uc_surface(
             deferred_cells=unguarded, area_region_codes={"E06000001": "E12000001"}
         )
+
+
+def test_the_uc_bridge_bound_counts_a_small_cell_deferral():
+    # The tests above lift the bound; this one keeps the real rule. Scotland's
+    # other authority is a small-cell deferral at 40, which always joins the
+    # frame, so the authorities' GB total meets the caseload of 200 and the
+    # surface is accepted: the bound authority keeps its 60.
+    deferrals = [_off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET)]
+    values, receipt = _uc_surface(deferred_cells=deferrals, gb=200.0)
+    assert values["S12000033"] == pytest.approx(60.0)
+    assert values["W06000001"] == pytest.approx(100.0)
+    assert "S12000034" not in values
+    assert receipt["small_cell_deferrals"] == {
+        "rows_added": 1,
+        "areas_outside_the_ladder": [],
+    }
+
+
+def test_the_uc_bridge_bound_refuses_authorities_short_with_a_small_cell_deferral():
+    # At 10 the deferral leaves the authorities' GB total at 170 of 200.
+    deferrals = [_off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET)]
+    with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.17"):
+        _uc_surface(deferred_cells=deferrals, gb=200.0)
