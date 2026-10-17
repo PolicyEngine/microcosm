@@ -310,6 +310,96 @@ def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosu
     assert "social_security_cps_reporters_erased_inherited" not in ids()
 
 
+def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
+    """microcosm#1263: the limitation follows the consumer export's receipt."""
+
+    module = _load_tool_module()
+    staging_summary = {"base": {"donor_release": {}}, "reviewed_limitations": []}
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def limitation(consumer_export):
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}, consumer_export=consumer_export
+            )
+        }.get("acs_wic_takeup_assumed_interim")
+
+    applied = {
+        "live_stored_inputs": {
+            "wic": {
+                "renamed": True,
+                "from": "would_claim_wic",
+                "to": "takes_up_wic_if_eligible",
+                "people_assumed_true": 12,
+                "flip_condition": "Drop it once microcosm#1156 lands.",
+            }
+        }
+    }
+    entry = limitation(applied)
+    assert entry["status"] == "reviewed_interim_assumption"
+    assert entry["column"] == "takes_up_wic_if_eligible"
+    assert entry["people_assumed_true"] == 12
+    assert entry["treatment"] == "Drop it once microcosm#1156 lands."
+    assert entry["calibration_blocker"] is False
+    assert limitation(None) is None
+    assert limitation({}) is None
+    assert limitation({"live_stored_inputs": {"wic": {"renamed": False}}}) is None
+
+
+def _spine_frame(spines, decisions):
+    from microcosm.frame import Frame
+    from test_support.microcosm_build.us_acs_spm_role import acs_frame
+
+    frame = acs_frame([[(20, 40.0)] for _ in spines])
+    person = frame.table("person").copy()
+    person["person_spine"] = spines
+    person["would_claim_wic"] = pd.Series(decisions, dtype=object)
+    person["medicare_part_b_premiums"] = [
+        0.0 if decision is not None else np.nan for decision in decisions
+    ]
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+
+def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
+    """The tool hands the rule the ACS spine, read from the spine tag."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(
+        ["asec_puf", "acs_2024_1yr", "acs_2024_1yr"], [False, None, None]
+    )
+
+    result = module._with_live_stored_inputs(frame)
+
+    person = result.frame.table("person")
+    assert person["takes_up_wic_if_eligible"].tolist() == [False, True, True]
+    assert "would_claim_wic" not in person.columns
+    assert "medicare_part_b_premiums" not in person.columns
+    assert result.provenance["wic"]["people_assumed_true"] == 2
+    # Neither retired name, nor the live one, is left for the package gate to
+    # refuse.
+    engine = stored_inputs.installed_us_engine()
+    refused = stored_inputs.undefined_stored_inputs(
+        person.columns, engine_variables=engine.variables
+    )
+    assert not {
+        "would_claim_wic",
+        "medicare_part_b_premiums",
+        "takes_up_wic_if_eligible",
+    } & set(refused)
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(
+            _spine_frame(["asec_puf", "acs_2024_1yr"], [None, None])
+        )
+
+
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
     module = _load_tool_module()
     base = [

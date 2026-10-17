@@ -309,6 +309,10 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:   build, and the rehearsal export no longer stores it, so the remedy is to
 #:   stop storing it.
 #:
+#: The ACS local-area chain inherits both from its donor and applies these
+#: remedies to its consumer artifact
+#: (``microcosm.build.us_runtime.retired_stored_inputs``, microcosm#1263).
+#:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
 #: the engine ignores the column) would be false. Tests hold the register to

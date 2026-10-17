@@ -342,6 +342,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spm_universe_source.py",
         # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
         "ssi_social_security_holdout.py",
+        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
+        # renames the WIC draw and drops a dead column. It reads no provenance
+        # column; the release tool passes the people who may lack a decision.
+        "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
