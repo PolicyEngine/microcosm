@@ -127,6 +127,7 @@ def _frame(
     reported: dict[str, np.ndarray],
     would_claim_uc: np.ndarray,
     weights: np.ndarray,
+    regions=None,
 ):
     n = len(would_claim_uc)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -146,7 +147,10 @@ def _frame(
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "region": pd.array(["NORTH_WEST"] * n, dtype="string"),
+            "region": pd.array(
+                ["NORTH_WEST"] * n if regions is None else list(regions),
+                dtype="string",
+            ),
         }
     )
     return uk_national_frame(
@@ -181,6 +185,7 @@ def test_units_outside_the_draw_keep_the_engine_default() -> None:
         "child_tax_credit": {
             "rate": 0.6,
             "rate_source": "combination",
+            "rate_unreachable": "<10",
             "support": "<10",
         }
     }
@@ -210,7 +215,7 @@ def test_the_weighted_share_claiming_matches_dwps_rate() -> None:
         share = weights[mask & flag].sum() / weights[mask].sum()
         assert share == pytest.approx(rate, abs=0.03)
     assert result.evidence()["combinations"]["child_tax_credit"]["support"] == "30+"
-    assert result.evidence()["p_basis"] == "spine_design_weights"
+    assert result.evidence()["p_basis"] == "spine_design_weights_great_britain"
 
 
 def test_draws_are_keyed_by_benunit_identity() -> None:
@@ -288,3 +293,59 @@ def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
     assert order.index("uc_capital_coherence") == position - 1
     assert position < order.index("pension_credit_take_up")
     assert position < order.index("cgt_support_split")
+
+
+def test_p_is_measured_over_great_britain_and_applied_in_northern_ireland() -> None:
+    # Four Great Britain units, one claiming anyway (p = 0.25), and two Northern
+    # Irish units claiming anyway, which a UK-wide p would count (0.5).
+    combination = np.array(["child_tax_credit"] * 6, dtype=object)
+    great_britain = np.array([True, True, True, True, False, False])
+    probability, _ = lc.legacy_closure_claim_probabilities(
+        combination=combination,
+        drawn=np.ones(6, dtype=bool),
+        claims_anyway=np.array([True, False, False, False, True, True]),
+        weights=np.ones(6),
+        rates={"child_tax_credit": 0.8, "all": 0.8},
+        great_britain=great_britain,
+    )
+    np.testing.assert_allclose(probability, (0.8 - 0.25) / (1 - 0.25))
+
+
+def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources() -> None:
+    # Eleven of twelve units claim anyway: p exceeds DWP's rate, so none is drawn.
+    kwargs = dict(
+        combination=np.array(["esa_income"] * 12, dtype=object),
+        drawn=np.ones(12, dtype=bool),
+        claims_anyway=np.arange(12) < 11,
+        weights=np.ones(12),
+        rates={"esa_income": 0.8, "all": 0.8},
+    )
+    probability, receipt = lc.legacy_closure_claim_probabilities(
+        **kwargs, source_ids=np.arange(12)
+    )
+    np.testing.assert_array_equal(probability, 0.0)
+    assert receipt["esa_income"]["rate_unreachable"] is True
+    assert receipt["esa_income"]["support"] == "10-29"
+    # Twelve support copies of three households: the cell rests on fewer
+    # than ten sources, so neither the flag nor the support is given.
+    _, receipt = lc.legacy_closure_claim_probabilities(
+        **kwargs, source_ids=np.arange(12) % 3
+    )
+    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+    assert receipt["esa_income"]["support"] == "<10"
+
+
+def test_the_receipt_aggregates_cover_great_britain_only() -> None:
+    n = 40
+    regions = ["NORTH_WEST"] * 30 + ["NORTHERN_IRELAND"] * 10
+    frame = _frame(
+        {"child_tax_credit_reported": np.full(n, 400.0)},
+        would_claim_uc=np.zeros(n, dtype=bool),
+        weights=np.full(n, 2.0),
+        regions=regions,
+    )
+    result = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+    # Thirty Great Britain units at weight 2; Northern Ireland's are left out.
+    assert result.evidence()["great_britain_drawn_benunit_weight"] == pytest.approx(
+        60.0
+    )
