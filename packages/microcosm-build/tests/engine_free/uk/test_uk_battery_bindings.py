@@ -2059,6 +2059,64 @@ class TestEnumDomainResolution:
         )
         assert result.passed
 
+    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+        self,
+    ) -> None:
+        """microcosm#1305 review: the unstubbed binding, then the classification.
+
+        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
+        a value outside the engine's enum fails it, and the failure stops even
+        a development build (no candidate is exported).
+        """
+
+        import enum
+
+        from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
+        from microcosm.build.uk_runtime import full_gates
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        person, benunit, household = _tables()
+        household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
+            : len(household)
+        ]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class BRMAName(enum.Enum):
+            CARDIFF = "CARDIFF"
+            LOTHIAN = "LOTHIAN"
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "brma"
+                return BRMAName
+
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_local_brma_enum_domain"
+        )
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            entry.parameters,
+        )
+        assert not result.passed
+        report = GatePhaseReport(
+            entry.phase,
+            (
+                GateOutcome(
+                    entry=entry, status=GateStatus.FAILED, result=result, reason=None
+                ),
+            ),
+        )
+        for fraction in (0.1, 1.0):
+            outcome = full_gates.classify_full_gate_outcomes(
+                report, sample_fraction=fraction, release_candidate=False
+            )
+            assert outcome["artifact_permitted"] is False
+            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
+
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
 
