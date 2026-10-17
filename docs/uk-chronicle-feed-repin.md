@@ -49,9 +49,24 @@ this order:
    `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
    conditioning resource, whose vendored header records the feed identity.
 
+Both compile parity receipts are read at build time: the release-blocking
+preflight gates `uk_ledger_compile_parity_*` compare each signed value with the
+live compile, so a receipt left on the old pin blocks every full or dense build
+and the release-cut certifier. Regenerate them on the head that will be built.
+
+The high-value home stock (`uk/high_value_home_stock.json`) is built from feed
+facts too: the Census 2021 TS054 tenure record sets, the OBR non-owner-occupied
+share and the ONS HPSSA seat cells. Check that those facts are unchanged on the
+new pin, and rebuild the stock with `tools/build_uk_high_value_home_stock.py`
+if they are not; its provenance names the feed it was built from.
+
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
-fragment.
+fragment. A national reference whose metadata moves (a fact key or a
+geography stamp) moves the national register version even when no value
+does, so the frozen scoring register of the candidate evaluation
+(uk-candidate-eval) must be re-frozen before the next national solve; record
+that in the history entry.
 
 A re-pin also moves the charter-H2 parity fixture: every stage that declares a
 vendored resource as an artifact binds that resource's digest into its
@@ -190,7 +205,8 @@ the new `gas_year` period type. Three selector families moved with the data, and
   and the four child bands, whose summed operands name it too), because Chronicle retired the
   all-claims cells. The cells now count paid claims, as the GB caseload that controls them does, so
   the bridge's factor moves from 0.921 to about 1.001, and the bridge refuses a factor more than 2%
-  from one (`max_factor_shift`);
+  from one (`max_factor_shift`), each grain read on its own input total and on the pass that
+  carries the off-surface cells;
 - twelve OBR table 4.9 lines are stamped Great Britain or England and Wales
   (`TARGET_ID_GEOGRAPHY_PINS`), and the `obr.state_pension` diagnostic reads its Great Britain
   fact; no value moved;
@@ -200,8 +216,8 @@ the new `gas_year` period type. Three selector families moved with the data, and
   and 347 local-authority gas rows come back under new keys with the same values;
 - the local energy rows keep Great Britain's share of UK households as the interim for its share of
   the Energy Trends level. The Northern Ireland facts are now in the feed, on a basis DESNZ calls
-  not directly comparable, and María ruled on 2026-10-16 that the interim stands until the change
-  stacked on this re-pin reads the share from them.
+  not directly comparable, and María ruled on 2026-10-16 that the interim stands until a change
+  stacked on this re-pin derives Great Britain's part from them.
 
 Values move only for the UC area rows: each cell is its area's paid claims, where it was its
 all-claims count scaled by the GB paid share, so the cells keep the GB caseload's total and each
@@ -210,6 +226,8 @@ every national reference resolves the fact it resolved before except the twelve 
 lines, and every local one except the 3,508 UC area cells and the 346 local-authority gas
 consumption cells, which Chronicle restamped as gas years with the same values. The vendored
 resources carry the same values, and the charter-H2 fixture moves twelve stage contract hashes. The
-full surface was not recompiled for this entry, and the local compile-parity receipt is
-regenerated with the next local surface change (microcosm#1262); until then its UC rows show the
-all-claims values.
+local compile-parity receipt is regenerated on this pin, and only the 3,508 UC cells' signed values
+move; the full surface was not recompiled for this entry. The twelve restamped OBR lines move the
+national register version with no value moved, so the uk-candidate-eval scoring register is
+re-frozen before the next national solve. The high-value home stock still names `735820c`: its
+TS054 tenure, OBR share and HPSSA facts are the same on `abf0921`, so it was not rebuilt.
