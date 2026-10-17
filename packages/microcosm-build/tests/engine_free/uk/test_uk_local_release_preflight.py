@@ -227,6 +227,32 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
     )
 
 
+def test_release_dir_contract_warnings_print_without_failing(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The contract's warnings (its disclosure walk, microcosm#1301) never
+    fail the pre-flight; its failures still do."""
+    from microcosm.data import contract
+
+    module = _load()
+    monkeypatch.setattr(
+        contract,
+        "validate_release_dir",
+        lambda _path: ["synthetic.json carries a synthetic finding"],
+    )
+    assert module.main(["--release-dir", str(tmp_path)]) == 0
+    err = capsys.readouterr().err
+    assert "WARN synthetic.json carries a synthetic finding" in err
+    assert "preflight: OK, 1 warning(s)" in err
+
+    def refuse(_path):
+        raise contract.ReleaseContractError(tmp_path, ["synthetic failure"])
+
+    monkeypatch.setattr(contract, "validate_release_dir", refuse)
+    assert module.main(["--release-dir", str(tmp_path)]) == 1
+    assert "FAIL synthetic failure" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("role", ["national", None])
 def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> None:
     """This pre-flight is the dense line's; any other role is refused by name."""

@@ -60,9 +60,10 @@ Verify, after build 2::
 It checks that build 2 stood on every in-line entry of the three registers at
 this checkout and that none was stale, dormant, premature, expired or unknown.
 It checks that no release-blocking gate failed and that the signed local report
-passes the dense release contract, its disclosure walk included (the signing
-key must be exported). It fails once the assembly deadline has passed and
-warns from two days before it. With
+passes the dense release contract (the signing key must be exported). Like the
+contract, it warns, without failing, when the disclosure walk finds a per-area
+support figure in that report. It fails once the assembly deadline has passed
+and warns from two days before it. With
 ``--build-1`` it also reports whether build 2 reused build 1's solve and
 reproduced its per-row errors.
 
@@ -83,11 +84,12 @@ support figure, and the reports' failure lines are never copied.
 ``--approved-by`` must be a GitHub login. The free text (``--class-note``,
 ``--area-name``, ``--adjudication``) may carry digits only in issue references
 and ISO dates, and no ``%``; the drafted entries then get the release
-contract's disclosure walk. Of the stale-risk and near-bound counts, the
-receipt and the PR body carry the national register's only: the local
-registers' bracket named sub-GOR estimates, so they go to standard output
-and, with per-row errors and per-area support figures, to the private review
-file. The area-support table's ``max_weight`` column is never read.
+contract's disclosure walk, and a finding refuses the draft. Of the
+stale-risk and near-bound counts, the receipt and the PR body carry the
+national register's only: the local registers' bracket named sub-GOR
+estimates, so they go to standard output and, with per-row errors and
+per-area support figures, to the private review file. The area-support
+table's ``max_weight`` column is never read.
 """
 
 from __future__ import annotations
@@ -1620,12 +1622,14 @@ def drafted_disclosure_failures(drafts: Mapping[str, RegisterDraft]) -> list[str
 
     Build 2's signed local report, which a release ships, carries every entry
     its gates stand on, so a drafted reason (a ``--class-note`` included)
-    must pass the walk the release directory gets (microcosm#1301).
+    gets the walk the release directory gets (microcosm#1301). A finding
+    refuses the draft, where the release contract only warns: re-drafting
+    costs nothing, and the entries go into the sign-off PR on a public repo.
     """
 
-    from microcosm.data.contract import _uk_dense_disclosure_failures
+    from microcosm.data.contract import _uk_dense_disclosure_findings
 
-    return _uk_dense_disclosure_failures(
+    return _uk_dense_disclosure_findings(
         "the drafted entries",
         {
             gate_id: {
@@ -2466,12 +2470,14 @@ def verify(
 
     It also fails once the assembly deadline (:func:`assembly_deadline`, on
     build 2's measure exclusions and this checkout's registers) has passed,
-    and warns from :data:`DEADLINE_WARNING_DAYS` days before it.
+    and warns from :data:`DEADLINE_WARNING_DAYS` days before it. A per-area
+    support figure in the signed local report is a warning, as in the
+    release contract (microcosm#1301).
     """
 
     from microcosm.data.contract import (
         _check_uk_dense_gate_report,
-        _uk_dense_disclosure_failures,
+        _uk_dense_disclosure_findings,
     )
 
     today = _today() if today is None else today
@@ -2555,14 +2561,16 @@ def verify(
     _check_uk_dense_gate_report(
         build_2.local_report, failures=contract_failures, attempt_id=build_2.attempt_id
     )
+    failures.extend(f"contract: {line}" for line in contract_failures)
     # The signed local report ships in the release, so it gets the release
-    # directory's disclosure walk (microcosm#1301) here, before assembly.
-    contract_failures.extend(
-        _uk_dense_disclosure_failures(
+    # directory's disclosure walk (microcosm#1301) here, before assembly,
+    # and warns as the release contract does.
+    warnings.extend(
+        f"contract: {line}"
+        for line in _uk_dense_disclosure_findings(
             "the signed local gate report", build_2.local_report
         )
     )
-    failures.extend(f"contract: {line}" for line in contract_failures)
 
     comparison: dict[str, Any] = {}
     if build_1 is not None:

@@ -453,11 +453,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     failures: list[str] = []
+    # The contract's warnings (the disclosure walk, microcosm#1301) are
+    # printed but never fail the pre-flight.
+    warnings: list[str] = []
     if args.release_dir is not None:
         from microcosm.data.contract import ReleaseContractError, validate_release_dir
 
         try:
-            validate_release_dir(args.release_dir)
+            warnings += validate_release_dir(args.release_dir)
         except ReleaseContractError as error:
             failures += [str(line) for line in getattr(error, "failures", [str(error)])]
     if args.env:
@@ -486,10 +489,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "nothing to check: pass --env, --candidate-dir and/or --release-dir"
         )
+    for warning in warnings:
+        print(f"WARN {warning}", file=sys.stderr)
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
     print(
-        "preflight: " + ("OK" if not failures else f"{len(failures)} failure(s)"),
+        "preflight: "
+        + ("OK" if not failures else f"{len(failures)} failure(s)")
+        + (f", {len(warnings)} warning(s)" if warnings else ""),
         file=sys.stderr,
     )
     return 0 if not failures else 1

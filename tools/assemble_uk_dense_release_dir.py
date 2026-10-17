@@ -1081,7 +1081,12 @@ def _stage_and_finalize(
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
-    validate_release_dir(release_dir)
+    # The contract warns, without refusing, on a per-area support figure in a
+    # shipped document (microcosm#1301); each warning is weighed before
+    # publication.
+    contract_warnings = validate_release_dir(release_dir)
+    for contract_warning in contract_warnings:
+        print(f"warning: {contract_warning}", file=sys.stderr)
     release_dir.rename(destination)
     publish_command = shlex.join(
         [
@@ -1111,6 +1116,7 @@ def _stage_and_finalize(
         },
         "evidence": {name: _sha256(destination / name) for name in evidence_files},
         "publish_command": publish_command,
+        "warnings": contract_warnings,
     }
 
 

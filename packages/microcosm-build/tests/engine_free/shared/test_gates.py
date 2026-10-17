@@ -79,7 +79,7 @@ def test_area_support_reviewed_exclusion_records_the_floors_missed() -> None:
 
 
 def test_area_support_details_and_failures_carry_no_area_figures() -> None:
-    from microcosm.data.contract import _uk_dense_disclosure_failures
+    from microcosm.data.contract import _uk_dense_disclosure_findings
 
     support = pd.concat(
         [
@@ -105,7 +105,7 @@ def test_area_support_details_and_failures_carry_no_area_figures() -> None:
         "constituency": {"areas_checked": 2, "areas_below_floor": 2}
     }
     shipped = {"details": result.details, "failures": list(result.failures)}
-    assert _uk_dense_disclosure_failures("uk_local_gates.json", shipped) == []
+    assert _uk_dense_disclosure_findings("uk_local_gates.json", shipped) == []
     for figure in ("30", "25.5", "20", "40", "35", "45"):
         assert all(figure not in failure for failure in result.failures)
 

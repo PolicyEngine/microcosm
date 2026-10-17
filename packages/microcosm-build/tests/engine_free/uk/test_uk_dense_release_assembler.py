@@ -1300,15 +1300,16 @@ def test_assembler_stages_a_graph_built_dense_candidate(
         assert coverage["holdout"] == {"run": False, "claim": "none"}
         assert coverage["incumbent"] == {"compared": False}
         assert {"no_out_of_sample_claim", "no_incumbent_comparison"} <= set(limitations)
-    dc.validate_release_dir(release_dir)
-
     # Disclosure (microcosm#1301): every area is below the floors, yet no
-    # shipped document carries an area's rows, ESS or sources. The signed
-    # report names the floors each excused area misses; the manifest counts
-    # areas; the release manifest names the areas by code.
+    # shipped document carries an area's rows, ESS or sources, so the
+    # contract has nothing to warn about. The signed report names the floors
+    # each excused area misses; the manifest counts areas; the release
+    # manifest names the areas by code.
+    assert dc.validate_release_dir(release_dir) == []
+    assert summary["warnings"] == []
     for path in sorted(release_dir.glob("*.json")):
         payload = json.loads(path.read_text())
-        assert dc._uk_dense_disclosure_failures(path.name, payload) == [], path.name
+        assert dc._uk_dense_disclosure_findings(path.name, payload) == [], path.name
     signed = json.loads((release_dir / "uk_local_gates.json").read_text())
     shipped_exclusions = signed["gates"]["uk_local_area_support"]["details"][
         "reviewed_exclusions"

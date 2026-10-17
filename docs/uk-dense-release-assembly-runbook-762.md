@@ -219,9 +219,10 @@ tool cannot template it checks in three ways, and only these three:
   `PolicyEngine/microcosm#1301`, with no digits in the owner or repository
   name) and ISO dates (`YYYY-MM-DD`), and never a `%`. Anything else, like a
   reviewer that is not a login, is refused before the build is read.
-- The drafted entries then go through the release contract's disclosure walk.
-  On text, the walk refuses only an area's support worded with its measured
-  value, such as `rows 7 < 50`.
+- The drafted entries then go through the release contract's disclosure walk,
+  and a finding refuses the draft, though on a release directory the walk only
+  warns. On text, the walk catches only an area's support worded with its
+  measured value, such as `rows 7 < 50`.
 
 None of these checks catches a figure written in words, so scan the outputs as
 described under "The sign-off PR" below. The degenerate register is never
@@ -336,15 +337,16 @@ Verification fails unless all of these hold:
   was dormant;
 - every receipt matches its register entry;
 - no release-blocking gate failed;
-- the signed local report passes the dense release contract, including the
-  disclosure walk a release directory gets;
+- the signed local report passes the dense release contract;
 - with `--draft-receipt`, every drafted entry is committed, no retired one is,
   and every rescoped one is committed for the national line only;
 - the assembly deadline, computed as the draft computes it from build 2's
   measure exclusions and the checkout's registers, has not passed.
 
 It warns when build 2 did not reuse build 1's solve, when its per-row errors
-differ, and when the assembly deadline is two days away or less. The entries
+differ, when the disclosure walk a release directory gets finds a per-area
+support figure in the signed local report, and when the assembly deadline is
+two days away or less. The entries
 expire: retire or renew them before `expires_on`, because
 engine-free tests evaluate the committed registers at today's date.
 
@@ -471,6 +473,17 @@ directory with
 `releases/microcosm-uk-2024-25-dense/`. Re-assembling requires removing the
 previous directory first. The JSON summary prints the publication command.
 
+The validator's disclosure walk warns rather than refuses (microcosm#1301). A
+shipped JSON document carrying an area's rows, ESS or distinct sources, or a
+minimum, maximum or median of one, prints a `warning:` line naming the file and
+the first paths to the figures, never their values, and the summary lists it
+under `warnings`; so does a shipped JSON document the walk cannot read. Weigh
+each warning before publishing. A figure in the signed `uk_local_gates.json`
+cannot be edited out without failing its signature, nor one in
+`source_calibration_diagnostics.json` without failing the candidate manifest's
+hash of it; a figure in a file the assembler writes is fixed at its source and
+the directory re-assembled.
+
 The manifest's `reviewed_limitations` record what the release does not claim,
 and the contract checks them against the coverage: `engine_measurement`
 always; `no_out_of_sample_claim` or `rotated_holdout` (`claim: report_only`);
@@ -503,7 +516,8 @@ Assembly and every later directory validation require measured clean code
 (`code.git_dirty` exactly `false`) and full measure-exclusion provenance.
 Approval and expiry dates must be valid ISO dates and in force on the current
 validation date; expiry-day validation is allowed, the following day is not.
-The upload path invokes this validator again before uploading bytes. Separate support
+The upload path invokes this validator again before uploading bytes, and
+repeats its warnings. Separate support
 and binding adjudications keep their own policies. The gate thresholds and
 existing approvals have not been widened or renewed.
 

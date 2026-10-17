@@ -1560,7 +1560,6 @@ def _other_receipt(registers):
         (_expired, False, "expired_exclusions"),
         (_per_family, False, "uk_local_per_family_fit"),
         (_other_receipt, False, "receipt for synthetic.national_a@2025 differs"),
-        (_figure_in_reason, True, "measured support"),
     ],
 )
 def test_verify_fails_a_build_2_that_did_not_stand_on_the_sign_off(
@@ -1582,6 +1581,27 @@ def test_verify_fails_a_build_2_that_did_not_stand_on_the_sign_off(
     status, result = verify(build_2, repo, tmp_path)
     assert status == 1
     assert any(message in line for line in result["failures"]), result["failures"]
+
+
+def test_verify_warns_on_a_support_figure_in_the_signed_report(build_1, repo, tmp_path):
+    """The signed local report gets the release's disclosure walk, which
+    warns rather than fails, as the release contract does (microcosm#1301)."""
+    registers = _signed_off(build_1, repo, tmp_path)
+    build_registers = json.loads(json.dumps(registers))
+    _figure_in_reason(build_registers)
+    make_repo(repo, build_registers)
+    build_2 = write_run(
+        tmp_path / "build-2",
+        registers=build_registers,
+        attempt_id=ATTEMPT_2,
+        clock=GATE_CLOCK,
+    )
+    status, result = verify(build_2, repo, tmp_path)
+    assert status == 0, result["failures"]
+    assert any(
+        line.startswith("contract: ") and "measured support" in line
+        for line in result["warnings"]
+    ), result["warnings"]
 
 
 def test_verify_surfaces_a_tampered_local_report(build_1, repo, tmp_path):

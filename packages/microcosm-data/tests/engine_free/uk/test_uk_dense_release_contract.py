@@ -1450,17 +1450,15 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
 #: with support figures never reads as a real area's figures.
 _AREA = "E06999999"
 _OTHER_AREA = "E06999998"
-#: The synthetic support figures the refusal tests inject; no failure may
+#: The synthetic support figures the warning tests inject; no warning may
 #: repeat one.
 _FIGURES = ("37", "23.75", "29", "41")
 
 
-def _failure_lines(release_dir: Path) -> str:
-    """The contract's failures without the release directory's own path,
-    which a figure could appear in by chance."""
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(release_dir)
-    return "\n".join(excinfo.value.failures)
+def _warning_lines(release_dir: Path) -> str:
+    """The contract's warnings for a release it otherwise passes: the
+    disclosure walk warns, never refuses (microcosm#1301)."""
+    return "\n".join(validate_release_dir(release_dir))
 
 
 #: The area-support details a signed report may ship: the floors an excused
@@ -1484,11 +1482,14 @@ _FLOOR_ONLY_DETAILS = {
 
 
 def test_floor_only_area_support_details_ship(tmp_path: Path) -> None:
-    validate_release_dir(
-        write_dense_bundle(
-            tmp_path,
-            report=_signed_report(area_support_details=_FLOOR_ONLY_DETAILS),
+    assert (
+        validate_release_dir(
+            write_dense_bundle(
+                tmp_path,
+                report=_signed_report(area_support_details=_FLOOR_ONLY_DETAILS),
+            )
         )
+        == []
     )
 
 
@@ -1507,10 +1508,11 @@ def _with_figures(details: dict) -> dict:
         ("signed_report_figures", "per-area support figure(s)"),
     ],
 )
-def test_dense_release_refuses_per_area_support_figures(
+def test_dense_release_warns_on_per_area_support_figures(
     tmp_path: Path, inject: str, expected: str
 ) -> None:
-    """No shipped document may carry an area's rows, ESS or sources (microcosm#1301)."""
+    """A shipped document carrying an area's rows, ESS or sources is a
+    warning, not a refusal (microcosm#1301)."""
 
     if inject == "signed_report_figures":
         release_dir = write_dense_bundle(
@@ -1531,12 +1533,12 @@ def test_dense_release_refuses_per_area_support_figures(
         path.write_text(json.dumps(summary))
         _refresh_packaging_checksums(release_dir)
 
-    failures = _failure_lines(release_dir)
-    assert expected in failures
-    assert name in failures
-    # The refusal names where the figure is, never its value.
+    warnings = _warning_lines(release_dir)
+    assert expected in warnings
+    assert name in warnings
+    # The warning names where the figure is, never its value.
     for figure in _FIGURES:
-        assert figure not in failures
+        assert figure not in warnings
 
 
 _FIGURE = "per-area support figure(s)"
@@ -1596,21 +1598,21 @@ _SUPPORT_FIGURE_SHAPES = {
 
 
 @pytest.mark.parametrize("shape", sorted(_SUPPORT_FIGURE_SHAPES))
-def test_dense_release_refuses_support_figures_in_every_shape(
+def test_dense_release_warns_on_support_figures_in_every_shape(
     tmp_path: Path, shape: str
 ) -> None:
     """Records keyed by any area identifier, code-keyed maps, columnar tables,
-    lists and the extremes of a figure are refused alike (microcosm#1301)."""
+    lists and the extremes of a figure are warned about alike (microcosm#1301)."""
 
     key, value, expected = _SUPPORT_FIGURE_SHAPES[shape]
     release_dir = write_dense_bundle(tmp_path)
     _rewrite_manifest(release_dir, lambda manifest: manifest.__setitem__(key, value))
-    failures = _failure_lines(release_dir)
-    assert "release_manifest.json carries" in failures and expected in failures
-    # The refusal names where the figures are, never their values.
-    assert f"first at ['{key}" in failures
+    warnings = _warning_lines(release_dir)
+    assert "release_manifest.json carries" in warnings and expected in warnings
+    # The warning names where the figures are, never their values.
+    assert f"first at ['{key}" in warnings
     for figure in _FIGURES:
-        assert figure not in failures
+        assert figure not in warnings
 
 
 @pytest.mark.parametrize(
@@ -1618,17 +1620,18 @@ def test_dense_release_refuses_support_figures_in_every_shape(
     [b'{"support": {"rows": ', b'{"rows": NaN}', b'{"rows": "\xc3\x28"}'],
     ids=["truncated", "non-standard-constant", "undecodable"],
 )
-def test_dense_release_refuses_a_json_document_it_cannot_walk(
+def test_dense_release_warns_on_a_json_document_it_cannot_walk(
     tmp_path: Path, content: bytes
 ) -> None:
-    """A document the walk cannot read could hide a figure, so it fails."""
+    """A document the walk cannot read could hide a figure, so it is warned
+    about too."""
 
     release_dir = write_dense_bundle(tmp_path)
     (release_dir / "support_notes.json").write_bytes(content)
     assert (
         "support_notes.json cannot be read and walked as JSON, so the disclosure "
         "walk cannot rule out"
-    ) in _failures(release_dir)
+    ) in _warning_lines(release_dir)
 
 
 def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:
@@ -1661,7 +1664,7 @@ def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:
         "fit": {"local_by_family": [{"family": "synthetic", "rows": 12}]},
         "parameters": {"maximum_max_to_median_ratio": 100.0},
     }
-    assert dc._uk_dense_disclosure_failures("shipped.json", shipped) == []
+    assert dc._uk_dense_disclosure_findings("shipped.json", shipped) == []
 
 
 def test_the_area_support_block_names_only_excused_areas() -> None:

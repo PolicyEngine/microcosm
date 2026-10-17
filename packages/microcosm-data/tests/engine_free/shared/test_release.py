@@ -170,7 +170,7 @@ def test_prepare_release_refuses_incompatible_line_modes(
     release_dir: Path, monkeypatch, options: dict, message: str
 ) -> None:
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(
         release_module,
@@ -186,7 +186,7 @@ def test_prepare_release_refuses_a_line_id_mismatch(
     release_dir: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="belongs to line None"):
@@ -198,7 +198,7 @@ def test_national_cut_promotes_only_its_line_pointer(
 ) -> None:
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     alerts: list = []
     monkeypatch.setattr(
@@ -850,7 +850,7 @@ def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     publish_release(
@@ -879,7 +879,7 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="uniform per-cut artifact revision"):
@@ -908,7 +908,7 @@ def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
         artifact["revision"] = 123
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="missing or non-string revisions"):
@@ -933,7 +933,7 @@ def test_empty_artifact_revisions_refuse_publication(
     manifest["artifacts"] = {}
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="declares no artifact revisions"):
@@ -963,7 +963,7 @@ def test_per_cut_tag_refuses_latest_promotion(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="inspect-only"):
@@ -1602,6 +1602,25 @@ def test_preflight_prepares_the_bound_gate_evidence_for_upload(
     assert not set(GATE_EVIDENCE_FILES.values()) & set(prepared.root_artifacts)
 
 
+def test_publication_repeats_the_contract_warnings_and_proceeds(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """A contract warning, such as the dense line's disclosure walk finding a
+    per-area support figure (microcosm#1301), is repeated, not refused."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: ["synthetic.json carries a synthetic finding"],
+    )
+
+    with pytest.warns(UserWarning, match="release contract: synthetic.json carries"):
+        prepared = release_module.prepare_release(
+            release_dir, artifact_root=artifact_root
+        )
+
+    assert prepared.release_id == release_dir.name
+
+
 @pytest.mark.parametrize("evidence", [False, True])
 @pytest.mark.parametrize("release_type", [None, "calibration"])
 @pytest.mark.parametrize("argument", ["parent_h5", "compatibility_wheels", "both"])
@@ -1654,7 +1673,7 @@ def test_inspect_then_promote_reuses_the_immutable_tag(
     and only the main commit carrying the pointer (review of #966)."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1705,7 +1724,7 @@ def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     the retry stands on it instead of dying on create_tag."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1741,7 +1760,7 @@ def test_promotion_refuses_a_tag_that_describes_another_release(
 ) -> None:
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1789,7 +1808,7 @@ def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
     manifest["dataset_role"] = "non_default_local_area"
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     with pytest.raises(ValueError, match="publishes only 'national_default'"):
         release_module.prepare_release(
@@ -1808,7 +1827,7 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
     and the create path is never re-entered with the tag in place."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)

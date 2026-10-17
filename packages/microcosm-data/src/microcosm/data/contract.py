@@ -4501,7 +4501,7 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         raise ReleaseContractError(release_dir, failures)
 
 
-def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
+def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[str]:
     """The dense joint UK line's contract (microcosm#762 A18).
 
     The non-default local-area role with UK evidence in place of the US
@@ -4516,9 +4516,10 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     The rotated holdout and the incumbent comparison are
     opt-in diagnostics (microcosm#1301): the coverage says whether each ran,
     the incumbent files ship all together or not at all, and the manifest's
-    reviewed limitations must say what the release does not claim. No
-    shipped JSON document carries a per-area support figure (microcosm#1301).
+    reviewed limitations must say what the release does not claim.
     Artifacts pin to the release id or to one of its immutable per-cut tags.
+    A shipped JSON document carrying a per-area support figure is a warning,
+    returned rather than refused (microcosm#1301).
     """
 
     failures: list[str] = []
@@ -4611,7 +4612,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
                 coverage, failures, incumbent_attached=incumbent_attached
             )
             _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
-    _check_uk_dense_disclosure(release_dir, failures)
+    # Warned, not refused: the walk runs only after both builds, so a finding
+    # is weighed rather than paid for with a rebuild (microcosm#1301).
+    disclosure_warnings = _uk_dense_disclosure_warnings(release_dir)
     # The core joins run whether or not the incumbent comparison is attached.
     candidate_identity = _check_uk_dense_surface_files(
         release_dir, release_manifest or {}, failures
@@ -4644,6 +4647,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     if failures:
         raise ReleaseContractError(release_dir, failures)
+    return disclosure_warnings
 
 
 def _check_uk_dense_gate_report(
@@ -5113,11 +5117,11 @@ def _uk_names_an_area(value: object) -> bool:
     )
 
 
-def _uk_dense_disclosure_failures(name: str, payload: object) -> list[str]:
+def _uk_dense_disclosure_findings(name: str, payload: object) -> list[str]:
     """Per-area support figures in one shipped JSON document (microcosm#1301).
 
     An area's rows, Kish ESS or distinct sources (a number, or a number
-    written as text) is refused wherever it sits:
+    written as text) is found wherever it sits:
 
     - under its name in an area's record (a mapping with an ``area_code`` or
       a ``geography_id``, or a ``code`` holding an area code), or under its
@@ -5130,7 +5134,7 @@ def _uk_dense_disclosure_failures(name: str, payload: object) -> list[str]:
       the declared floors;
     - in a string that states an area's measured support ("rows 7 < 50").
 
-    The failures name where the figures are, never their values.
+    The findings name where the figures are, never their values.
     """
 
     found: dict[str, list[str]] = {"figure": [], "extreme": [], "text": []}
@@ -5210,34 +5214,37 @@ def _uk_dense_disclosure_failures(name: str, payload: object) -> list[str]:
     }
     return [
         f"{name} carries {len(paths)} {wording[kind]}, which a dense release "
-        f"withholds (microcosm#1301); first at {paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
+        "should withhold (microcosm#1301); first at "
+        f"{paths[:_UK_DISCLOSURE_PATHS_SHOWN]}."
         for kind, paths in found.items()
         if paths
     ]
 
 
-def _check_uk_dense_disclosure(release_dir: Path, failures: list[str]) -> None:
-    """No shipped JSON document carries a per-area support figure (microcosm#1301).
+def _uk_dense_disclosure_warnings(release_dir: Path) -> list[str]:
+    """Shipped JSON documents carrying a per-area support figure (microcosm#1301).
 
     Every ``*.json`` in the release directory is walked, the signed gate
     report and the release manifest's strings included. A document the walk
-    cannot read fails, since a figure in it could not be ruled out.
+    cannot read is reported too, since a figure in it could not be ruled out.
     """
 
+    warnings: list[str] = []
     for path in sorted(release_dir.glob("*.json")):
         try:
             payload = json.loads(
                 path.read_bytes(), parse_constant=_reject_json_constant
             )
-            found = _uk_dense_disclosure_failures(path.name, payload)
+            found = _uk_dense_disclosure_findings(path.name, payload)
         except (OSError, ValueError, RecursionError):
-            failures.append(
+            warnings.append(
                 f"{path.name} cannot be read and walked as JSON, so the "
                 "disclosure walk cannot rule out a per-area support figure in "
                 "it (microcosm#1301)."
             )
             continue
-        failures.extend(found)
+        warnings.extend(found)
+    return warnings
 
 
 def _check_local_area_release_manifest(
@@ -6187,7 +6194,7 @@ def validate_release_dir(
     parent_h5: Path | str | None = None,
     artifact_root: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
-) -> None:
+) -> list[str]:
     """Check a local release directory against its dataset-role contract.
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
@@ -6225,6 +6232,11 @@ def validate_release_dir(
     Args:
         release_dir: The local ``releases/<build_id>`` directory about to be
             published.
+
+    Returns:
+        The contract's warnings, each a sentence naming the file, for the
+        caller to print. Only the dense UK line has any: its disclosure walk
+        reports per-area support figures without refusing (microcosm#1301).
 
     Raises:
         ReleaseContractError: Naming every violation found — missing files,
@@ -6265,7 +6277,7 @@ def validate_release_dir(
                     require_compatibility=True,
                     compatibility_wheels=compatibility_wheels,
                 )
-                return
+                return []
             if manifest_probe["release_type"] != "calibration":
                 raise ReleaseContractError(
                     release_dir,
@@ -6305,10 +6317,9 @@ def validate_release_dir(
             role = declared_role
     if role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
         if release_id == _UK_DENSE_RELEASE_ID:
-            _validate_uk_dense_release_dir(release_dir, release_id)
-            return
+            return _validate_uk_dense_release_dir(release_dir, release_id)
         _validate_local_area_release_dir(release_dir, release_id)
-        return
+        return []
 
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None
@@ -6490,6 +6501,7 @@ def validate_release_dir(
 
     if failures:
         raise ReleaseContractError(release_dir, failures)
+    return []
 
 
 #: Owner refs in ``known_failures`` must point at a tracked issue — a
