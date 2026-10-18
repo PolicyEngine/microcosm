@@ -214,20 +214,70 @@ def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
     assert result.receipt["purchaser_support"] == "<10"
 
 
-def test_the_stock_cap_share_hides_a_small_side() -> None:
-    inputs = _inputs()
-    first = pp.impute_property_purchase_prices(**inputs, target=_target())
-    bought = first.prices > 0
-    at_cap = bought & (first.prices >= inputs["stock"] - 1e-6)
-    assert at_cap.any() and (bought & ~at_cap).sum() >= 10
-    # The rows at the cap belong to two households; the rest are their own.
-    sources = np.arange(len(inputs["stock"])) + 100
-    sources[at_cap] = np.arange(int(at_cap.sum())) % 2
-    result = pp.impute_property_purchase_prices(
-        **inputs, target=_target(), source_ids=sources
+def _capped_inputs(capped: int, uncapped: int) -> dict[str, np.ndarray]:
+    """Every row buys in the fit regions: ``capped`` rows hold the £40,000
+    floor, so they buy at their stock at any scale, and ``uncapped`` rows hold
+    more than any band draw."""
+
+    n = capped + uncapped
+    rng = np.random.default_rng(13)
+    return {
+        "stock": np.r_[np.full(capped, 40_000.0), np.full(uncapped, 1e9)],
+        "weights": np.ones(n),
+        "sdlt_mask": np.ones(n, dtype=bool),
+        "event_uniforms": rng.random(n),
+        "price_uniforms": rng.random(n),
+    }
+
+
+def _capped_receipt(capped: int, uncapped: int, sources: np.ndarray) -> dict:
+    # A value the uncapped rows' scaled band draws make up beside the floor.
+    target = _target(
+        transactions=float(capped + uncapped),
+        value=capped * 40_000.0 + uncapped * 480_000.0,
     )
-    assert result.receipt["stock_cap_support"] == "<10"
+    receipt = pp.impute_property_purchase_prices(
+        **_capped_inputs(capped, uncapped), target=target, source_ids=sources
+    ).receipt
+    assert receipt["value_fit"] == "scaled_band_draws"
+    return receipt
+
+
+def test_the_stock_cap_share_counts_each_side_on_its_sources() -> None:
+    # Twelve capped rows past ten, but on two sources: the share is withheld,
+    # though counting rows would give it.
+    receipt = _capped_receipt(12, 28, np.r_[np.arange(12) % 2, 100 + np.arange(28)])
+    assert receipt["stock_cap_support"] == "<10"
+    assert receipt["weighted_share_at_stock_cap"] == "<10"
+    # Three uncapped rows that copy capped sources: the uncapped side rests on
+    # three sources, so the share, which would give its weight back, is
+    # withheld too.
+    receipt = _capped_receipt(37, 3, np.r_[np.arange(37), np.arange(3)])
+    assert receipt["stock_cap_support"] == "10-49"
+    assert receipt["weighted_share_at_stock_cap"] == "<10"
+    # Both sides on ten or more sources: the share is given.
+    receipt = _capped_receipt(12, 28, np.arange(40))
+    assert receipt["weighted_share_at_stock_cap"] == pytest.approx(12 / 40)
+
+
+def test_a_fit_on_fewer_than_ten_sources_withholds_the_share_at_the_cap() -> None:
+    # At the stock cap every purchaser buys at its stock, so a share of 1.0
+    # beside a "<10" fit would still say so: it is withheld.
+    result = pp.impute_property_purchase_prices(
+        **_capped_inputs(12, 0),
+        target=_target(transactions=12.0, value=12 * 40_000.0 / 0.9),
+        source_ids=np.arange(12) % 5,
+    )
+    assert result.receipt["value_fit"] == "stock_cap"
+    assert result.receipt["purchaser_support"] == "<10"
     assert result.receipt["weighted_share_at_stock_cap"] == "<10"
+
+
+def test_an_empty_cell_reads_zero() -> None:
+    # No purchase outside the fit regions: "0" beside a zero weight, not "<10".
+    receipt = _capped_receipt(12, 28, np.arange(40))
+    assert receipt["purchases_outside_sdlt_regions_weight"] == 0.0
+    assert receipt["outside_sdlt_regions_support"] == "0"
 
 
 def test_infeasible_targets_refuse() -> None:

@@ -50,7 +50,7 @@ from microcosm.build.uk_runtime.property_localisation import (
     owner_mask,
     owner_uniforms,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import rounded_count, support_band
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -158,16 +158,6 @@ def source_count(household, mask: np.ndarray) -> int:
     return int(household.loc[mask, _SOURCE_HOUSEHOLD_COLUMN].nunique())
 
 
-def _support_band(count: int) -> str:
-    """A count as a band, never itself (UKDS disclosure control)."""
-
-    if count < 10:
-        return "<10"
-    if count < 30:
-        return "10-29"
-    return "30+"
-
-
 def assign_regional_home_values(
     frame: Frame, *, knots: bytes | None = None
 ) -> UKRegionalHomeValuesResult:
@@ -248,7 +238,7 @@ def assign_regional_home_values(
         "knots_inputs_sha256": parsed.inputs_sha256,
         "rows": rounded_count(int(len(household))),
         "rows_rewritten_by_region": rewritten_by_region,
-        "sources_at_cap": _support_band(at_cap) if at_cap else "0",
+        "sources_at_cap": support_band(at_cap),
         "weighted_value_before": float(np.dot(value[target], weights[target])),
         "weighted_value_after": float(np.dot(new_value[target], weights[target])),
         "ranking": {

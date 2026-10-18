@@ -72,7 +72,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import extreme_count, small_cell_share
+from microcosm.build.uk_runtime.receipt_counts import (
+    extreme_count,
+    small_cell_share,
+    support_band,
+)
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_COUNTRY
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -495,16 +499,6 @@ class UKPropertyPurchaseImputation:
     receipt: dict[str, object]
 
 
-def _support_band(count: int) -> str:
-    """Survey support as a band, never as a count (UKDS disclosure control)."""
-
-    if count < 10:
-        return "<10"
-    if count < 30:
-        return "10-29"
-    return "30+"
-
-
 def select_property_purchasers(
     *,
     stock: np.ndarray,
@@ -664,12 +658,18 @@ def impute_property_purchase_prices(
     # source households carry is "<10", and so is anything derived from it.
     fitted_sources = sources(fitted)
     at_cap_sources = sources(at_cap)
+    # Copies of one source can sit on both sides, so each side is counted on
+    # its own distinct sources, not as the fit's less the other side's.
+    uncapped_sources = sources(fitted & ~at_cap)
     eligible_sources = sources((stock >= minimum) & (weights > 0) & sdlt_mask)
     fitted_value = float(np.dot(prices, weights * sdlt_mask))
     at_cap_share = float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
-    # The share at the cap is given only where neither side of it is small,
-    # since the rest of the fitted weight would give a small side back.
-    at_cap_small = 0 < min(at_cap_sources, fitted_sources - at_cap_sources) < 10
+    # The share at the cap is withheld where the fit or either side of it
+    # rests on one to nine sources: beside the fitted weight a small side
+    # would come back, and a share of one beside a small fit still describes it.
+    at_cap_small = (
+        0 < fitted_sources < 10 or 0 < min(at_cap_sources, uncapped_sources) < 10
+    )
     receipt: dict[str, object] = {
         "property_type": target.property_type,
         "target_transactions": float(target.transactions),
@@ -690,8 +690,8 @@ def impute_property_purchase_prices(
         "purchases_outside_sdlt_regions_weight": small_cell_share(
             float(weights[outside].sum()), sources(outside)
         ),
-        "outside_sdlt_regions_support": _support_band(sources(outside)),
-        "purchaser_support": _support_band(fitted_sources),
+        "outside_sdlt_regions_support": support_band(sources(outside)),
+        "purchaser_support": support_band(fitted_sources),
     }
     return UKPropertyPurchaseImputation(prices=prices, receipt=receipt)
 

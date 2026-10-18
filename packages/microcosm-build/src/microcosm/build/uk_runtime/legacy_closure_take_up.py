@@ -55,7 +55,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import small_cell_share
+from microcosm.build.uk_runtime.receipt_counts import (
+    small_cell_share,
+    support_band,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     _benunit_households,
     _household_to_benunit_weights,
@@ -197,16 +200,6 @@ def legacy_benefit_combinations(
     )
 
 
-def _support_band(count: int) -> str:
-    """A count as a band, never itself (UKDS disclosure control)."""
-
-    if count < 10:
-        return "<10"
-    if count < 30:
-        return "10-29"
-    return "30+"
-
-
 def legacy_closure_claim_probabilities(
     *,
     combination: np.ndarray,
@@ -263,7 +256,7 @@ def legacy_closure_claim_probabilities(
             "rate": rate,
             "rate_source": "combination" if key in rates else "all_households",
             "rate_unreachable": flag,
-            "support": _support_band(count(cohort)),
+            "support": support_band(count(cohort)),
         }
     return probability, receipt
 

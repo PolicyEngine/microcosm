@@ -9,6 +9,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     floored_share,
     rounded_count,
     small_cell_share,
+    support_band,
 )
 
 
@@ -49,11 +50,22 @@ def test_extreme_count(count, expected) -> None:
     assert extreme_count(count) == expected
 
 
+@pytest.mark.parametrize(
+    ("count", "expected"),
+    [(0, "0"), (1, "<10"), (9, "<10"), (10, "10-29"), (29, "10-29"), (30, "30+")],
+)
+def test_support_band(count, expected) -> None:
+    # An empty cell reads "0", never "<10" beside a zero weight.
+    assert support_band(count) == expected
+
+
 def test_counts_refuse_a_negative_count() -> None:
     with pytest.raises(ValueError, match="negative"):
         rounded_count(-1)
     with pytest.raises(ValueError, match="negative"):
         extreme_count(-1)
+    with pytest.raises(ValueError, match="negative"):
+        support_band(-1)
 
 
 @pytest.mark.parametrize(

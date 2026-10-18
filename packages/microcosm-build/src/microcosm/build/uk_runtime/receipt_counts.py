@@ -68,6 +68,26 @@ def extreme_count(count: int) -> int | str:
     return (value + 50) // 100 * 100
 
 
+def support_band(count: int) -> str:
+    """A cell's survey support as a band, never as a count.
+
+    "0" for an empty cell, then "<10", "10-29" and "30+": the band a stage
+    receipt gives beside the cell's weighted figures, counted on distinct
+    source households.
+    """
+
+    value = int(count)
+    if value < 0:
+        raise ValueError(f"a record count cannot be negative: {value}.")
+    if value == 0:
+        return "0"
+    if value < 10:
+        return "<10"
+    if value < 30:
+        return "10-29"
+    return "30+"
+
+
 def floored_share(share: float) -> float:
     """An unweighted share of records, floored to two decimals.
 
