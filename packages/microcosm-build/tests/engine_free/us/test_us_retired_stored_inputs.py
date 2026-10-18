@@ -177,8 +177,21 @@ def test_it_refuses_rather_than_guessing(channels, decisions, match):
         (np.array([True, False, True]), [True, False, True]),
         (np.array([1.0, 0.0, np.nan]), [True, False, True]),
         (pd.Series([True, False, None], dtype=object), [True, False, True]),
+        (pd.array([1, 0, None], dtype="Int64"), [True, False, True]),
+        (pd.array([1.0, 0.0, None], dtype="Float64"), [True, False, True]),
+        (np.array([1, 0, 1], dtype=np.int8), [True, False, True]),
+        (np.array([1, 0, 1], dtype=np.uint8), [True, False, True]),
     ],
-    ids=["pandas-boolean-NA", "numpy-bool", "float-0-1-nan", "object"],
+    ids=[
+        "pandas-boolean-NA",
+        "numpy-bool",
+        "float-0-1-nan",
+        "object",
+        "nullable-Int64-NA",
+        "nullable-Float64-NA",
+        "int8",
+        "uint8",
+    ],
 )
 def test_every_stored_boolean_dtype_reads_alike(stored, expected):
     frame = _frame(["asec", "puf_tax_detail", ACS_CHANNEL])
@@ -196,13 +209,17 @@ def test_every_stored_boolean_dtype_reads_alike(stored, expected):
     assert person[LIVE_WIC_INPUT].tolist() == expected
 
 
-def test_a_fraction_is_not_read_as_a_decision():
-    """Only bools and int/float 0/1, as policyengine.py's reader accepts."""
+@pytest.mark.parametrize("value", ["fraction", "decimal", "complex"])
+def test_only_bools_and_real_zero_or_one_are_decisions(value):
+    """Bools and int/float 0/1 only. policyengine.py's reader refuses a
+    Fraction and a Decimal too; this rule is stricter about complex."""
 
+    from decimal import Decimal
     from fractions import Fraction
 
+    stored = {"fraction": Fraction(1), "decimal": Decimal(1), "complex": 1 + 0j}
     with pytest.raises(ValueError, match="not a Boolean"):
-        _remedy(_frame(["asec"], [Fraction(1)]))
+        _remedy(_frame(["asec"], [stored[value]]))
 
 
 def test_zero_one_numbers_are_read_as_decisions():

@@ -186,7 +186,7 @@ def _live_wic(
 
 
 def _booleans(values: pd.Series) -> np.ndarray:
-    """Stored decisions as Booleans: bools, or real numbers equal to 0 or 1."""
+    """Stored decisions as Booleans: bools, or int or float numbers equal to 0 or 1."""
 
     out = np.empty(len(values), dtype=bool)
     for position, value in enumerate(values.to_numpy(dtype=object)):

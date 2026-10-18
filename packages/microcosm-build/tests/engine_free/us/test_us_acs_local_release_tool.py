@@ -420,9 +420,7 @@ def test_an_unreadable_spine_tag_refuses_rather_than_fills(spine) -> None:
     """A person whose tag is not exactly the ACS spine may not lack one."""
 
     module = _load_tool_module()
-    frame = _spine_frame(["acs_2024_1yr", "acs_2024_1yr"], [None, None])
-    person = frame.table("person")
-    person["person_spine"] = pd.Series(["acs_2024_1yr", spine], dtype=object)
+    frame = _spine_frame(["acs_2024_1yr", spine], [None, None])
 
     with pytest.raises(SystemExit, match="did not allow"):
         module._with_live_stored_inputs(frame)
@@ -1696,6 +1694,38 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+
+
+def _set_writer(args, **changes) -> None:
+    path = args.checkpoint_dir / "consumer_export.json"
+    export = json.loads(path.read_text())
+    export["code"] = {**export["code"], **changes}
+    path.write_text(json.dumps(export))
+
+
+def test_package_refuses_another_writer_before_any_release_dir(tmp_path, monkeypatch):
+    """The writer binding runs before the release directory exists."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, commit="0" * 40)
+
+    with pytest.raises(SystemExit, match="written by code 0000000"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+
+
+def test_a_dirty_writer_marks_the_release_dirty(tmp_path, monkeypatch):
+    """A clean packaging tree cannot hide a dirty writer (review of #1311)."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, dirty=True)
+
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    build = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build["build_dirty"] is True
 
 
 @requires_pytables

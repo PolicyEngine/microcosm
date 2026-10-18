@@ -2492,13 +2492,16 @@ def do_qa(args) -> None:
 
 def _require_artifact_written_by(
     consumer_export: dict, code: dict, *, allow_dirty: bool
-) -> None:
+) -> bool:
     """Refuse to name a release after code that did not write its artifact.
 
     The calibrate stage writes the published bytes and records its code in
     ``consumer_export.json``; the release id names the packaging code. They
     must be the same commit, so the id names the code that produced the
     artifact. A checkpoint that records no writer is refused, not trusted.
+
+    Returns whether the writer's tree was dirty, so the release can record
+    it even when packaging runs from a clean tree.
     """
 
     written_by = consumer_export.get("code")
@@ -2518,12 +2521,14 @@ def _require_artifact_written_by(
             "it. Package with the code that wrote the artifact, or re-run "
             "--stage calibrate (then qa and finalize) with this code."
         )
-    if written_by.get("dirty") and not allow_dirty:
+    writer_dirty = bool(written_by.get("dirty"))
+    if writer_dirty and not allow_dirty:
         raise SystemExit(
             "The calibrated H5 was written from a dirty tree; a packaged "
             "release names a committed code vintage. Re-run --stage calibrate "
             "from a clean tree, or pass --allow-dirty."
         )
+    return writer_dirty
 
 
 def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
@@ -3460,7 +3465,9 @@ def do_package(args) -> dict:
     )
 
     code = _repo_code_identity(args.allow_dirty)
-    _require_artifact_written_by(consumer_export, code, allow_dirty=args.allow_dirty)
+    writer_dirty = _require_artifact_written_by(
+        consumer_export, code, allow_dirty=args.allow_dirty
+    )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
@@ -3572,7 +3579,9 @@ def do_package(args) -> dict:
     build_manifest = {
         "build_id": release_id,
         "build_sha": code["sha"],
-        "build_dirty": code["dirty"],
+        # Dirty if either the packaging tree or the tree that wrote the
+        # artifact was.
+        "build_dirty": bool(code["dirty"]) or writer_dirty,
         "created_at": datetime.now(UTC).isoformat(),
         "code": {"branch": code["branch"], "repo": "microcosm"},
         "runtime": {
