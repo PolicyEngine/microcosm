@@ -449,11 +449,12 @@ def test_a_person_table_without_the_spine_tag_is_refused() -> None:
     ("written_by", "allow_dirty", "match"),
     [
         (None, True, "records no code identity"),
-        ({"sha": ""}, True, "records no code identity"),
-        ({"sha": "0000000", "dirty": False}, True, "written by code 0000000"),
-        ({"sha": "HEAD", "dirty": True}, False, "dirty tree"),
+        ({"sha": "abc1234"}, True, "records no code identity"),
+        ({"commit": ""}, True, "records no code identity"),
+        ({"commit": "0" * 40, "dirty": False}, True, "written by code 0000000"),
+        ({"commit": "a" * 40, "dirty": True}, False, "dirty tree"),
     ],
-    ids=["absent", "empty", "other-commit", "dirty-writer"],
+    ids=["absent", "short-sha-only", "empty", "other-commit", "dirty-writer"],
 )
 def test_package_names_the_release_only_after_the_code_that_wrote_it(
     written_by, allow_dirty, match
@@ -462,18 +463,30 @@ def test_package_names_the_release_only_after_the_code_that_wrote_it(
     written the calibrated bytes (review of microcosm#1309)."""
 
     module = _load_tool_module()
-    code = {"sha": "HEAD", "dirty": False, "branch": "main"}
+    code = {"sha": "aaaaaaaaa", "commit": "a" * 40, "dirty": False, "branch": "main"}
     export = {} if written_by is None else {"code": written_by}
 
     with pytest.raises(SystemExit, match=match):
         module._require_artifact_written_by(export, code, allow_dirty=allow_dirty)
 
+    # The abbreviated sha may differ in length between checkouts; only the
+    # full commit is compared.
     module._require_artifact_written_by(
-        {"code": {"sha": "HEAD", "dirty": False}}, code, allow_dirty=False
+        {"code": {"sha": "aaaaaaa", "commit": "a" * 40, "dirty": False}},
+        code,
+        allow_dirty=False,
     )
     module._require_artifact_written_by(
-        {"code": {"sha": "HEAD", "dirty": True}}, code, allow_dirty=True
+        {"code": {"commit": "a" * 40, "dirty": True}}, code, allow_dirty=True
     )
+
+
+def test_the_recorded_code_identity_carries_the_full_commit() -> None:
+    module = _load_tool_module()
+    code = module._repo_code_identity(allow_dirty=True)
+
+    assert len(code["commit"]) == 40
+    assert code["commit"].startswith(code["sha"])
 
 
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:

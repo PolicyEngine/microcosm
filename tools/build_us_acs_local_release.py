@@ -2502,17 +2502,19 @@ def _require_artifact_written_by(
     """
 
     written_by = consumer_export.get("code")
-    if not isinstance(written_by, dict) or not written_by.get("sha"):
+    if not isinstance(written_by, dict) or not written_by.get("commit"):
         raise SystemExit(
             "consumer_export.json records no code identity for the calibrated "
             "H5, so the release id cannot be shown to name the code that wrote "
             "it. Re-run --stage calibrate (then qa and finalize) with the "
             "current tool."
         )
-    if written_by["sha"] != code["sha"]:
+    # Full commits: the abbreviated sha's length depends on the checkout (a
+    # shallow clone abbreviates shorter), so it cannot be compared.
+    if written_by["commit"] != code["commit"]:
         raise SystemExit(
-            f"The calibrated H5 was written by code {written_by['sha']}, but "
-            f"packaging runs {code['sha']} and would name the release after "
+            f"The calibrated H5 was written by code {written_by['commit']}, but "
+            f"packaging runs {code['commit']} and would name the release after "
             "it. Package with the code that wrote the artifact, or re-run "
             "--stage calibrate (then qa and finalize) with this code."
         )
@@ -2531,6 +2533,7 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
         ).strip()
 
     sha = _git("rev-parse", "--short", "HEAD")
+    commit = _git("rev-parse", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
     if dirty and not allow_dirty:
         raise SystemExit(
@@ -2538,7 +2541,12 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
             "committed code vintage. Commit first or pass --allow-dirty "
             "(the manifest will record dirty=true)."
         )
-    return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
+    return {
+        "sha": sha,
+        "commit": commit,
+        "dirty": dirty,
+        "branch": _git("branch", "--show-current"),
+    }
 
 
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
