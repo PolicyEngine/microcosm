@@ -363,14 +363,14 @@ def _frame(n: int = 300, seed: int = 3, time_period: str = "2024"):
     )
 
 
-def _frame_targets() -> pp.UKPropertyPurchaseTargets:
+def _frame_targets(non_residential_value: float = 10e6) -> pp.UKPropertyPurchaseTargets:
     residential = _target(transactions=40.0, value=18e6)
     return pp.UKPropertyPurchaseTargets(
         additional_residential=residential,
         non_residential=pp.UKPropertyPurchaseTarget(
             property_type="non_residential",
             transactions=30.0,
-            value=10e6,
+            value=non_residential_value,
             band_ids=residential.band_ids,
             band_transactions=residential.band_transactions,
             band_values=residential.band_values,
@@ -408,6 +408,42 @@ def test_the_stage_writes_both_purchases_and_conserves_mass() -> None:
         "additional_residential",
         "non_residential",
     ]
+
+
+def test_the_stage_fits_one_kind_at_its_stock_beside_one_it_scales() -> None:
+    # As on the national spine: the non-residential purchasers' stock carries
+    # nine tenths of the value, so they buy at it, while additional dwellings
+    # fit their value with scaled band draws.
+    frame = _frame()
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values)
+    sdlt = pp.sdlt_region_mask(household["region"])
+    kind = next(k for k in pp.PROPERTY_PURCHASE_KINDS if k.name == "non_residential")
+    stock = household[kind.stock].to_numpy(dtype=float)
+    event_uniforms, _ = pp.property_purchase_uniforms(
+        household["household_id"].to_numpy(), kind
+    )
+    purchased, _ = pp.select_property_purchasers(
+        stock=stock,
+        weights=weights,
+        sdlt_mask=sdlt,
+        event_uniforms=event_uniforms,
+        transactions=30.0,
+        minimum_price=40_000.0,
+        property_type=kind.name,
+    )
+    capacity = float(np.dot(stock, weights * (purchased & sdlt)))
+    result = pp.impute_property_purchases(
+        frame, targets=_frame_targets(non_residential_value=capacity / 0.9)
+    )
+    kinds = {k["property_type"]: k for k in result.evidence()["kinds"]}
+    assert kinds["additional_residential"]["value_fit"] == "scaled_band_draws"
+    assert kinds["non_residential"]["value_fit"] == "stock_cap"
+    assert kinds["non_residential"]["value_shortfall_share"] == pytest.approx(0.1)
+    after = result.frame.table("household")
+    np.testing.assert_allclose(
+        after[kind.output].to_numpy()[purchased], stock[purchased]
+    )
 
 
 def test_the_packaged_targets_reproduce_uk_data_573() -> None:

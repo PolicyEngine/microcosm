@@ -1492,14 +1492,21 @@ _FIXTURE_PURCHASE_BANDS = (
     (2.0, 15.0),
     (1.0, 40.0),
 )
+#: The share of its non-residential value target the fixture's purchasers'
+#: stock carries: above the stage's 80% floor, so the stage runs the stock-cap
+#: fit, as the national spine's non-residential purchases do.
+_FIXTURE_STOCK_CAP_FIT = 0.9
 
 
 def _property_purchase_targets(frame: Frame) -> UKPropertyPurchaseTargets:
     """Synthetic purchase targets sized to the frame ``property_purchases`` reads.
 
-    The count is a fixed share of each kind's eligible owner weight; the value
-    lies midway between the purchasers' price floor and their stock, found
-    with the stage's own selection and streams, so both fits are feasible.
+    The count is a fixed share of each kind's eligible owner weight, found with
+    the stage's own selection and streams. The non-residential value asks a
+    ninth more than the purchasers' stock, so the stage buys at the stock; any
+    other kind's value lies midway between the price floor and the stock, so
+    the stage scales its band draws. The synthetic frame holds no other
+    residential stock, so that kind is not imputed here.
     """
 
     household = frame.table("household")
@@ -1537,7 +1544,11 @@ def _property_purchase_targets(frame: Frame) -> UKPropertyPurchaseTargets:
         targets[kind.name] = UKPropertyPurchaseTarget(
             property_type=kind.name,
             transactions=transactions,
-            value=(floor + capacity) / 2.0,
+            value=(
+                capacity / _FIXTURE_STOCK_CAP_FIT
+                if kind.name == "non_residential"
+                else (floor + capacity) / 2.0
+            ),
             band_ids=PROPERTY_PURCHASE_BAND_IDS,
             band_transactions=tuple(count for count, _ in _FIXTURE_PURCHASE_BANDS),
             band_values=tuple(
