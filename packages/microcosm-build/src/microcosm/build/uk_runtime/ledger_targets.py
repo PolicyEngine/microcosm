@@ -1810,10 +1810,11 @@ def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset
 
     A target binds on every line unless it declares ``calibration_lines``: a
     non-empty list of distinct lines from :data:`UK_CALIBRATION_LINES`. The
-    high-value homes region rows declare ``["local"]``, because their measure
-    reads the Land Registry placement of ``main_residence_value`` that only the
-    local line's pool clones carry; on the national spine the value is the WAS
-    donor's (microcosm#1301).
+    high-value homes region rows declare ``["local"]`` (microcosm#1301). Since
+    microcosm#1095 the national spine reads ``main_residence_value`` off the
+    regions' Land Registry knots too, but binding the rows there would move
+    the national registry and solve while the knots' tails still place more
+    homes in the top bands than the derived stock (microcosm#1112).
     """
 
     declared = target.get("calibration_lines")

@@ -1044,9 +1044,13 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "uk/high_value_home_stock_facts.json (microcosm#1240). Each row "
                 "is the cross-grain control for its area cells. They bind on "
                 "the local line only (calibration_lines): the national line "
-                "and the release-cut certifier drop them after the compile, "
-                "since the national spine's main_residence_value is the WAS "
-                "donor's, not a Land Registry placement (microcosm#1301)."
+                "and the release-cut certifier drop them after the compile "
+                "(microcosm#1301). Since microcosm#1095 the national spine "
+                "reads main_residence_value off the regions' Land Registry "
+                "knots too, but binding the rows there would move the "
+                "national registry and solve while the knots' tails still "
+                "place more homes in the top bands than the derived stock "
+                "(microcosm#1112)."
             ),
         },
         {
