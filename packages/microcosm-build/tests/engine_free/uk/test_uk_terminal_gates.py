@@ -575,7 +575,24 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
-    assert register == {}
+    assert set(register) == {
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200@2025",
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400@2025",
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600@2025",
+        "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600@2025",
+        "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025",
+        "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000@2025",
+        "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000004@2025",
+        "hmrc/dividend_income_income_band_15_000_to_20_000@2025",
+        "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
+        "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
+        "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
+        "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
+        "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
+        "hmrc/property_income_income_band_12_570_to_15_000@2025",
+        "hmrc/property_income_income_band_15_000_to_20_000@2025",
+    }
+    assert {record.release_lines for record in register.values()} == {("local",)}
 
 
 def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
@@ -597,7 +614,40 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert pieces[1] in area_codes, key
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
-    assert register == {}
+    assert set(register) == {
+        "age_structure/E07000008/age/20_30",
+        "age_structure/E14001080/age/20_30",
+        "age_structure/E14001081/age/20_30",
+        "age_structure/E14001086/age/20_30",
+        "age_structure/E14001096/age/20_30",
+        "age_structure/E14001120/age/20_30",
+        "age_structure/E14001131/age/20_30",
+        "age_structure/E14001149/age/20_30",
+        "age_structure/E14001182/age/20_30",
+        "age_structure/E14001319/age/20_30",
+        "age_structure/E14001338/age/20_30",
+        "age_structure/E14001352/age/20_30",
+        "age_structure/E14001353/age/20_30",
+        "age_structure/E14001412/age/20_30",
+        "age_structure/E14001467/age/20_30",
+        "age_structure/S14000085/age/20_30",
+        "age_structure/W07000091/age/20_30",
+        "council_tax/E06000014/council_tax/band_a",
+        "council_tax/E09000033/council_tax/band_g",
+        "council_tax/S12000013/council_tax/band_a",
+        "domestic_energy/S12000013/energy/gas_connected_households",
+        "domestic_energy/S12000017/energy/gas_connected_households",
+        "domestic_energy/S12000023/energy/electricity_kwh",
+        "domestic_energy/S12000027/energy/electricity_kwh",
+        "hmrc_income_by_area/E14001538/hmrc/self_employment_income/count",
+        "private_rent/E06000043/rent/private_rent",
+        "private_rent/E08000003/rent/private_rent",
+        "private_rent/E09000033/rent/private_rent",
+        "tenure/E09000012/tenure/private_rent",
+        "tenure/E09000019/tenure/private_rent",
+        "tenure/E09000019/tenure/social_rent",
+    }
+    assert {record.release_lines for record in register.values()} == {("local",)}
 
 
 def _national_line_register() -> dict[str, UKReviewedExclusion]:

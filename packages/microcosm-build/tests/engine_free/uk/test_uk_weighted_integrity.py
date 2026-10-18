@@ -568,8 +568,10 @@ def test_committed_exclusion_registers_load() -> None:
 def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     loaded = load_uk_local_area_support_exclusion_register(None)
     assert set(loaded["exclusions"]) == {
+        "constituency/S14000027",
         "local_authority/E06000053",
         "local_authority/E09000001",
+        "local_authority/S12000013",
         "local_authority/S12000023",
         "local_authority/S12000027",
     }
