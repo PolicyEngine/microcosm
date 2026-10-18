@@ -19,6 +19,7 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ from microcosm.calibrate import (
     diagnostics_payload,
     effective_sample_size,
 )
+from microcosm.calibrate.diagnostics import past_cap_census
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
@@ -1116,6 +1118,88 @@ def uk_refuse_withheld_figures(
     walk(payload, "report")
 
 
+_WITHHELD_TOTALS_NOTE = (
+    "A target row resting on fewer than ten distinct source households keeps "
+    "its place without its model figures. initial_loss, final_loss, "
+    "fraction_within_10pct and past_cap_census are restated over the published "
+    "rows, on the solve's own loss weights, scales and cap (initial_loss at the "
+    "input weights, the rows' initial estimates); loss_trajectory, the solve's "
+    "path over every row, is empty."
+)
+
+
+def _restate_totals_over_published_rows(
+    payload: dict[str, object],
+    result: CalibrationResult,
+    withheld: frozenset[str],
+) -> dict[str, object]:
+    """Restate the payload's totals over the published rows (microcosm#1262).
+
+    María's ruling of 2026-10-18 on the #1305 re-review: a total over every
+    row would give a withheld row back by difference against the published
+    rows' contributions. The final loss becomes the published rows' summed
+    contributions (each a share of the solve's whole loss weight, as the rows
+    record them), the initial loss the same at the input weights, and the
+    fraction within 10% and the past-cap census count the published rows
+    only. The loss trajectory cannot be restated and is emptied. Returns the
+    ``uk_diagnostics`` block that labels the basis.
+    """
+
+    rows = list(result.diagnostics)
+    kept = [index for index, row in enumerate(rows) if str(row.name) not in withheld]
+
+    def published_loss(estimates: Sequence[float]) -> float | None:
+        try:
+            weights = np.asarray(result.target_loss_weights, dtype=float)
+            scales = np.asarray(result.target_loss_scales, dtype=float)
+            cap = float(result.target_loss_cap)
+        except (AttributeError, TypeError, ValueError):
+            return None
+        if (
+            weights.shape != (len(rows),)
+            or scales.shape != (len(rows),)
+            or not np.isfinite(weights).all()
+            or not np.isfinite(scales).all()
+            or (scales <= 0).any()
+            or not weights.sum() > 0
+            or not math.isfinite(cap)
+        ):
+            return None
+        shares = weights / weights.sum()
+        terms = []
+        for index in kept:
+            target, estimate = float(rows[index].target), float(estimates[index])
+            if not (math.isfinite(target) and math.isfinite(estimate)):
+                return None
+            terms.append(
+                float(shares[index])
+                * min(abs(estimate - target) / float(scales[index]), cap)
+            )
+        return math.fsum(terms)
+
+    payload["initial_loss"] = published_loss([row.initial_estimate for row in rows])
+    payload["final_loss"] = published_loss([row.final_estimate for row in rows])
+    payload["fraction_within_10pct"] = (
+        sum(abs(float(rows[index].relative_error)) <= 0.10 for index in kept)
+        / len(kept)
+        if kept
+        else None
+    )
+    payload["loss_trajectory"] = []
+    payload["past_cap_census"] = past_cap_census(
+        SimpleNamespace(
+            options=getattr(result, "options", None),
+            diagnostics=[rows[index] for index in kept],
+        )
+    )
+    return {
+        "targets": len(withheld),
+        "min_source_households": UK_BRMA_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS,
+        "totals_basis": "published_rows",
+        "note": _WITHHELD_TOTALS_NOTE,
+    }
+
+
 def _target_pass_rates(
     target_rows: list[dict[str, object]],
     skipped_names: Sequence[str],
@@ -1242,6 +1326,11 @@ def uk_calibration_diagnostics_payload(
                 "model_figures_withheld": _WITHHELD_NOTE,
             }
     pass_rates = _target_pass_rates(target_rows, skipped, geography, withheld)
+    withheld_block = (
+        _restate_totals_over_published_rows(payload, result, withheld)
+        if withheld
+        else None
+    )
     strata = uk_zero_weight_strata(
         household,
         result_weights,
@@ -1274,6 +1363,8 @@ def uk_calibration_diagnostics_payload(
     drift = uk_consumption_drift(household, result.initial_weights, result_weights)
     if drift is not None:
         uk_diagnostics["consumption_drift"] = drift
+    if withheld_block is not None:
+        uk_diagnostics["model_figures_withheld"] = withheld_block
     payload["uk_diagnostics"] = uk_diagnostics
     return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
         mode="python",

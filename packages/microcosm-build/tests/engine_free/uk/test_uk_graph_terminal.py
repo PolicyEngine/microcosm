@@ -1154,6 +1154,9 @@ def test_the_gate_kernel_writes_a_withheld_brma_row_by_name_only(monkeypatch):
     (row,) = [r for r in diagnostics["targets"] if r["target_name"] == "brma_rent"]
     assert row["final_estimate"] is None and row["initial_estimate"] is None
     assert row.get("final_loss_contribution") is None
+    # The totals cover the published rows (María's ruling of 2026-10-18).
+    assert diagnostics["loss_trajectory"] == []
+    assert diagnostics["uk_diagnostics"]["model_figures_withheld"]["targets"] == 1
 
 
 def test_the_gate_kernel_fails_closed_on_a_binding_that_leaks(monkeypatch):

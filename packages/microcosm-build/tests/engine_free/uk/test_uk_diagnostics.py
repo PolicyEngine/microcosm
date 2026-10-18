@@ -1255,6 +1255,174 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
 
 
+def _thin_and_wide_brma_payload(thin_values=(1.0,) * 6 + (0.0,) * 8):
+    """The thin/wide BRMA fixture's diagnostics payload and its result."""
+
+    n = 14
+    sources = [0, 0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n, dtype=np.int64),
+            "source_household_id": np.asarray(sources, dtype=np.int64),
+            _SPI_COLUMN: [False] * n,
+            _CG_COLUMN: [False] * n,
+            "thin_measure": list(thin_values),
+            "wide_measure": [1.0] * n,
+            "other_measure": [0.5] * n,
+        }
+    )
+    specs = [
+        TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure=measure,
+            period=2023,
+            source="Synthetic UK diagnostics fixture",
+            family="private_rent",
+            hierarchy=_fixture_hierarchy(name, "brma"),
+        )
+        for name, measure, value in (
+            ("thin_brma_target", "thin_measure", 10.0),
+            ("wide_brma_target", "wide_measure", 10.0),
+            ("other_brma_target", "other_measure", 7.5),
+        )
+    ]
+    geography = {f"{spec.name}@2023": "brma" for spec in specs}
+    weights = np.ones(n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    registry = TargetRegistry(specs, country="uk")
+    result = score_targets(frame, registry.to_target_set(), weights=weights)
+    support = pd.DataFrame(
+        columns=[
+            "geography_level",
+            "area_code",
+            "nonzero_households",
+            "nonzero_source_households",
+            "effective_sample_size",
+        ]
+    )
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        local_area_support=support,
+    )
+    return payload, result
+
+
+def test_no_published_total_gives_a_withheld_row_back() -> None:
+    """María's ruling of 2026-10-18: the totals cover the published rows only.
+
+    Try to recover the withheld row from what the payload publishes: the
+    final and initial losses less the published rows' contributions leave
+    nothing, the fraction within 10% is the published rows' own, and the
+    trajectory, which no published row can be set against, is empty.
+    """
+
+    import math
+
+    payload, result = _thin_and_wide_brma_payload()
+    rows = {row["target_name"]: row for row in payload["targets"]}
+    thin = rows.pop("thin_brma_target")
+    assert thin["final_estimate"] is None
+    assert thin.get("final_loss_contribution") is None
+    published = list(rows.values())
+    assert payload["final_loss"] == math.fsum(
+        row["final_loss_contribution"] for row in published
+    )
+    # The initial loss is the published rows' too, from their own fields.
+    assert payload["initial_loss"] == pytest.approx(
+        math.fsum(
+            row["target_loss_weight_share"]
+            * min(
+                abs(row["initial_estimate"] - row["target"]) / row["target_loss_scale"],
+                payload["target_loss_basis"]["cap"],
+            )
+            for row in published
+        ),
+        rel=1e-12,
+    )
+    # Either total over every row would have left the thin row's share.
+    assert payload["final_loss"] < result.final_loss
+    assert payload["fraction_within_10pct"] == pytest.approx(
+        sum(abs(row["relative_error"]) <= 0.10 for row in published) / len(published)
+    )
+    assert payload["loss_trajectory"] == []
+    assert payload["past_cap_census"]["n_targets"] == len(published)
+    block = payload["uk_diagnostics"]["model_figures_withheld"]
+    assert block["targets"] == 1 and block["totals_basis"] == "published_rows"
+    # A build with nothing withheld keeps the solve's own totals.
+    payload, result = _thin_and_wide_brma_payload(thin_values=(1.0,) * 14)
+    assert payload["final_loss"] == pytest.approx(result.final_loss, rel=1e-12)
+    assert payload["loss_trajectory"] == pytest.approx(list(result.loss_trajectory))
+    assert "model_figures_withheld" not in payload["uk_diagnostics"]
+
+
+def test_the_restated_totals_match_the_solve_and_drop_a_pushed_out_row() -> None:
+    """Over every row the restatement reproduces the solve's own totals.
+
+    A withheld row pushed past the cap leaves the census's listing and count.
+    """
+
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        _restate_totals_over_published_rows,
+    )
+
+    def row(name, target, initial, final):
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=initial,
+            final_estimate=final,
+            relative_error=(final - target) / target,
+        )
+
+    rows = [
+        row("a@2025", 10.0, 11.0, 10.5),
+        row("b@2025", 20.0, 19.0, 21.0),
+        row("thin@2025", 10.0, 12.0, 400.0),
+    ]
+    result = SimpleNamespace(
+        diagnostics=rows,
+        target_loss_weights=np.array([1.0, 2.0, 1.0]),
+        target_loss_scales=np.array([10.0, 20.0, 10.0]),
+        target_loss_cap=10.0,
+        options={"target_loss_cap": 10.0},
+    )
+    payload: dict[str, object] = {}
+    _restate_totals_over_published_rows(payload, result, frozenset())
+    shares = np.array([0.25, 0.5, 0.25])
+    assert payload["final_loss"] == pytest.approx(
+        0.25 * 0.05 + 0.5 * 0.05 + 0.25 * min(39.0, 10.0)
+    )
+    assert payload["initial_loss"] == pytest.approx(
+        float(shares @ np.array([0.1, 0.05, 0.2]))
+    )
+    assert payload["past_cap_census"]["pushed_out"] == 1
+    _restate_totals_over_published_rows(payload, result, frozenset({"thin@2025"}))
+    assert payload["final_loss"] == pytest.approx(0.25 * 0.05 + 0.5 * 0.05)
+    assert payload["fraction_within_10pct"] == 1.0
+    census = payload["past_cap_census"]
+    assert census["n_targets"] == 2
+    assert census["pushed_out"] == 0 and census["pushed_out_rows"] == []
+
+
 def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
     from microcosm.build.uk_runtime.diagnostics import uk_withhold_brma_figures
 

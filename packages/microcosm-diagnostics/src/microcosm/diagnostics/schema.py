@@ -580,6 +580,22 @@ class UKConsumptionDrift(DiagnosticsModel):
     shares: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
 
 
+class UKWithheldModelFigures(DiagnosticsModel):
+    """Target rows whose model figures stay in the build (microcosm#1262).
+
+    A row resting on fewer than ``min_source_households`` distinct source
+    households keeps its place without its model figures. While any does, the
+    payload's totals are restated over the published rows (``totals_basis``)
+    so that none can be differenced against them, and its loss trajectory is
+    empty.
+    """
+
+    targets: int = Field(gt=0)
+    min_source_households: int = Field(gt=0)
+    totals_basis: Literal["published_rows"]
+    note: NonBlankText
+
+
 class UKDiagnosticsV1(DiagnosticsModel):
     schema_version: Literal[UK_DIAGNOSTICS_SCHEMA_VERSION]
     weights: UKWeightSummary
@@ -590,6 +606,7 @@ class UKDiagnosticsV1(DiagnosticsModel):
     weakest_areas_by_fit: UKWeakestAreasByFit | None = None
     rotated_holdout: UKRotatedHoldout | None = None
     consumption_drift: UKConsumptionDrift | None = None
+    model_figures_withheld: UKWithheldModelFigures | None = None
 
     @model_validator(mode="after")
     def reconcile_uk_diagnostics(self) -> UKDiagnosticsV1:
