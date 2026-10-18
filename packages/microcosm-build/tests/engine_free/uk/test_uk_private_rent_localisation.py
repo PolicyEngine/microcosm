@@ -273,7 +273,9 @@ def test_renters_on_the_census_mix_keep_their_regions_frs_level(seed) -> None:
         counts=_counts(),
     )
     frs_mean = float(np.average(rent, weights=weight))
-    assert float(np.average(new, weights=weight)) == pytest.approx(frs_mean, rel=0.03)
+    # The unmutated ratio sits within half a percent; one category's mix used
+    # for every category moves it by about three (microcosm#1305 re-review).
+    assert float(np.average(new, weights=weight)) == pytest.approx(frs_mean, rel=0.01)
 
 
 def test_localise_rents_reads_each_row_off_its_brma_at_its_rank() -> None:
@@ -370,7 +372,7 @@ def test_weeks_in_year_is_the_spines() -> None:
 # The graph
 
 
-def _graph(k: int, tmp_path, *, mode: str = "brma_list"):
+def _graph(k: int, tmp_path, *, mode: str = "brma_list", full_scale: bool = True):
     payloads, paths = write_toy_supports(tmp_path / "supports")
     definition = uk_atomic_assignment_definition(payloads, seed=7)
     graph, registry = population.graph_and_registry(
@@ -379,8 +381,52 @@ def _graph(k: int, tmp_path, *, mode: str = "brma_list"):
         definition=definition,
         brma_localisation_mode="area",
         private_rent_localisation_mode=mode,
+        full_scale=full_scale,
     )
     return graph, registry, paths
+
+
+@pytest.mark.parametrize("full_scale", [True, False])
+def test_the_rent_node_is_strict_exactly_at_full_scale(full_scale, tmp_path) -> None:
+    """microcosm#1305 re-review: the sampled-rung fallback is pinned to the rung."""
+
+    graph, _, _ = _graph(1, tmp_path, full_scale=full_scale)
+    params = graph.node("uk.full.private_rent").params
+    assert params["strict_cells"] is full_scale
+
+
+@pytest.mark.parametrize(
+    "fractions,full_scale",
+    [((1.0, 1.0), True), ((0.5, 1.0), False), ((1.0, 0.5), False)],
+)
+def test_the_build_config_sets_full_scale_from_both_sample_fractions(
+    fractions, full_scale, monkeypatch
+) -> None:
+    from microcosm.build.uk_runtime import graph_build
+
+    seen = {}
+
+    class StopBuildError(Exception):
+        pass
+
+    def capture(*args, **kwargs):
+        seen.update(kwargs)
+        raise StopBuildError
+
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+
+    monkeypatch.setattr(graph_build, "append_uk_population_nodes", capture)
+    sample, source = fractions
+    with pytest.raises(StopBuildError):
+        graph_build.uk_full_graph(
+            UKFullBuildConfig(
+                calibration_year=2025,
+                sample_fraction=sample,
+                source_sample_fraction=source,
+            ),
+            spine=uk_spine_graph(source_mode="split"),
+        )
+    assert seen["full_scale"] is full_scale
 
 
 def _sources(tmp_path, ladder_path, paths) -> dict:
@@ -498,53 +544,99 @@ def test_config_follows_the_brma_mode() -> None:
         )
 
 
+def _regional_rows(*, wales_frs: int, wales_rent: float = 9_000.0) -> dict:
+    """Twelve London FRS renters in category C, one SPI-only London D renter,
+    ``wales_frs`` Welsh FRS renters at ``wales_rent`` and one Welsh SPI one."""
+
+    london = 12
+    n = london + 1 + wales_frs + 1
+    region = ["LONDON"] * (london + 1) + ["WALES"] * (wales_frs + 1)
+    brma = [
+        "CENTRAL_LONDON" if index % 2 else "INNER_EAST_LONDON"
+        for index in range(london + 1)
+    ] + ["CARDIFF"] * (wales_frs + 1)
+    rent = (
+        [18_000.0 + 500.0 * index for index in range(london)]
+        + [25_000.0]
+        + [wales_rent] * wales_frs
+        + [9_500.0]
+    )
+    channel = ["frs"] * london + ["spi"] + ["frs"] * wales_frs + ["spi"]
+    return {
+        "spine_key": np.array([f"k{index}" for index in range(n)], dtype=object),
+        "region": np.array(region),
+        "tenure_type": np.full(n, "RENT_PRIVATELY"),
+        "rent": np.asarray(rent, dtype=float),
+        "num_bedrooms": np.array([2] * london + [3] + [2] * (wales_frs + 1)),
+        "brma": np.array(brma, dtype=object),
+        "channel": np.array(channel),
+        "weight": np.ones(n),
+    }
+
+
+def _localise_rows(rows: dict, **kwargs):
+    return prl.localise_rents(
+        **rows,
+        tie_uniform=_ties(rows["spine_key"]),
+        quantiles=_quantiles(),
+        counts=_counts(),
+        **kwargs,
+    )
+
+
 def test_a_sampled_rung_ranks_a_region_without_frs_renters_on_great_britain():
     """microcosm#1305 review: a small rung's sample can leave a region bare.
 
     Wales holds only the SPI-channel renter here. A full-scale build refuses;
     a sampled rung ranks and scales it on Great Britain's FRS renters on
-    Wales's census mix, and the details count both.
+    Wales's census mix, and the details count it once: London's SPI-only
+    category falls back on London's renters, Wales's cell on Great Britain's.
     """
 
-    rows = _rows(
-        region=np.array(
-            [
-                "LONDON",
-                "LONDON",
-                "WALES",
-                "LONDON",
-                "LONDON",
-                "LONDON",
-                "NORTHERN_IRELAND",
-            ]
-        ),
-        brma=np.array(
-            [
-                "CENTRAL_LONDON",
-                "INNER_EAST_LONDON",
-                "CARDIFF",
-                "CENTRAL_LONDON",
-                "INNER_EAST_LONDON",
-                "CENTRAL_LONDON",
-                "BELFAST",
-            ],
-            dtype=object,
-        ),
-    )
-    arguments = {
-        **rows,
-        "tie_uniform": _ties(rows["spine_key"]),
-        "quantiles": _quantiles(),
-        "counts": _counts(),
-    }
+    rows = _regional_rows(wales_frs=0)
     with pytest.raises(
         ValueError, match="No FRS private renter carries weight in WALES"
     ):
-        prl.localise_rents(**arguments)
-    new, details = prl.localise_rents(**arguments, strict=False)
+        _localise_rows(rows)
+    new, details = _localise_rows(rows, strict=False)
+    assert (details["fallback_cells"], details["great_britain_cells"]) == (1, 1)
+    assert details["regions_scaled_on_great_britain"] == 1
+    assert new[-1] > 0 and new[-1] != pytest.approx(rows["rent"][-1])
+
+
+def test_a_sampled_region_with_a_few_frs_renters_ranks_on_great_britain():
+    """microcosm#1305 re-review: two FRS renters are sampling noise.
+
+    Their implausible rents put Wales's own scale outside the band. A
+    full-scale build computes it and refuses; a sampled rung ranks and scales
+    the region on Great Britain's renters, and counts it.
+    """
+
+    rows = _regional_rows(wales_frs=2, wales_rent=100.0)
+    with pytest.raises(ValueError, match="WALES's scale on the lists is outside"):
+        _localise_rows(rows)
+    new, details = _localise_rows(rows, strict=False)
     assert details["great_britain_cells"] == 1
     assert details["regions_scaled_on_great_britain"] == 1
-    assert new[2] > 0 and new[2] != pytest.approx(rows["rent"][2])
+    assert (new[-3:] > 1_000).all()
+    # Ten FRS renters are enough: the region keeps its own scale.
+    rows = _regional_rows(wales_frs=prl.MIN_SAMPLED_REGION_RENTERS)
+    _, details = _localise_rows(rows, strict=False)
+    assert details["great_britain_cells"] == 0
+    assert details["regions_scaled_on_great_britain"] == 0
+    assert (
+        prl.sampled_thin_regions(
+            pd.DataFrame(
+                {
+                    "region": ["WALES"],
+                    "channel": ["frs"],
+                    "weight": [1.0],
+                }
+            ),
+            strict=True,
+        )
+        == frozenset()
+    )
 
 
 def test_the_size_identity_moves_with_the_rent_pins():

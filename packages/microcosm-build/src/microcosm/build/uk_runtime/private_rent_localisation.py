@@ -66,6 +66,11 @@ COUNTS_SOURCE = "uk_brma_private_renters"
 WEEKS_IN_YEAR = 365.25 / 7
 #: A region's scale outside this band means a resource or the frame is wrong.
 SCALE_BAND = (0.25, 4.0)
+#: Below full scale, a region whose sample holds fewer FRS renters than this
+#: ranks against, and is scaled on, Great Britain's: a handful of renters is
+#: sampling noise, and its own scale could leave ``SCALE_BAND`` and refuse
+#: (microcosm#1305 re-review). A full-scale build never falls back.
+MIN_SAMPLED_REGION_RENTERS = 10
 PRIVATE_TENURE = "RENT_PRIVATELY"
 NORTHERN_IRELAND = "NORTHERN_IRELAND"
 FRS_CHANNEL = "frs"
@@ -258,6 +263,27 @@ def _spine_rows(*, spine_key, region, category, rent, channel, weight) -> pd.Dat
 # Ranks and scales
 
 
+def _reference(spine: pd.DataFrame) -> pd.DataFrame:
+    return spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
+
+
+def sampled_thin_regions(spine: pd.DataFrame, *, strict: bool) -> frozenset[str]:
+    """The regions a sampled rung ranks and scales on Great Britain's renters.
+
+    Those whose sample holds fewer than :data:`MIN_SAMPLED_REGION_RENTERS`
+    FRS renters; none at full scale (``strict``).
+    """
+
+    if strict:
+        return frozenset()
+    held = _reference(spine)["region"].astype(str).value_counts()
+    return frozenset(
+        str(region)
+        for region in spine["region"].astype(str).unique()
+        if int(held.get(region, 0)) < MIN_SAMPLED_REGION_RENTERS
+    )
+
+
 def rent_uniforms(
     spine: pd.DataFrame, tie_uniform: Mapping[str, float], *, strict: bool = True
 ) -> tuple[pd.Series, dict[str, int]]:
@@ -267,28 +293,32 @@ def rent_uniforms(
     the FRS-channel rents of the household's region and category and ``v`` its
     keyed tie-break uniform, so FRS renters' ranks are uniform and SPI-channel
     renters land where their rent sits among them. A cell with no FRS renter
-    ranks against its region's FRS renters of every size. A region with none
-    at all refuses at full scale; with ``strict=False``, for a sampled
-    development rung, its cells rank against Great Britain's FRS renters of
-    their size (or of every size), counted in the details.
+    ranks against its region's FRS renters of every size, counted in
+    ``fallback_cells``. A region with none at all refuses at full scale; with
+    ``strict=False``, for a sampled development rung, a region holding fewer
+    than :data:`MIN_SAMPLED_REGION_RENTERS` ranks its cells against Great
+    Britain's FRS renters of their size (or of every size), counted in
+    ``great_britain_cells`` only.
     """
 
-    reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
+    reference = _reference(spine)
+    thin = sampled_thin_regions(spine, strict=strict)
     u = pd.Series(np.nan, index=spine.index, dtype=float)
     fallback_cells = 0
     great_britain_cells = 0
     for (region, category), rows in spine.groupby(["region", "category"], sort=True):
-        pool = reference[
-            (reference["region"] == region) & (reference["category"] == category)
-        ]
-        if pool.empty:
-            pool = reference[reference["region"] == region]
-            fallback_cells += 1
-        if pool.empty and not strict:
+        if str(region) in thin:
             pool = reference[reference["category"] == category]
             if pool.empty:
                 pool = reference
             great_britain_cells += 1
+        else:
+            pool = reference[
+                (reference["region"] == region) & (reference["category"] == category)
+            ]
+            if pool.empty:
+                pool = reference[reference["region"] == region]
+                fallback_cells += 1
         if pool.empty or float(pool["weight"].sum()) <= 0:
             raise ValueError(f"No FRS private renter carries weight in {region}.")
         order = np.argsort(pool["rent"].to_numpy(), kind="stable")
@@ -324,7 +354,7 @@ def region_scales(
     bedroom band, ``mu`` each list's mean annual rent.
     """
 
-    reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
+    reference = _reference(spine)
     return {
         str(region): _region_scale(
             rows, region=str(region), counts=counts, quantiles=quantiles
@@ -391,9 +421,11 @@ def localise_rents(
     for bit. Returns exact counts; callers round them before any receipt.
 
     ``strict=False`` is for a sampled development rung, whose sample can leave
-    a region with SPI-channel renters and no FRS renter: that region ranks
-    against, and is scaled on, Great Britain's FRS renters on its own census
-    mix, and the details count it. A full-scale build refuses instead.
+    a region with SPI-channel renters and few or no FRS renters: a region
+    holding fewer than :data:`MIN_SAMPLED_REGION_RENTERS` ranks against, and
+    is scaled on, Great Britain's FRS renters on its own census mix, and the
+    details count it. A full-scale build ranks and scales every region on its
+    own renters, and refuses a region with none.
     """
 
     rent = np.asarray(rent, dtype=float)
@@ -421,11 +453,16 @@ def localise_rents(
         weight=np.asarray(weight, dtype=float)[rows],
     )
     u, rank_details = rent_uniforms(spine, tie_uniform, strict=strict)
-    scales = region_scales(spine, counts=counts, quantiles=quantiles)
+    thin = sampled_thin_regions(spine, strict=strict)
+    scales = region_scales(
+        spine.loc[~spine["region"].astype(str).isin(thin)],
+        counts=counts,
+        quantiles=quantiles,
+    )
     missing = sorted(set(regions) - set(scales))
     if missing and strict:
         raise ValueError(f"No FRS private renter to scale the regions {missing}.")
-    reference = spine[(spine["channel"] == FRS_CHANNEL) & (spine["weight"] > 0)]
+    reference = _reference(spine)
     if missing and reference.empty:
         raise ValueError("No FRS private renter in Great Britain carries weight.")
     for code in missing:
