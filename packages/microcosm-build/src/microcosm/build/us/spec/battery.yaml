@@ -518,6 +518,11 @@ metric_registry:
   metric: monetary_sign_separated
 - entity: person
   family: source_operator_cps_carried
+  column: receives_ssi
+  clone_index: 0
+  metric: boolean_incidence
+- entity: person
+  family: source_operator_cps_carried
   column: strike_benefits
   clone_index: 0
   metric: monetary_sign_separated

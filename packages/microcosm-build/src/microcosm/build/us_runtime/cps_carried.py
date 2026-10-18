@@ -28,6 +28,9 @@ __all__ = [
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
     "CPS_REPORTED_SNAP_RAW_COLUMN",
+    "CPS_REPORTED_SSI_AMOUNT_RAW_COLUMN",
+    "CPS_REPORTED_SSI_ON_BEHALF_OF_CHILD_REASON_CODES",
+    "CPS_REPORTED_SSI_REASON_RAW_COLUMNS",
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
@@ -36,6 +39,7 @@ __all__ = [
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
+    "reported_ssi_receipt",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
 ]
@@ -48,6 +52,19 @@ CPS_REPORTED_SNAP_RAW_COLUMN = "SPM_SNAPSUB"
 CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN = "PAW_VAL"
 CPS_REPORTED_TANF_TYPE_RAW_COLUMN = "PAW_TYP"
 CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
+#: ASEC annual SSI amount. The same column is the SSI take-up stage's reporter
+#: anchor (``ssi_take_up.US_SSI_TAKE_UP_ANCHOR``, pinned equal by a test); it is
+#: not imported from there because this pre-clone stage must not depend on the
+#: take-up stage, whose import would join the pool tool's pinned import graph.
+CPS_REPORTED_SSI_AMOUNT_RAW_COLUMN = "SSI_VAL"
+#: ASEC reasons for SSI receipt (``SSIR``; 2024 ASEC data dictionary,
+#: https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf):
+#: 1 disabled, 2 blind, 3 on behalf of a disabled child, 4 on behalf of a
+#: blind child, 5 other; 0 is not in universe. Universe: ``SSI_YN == 1``.
+CPS_REPORTED_SSI_REASON_RAW_COLUMNS: tuple[str, str] = ("RESNSSI1", "RESNSSI2")
+#: Reasons naming SSI the respondent receives as a child's payee, not in
+#: their own right.
+CPS_REPORTED_SSI_ON_BEHALF_OF_CHILD_REASON_CODES = frozenset({3, 4})
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979"
 )
@@ -106,6 +123,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "health_insurance_premiums_without_medicare_part_b",
         "other_medical_expenses",
         "over_the_counter_health_expenses",
+        "receives_ssi",
         "receives_wic",
         "rental_income",
         "farm_operations_income",
@@ -144,12 +162,13 @@ def derive_us_cps_carried_inputs(
     The transform refuses to run on a non-US frame and never creates
     formula-owned aggregate variables.
 
-    ``PAW_VAL``, ``SPM_SNAPSUB``, and ``WICYN`` are annual reported facts,
-    while the engine's ``receives_tanf``, ``receives_snap``, and
-    ``receives_wic`` leaves are monthly booleans. An annual receipt report is
-    therefore broadcast to all 12 modeled months. The annual source cannot
-    reveal entry or exit timing, and ``PAW_VAL > 0`` misses enrolled TANF
-    units receiving zero dollars, including sanctioned cases.
+    ``PAW_VAL``, ``SPM_SNAPSUB``, ``WICYN``, and ``SSI_VAL`` are annual
+    reported facts, while the engine's ``receives_tanf``, ``receives_snap``,
+    ``receives_wic``, and ``receives_ssi`` leaves are monthly booleans. An
+    annual receipt report is therefore broadcast to all 12 modeled months. The
+    annual source cannot reveal entry or exit timing, and ``PAW_VAL > 0``
+    misses enrolled TANF units receiving zero dollars, including sanctioned
+    cases. See :func:`reported_ssi_receipt` for which SSI reporters count.
 
     ``receives_tanf`` is additionally gated on ``PAW_TYP`` because
     ``PAW_VAL`` alone conflates TANF with other cash welfare; see
@@ -169,6 +188,7 @@ def derive_us_cps_carried_inputs(
     _fill_missing(person, "age", _source(person, "A_AGE"))
     _fill_bool_missing(person, "is_female", _integer_source(person, "A_SEX") == 2)
     _fill_bool_missing(person, "receives_wic", reported_wic_receipt_carrier(person))
+    _fill_bool_missing(person, "receives_ssi", reported_ssi_receipt(person))
     _fill_missing(person, "employment_income_before_lsr", _source(person, "WSAL_VAL"))
     _fill_missing(
         person,
@@ -347,6 +367,59 @@ def reported_snap_receipt_by_spm_unit(person: pd.DataFrame) -> pd.Series:
         .gt(0.0)
         .rename("reported_snap_receipt")
     )
+
+
+def reported_ssi_receipt(person: pd.DataFrame) -> np.ndarray:
+    """Return each person's own reported SSI receipt, for ``receives_ssi``.
+
+    A person reports receipt when their annual ``SSI_VAL`` is positive and at
+    least one reported reason is their own: disabled, blind, other, or no
+    reason recorded. ``SSI_VAL`` is the take-up stage's reporter anchor
+    (``ssi_take_up.US_SSI_TAKE_UP_ANCHOR``), so every person marked here is
+    also an anchored SSI claimant; the release coverage gate checks it.
+
+    Two exclusions follow from the ASEC questionnaire. A respondent whose only
+    reasons are "on behalf of a disabled child" or "on behalf of a blind child"
+    (``RESNSSI1``/``RESNSSI2`` codes 3 and 4) is the child's payee, and the
+    amount on their record is the child's benefit, so they are not marked.
+    ASEC also asks SSI only of people aged 15 and older (``SSI_YN`` is not in
+    universe below 15), so no child under 15 is ever marked. Neither case
+    names the child who receives the payment, and this function does not
+    guess one.
+
+    ASEC defines SSI as payments from "state or local welfare offices, the
+    Federal government, or both", so a reported amount may include a state
+    supplement; only the receipt fact is carried, never the amount.
+
+    The reason columns are required whenever any amount is positive:
+    coercing absent reasons to zero would silently mark every payee as a
+    recipient.
+    """
+
+    amount = _source(person, CPS_REPORTED_SSI_AMOUNT_RAW_COLUMN)
+    reported = amount > 0.0
+    missing = [
+        column
+        for column in CPS_REPORTED_SSI_REASON_RAW_COLUMNS
+        if column not in person.columns
+    ]
+    if missing and reported.any():
+        raise ValueError(
+            "Reported SSI receipt requires person column(s) "
+            f"{missing} for the positive {CPS_REPORTED_SSI_AMOUNT_RAW_COLUMN} "
+            "rows: without "
+            "the reasons a payee receiving SSI on behalf of a child would be "
+            "marked as the recipient."
+        )
+    payee_codes = sorted(CPS_REPORTED_SSI_ON_BEHALF_OF_CHILD_REASON_CODES)
+    first, second = (
+        _integer_source(person, column)
+        for column in CPS_REPORTED_SSI_REASON_RAW_COLUMNS
+    )
+    on_behalf_of_child_only = np.isin(first, payee_codes) & np.isin(
+        second, [0, *payee_codes]
+    )
+    return reported & ~on_behalf_of_child_only
 
 
 def reported_wic_receipt_carrier(person: pd.DataFrame) -> np.ndarray:

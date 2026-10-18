@@ -39,6 +39,16 @@ could only stage from an unpublished receipt-qualified child that the publish
 contract refuses as a donor. They are ``required`` with no reviewed exclusion so
 no future national default can ship without them.
 
+The ASEC reported SSI receipt input (``receives_ssi``,
+:data:`US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS`) follows the same pattern
+for a different reason: PolicyEngine-US rules that require actual SSI receipt
+(state supplements, Medicaid SSI categories, SNAP categorical eligibility) read
+``(ssi > 0) | receives_ssi``, so without the survey fact every one of them
+depends only on modeled take-up and imputed attributes. The gate also proves
+the column is consistent with the SSI take-up stage: every person it marks
+reports a positive ``SSI_VAL`` and is an anchored claimant
+(``takes_up_ssi_if_eligible``).
+
 :func:`assert_release_input_coverage_manifest_current` proves the manifest against
 the pinned eCPS surface and the live PolicyEngine-US graph, so the register
 cannot silently rot: it must cover exactly the reference eCPS populated layers,
@@ -54,6 +64,9 @@ from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
+
+import numpy as np
+import pandas as pd
 
 from microcosm.build.gates import GateResult, input_column_coverage_gate
 from microcosm.build.us_runtime.capital_gain_details import (
@@ -106,7 +119,10 @@ from microcosm.build.us_runtime.spm_independence_role import (
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
 )
-from microcosm.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.ssi_take_up import (
+    US_SSI_TAKE_UP_ANCHOR,
+    US_SSI_TAKE_UP_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.voluntary_filing import (
     US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
 )
@@ -120,6 +136,7 @@ from microcosm.build.us_runtime.workers_compensation import (
 
 __all__ = [
     "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
+    "US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
@@ -133,6 +150,7 @@ __all__ = [
     "project_ecps_parity_known_gap_names",
     "us_release_input_coverage_gate",
     "us_release_input_coverage_required_columns",
+    "us_reported_ssi_receipt_consistency_failures",
     "us_release_input_coverage_reviewed_exclusions",
     "us_release_input_coverage_signal_counts",
     "us_release_reform_coverage_probes",
@@ -181,6 +199,10 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "receives_wic",
         "receives_snap",
         "receives_tanf",
+        # The ASEC reported SSI receipt input (cps_carried.reported_ssi_receipt):
+        # receipt-keyed SSI rules read it alongside modeled ssi, so a national
+        # default must carry it (US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS).
+        "receives_ssi",
         # The engine's one declared dataset source input
         # (policyengine_us.spm.DATASET_SOURCE_INPUTS): without it a 15-to-17-
         # year-old heading an SPM unit is unclassified and the whole
@@ -286,6 +308,17 @@ US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS = (
     "receives_snap",
     "receives_tanf",
 )
+
+#: The ASEC reported SSI receipt input. PolicyEngine-US 2.2.1 declares
+#: ``receives_ssi`` a formula-less monthly person boolean (default ``False``),
+#: and its receipt-keyed rules read ``(ssi > 0) | receives_ssi``. The base build
+#: derives it from ASEC (``cps_carried.reported_ssi_receipt``: ``SSI_VAL > 0``,
+#: excluding people who receive SSI only on behalf of a child). It ships as a
+#: hard requirement with NO reviewed exclusion, so a national release that drops
+#: or defaults it fails the coverage gate, and
+#: :func:`us_reported_ssi_receipt_consistency_failures` proves every marked
+#: person is a positive ``SSI_VAL`` reporter and an anchored SSI claimant.
+US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS = ("receives_ssi",)
 
 
 @dataclass(frozen=True)
@@ -681,7 +714,7 @@ def us_release_input_coverage_gate(
     reviewed = manifest.reviewed_exclusions
     present_values = _coverage_present_values(frame, required | set(reviewed))
     degenerate, no_observed = _degenerate_columns(present_values, engine)
-    return input_column_coverage_gate(
+    coverage = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
@@ -689,6 +722,87 @@ def us_release_input_coverage_gate(
         reviewed_exclusions=reviewed,
         name="us_release_input_coverage",
     )
+    receipt_failures, receipt_details = (
+        us_reported_ssi_receipt_consistency_failures(frame.table("person"))
+        if "person" in frame.entities
+        else ((), {"evaluated": False})
+    )
+    failures = (*coverage.failures, *receipt_failures)
+    return GateResult(
+        name=coverage.name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            **dict(coverage.details),
+            "reported_ssi_receipt_consistency": receipt_details,
+        },
+    )
+
+
+def us_reported_ssi_receipt_consistency_failures(
+    person: Any,
+) -> tuple[tuple[str, ...], dict[str, object]]:
+    """Check ``receives_ssi`` against the SSI take-up anchor on a person table.
+
+    Two invariants hold for every person the column marks, by construction of
+    :func:`~microcosm.build.us_runtime.cps_carried.reported_ssi_receipt` and
+    the take-up stage's reporter anchor:
+
+    - they report a positive ``SSI_VAL`` (checked where ``SSI_VAL`` is
+      observed; a stacked ACS row carries no ``SSI_VAL``); and
+    - they are anchored SSI claimants: ``takes_up_ssi_if_eligible`` is true.
+
+    A table without ``receives_ssi`` returns no failures; the coverage gate
+    already fails a required column that is absent.
+
+    Returns:
+        The failure lines and aggregate counts (never row values).
+    """
+
+    if "receives_ssi" not in person.columns:
+        return (), {"evaluated": False}
+    receipt = _boolean_values(person["receives_ssi"], "receives_ssi")
+    failures: list[str] = []
+    details: dict[str, object] = {
+        "evaluated": True,
+        "rows": int(len(receipt)),
+        "receipt_rows": int(receipt.sum()),
+    }
+    if US_SSI_TAKE_UP_ANCHOR in person.columns:
+        amount = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        observed = ~np.isnan(amount)
+        without_amount = int((receipt & observed & ~(amount > 0.0)).sum())
+        details["receipt_rows_without_positive_ssi_val"] = without_amount
+        if without_amount:
+            failures.append(
+                f"receives_ssi: {without_amount} person row(s) are marked as "
+                "reported SSI recipients without a positive SSI_VAL."
+            )
+    take_up_column = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
+    if take_up_column in person.columns:
+        take_up = _boolean_values(person[take_up_column], take_up_column)
+        without_take_up = int((receipt & ~take_up).sum())
+        details["receipt_rows_without_take_up"] = without_take_up
+        if without_take_up:
+            failures.append(
+                f"receives_ssi: {without_take_up} reported SSI recipient row(s) "
+                "carry takes_up_ssi_if_eligible = False; the SSI take-up stage "
+                "anchors every SSI_VAL reporter as a claimant."
+            )
+    return tuple(failures), details
+
+
+def _boolean_values(values: Any, column: str) -> np.ndarray:
+    series = pd.Series(values)
+    if series.isna().any():
+        raise ValueError(f"{column} must be complete to check SSI receipt.")
+    # 0 and 1 compare (and hash) equal to False and True, so integer-coded
+    # booleans pass; any other value is refused.
+    if not set(pd.unique(series)) <= {False, True}:
+        raise ValueError(f"{column} must be boolean to check SSI receipt.")
+    return series.astype(bool).to_numpy()
 
 
 def _coverage_engine() -> Any | None:
@@ -789,6 +903,9 @@ def assert_release_input_coverage_manifest_current(
       ``receives_snap``, ``receives_tanf``) must be ``required`` with no
       reviewed exclusion — #978 option 1: a national default that drops them
       cannot serve as the ACS local-area donor.
+    - The ASEC reported SSI receipt input (``receives_ssi``) must be
+      ``required`` with no reviewed exclusion, so receipt-keyed SSI rules
+      never silently fall back to modeled SSI alone.
     - No restored reference input may sit in the eCPS parity known-gap register
       (``ecps_parity_known_gaps.json``, or ``parity_known_gaps`` names when
       given) under either its live or its historical spelling: the parity gate
@@ -869,6 +986,19 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{receipt_input}: ASEC reported-receipt input must be a "
                 "required manifest column (#978)."
+            )
+
+    for receipt_input in US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS:
+        if receipt_input in reviewed:
+            failures.append(
+                f"{receipt_input}: ASEC reported SSI receipt input is a reviewed "
+                "exclusion, but it must be a hard requirement with no exclusion "
+                "so receipt-keyed SSI rules never fall back to modeled SSI alone."
+            )
+        elif receipt_input not in required:
+            failures.append(
+                f"{receipt_input}: ASEC reported SSI receipt input must be a "
+                "required manifest column."
             )
 
     for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:

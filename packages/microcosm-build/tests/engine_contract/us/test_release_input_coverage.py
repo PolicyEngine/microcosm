@@ -440,3 +440,147 @@ class TestAsecReportedReceiptInputGuarantee:
         )
         assert not failing.passed
         assert failing.details["degenerate_required"] == sorted(names)
+
+
+class TestAsecReportedSsiReceiptInputGuarantee:
+    """The ASEC reported SSI receipt input is a hard requirement of the national
+    release coverage gate, and the gate proves it agrees with the SSI take-up
+    anchor: receipt-keyed SSI rules read ``(ssi > 0) | receives_ssi``, so a
+    default without it makes every such rule depend on modeled SSI alone."""
+
+    def test_constant_names_the_ssi_receipt_input(self) -> None:
+        assert US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS == ("receives_ssi",)
+
+    def test_ssi_receipt_input_is_an_asec_carry_stage_person_output(self) -> None:
+        assert set(US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS) <= (
+            CPS_CARRIED_PERSON_INPUTS
+        )
+
+    def test_ssi_receipt_input_is_a_post_reference_hard_requirement(self) -> None:
+        assert (
+            set(US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS)
+            <= POST_REFERENCE_ECPS_REQUIRED_INPUTS
+        )
+        manifest = load_release_input_coverage_manifest()
+        for column in US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS:
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+            entry = next(entry for entry in manifest.columns if entry.name == column)
+            assert "on behalf of a disabled or blind child" in entry.note
+
+    def test_ssi_receipt_input_cannot_regress_to_reviewed_exclusion(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        demoted = ReleaseInputCoverageManifest(
+            reference=manifest.reference,
+            columns=tuple(
+                ReleaseInputColumn(
+                    name=entry.name,
+                    status="reviewed_exclusion",
+                    reason="regression attempt",
+                    issue="PolicyEngine/microcosm#368",
+                )
+                if entry.name == "receives_ssi"
+                else entry
+                for entry in manifest.columns
+            ),
+            probes=manifest.probes,
+            schema_version=manifest.schema_version,
+        )
+
+        with pytest.raises(ValueError, match="receives_ssi: ASEC reported SSI"):
+            assert_release_input_coverage_manifest_current(manifest=demoted)
+
+    def test_ssi_receipt_input_cannot_be_dropped_from_the_manifest(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        dropped = ReleaseInputCoverageManifest(
+            reference=manifest.reference,
+            columns=tuple(
+                entry for entry in manifest.columns if entry.name != "receives_ssi"
+            ),
+            probes=manifest.probes,
+            schema_version=manifest.schema_version,
+        )
+
+        with pytest.raises(ValueError, match="receives_ssi: ASEC reported SSI"):
+            assert_release_input_coverage_manifest_current(manifest=dropped)
+
+    def test_consistent_candidate_passes(self) -> None:
+        result = us_release_input_coverage_gate(
+            _ssi_receipt_candidate(),
+            _StubEngine(_SSI_RECEIPT_DEFAULTS),
+            manifest=_SSI_RECEIPT_CONTRACT,
+        )
+
+        assert result.passed
+        assert result.failures == ()
+        assert result.details["reported_ssi_receipt_consistency"] == {
+            "evaluated": True,
+            "rows": 4,
+            "receipt_rows": 2,
+            "receipt_rows_without_positive_ssi_val": 0,
+            "receipt_rows_without_take_up": 0,
+        }
+
+    def test_candidate_without_receipt_fails_as_absent(self) -> None:
+        result = us_release_input_coverage_gate(
+            _ssi_receipt_candidate(omit=("receives_ssi",)),
+            _StubEngine(_SSI_RECEIPT_DEFAULTS),
+            manifest=_SSI_RECEIPT_CONTRACT,
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == ["receives_ssi"]
+        assert result.details["reported_ssi_receipt_consistency"] == {
+            "evaluated": False
+        }
+
+    def test_all_false_receipt_fails_as_degenerate(self) -> None:
+        result = us_release_input_coverage_gate(
+            _ssi_receipt_candidate(receipt=(False,) * 4),
+            _StubEngine(_SSI_RECEIPT_DEFAULTS),
+            manifest=_SSI_RECEIPT_CONTRACT,
+        )
+
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["receives_ssi"]
+
+    def test_receipt_without_positive_ssi_val_fails(self) -> None:
+        result = us_release_input_coverage_gate(
+            _ssi_receipt_candidate(
+                receipt=(True, True, False, True), take_up=(True,) * 4
+            ),
+            _StubEngine(_SSI_RECEIPT_DEFAULTS),
+            manifest=_SSI_RECEIPT_CONTRACT,
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "receives_ssi: 1 person row(s) are marked as reported SSI recipients "
+            "without a positive SSI_VAL.",
+        )
+
+    def test_receipt_without_take_up_fails(self) -> None:
+        result = us_release_input_coverage_gate(
+            _ssi_receipt_candidate(take_up=(False, False, True, True)),
+            _StubEngine(_SSI_RECEIPT_DEFAULTS),
+            manifest=_SSI_RECEIPT_CONTRACT,
+        )
+
+        assert not result.passed
+        assert len(result.failures) == 1
+        assert "takes_up_ssi_if_eligible = False" in result.failures[0]
+        details = result.details["reported_ssi_receipt_consistency"]
+        assert details["receipt_rows_without_take_up"] == 1
+
+    def test_real_engine_treats_receives_ssi_as_a_false_default_input_leaf(
+        self,
+    ) -> None:
+        __import__("policyengine_us")
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+        assert engine.default_values(["receives_ssi"]) == {"receives_ssi": False}
+        assert "receives_ssi" in set(engine.variables())
+        assert us_release_input_coverage_gate(
+            _ssi_receipt_candidate(), engine, manifest=_SSI_RECEIPT_CONTRACT
+        ).passed

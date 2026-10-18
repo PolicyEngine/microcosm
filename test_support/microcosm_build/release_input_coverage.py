@@ -39,6 +39,7 @@ from microcosm.build.us_runtime import (
     POST_REFERENCE_ECPS_REQUIRED_INPUTS,
     SSI_COUNTABLE_RESOURCE_ASSETS,
     US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS,
+    US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS,
     US_CGD_ROUTE_REQUIRED_INPUTS,
     US_QBI_OUTPUT_COLUMNS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
@@ -351,6 +352,40 @@ def _receipt_candidate(*, omit: str | None = None, all_default: bool = False) ->
     person.pop(omit, None)
     spm_unit.pop(omit, None)
     return _us_entity_frame(3, person, {"spm_unit": spm_unit})
+
+
+_SSI_RECEIPT_DEFAULTS = {
+    name: False for name in US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS
+}
+_SSI_RECEIPT_CONTRACT = _manifest(
+    tuple(
+        ReleaseInputColumn(name, "required")
+        for name in US_ASEC_REPORTED_SSI_RECEIPT_REQUIRED_INPUTS
+    )
+)
+
+
+def _ssi_receipt_candidate(
+    *,
+    receipt: tuple[bool, ...] = (False, True, False, True),
+    ssi_val: tuple[float, ...] = (0.0, 9600.0, 0.0, 12000.0),
+    take_up: tuple[bool, ...] = (False, True, True, True),
+    omit: tuple[str, ...] = (),
+) -> Frame:
+    """A candidate export carrying ``receives_ssi`` beside its raw evidence.
+
+    The defaults are consistent: every marked person reports a positive
+    ``SSI_VAL`` and carries ``takes_up_ssi_if_eligible``. ``omit`` drops named
+    person columns from the export entirely.
+    """
+    person = {
+        "receives_ssi": np.asarray(receipt, dtype=bool),
+        "SSI_VAL": np.asarray(ssi_val, dtype=np.float64),
+        "takes_up_ssi_if_eligible": np.asarray(take_up, dtype=bool),
+    }
+    for column in omit:
+        person.pop(column, None)
+    return _us_entity_frame(len(receipt), person)
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

@@ -94,6 +94,8 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "receives_wic",
     "receives_snap",
     "receives_tanf",
+    # Reported SSI receipt: receipt-keyed SSI rules read it alongside ssi.
+    "receives_ssi",
 )
 
 # Shared tail of the three #978 reported-receipt notes: why each is a hard
@@ -191,6 +193,19 @@ POST_REFERENCE_COLUMN_NOTES = {
         "1 or 3, per SPM unit), carried by "
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
         "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "receives_ssi": (
+        "ASEC reported SSI receipt (SSI_VAL > 0, excluding a respondent whose "
+        "only RESNSSI reasons are on behalf of a disabled or blind child), "
+        "carried by cps_carried.derive_us_cps_carried_inputs; a formula-less "
+        "monthly boolean person input in PolicyEngine-US 2.2.1 that its "
+        "receipt-keyed rules (state supplements, Medicaid SSI categories, SNAP "
+        "categorical eligibility) read as (ssi > 0) | receives_ssi. Required "
+        "with NO reviewed exclusion so those rules never fall back to modeled "
+        "SSI alone; the coverage gate also requires every marked person to "
+        "report a positive SSI_VAL and carry takes_up_ssi_if_eligible. The "
+        "published populace-us-2024-spm-20260915 default does not persist it, "
+        "so the gate is red on it by design until a national build persists it."
     ),
 }
 
@@ -1624,7 +1639,9 @@ def build_manifest() -> dict:
             "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
             "inputs receives_wic, receives_snap, receives_tanf that the ACS "
             "local-area transfer requires in its donor "
-            "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
+            "(PolicyEngine/microcosm#978 option 1), the ASEC reported SSI "
+            "receipt input receives_ssi that receipt-keyed SSI rules read "
+            "alongside ssi, and the engine's declared "
             "dataset source input is_spm_independent_minor_role (the "
             "spm_independence_role base-builder stage; "
             "PolicyEngine/microcosm#893). "

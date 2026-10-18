@@ -1030,6 +1030,17 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_early
   targets:
+  - name: receives_ssi
+    entity: person
+    value_kind: flag
+    dtype: bool
+    period: month
+    requires_concepts: []
+    producer_binding:
+      operator: derive_us_cps_carried_inputs
+      order_index: 0
+      execution_scope: cps_source
+      stage: prepare_multispine_source_inputs_for_clone
   - name: strike_benefits
     entity: person
     value_kind: amount
