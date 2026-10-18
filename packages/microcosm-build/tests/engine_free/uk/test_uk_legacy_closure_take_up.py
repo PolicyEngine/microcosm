@@ -128,7 +128,14 @@ def _frame(
     would_claim_uc: np.ndarray,
     weights: np.ndarray,
     regions=None,
+    *,
+    source_ids=None,
+    lineage: bool = True,
+    time_period: str = "2024",
 ):
+    """One person per benefit unit per household; ``source_ids`` makes support
+    copies (each household's own id by default), ``lineage=False`` drops them."""
+
     n = len(would_claim_uc)
     ids = np.arange(1, n + 1, dtype="int64")
     person = pd.DataFrame(
@@ -143,7 +150,14 @@ def _frame(
             },
         }
     )
-    benunit = pd.DataFrame({"benunit_id": ids, "would_claim_uc": would_claim_uc})
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": ids,
+            "would_claim_uc": would_claim_uc,
+            # A context cell every graph node receives.
+            "frs_benunit_capital": np.zeros(n),
+        }
+    )
     household = pd.DataFrame(
         {
             "household_id": ids,
@@ -153,11 +167,15 @@ def _frame(
             ),
         }
     )
+    if lineage:
+        household["household_source_id"] = (
+            ids if source_ids is None else np.asarray(source_ids, dtype="int64")
+        )
     return uk_national_frame(
         person=person,
         benunit=benunit,
         household=household,
-        time_period="2024",
+        time_period=time_period,
         weight_kind=WeightKind.DESIGN,
         household_weights=weights,
     )
@@ -349,3 +367,90 @@ def test_the_receipt_aggregates_cover_great_britain_only() -> None:
     assert result.evidence()["great_britain_drawn_benunit_weight"] == pytest.approx(
         60.0
     )
+
+
+def _graph_evidence(frame) -> dict:
+    """The stage's receipt from the production node, run as a graph build runs it.
+
+    The executor hands the kernel only the cells the node declares, so a
+    column the stage reads but the node does not declare is missing here.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+    from microcosm.graph.executor import _project_context
+    from microcosm.graph.population import Population
+
+    node = uk_spine_graph(source_mode="split").node(lc.LEGACY_CLOSURE_STAGE_NAME)
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "legacy-closure-input"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+    )
+    stage = load_country_spec("uk").sources.stage_map()[lc.LEGACY_CLOSURE_STAGE_NAME]
+    transform = lc.UKLegacyClosureTakeUpStageTransform(stage=stage, rates=_RATES)
+    UKStageKernel(lc.LEGACY_CLOSURE_STAGE_NAME, transform).run(context)
+    return transform.checkpoint_metadata()["evidence"]
+
+
+def _copies_of_three_households():
+    # Twelve support copies of three source households, eleven claiming
+    # anyway: p exceeds DWP's rate on twelve rows but on three sources.
+    n = 12
+    return _frame(
+        {"esa_income_reported": np.full(n, 100.0)},
+        would_claim_uc=np.arange(n) < 11,
+        weights=np.ones(n),
+        source_ids=np.arange(n) % 3,
+    )
+
+
+def test_the_stage_bands_support_copies_on_their_sources() -> None:
+    # UKDS disclosure control: neither the flag nor a band above "<10" for a
+    # cell three source households carry, however many rows copy them.
+    combinations = lc.assign_uc_claim_at_legacy_closure(
+        _copies_of_three_households(), rates=_RATES
+    ).evidence()["combinations"]
+    assert combinations["esa_income"]["rate_unreachable"] == "<10"
+    assert combinations["esa_income"]["support"] == "<10"
+
+
+def test_the_graph_node_bands_support_copies_on_their_sources() -> None:
+    # The same cell through the executor's input projection: the node declares
+    # household_source_id, so a graph build counts sources too.
+    combinations = _graph_evidence(_copies_of_three_households())["combinations"]
+    assert combinations["esa_income"]["rate_unreachable"] == "<10"
+    assert combinations["esa_income"]["support"] == "<10"
+
+
+def test_the_stage_refuses_a_frame_without_lineage() -> None:
+    frame = _frame(
+        {"esa_income_reported": np.full(3, 100.0)},
+        would_claim_uc=np.zeros(3, dtype=bool),
+        weights=np.ones(3),
+        lineage=False,
+    )
+    with pytest.raises(ValueError, match="household_source_id"):
+        lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
+
+
+def test_the_stage_measures_p_over_great_britain() -> None:
+    # Twelve Great Britain units, six claiming anyway (p = 0.5, below the
+    # rate of 0.6), and twelve Northern Irish units claiming anyway, which a
+    # UK-wide p would count (0.75, above it): only the Great Britain basis
+    # leaves the rate reachable.
+    n = 24
+    frame = _frame(
+        {"child_tax_credit_reported": np.full(n, 400.0)},
+        would_claim_uc=np.r_[np.arange(12) < 6, np.ones(12, dtype=bool)],
+        weights=np.ones(n),
+        regions=["NORTH_WEST"] * 12 + ["NORTHERN_IRELAND"] * 12,
+    )
+    combinations = lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES).evidence()[
+        "combinations"
+    ]
+    assert combinations["child_tax_credit"]["rate_unreachable"] is False

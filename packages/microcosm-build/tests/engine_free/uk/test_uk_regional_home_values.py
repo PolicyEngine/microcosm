@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import numpy as np
@@ -53,7 +54,10 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
 _REGIONS = ("LONDON", "NORTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND")
 
 
-def _frame(n: int = 200, seed: int = 5):
+def _frame(n: int = 200, seed: int = 5, *, source_ids=None, lineage: bool = True):
+    """Households of five regions; ``source_ids`` makes support copies (each
+    household's own id by default), ``lineage=False`` drops them."""
+
     rng = np.random.default_rng(seed)
     region = np.array(_REGIONS)[rng.integers(0, len(_REGIONS), n)]
     tenure = np.where(
@@ -75,7 +79,19 @@ def _frame(n: int = 200, seed: int = 5):
             HIGH_VALUE_SUPPORT_COPY_COLUMN: rng.random(n) < 0.05,
         }
     )
-    benunit = pd.DataFrame({"benunit_id": np.arange(1, n + 1, dtype="int64")})
+    if lineage:
+        household["household_source_id"] = (
+            household["household_id"].to_numpy()
+            if source_ids is None
+            else np.asarray(source_ids, dtype="int64")
+        )
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": np.arange(1, n + 1, dtype="int64"),
+            # A context cell every graph node receives.
+            "frs_benunit_capital": np.zeros(n),
+        }
+    )
     person = pd.DataFrame(
         {
             "person_id": np.arange(1, n + 1, dtype="int64"),
@@ -273,16 +289,69 @@ def test_the_rank_basis_refuses_a_declaration_mismatch() -> None:
         property_localisation.main_residence_rank_basis(staged, declared=False)
 
 
-def test_a_cell_is_banded_on_its_source_households() -> None:
-    # Twelve support copies of two source households: past ten rows, but
-    # the cell rests on fewer than ten sources and reads "<10".
-    household = pd.DataFrame(
-        {"household_source_id": np.repeat([7, 8], 6), "household_id": np.arange(12)}
+def _graph_evidence(frame) -> dict:
+    """The stage's receipt from the production node, run as a graph build runs it.
+
+    The executor hands the kernel only the cells the node declares, so a
+    column the stage reads but the node does not declare is missing here.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+    from microcosm.graph.executor import _project_context
+    from microcosm.graph.population import Population
+
+    name = rhv.REGIONAL_HOME_VALUES_STAGE_NAME
+    node = uk_spine_graph(source_mode="split").node(name)
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "regional-home-values-input"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
     )
-    mask = np.ones(12, dtype=bool)
-    assert rhv.source_count(household, mask) == 2
-    assert rhv._support_band(rhv.source_count(household, mask)) == "<10"
-    assert rhv.source_count(household.drop(columns="household_source_id"), mask) == 12
+    stage = load_country_spec("uk").sources.stage_map()[name]
+    transform = rhv.UKRegionalHomeValuesStageTransform(stage=stage)
+    UKStageKernel(name, transform).run(context)
+    return transform.checkpoint_metadata()["evidence"]
+
+
+def _london_copies_at_the_cap(monkeypatch):
+    """Twelve London owners, support copies of three source households, every
+    one at a cap the test lowers below all values (on the packaged knots the
+    cap lies at or above each region's top knot, which no rank below 1
+    reaches)."""
+
+    parsed, knots = rhv.load_region_knots()
+    monkeypatch.setattr(
+        rhv,
+        "load_region_knots",
+        lambda payload=None: (dataclasses.replace(parsed, cap=1.0), knots),
+    )
+    frame = _frame(n=12, seed=9, source_ids=np.arange(12) % 3)
+    household = frame.table("household")
+    household["region"] = pd.array(["LONDON"] * 12, dtype="string")
+    household["tenure_type"] = pd.array(["OWNED_OUTRIGHT"] * 12, dtype="string")
+    household["main_residence_value"] = np.linspace(300_000.0, 900_000.0, 12)
+    household["property_wealth"] = household["main_residence_value"] + 10_000.0
+    # The node's shape anchor, the preceding support stage's copy index.
+    household["high_value_support_copy_index"] = np.zeros(12, dtype="int64")
+    return frame
+
+
+def test_the_cap_cell_is_banded_on_its_source_households(monkeypatch) -> None:
+    # UKDS disclosure control: twelve rows past ten, but three sources, so the
+    # cell reads "<10", directly and through the production node as a graph
+    # build runs it (the node declares household_source_id).
+    frame = _london_copies_at_the_cap(monkeypatch)
+    assert rhv.assign_regional_home_values(frame).receipt["sources_at_cap"] == "<10"
+    assert _graph_evidence(frame)["sources_at_cap"] == "<10"
+
+
+def test_the_stage_refuses_a_frame_without_lineage() -> None:
+    with pytest.raises(ValueError, match="household_source_id"):
+        rhv.assign_regional_home_values(_frame(lineage=False))
 
 
 def test_the_release_drops_the_rank_basis() -> None:

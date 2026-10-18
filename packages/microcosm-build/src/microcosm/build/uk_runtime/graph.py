@@ -278,8 +278,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "non_residential_property_value"),
         }
     ),
-    # Engine-free: the owners' region, tenure, value and wealth, and the support
-    # copies the ranking spreads (microcosm#1112).
+    # Engine-free: the owners' region, tenure, value and wealth, the support
+    # copies the ranking spreads, and the source household the receipt counts
+    # distinct support by (microcosm#1112, microcosm#1095).
     "regional_home_values": frozenset(
         {
             ("household", "region"),
@@ -287,6 +288,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
             ("household", "household_is_high_value_support_copy"),
+            ("household", "household_source_id"),
         }
     ),
     # Engine-free: each kind's stock, the region that marks where SDLT
@@ -407,7 +409,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # The Move to UC claim draw reads each unit's legacy and Universal Credit
-    # receipts and its would_claim_uc, after their last writers (uk-data#534,
+    # receipts and its would_claim_uc, after their last writers, and the source
+    # household its receipt counts distinct support by (uk-data#534,
     # microcosm#1095).
     "uc_legacy_closure_take_up": frozenset(
         {
@@ -419,6 +422,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "jsa_income_reported"),
             ("person", "universal_credit_reported"),
             ("benunit", "would_claim_uc"),
+            ("household", "household_source_id"),
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),

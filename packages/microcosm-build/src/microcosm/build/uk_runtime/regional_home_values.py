@@ -96,6 +96,9 @@ _MASS_GATE_COUPLING = (
     "The terminal family gate requires a valid mass-conserving MassChangeRecord "
     "carrying exactly this stage-specific reason."
 )
+#: The lineage the receipt counts distinct support by; the graph node declares
+#: it, since the executor hands a stage only its declared cells.
+_SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
 
 
 def load_region_knots(knots: bytes | None = None) -> tuple[ValueKnots, dict]:
@@ -148,13 +151,11 @@ def source_count(household, mask: np.ndarray) -> int:
     """Distinct source households behind a cell (UKDS disclosure control).
 
     Support copies repeat their source household, so a cell is counted on
-    ``household_source_id``; rows count where no lineage is stored.
+    ``household_source_id``, which the stage refuses a frame without.
     """
 
     mask = np.asarray(mask, dtype=bool)
-    if "household_source_id" in household:
-        return int(household.loc[mask, "household_source_id"].nunique())
-    return int(mask.sum())
+    return int(household.loc[mask, _SOURCE_HOUSEHOLD_COLUMN].nunique())
 
 
 def _support_band(count: int) -> str:
@@ -181,6 +182,11 @@ def assign_regional_home_values(
     for column in ("region", "tenure_type", "main_residence_value", "property_wealth"):
         if column not in household.columns:
             raise ValueError(f"Regional home values need {column!r}.")
+    if _SOURCE_HOUSEHOLD_COLUMN not in household.columns:
+        raise ValueError(
+            f"Regional home values count support by {_SOURCE_HOUSEHOLD_COLUMN!r}, "
+            "which the frame does not carry."
+        )
     parsed, region_knots = load_region_knots(knots)
     weights = np.asarray(frame.weights_for("household").values, dtype=float)
     region = household["region"].astype(str).to_numpy()

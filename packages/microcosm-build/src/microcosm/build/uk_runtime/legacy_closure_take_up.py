@@ -105,6 +105,9 @@ LEGACY_BENEFITS: tuple[tuple[str, str], ...] = (
     ("jsa_income", "Jobseekers Allowance"),
 )
 _STREAM_SEED = 0
+#: The lineage the receipt counts distinct support by; the graph node declares
+#: it, since the executor hands a stage only its declared cells.
+_SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
 
 
 def _combination_key(label: str) -> str:
@@ -292,6 +295,14 @@ def assign_uc_claim_at_legacy_closure(
         )
     if "would_claim_uc" not in benunit.columns:
         raise ValueError("The legacy closure draw needs benunit 'would_claim_uc'.")
+    if _SOURCE_HOUSEHOLD_COLUMN not in household.columns:
+        # Support copies repeat their source household, so the receipt counts
+        # distinct sources; a frame without them would count rows (UKDS
+        # disclosure control).
+        raise ValueError(
+            f"The legacy closure receipt counts support by "
+            f"{_SOURCE_HOUSEHOLD_COLUMN!r}, which the frame does not carry."
+        )
     household_weights = frame.weights_for("household")
     weights = _household_to_benunit_weights(
         benunit,
@@ -309,11 +320,7 @@ def assign_uc_claim_at_legacy_closure(
         unit_households.map(by_household["region"].astype(str)).to_numpy()
         != "NORTHERN_IRELAND"
     )
-    source_ids = (
-        unit_households.map(by_household["household_source_id"]).to_numpy()
-        if "household_source_id" in by_household
-        else unit_households.to_numpy()
-    )
+    source_ids = unit_households.map(by_household[_SOURCE_HOUSEHOLD_COLUMN]).to_numpy()
     probability, combinations_drawn = legacy_closure_claim_probabilities(
         combination=combination,
         drawn=drawn,
