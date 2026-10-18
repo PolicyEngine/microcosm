@@ -49,9 +49,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-#: The report is licensed output and stays with the run, never in the checkout.
-REPO_ROOT = Path(__file__).resolve().parents[4]
-
 MIN_SOURCE_HOUSEHOLDS = 10
 WEEKS_IN_YEAR = 365.25 / 7
 
@@ -214,6 +211,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    # The report is licensed output: refused inside any git work tree before
+    # the simulations, not after them.
+    from microcosm.build.uk_runtime.receipt_counts import outside_work_trees
+
+    out = outside_work_trees(args.out, what="the engine report")
     households = _households(args.h5)
     dataset_year = _dataset_year(args.h5)
     variants: dict[str, Mapping[str, np.ndarray] | None] = {"built": None}
@@ -270,12 +272,6 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
         report["changes_from_control"] = _difference(
             report["variants"]["built"], report["control"]
-        )
-    out = args.out.resolve()
-    if out.is_relative_to(REPO_ROOT):
-        raise SystemExit(
-            f"{out} is inside the repository; the engine report is derived from "
-            "licensed microdata and stays with the run (UKDS CD137 clause 8)."
         )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")

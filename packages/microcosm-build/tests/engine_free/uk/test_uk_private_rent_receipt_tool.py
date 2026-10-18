@@ -81,31 +81,117 @@ def test_one_small_cell_takes_a_complement_with_it() -> None:
     assert two_small["D"]["source_households"] == 30
 
 
-def test_rent_rows_are_scored_by_family_and_nation() -> None:
+def test_thin_cells_resting_on_under_ten_together_take_a_complement():
+    """Two withheld cells of three and four households are seven together."""
+
+    out = tool.suppress_cells(
+        {
+            "B": {"source_households": 3, "mean_monthly_rent": 900.0},
+            "C": {"source_households": 4, "mean_monthly_rent": 950.0},
+            "D": {"source_households": 25, "mean_monthly_rent": 1100.0},
+            "E": {"source_households": 40, "mean_monthly_rent": 1300.0},
+        }
+    )
+    assert out["B"] == out["C"] == {"withheld": "<10"}
+    assert out["D"] == {"withheld": "complement"}
+    assert out["E"]["source_households"] == 40
+
+
+def test_a_cell_with_rows_but_no_counted_carrier_reads_under_ten():
+    """microcosm#1305 re-review: zero counted carriers is fewer than ten."""
+
+    assert tool.suppress_cells(
+        {"all": {"source_households": 0, "mean_monthly_rent": 900.0}}
+    ) == {"all": {"withheld": "<10"}}
+    weight = np.ones(20)
+    mask = np.arange(20) < 10
+    blank = np.array([""] * 10 + [f"s{i}" for i in range(10)], dtype=object)
+    assert tool.weighted_share(mask, weight, blank) == "<10"
+    assert tool.unweighted_share(mask, blank) == "<10"
+    # An empty side has nothing to describe.
+    assert tool.weighted_share(np.ones(20, dtype=bool), weight, blank[::-1]) == 1.0
+
+
+def _rent_weighting(carriers=True, *, thin_brma=False):
+    """Three rent rows and a tenure row over 40 households.
+
+    The English row covers households 0-19, the Welsh one 20-39 and the
+    BRMA row all forty, or households 0-2 when ``thin_brma``; each household
+    is its own source household.
+    """
+
     metadata = (
         {"contract_target_id": "ons.rent.private_rent", "area_code": "E06000001"},
         {"contract_target_id": "ons.rent.private_rent", "area_code": "W06000001"},
         {"contract_target_id": "ons.rent.private_rent_brma", "area_code": "S33000001"},
         {"contract_target_id": "ons.tenure.private_rent", "area_code": "E06000001"},
     )
-    matrix = sparse.csr_array(
-        np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [5.0, 5.0]])
-    )
-    weighting = tool.Weighting(
+    rows = np.zeros((4, 40))
+    rows[0, :20] = 1.0
+    rows[1, 20:] = 1.0
+    rows[2, : 3 if thin_brma else 40] = 1.0
+    rows[3] = 5.0
+    weights = np.where(np.arange(40) < 20, 105.0, 70.0) / 20
+    return tool.Weighting(
         name="design",
-        matrix=matrix,
-        weights=np.array([105.0, 70.0]),
+        matrix=sparse.csr_array(rows),
+        weights=weights,
         names=("e", "w", "s", "t"),
-        targets=np.array([100.0, 100.0, 175.0, 1.0]),
+        targets=np.array([100.0, 100.0, 15.75 if thin_brma else 175.0, 1.0]),
         metadata=metadata,
+        carriers=(
+            np.array([f"s{i}" for i in range(40)], dtype=object) if carriers else None
+        ),
     )
-    summary, rows = tool.rent_row_fit(weighting)
+
+
+def test_rent_rows_are_scored_by_family_and_nation() -> None:
+    summary, rows = tool.rent_row_fit(_rent_weighting())
     assert [row["target_name"] for row in rows] == ["e", "w", "s"]
+    assert [row["source_households"] for row in rows] == [20, 20, 40]
     assert summary["all"]["rows"] == 3
     assert summary["all"]["rows_over_25pct"] == 1
     assert summary["ons.rent.private_rent England"]["share_within_10pct"] == 1.0
     assert summary["ons.rent.private_rent Wales"]["rows_over_25pct"] == 1
     assert summary["ons.rent.private_rent_brma Scotland"]["median_abs_error"] == 0.0
+    assert "rows_withheld" not in summary["all"]
+
+
+def test_a_rent_row_on_fewer_than_ten_households_is_counted_never_summarised():
+    """microcosm#1305 re-review: the rent rows follow the build's BRMA rule.
+
+    With the thin row in its groups, the median and the within-10% count
+    would give its error back against the published rows.
+    """
+
+    summary, rows = tool.rent_row_fit(_rent_weighting(thin_brma=True))
+    assert rows[2]["source_households"] == 3
+    assert summary["all"] == {
+        "rows": 2,
+        "share_within_10pct": 0.5,
+        "rows_over_25pct": 1,
+        "median_abs_error": summary["all"]["median_abs_error"],
+        "rows_withheld": 1,
+    }
+    assert summary["ons.rent.private_rent_brma Scotland"] == {
+        "rows": 0,
+        "share_within_10pct": None,
+        "rows_over_25pct": 0,
+        "median_abs_error": None,
+        "rows_withheld": 1,
+    }
+    # Without the households' keys no row can be floored, so none is summarised.
+    summary, rows = tool.rent_row_fit(_rent_weighting(carriers=False))
+    assert summary == {"withheld": tool.NO_SOURCE_KEYS} and len(rows) == 3
+
+
+def test_carriers_follow_the_problem_axis_and_its_positive_weights():
+    keys = pd.Series(["k1", "k2", "k3"], index=pd.Index([10, 11, 12]))
+    out = tool.carriers_on([12, 10, 13], np.array([1.0, 0.0, 0.0]), keys)
+    assert out.tolist() == ["k3", "", ""]
+    # A positive-weight household without a key leaves the axis unkeyed.
+    assert tool.carriers_on([12, 13], np.array([1.0, 1.0]), keys) is None
+    assert tool.carriers_on([12], np.ones(1), None) is None
 
 
 def _pipr_fact(area: str, level: str, month: str, bedrooms: str, value: float) -> str:
@@ -317,12 +403,195 @@ def test_spine_values_count_frs_channel_households_only():
     assert every["source_households"] == 10
     frs = _summary(frame, frs_carriers=True)["rents_by_cell"]["nation"]["England"]
     assert frs == {"withheld": "<10"}
+    # A cell of SPI rows only has no FRS-channel carrier: it reads "<10".
+    spi = frame.assign(channel="spi")
+    assert _summary(spi, frs_carriers=True)["rents_by_cell"]["nation"] == {
+        "England": {"withheld": "<10"}
+    }
 
 
-def test_licensed_outputs_are_refused_inside_the_repository(tmp_path):
-    with pytest.raises(SystemExit, match="inside the repository"):
-        tool.outside_repository(tool.REPO_ROOT / "audit-1262", what="the audit")
+def test_zero_weight_rows_carry_nothing():
+    frame = _frame([_renter(f"r{i}") for i in range(12)])
+    frame.loc[:2, "weight"] = 0.0
+    cell = _summary(frame)["rents_by_cell"]["nation"]["England"]
+    assert cell == {"withheld": "<10"}
+
+
+def _work_tree(path):
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", str(path)], check=True)
+    return path
+
+
+def test_licensed_outputs_are_refused_inside_any_git_work_tree(tmp_path):
+    from microcosm.build.uk_runtime.receipt_counts import outside_work_trees
+
+    with pytest.raises(SystemExit, match="inside the git work tree"):
+        outside_work_trees(_TEST_PATHS.repository / "audit-1262", what="the audit")
+    other = _work_tree(tmp_path / "other-checkout") / "not" / "made"
+    with pytest.raises(SystemExit, match="inside the git work tree"):
+        outside_work_trees(other, what="the audit")
     assert (
-        tool.outside_repository(tmp_path / "audit-1262", what="the audit")
+        outside_work_trees(tmp_path / "audit-1262", what="the audit")
         == (tmp_path / "audit-1262").resolve()
     )
+
+
+def _load_script(name: str, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_writer_refuses_a_work_tree_before_any_work(tmp_path):
+    """The guard runs first: no run, store, H5 or pool is read before it."""
+
+    missing = tmp_path / "missing"
+    inside = _work_tree(tmp_path / "checkout") / "audit"
+    with pytest.raises(SystemExit, match="inside the git work tree"):
+        tool.main(
+            ["--run", str(missing), "--ledger-facts", str(missing)]
+            + ["--audit-dir", str(inside)]
+        )
+    pool = _load_script(
+        "uk_private_rent_pool", _TEST_PATHS.repository / "tools/uk_private_rent_pool.py"
+    )
+    with pytest.raises(SystemExit, match="inside the git work tree"):
+        pool.main(
+            ["--run", str(missing), "--graph-store", str(missing)]
+            + ["--out", str(inside / "pool.npz")]
+        )
+    engine = _load_script(
+        "engine_rent_diagnostics",
+        _TEST_PATHS.repository
+        / "docs/evidence/uk-private-rent-1262/scripts/engine_rent_diagnostics.py",
+    )
+    with pytest.raises(SystemExit, match="inside the git work tree"):
+        engine.main(["--h5", str(missing), "--out", str(inside / "engine.json")])
+
+
+def _synthetic_run(tmp_path):
+    """A run directory, its pool table and an empty feed for ``main``.
+
+    Thirty London private renters in category B. Eight are FRS-channel
+    households and 22 SPI-channel rows, so the cell's spine values rest on
+    eight FRS carriers and its built values on thirty source households. The
+    local-authority rent row covers all thirty; the BRMA row three.
+    """
+    pytest.importorskip("tables")
+    from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
+    from microcosm.calibrate.artifacts import encode_problem
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    n = 30
+    ids = np.arange(100, 100 + n, dtype=np.int64)
+    keys = np.array([f"2024:{i}" for i in range(n)], dtype=object)
+    channel = np.array(["frs"] * 8 + ["spi"] * 22)
+    rent = np.full(n, 12_000.0)
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "household_weight": np.ones(n),
+            "region": "LONDON",
+            "tenure_type": "RENT_PRIVATELY",
+            "rent": rent,
+            "subrent": 0.0,
+            "num_bedrooms": 1.0,
+            "brma": "INNER_EAST_LONDON",
+            "la_code_oa": "E09000002",
+            "source_household_key": keys.astype(str),
+            "household_support_channel": channel,
+        }
+    )
+    run = tmp_path / "run"
+    run.mkdir()
+    h5 = run / "microcosm_uk_2024_25_local.h5"
+    household.to_hdf(h5, key="household", format="table")
+    pd.DataFrame(
+        {"person_household_id": ids, "housing_benefit_reported": np.zeros(n)}
+    ).to_hdf(h5, key="person", format="table")
+    frame = Frame(
+        {
+            "person": pd.DataFrame({"person_id": ids, "person_household_id": ids}),
+            "household": household[["household_id", "rent"]],
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    thin = np.arange(n) < 3
+    targets = TargetSet(
+        [
+            Target("rent_la", "household", lambda f: rent, 360_000.0),
+            Target("rent_brma", "household", lambda f: rent * thin, 36_000.0),
+        ]
+    )
+    (run / "uk.full.problem.problem.artifact").write_bytes(
+        encode_problem(
+            build_constraint_matrix(frame, targets, weight_entity="household"),
+            entity_ids=ids.tolist(),
+            target_metadata=[
+                {
+                    "contract_target_id": "ons.rent.private_rent",
+                    "area_code": "E09000002",
+                },
+                {
+                    "contract_target_id": "ons.rent.private_rent_brma",
+                    "area_code": "S33000001",
+                },
+            ],
+            bindings={},
+        )
+    )
+    pool = tmp_path / "pool.npz"
+    np.savez(
+        pool,
+        household_id=ids,
+        weight=np.ones(n),
+        region=np.full(n, "LONDON"),
+        tenure_type=np.full(n, "RENT_PRIVATELY"),
+        rent=rent,
+        subrent=np.zeros(n),
+        num_bedrooms=np.ones(n),
+        brma=np.full(n, "INNER_EAST_LONDON"),
+        la_code=np.full(n, "E09000002"),
+        source_key=keys.astype(str),
+        channel=channel,
+        housing_benefit_reported=np.zeros(n),
+        spine_rent=rent,
+        spine_brma=np.full(n, "INNER_EAST_LONDON"),
+    )
+    facts = tmp_path / "facts.jsonl"
+    facts.write_text("")
+    return run, pool, facts
+
+
+def test_main_floors_rent_rows_and_spine_values_on_a_synthetic_run(tmp_path):
+    """microcosm#1305 re-review: the summary writer's floors, end to end."""
+
+    run, pool, facts = _synthetic_run(tmp_path)
+    audit = tmp_path / "audit"
+    assert (
+        tool.main(
+            ["--run", str(run), "--ledger-facts", str(facts), "--pool", str(pool)]
+            + ["--pipr-edition", "synthetic", "--audit-dir", str(audit)]
+        )
+        == 0
+    )
+    head = json.loads((audit / "private_rent_summary.json").read_text())["runs"]["head"]
+    assert head["rent_rows"]["design"]["all"]["rows"] == 1
+    assert head["rent_rows"]["design"]["all"]["rows_withheld"] == 1
+    built = head["design_weights"]["rents_by_cell"]["region"]["LONDON"]
+    assert built["B"]["source_households"] == 30
+    spine = head["design_weights_spine_values"]["rents_by_cell"]["region"]["LONDON"]
+    assert spine["B"] == {"withheld": "<10"}
+    private = json.loads((audit / "private_rent_audit.json").read_text())
+    rows = private["runs"]["head"]["rent_rows"]["design"]
+    assert [row["source_households"] for row in rows] == [30, 3]

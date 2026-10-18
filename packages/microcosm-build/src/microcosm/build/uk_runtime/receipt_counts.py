@@ -22,6 +22,7 @@ least ten working days before it is distributed or published.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -147,3 +148,23 @@ def small_cell_share(share: float, count: int) -> float | str:
     if 0 < value < 10:
         return "<10"
     return float(share)
+
+
+def outside_work_trees(path: Path | str, *, what: str) -> Path:
+    """Refuse a licensed output path that git could commit (CD137 clause 8).
+
+    ``what`` names the output. Any ancestor of the resolved path that holds a
+    ``.git`` entry, a checkout's directory or a worktree's file, makes the
+    path committable: this checkout, another one, or this one spelled in
+    another case on a case-insensitive volume. Returns the resolved path.
+    """
+
+    resolved = Path(path).expanduser().resolve()
+    for parent in (resolved, *resolved.parents):
+        if (parent / ".git").exists():
+            raise SystemExit(
+                f"{resolved} lies inside the git work tree {parent}; {what} is "
+                "derived from licensed microdata and stays with the run, outside "
+                "every checkout (UKDS CD137 clause 8)."
+            )
+    return resolved

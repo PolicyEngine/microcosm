@@ -9,7 +9,12 @@ entries rest on measured figures rather than on a gate:
 - **Rent rows.** The bound ``ons.rent.private_rent`` (local authority) and
   ``ons.rent.private_rent_brma`` (Scottish BRMA) rows at the problem's design
   weights, the dense solution and the size refit: how many are within 10% of
-  their target, how many are more than 25% out, and the median error.
+  their target, how many are more than 25% out, and the median error. A row
+  enters a summary only when ten distinct source households of positive
+  weight carry it at that weighting, as the build's BRMA rule counts them;
+  the others are counted, never summarised. A weighting whose households
+  have no source keys (``--pool`` gives the design and dense ones) is not
+  summarised at all.
 - **Rents by region and bedrooms.** The mean monthly rent of private renters
   with a positive rent, by nation, region and LHA category (B to E).
 - **PIPR by district and bedrooms.** ONS's calendar-2025 mean rents by local
@@ -45,7 +50,7 @@ the licensed run outside the repository:
   district or BRMA, and no unit-record value appears. Only this file's
   figures may be quoted in a PR or a committed receipt.
 
-Both files, and the pool table, are refused inside the repository.
+Both files, and the pool table, are refused inside any git work tree.
 
 ``region_level_at_design_weights`` is a named check. The region scale holds
 each region's FRS level on the census private-renter mix of its BRMAs, while
@@ -56,7 +61,8 @@ Usage::
 
     uv run --no-sync python tools/uk_private_rent_receipt.py \\
         --run <runs/head> [--control <runs/control>] \\
-        --ledger-facts .codex-work/uk-artifact [--pool <pool.npz>]
+        --ledger-facts .codex-work/uk-artifact [--pool <pool.npz>] \\
+        [--control-pool <control-pool.npz>]
 """
 
 from __future__ import annotations
@@ -72,6 +78,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from microcosm.build.uk_runtime.local_targets import uk_brma_area_codes
 from microcosm.build.uk_runtime.private_rent_localisation import (
@@ -82,7 +89,10 @@ from microcosm.build.uk_runtime.private_rent_localisation import (
     redraw_mask,
     rent_categories,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import (
+    outside_work_trees,
+    rounded_count,
+)
 
 SUMMARY_SCHEMA_VERSION = 1
 
@@ -92,9 +102,6 @@ MIN_SOURCE_HOUSEHOLDS = 10
 #: summary describes one district (a one-cell median ratio times PIPR's
 #: published mean gives the model's district mean back).
 MIN_GROUP_CELLS = 10
-
-#: Licensed outputs stay with the run, never in the checkout.
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RENT_TARGET_IDS = ("ons.rent.private_rent", "ons.rent.private_rent_brma")
 
@@ -139,6 +146,8 @@ HOUSEHOLD_COLUMNS = (
     "source_household_key",
     "household_support_channel",
 )
+#: The withheld note a summary gives a weighting it cannot floor.
+NO_SOURCE_KEYS = "no source keys for this weighting's households"
 
 
 # ----------------------------------------------------------------------------
@@ -161,19 +170,6 @@ def floored_share(numerator: int, denominator: int) -> float | str | None:
     return math.floor(100 * numerator / denominator) / 100
 
 
-def outside_repository(path: Path, *, what: str) -> Path:
-    """Refuse a licensed output path inside the repository."""
-
-    resolved = path.resolve()
-    if resolved.is_relative_to(REPO_ROOT):
-        raise SystemExit(
-            f"{resolved} is inside the repository; {what} is derived from "
-            "licensed microdata and stays with the run, outside the checkout "
-            "(UKDS CD137 clause 8)."
-        )
-    return resolved
-
-
 def _carriers(values: Iterable[object]) -> int:
     """Distinct source households, a blank key counting for none."""
 
@@ -184,12 +180,15 @@ def _carriers(values: Iterable[object]) -> int:
 def with_carriers(frame: pd.DataFrame, *, frs_only: bool = False) -> pd.DataFrame:
     """The frame with the source household each row's figures rest on.
 
-    An SPI-channel row's spine rent is the SPI housing shell's draw from FRS
-    donors, so a figure of spine values counts its FRS-channel households
-    only; elsewhere every distinct source household counts.
+    A row of zero weight adds nothing to a figure, so it carries none, as the
+    build's BRMA rule counts. An SPI-channel row's spine rent is the SPI
+    housing shell's draw from FRS donors, so a figure of spine values counts
+    its FRS-channel households only; elsewhere every distinct source
+    household counts.
     """
 
     carrier = frame["source_key"].astype(str).to_numpy(dtype=object)
+    carrier = np.where(frame["weight"].to_numpy(dtype=float) > 0, carrier, "")
     if frs_only:
         channel = frame["channel"].astype(str).to_numpy()
         carrier = np.where(channel == FRS_CHANNEL, carrier, "")
@@ -199,18 +198,18 @@ def with_carriers(frame: pd.DataFrame, *, frs_only: bool = False) -> pd.DataFram
 def weighted_share(
     mask: np.ndarray, weight: np.ndarray, carrier: np.ndarray
 ) -> float | str | None:
-    """A weighted share, or "<10" where one to nine source households carry it.
+    """A weighted share, or "<10" where fewer than ten source households carry it.
 
     The complement is checked too: a share just short of one would otherwise
-    describe the few households outside it.
+    describe the few households outside it. A side holding rows counts even
+    when none of them has a counted carrier.
     """
 
     total = float(weight.sum())
     if total <= 0:
         return None
     for side in (mask, ~mask):
-        carriers = _carriers(carrier[side])
-        if 0 < carriers < MIN_SOURCE_HOUSEHOLDS:
+        if side.any() and _carriers(carrier[side]) < MIN_SOURCE_HOUSEHOLDS:
             return "<10"
     return round(float(weight[mask].sum()) / total, 4)
 
@@ -226,8 +225,7 @@ def unweighted_share(mask: np.ndarray, carrier: np.ndarray) -> float | str | Non
     mask = np.asarray(mask, dtype=bool)
     carrier = np.asarray(carrier, dtype=object)
     for side in (mask, ~mask):
-        carriers = _carriers(carrier[side])
-        if 0 < carriers < MIN_SOURCE_HOUSEHOLDS:
+        if side.any() and _carriers(carrier[side]) < MIN_SOURCE_HOUSEHOLDS:
             return "<10"
     return floored_share(int(mask.sum()), int(mask.size))
 
@@ -235,30 +233,34 @@ def unweighted_share(mask: np.ndarray, carrier: np.ndarray) -> float | str | Non
 def suppress_cells(
     cells: dict[str, dict[str, Any]], *, carriers_key: str = "source_households"
 ) -> dict[str, dict[str, Any]]:
-    """Withhold cells under the threshold, and one complement beside each.
+    """Withhold cells under the threshold, and complements beside them.
 
-    A cell carried by fewer than ten distinct source households reads "<10".
-    Where a parent's figure is also reported, one withheld cell could be
-    recovered by difference, so the next-smallest reportable cell under the
-    same parent is withheld too.
+    A cell carried by fewer than ten distinct source households, none
+    included, reads "<10". Where a parent's figure is also reported, the
+    withheld cells could be recovered together by difference, so the
+    smallest reportable cells under the same parent are withheld too until
+    the withheld cells together rest on ten households. The cells partition
+    their parent's households, so their carriers add.
     """
 
     out = {name: dict(cell) for name, cell in cells.items()}
     small = [
         name
         for name, cell in out.items()
-        if 0 < int(cell[carriers_key]) < MIN_SOURCE_HOUSEHOLDS
+        if int(cell[carriers_key]) < MIN_SOURCE_HOUSEHOLDS
     ]
+    hidden = sum(int(out[name][carriers_key]) for name in small)
     for name in small:
         out[name] = {"withheld": "<10"}
-    if len(small) == 1:
-        rest = sorted(
-            (int(cell[carriers_key]), name)
-            for name, cell in out.items()
-            if "withheld" not in cell and int(cell[carriers_key]) > 0
-        )
-        if rest:
-            out[rest[0][1]] = {"withheld": "complement"}
+    rest = sorted(
+        (int(cell[carriers_key]), name)
+        for name, cell in out.items()
+        if "withheld" not in cell
+    )
+    while small and hidden < MIN_SOURCE_HOUSEHOLDS and rest:
+        carriers, name = rest.pop(0)
+        out[name] = {"withheld": "complement"}
+        hidden += carriers
     for cell in out.values():
         if "withheld" not in cell:
             cell[carriers_key] = rounded_count(int(cell[carriers_key]))
@@ -277,21 +279,53 @@ class Weighting:
     names: tuple[str, ...]
     targets: np.ndarray
     metadata: tuple[Mapping[str, Any], ...]
+    #: Each household's source key on the problem's axis, "" for one of zero
+    #: weight, or None when the households' keys are not at hand.
+    carriers: np.ndarray | None = None
 
 
-def load_weightings(run: Path) -> list[Weighting]:
-    """The problem's design weights, the dense solution and the size refit."""
+def carriers_on(
+    entity_ids: Sequence[object],
+    weights: np.ndarray,
+    keys: pd.Series | None,
+) -> np.ndarray | None:
+    """The source key of each household on a problem's axis.
+
+    ``keys`` maps household id to source key. A household of zero weight
+    carries nothing; a positive-weight one without a key leaves the axis
+    unkeyed (None), and the weighting is then not summarised.
+    """
+
+    if keys is None:
+        return None
+    if not keys.index.is_unique:
+        raise ValueError("Two households share an id in the source keys.")
+    carriers = keys.reindex(pd.Index(list(entity_ids))).to_numpy(dtype=object)
+    missing = pd.isna(carriers)
+    positive = np.asarray(weights, dtype=float) > 0
+    if (missing & positive).any():
+        return None
+    return np.where(positive, carriers, "").astype(object)
+
+
+def load_weightings(run: Path, *, keys: pd.Series | None = None) -> list[Weighting]:
+    """The problem's design weights, the dense solution and the size refit.
+
+    ``keys`` maps household id to source key, for the carrier rule.
+    """
 
     from microcosm.calibrate.artifacts import decode_problem, decode_solution
 
     def weighting(name: str, problem, weights: np.ndarray) -> Weighting:
+        weights = np.asarray(weights, dtype=float)
         return Weighting(
             name=name,
             matrix=problem.problem.matrix,
-            weights=np.asarray(weights, dtype=float),
+            weights=weights,
             names=tuple(problem.problem.names),
             targets=np.asarray(problem.problem.target_vector, dtype=float),
             metadata=tuple(problem.target_metadata),
+            carriers=carriers_on(problem.entity_ids, weights, keys),
         )
 
     problem = decode_problem((run / "uk.full.problem.problem.artifact").read_bytes())
@@ -323,9 +357,9 @@ def _area_nation(code: str) -> str:
     return AREA_PREFIX_NATION.get(str(code)[:1], "Other")
 
 
-def _fit_summary(relative: np.ndarray) -> dict[str, Any]:
+def _fit_summary(relative: np.ndarray, withheld: int = 0) -> dict[str, Any]:
     error = np.abs(relative)
-    return {
+    out = {
         "rows": int(error.size),
         "share_within_10pct": round(float(np.mean(error <= 0.10)), 3)
         if error.size
@@ -333,10 +367,30 @@ def _fit_summary(relative: np.ndarray) -> dict[str, Any]:
         "rows_over_25pct": int(np.sum(error > 0.25)),
         "median_abs_error": round(float(np.median(error)), 4) if error.size else None,
     }
+    if withheld:
+        out["rows_withheld"] = int(withheld)
+    return out
+
+
+def row_carriers(matrix: Any, carriers: np.ndarray, index: int) -> int:
+    """Distinct source households of positive weight with an entry in a row.
+
+    ``matrix`` is the problem's CSR matrix and ``carriers`` its axis's keys.
+    """
+
+    span = slice(matrix.indptr[index], matrix.indptr[index + 1])
+    columns = matrix.indices[span][matrix.data[span] != 0]
+    return _carriers(carriers[columns])
 
 
 def rent_row_fit(weighting: Weighting) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Fit of the bound rent rows: a summary by row family and nation, and rows."""
+    """Fit of the bound rent rows: a summary by row family and nation, and rows.
+
+    A row rests on the distinct source households of positive weight with an
+    entry in it (the build's BRMA rule, microcosm#1262). One resting on fewer
+    than ten stays out of every group of the summary, which counts it; the
+    audit keeps every row.
+    """
 
     rows = [
         index
@@ -348,24 +402,43 @@ def rent_row_fit(weighting: Weighting) -> tuple[dict[str, Any], list[dict[str, A
     estimate = np.asarray(weighting.matrix[rows] @ weighting.weights, dtype=float)
     target = weighting.targets[rows]
     relative = estimate / target - 1.0
+    matrix = sparse.csr_array(weighting.matrix)
     families: dict[str, list[int]] = {}
+    withheld: dict[str, int] = {}
     audit = []
     for position, index in enumerate(rows):
         meta = weighting.metadata[index]
         family = str(meta["contract_target_id"])
         nation = _area_nation(meta.get("area_code", ""))
-        families.setdefault(f"{family} {nation}", []).append(position)
-        families.setdefault("all", []).append(position)
+        carriers = (
+            None
+            if weighting.carriers is None
+            else row_carriers(matrix, weighting.carriers, index)
+        )
+        groups = (f"{family} {nation}", "all")
+        for group in groups:
+            families.setdefault(group, [])
+        if carriers is not None and carriers < MIN_SOURCE_HOUSEHOLDS:
+            for group in groups:
+                withheld[group] = withheld.get(group, 0) + 1
+        else:
+            for group in groups:
+                families[group].append(position)
         audit.append(
             {
                 "target_name": weighting.names[index],
                 "target": float(target[position]),
                 "estimate": float(estimate[position]),
                 "relative_error": float(relative[position]),
+                "source_households": carriers,
             }
         )
+    if weighting.carriers is None:
+        return {"withheld": NO_SOURCE_KEYS}, audit
     summary = {
-        group: _fit_summary(relative[np.asarray(positions)])
+        group: _fit_summary(
+            relative[np.asarray(positions, dtype=int)], withheld.get(group, 0)
+        )
         for group, positions in sorted(families.items())
     }
     return summary, audit
@@ -385,6 +458,7 @@ def release_households(h5: Path) -> pd.DataFrame:
     benefit = person.groupby("person_household_id")["housing_benefit_reported"].sum()
     frame = pd.DataFrame(
         {
+            "household_id": household["household_id"].to_numpy(),
             "weight": household["household_weight"].to_numpy(dtype=float),
             "region": household["region"].astype(str).to_numpy(),
             "tenure_type": household["tenure_type"].astype(str).to_numpy(),
@@ -714,6 +788,7 @@ def coherence(renters: pd.DataFrame, *, rent: str = "rent") -> dict[str, Any]:
 #: The pool table's columns: the household measures' columns at the problem's
 #: design weights, and the spine's rent and BRMA before the rewrite.
 POOL_COLUMNS = (
+    "household_id",
     "weight",
     "region",
     "tenure_type",
@@ -786,7 +861,19 @@ def measure_run(
     pool: Path | None = None,
     pipr_edition: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    weightings = load_weightings(run)
+    households = release_households(run / h5_name)
+    frame = None if pool is None else load_pool(pool)
+    # The pool's keys cover every pool household, the H5's the released ones.
+    keys = pd.Series(
+        households["source_key"].to_numpy(dtype=object),
+        index=pd.Index(households["household_id"].to_numpy()),
+    )
+    if frame is not None:
+        keys = pd.Series(
+            frame["source_key"].to_numpy(dtype=object),
+            index=pd.Index(frame["household_id"].to_numpy()),
+        )
+    weightings = load_weightings(run, keys=keys)
     edition = pipr_edition or rent_edition(weightings[0])
     if edition is None:
         raise ValueError(f"{run}: the problem binds no PIPR rent rows.")
@@ -797,13 +884,10 @@ def measure_run(
         fit, rows = rent_row_fit(weighting)
         summary["rent_rows"][weighting.name] = fit
         audit["rent_rows"][weighting.name] = rows
-    release, release_audit = measure_households(
-        release_households(run / h5_name), pipr=pipr, counts=counts
-    )
+    release, release_audit = measure_households(households, pipr=pipr, counts=counts)
     summary["release_weights"] = release
     audit["release_weights"] = release_audit
-    if pool is not None:
-        frame = load_pool(pool)
+    if frame is not None:
         design, design_audit = measure_households(frame, pipr=pipr, counts=counts)
         summary["design_weights"] = design
         audit["design_weights"] = design_audit
@@ -870,6 +954,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--control", type=Path)
     parser.add_argument("--ledger-facts", type=Path, required=True)
     parser.add_argument("--pool", type=Path)
+    parser.add_argument(
+        "--control-pool",
+        type=Path,
+        help="the control run's pool table, for its design and dense rent rows",
+    )
     parser.add_argument("--h5-name", default="microcosm_uk_2024_25_local.h5")
     parser.add_argument(
         "--pipr-edition",
@@ -878,15 +967,15 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--audit-dir", type=Path)
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    counts = _counts()
-    audit_dir = outside_repository(
+    audit_dir = outside_work_trees(
         args.audit_dir or args.run / "audit-1262", what="the private-rent audit"
     )
+    counts = _counts()
     summary: dict[str, Any] = {
         "schema_version": SUMMARY_SCHEMA_VERSION,
         "disclosure": (
-            "Aggregates only: every model cell carried by at least "
-            f"{MIN_SOURCE_HOUSEHOLDS} distinct source households, rounded "
+            "Aggregates only: every model cell and rent row carried by at "
+            f"least {MIN_SOURCE_HOUSEHOLDS} distinct source households, rounded "
             "record counts, no single district or BRMA, no unit-record value."
         ),
         "runs": {},
@@ -894,7 +983,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     audit: dict[str, Any] = {"runs": {}}
     for label, run, pool in (
         ("head", args.run, args.pool),
-        ("control", args.control, None),
+        ("control", args.control, args.control_pool),
     ):
         if run is None:
             continue

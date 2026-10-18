@@ -10,8 +10,9 @@ to their spine household by the key the rent node ranks with
 (``property_localisation.spine_household_keys``).
 
 The table is licensed output. It stays in the run's audit directory, outside
-the repository. Loading the pool frame takes about 15 GB of memory, so run
-this when no build is running.
+every git work tree, which the tool checks before it loads anything. Loading
+the pool frame takes about 15 GB of memory, so run this when no build is
+running.
 
 Usage::
 
@@ -30,11 +31,8 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.property_localisation import spine_household_keys
+from microcosm.build.uk_runtime.receipt_counts import outside_work_trees
 from microcosm.graph import ContentStore, RunManifest
-
-#: The pool table is licensed output and stays with the run, never in the
-#: checkout.
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 POOL_NODE = "uk.full.pool"
 SPINE_NODE = "uk.full.spine_checkpoint"
@@ -116,17 +114,15 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    # Refused before the 15 GB load, not after it.
+    out = outside_work_trees(
+        args.out or args.run / "audit-1262" / "pool.npz",
+        what="the pool table of per-household rents, weights and source keys",
+    )
     store = ContentStore(args.graph_store, create=False)
     manifest = RunManifest.load(args.run / "build.graph.json", store)
     spine = spine_values(store, manifest)
     table = pool_table(store, manifest, spine)
-    out = (args.out or args.run / "audit-1262" / "pool.npz").resolve()
-    if out.is_relative_to(REPO_ROOT):
-        raise SystemExit(
-            f"{out} is inside the repository; the pool table holds per-household "
-            "rents, weights and source keys and stays with the run (UKDS CD137 "
-            "clause 8)."
-        )
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out, **table)
     print(f"wrote {out}")
