@@ -2475,6 +2475,135 @@ class TestLocalTargetFitRegister:
             self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
 
 
+class TestWithheldBrmaRows:
+    """The production local fit bindings on a withheld BRMA row (microcosm#1262).
+
+    María's ruling of 2026-10-17: a BRMA row resting on fewer than ten source
+    households keeps its place and its failure, without its figures. The
+    gates decide on its error; their outputs name it only.
+    """
+
+    WITHHELD = "private_rent/S33000001/rent/private_rent_brma"
+
+    @staticmethod
+    def _rows(flag: bool = True) -> list[dict]:
+        rows = [
+            {
+                "family": "private_rent",
+                "area_code": f"E0600000{index}",
+                "metric": "rent/private_rent",
+                "relative_error": error,
+            }
+            for index, error in enumerate((0.01, 0.02, 0.05, 0.30, 0.04, 0.03), 1)
+        ]
+        rows += [
+            {
+                "family": "private_rent",
+                "area_code": "S33000001",
+                "metric": "rent/private_rent_brma",
+                "relative_error": -0.4,
+                "model_figures_withheld": flag,
+            },
+            {
+                "family": "private_rent",
+                "area_code": "S33000002",
+                "metric": "rent/private_rent_brma",
+                "relative_error": 0.02,
+            },
+        ]
+        return rows
+
+    def _evaluate(self, monkeypatch, uk_gates, gate_id, rows, register=None):
+        import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_default_local_target_fit_reviewed_exclusions",
+            lambda: MappingProxyType(register or {}),
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}[gate_id]
+        return UK_GATE_REGISTRY[entry.gate].evaluate(
+            EvidenceContext(
+                artifacts={
+                    "local_target_diagnostics": rows,
+                    "exclusions_evaluated_on": CLOCK,
+                    "release_line": "local",
+                }
+            ),
+            entry.parameters,
+        )
+
+    def _guard(self, result: GateResult) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_refuse_withheld_figures
+
+        uk_refuse_withheld_figures(
+            {"failures": list(result.failures), "details": result.details},
+            names=frozenset(),
+            keys=frozenset({self.WITHHELD}),
+        )
+
+    def test_the_target_fit_keeps_the_failure_by_name_only(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        from microcosm.build.uk_runtime.diagnostics import UK_WITHHELD_FIGURES_NOTE
+
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
+        )
+        assert result.passed is False
+        published = "private_rent/E06000004/rent/private_rent"
+        assert result.details["failing_targets"] == {published: 0.30}
+        assert result.details["withheld_failing_targets"] == [self.WITHHELD]
+        assert result.details["withheld_targets"] == 1
+        assert result.details["targets_checked"] == 8
+        # The withheld line comes last and quotes no error.
+        assert f"{published} relative error +30.0%" in result.failures[0]
+        assert result.failures[-1] == (
+            f"microcosm_uk_2024_25: {self.WITHHELD} is beyond the 25% bound; "
+            f"{UK_WITHHELD_FIGURES_NOTE}."
+        )
+        assert not any("40" in line for line in result.failures)
+        self._guard(result)
+
+    def test_an_exclusion_on_a_withheld_row_carries_no_error(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            "uk_local_target_fit",
+            self._rows(),
+            register={self.WITHHELD: _receipt()},
+        )
+        excused = result.details["reviewed_exclusions"][self.WITHHELD]
+        assert "relative_error" not in excused
+        assert result.details["withheld_failing_targets"] == []
+        self._guard(result)
+
+    def test_family_fit_rests_on_the_published_rows(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_per_family_fit", self._rows()
+        )
+        assert result.details["family_sizes"] == {"private_rent": 7}
+        assert result.details["family_within_shares"]["private_rent"] == pytest.approx(
+            6 / 7
+        )
+        assert result.details["withheld_targets"] == {"private_rent": 1}
+        self._guard(result)
+
+    def test_an_unflagged_row_keeps_its_figures(self, monkeypatch, uk_gates) -> None:
+        """The guard bites: without the flag the error is written, and refused."""
+
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows(flag=False)
+        )
+        assert result.details["failing_targets"][self.WITHHELD] == -0.4
+        with pytest.raises(ValueError, match="withheld row"):
+            self._guard(result)
+
+
 class TestGateOnlyAreaSupport:
     """Area-support exclusions excuse an area at the gate only (microcosm#1301).
 

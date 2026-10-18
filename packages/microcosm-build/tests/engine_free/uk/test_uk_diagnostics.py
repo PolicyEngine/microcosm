@@ -1255,11 +1255,8 @@ def test_a_thin_brma_row_keeps_its_place_but_not_its_model_figures() -> None:
     assert family["n_targets"] == 1 and family["worst_target"] == wide["name"]
 
 
-def test_written_rows_and_gate_reports_drop_a_withheld_rows_figures() -> None:
-    from microcosm.build.uk_runtime.diagnostics import (
-        uk_withhold_brma_figures,
-        uk_withhold_gate_report_rows,
-    )
+def test_written_rows_flag_every_row_while_any_is_withheld() -> None:
+    from microcosm.build.uk_runtime.diagnostics import uk_withhold_brma_figures
 
     withheld = frozenset({"thin@2025"})
     rows = [
@@ -1268,30 +1265,103 @@ def test_written_rows_and_gate_reports_drop_a_withheld_rows_figures() -> None:
     ]
     thin, wide = uk_withhold_brma_figures(rows, withheld)
     assert thin["estimate"] is None and thin["relative_error"] is None
-    assert thin["target"] == 10.0 and "model_figures_withheld" in thin
-    assert wide == rows[1] and rows[0]["estimate"] == 6.0
-    report = {
-        "phase": "terminal",
-        "outcomes": [
-            {
-                "id": "uk_local_target_fit",
-                "failures": [
-                    "thin@2025: relative_error=-0.4 exceeds 0.25; target=10.0, "
-                    "final_estimate=6.0.",
-                    "wide@2025: relative_error=0.4 exceeds 0.25; target=10.0, "
-                    "final_estimate=14.0.",
-                ],
-                "details": {
-                    "relative_errors": {"thin@2025": -0.4, "wide@2025": 0.4},
-                    "worst_offenders": ["thin@2025", "wide@2025"],
-                },
-            }
-        ],
+    assert thin["target"] == 10.0 and thin["model_figures_withheld"] is True
+    assert wide == {**rows[1], "model_figures_withheld": False}
+    assert rows[0]["estimate"] == 6.0
+    # With nothing withheld the written table keeps its old columns.
+    flagged = [{**rows[0], "model_figures_withheld": True}]
+    assert uk_withhold_brma_figures(flagged, frozenset()) == [rows[0]]
+
+
+def test_the_report_guard_refuses_a_withheld_rows_figure() -> None:
+    """A gate report may name a withheld row, never beside its figures."""
+
+    from microcosm.build.uk_runtime.diagnostics import (
+        UK_WITHHELD_FIGURES_NOTE,
+        uk_refuse_withheld_figures,
+    )
+
+    names = frozenset({"thin@2025"})
+    keys = frozenset({"private_rent/S33000001/rent/private_rent_brma"})
+    (key,) = keys
+
+    def guard(details=None, failures=()):
+        uk_refuse_withheld_figures(
+            {"outcomes": [{"failures": list(failures), "details": details or {}}]},
+            names=names,
+            keys=keys,
+        )
+
+    guard(
+        {
+            "withheld_failing_targets": [key],
+            "stale_exclusions": [key],
+            "reviewed_exclusions": {key: {"reason": "Signed.", "expires_on": "x"}},
+            "failing_targets": {"private_rent/E06000001/rent/private_rent": 0.3},
+        },
+        [f"dataset: {key} is beyond the 25% bound; {UK_WITHHELD_FIGURES_NOTE}."],
+    )
+    guard(failures=[f"Gate-only sign-off of the local cell {key} (bound 0.25)."])
+    for details, failures in (
+        ({"failing_targets": {key: -0.4}}, ()),
+        ({"relative_errors": {"thin@2025": -0.4}}, ()),
+        ({"reviewed_exclusions": {key: {"relative_error": -0.4}}}, ()),
+        ({}, [f"dataset: {key} relative error -40.0% exceeds 25%."]),
+        ({}, ["thin@2025: final_estimate=6.0 against target 10.0."]),
+    ):
+        with pytest.raises(ValueError, match="withheld row") as excinfo:
+            guard(details, failures)
+        assert "40" not in str(excinfo.value) and "6.0" not in str(excinfo.value)
+    # Nothing withheld: nothing to guard.
+    uk_refuse_withheld_figures(
+        {"failing_targets": {key: -0.4}}, names=frozenset(), keys=frozenset()
+    )
+
+
+def test_an_explicit_zero_in_a_brma_row_carries_nothing() -> None:
+    """A stored zero is no entry: the household does not carry the row."""
+
+    from types import SimpleNamespace
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.diagnostics import uk_withheld_brma_rows
+
+    n = 12
+    data = np.array([1.0] * 9 + [0.0] * 3)
+    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
+    assert matrix.nnz == n
+    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    rows = [{"name": "brma_row@2025"}]
+    levels = {"brma_row@2025": "brma"}
+    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == {
+        "brma_row@2025"
     }
-    (outcome,) = uk_withhold_gate_report_rows(report, withheld)["outcomes"]
-    assert outcome["failures"][0].startswith("thin@2025: outside its fit tolerance")
-    assert "6.0" not in outcome["failures"][0]
-    assert outcome["failures"][1] == report["outcomes"][0]["failures"][1]
-    assert outcome["details"]["relative_errors"] == {"wide@2025": 0.4}
-    assert outcome["details"]["worst_offenders"] == ["wide@2025"]
-    assert uk_withhold_gate_report_rows(report, frozenset()) == report
+    data[9] = 1.0
+    matrix = sparse.csr_array((data, (np.zeros(n, dtype=int), np.arange(n))), (1, n))
+    problem = SimpleNamespace(matrix=matrix, names=["brma_row@2025"])
+    assert uk_withheld_brma_rows(problem, np.ones(n), frame, rows, levels) == set()
+    # A zero weight carries nothing either.
+    weights = np.ones(n)
+    weights[0] = 0.0
+    assert uk_withheld_brma_rows(problem, weights, frame, rows, levels) == {
+        "brma_row@2025"
+    }

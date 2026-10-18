@@ -948,26 +948,12 @@ class UKFullGateKernel(KernelBase):
             support = support_frame.to_dict(orient="records")
             from .diagnostics import (
                 uk_calibration_diagnostics_payload,
-                uk_withheld_brma_rows,
                 uk_withhold_brma_figures,
             )
 
-            withheld = frozenset(
-                uk_withheld_brma_rows(
-                    result,
-                    frame,
-                    diagnostics,
-                    {
-                        str(row["name"]): (
-                            "brma"
-                            if str(row["geography_level"])
-                            in {"brma", "statistical_scope"}
-                            else str(row["geography_level"])
-                        )
-                        for row in diagnostics
-                    },
-                )
-            )
+            # The evidence flags the BRMA rows whose model figures stay in the
+            # build (María's ruling of 2026-10-17, microcosm#1262).
+            withheld = frozenset(evidence.artifacts["model_figures_withheld"])
             from .graph_targets import registry_from_payload
 
             selected_registry = registry_from_payload(
@@ -1007,6 +993,7 @@ class UKFullGateKernel(KernelBase):
                     "build_kind": "uk_full_build",
                     "target_scope": selection["selector"],
                 },
+                withheld=withheld,
             )
             output_artifacts.update(
                 {
@@ -1029,8 +1016,18 @@ class UKFullGateKernel(KernelBase):
         report = evaluate_phase(
             gates, phase=phase, context=evidence, registry=UK_GATE_REGISTRY
         )
-        from .diagnostics import uk_withhold_brma_figures, uk_withhold_gate_report_rows
+        from .diagnostics import (
+            uk_refuse_withheld_figures,
+            uk_withheld_gate_keys,
+            uk_withhold_brma_figures,
+        )
 
+        report_payload = gate_phase_report_payload(report, gates=gates)
+        # The bindings write a withheld row by name only; a report that names
+        # one beside a figure fails the build rather than leaving it.
+        uk_refuse_withheld_figures(
+            report_payload, names=withheld, keys=uk_withheld_gate_keys(diagnostics)
+        )
         payload = {
             "schema_version": 1,
             "kind": "uk_full_gate_report",
@@ -1038,9 +1035,7 @@ class UKFullGateKernel(KernelBase):
             "sample_fraction": float(context.params["sample_fraction"]),
             "release_candidate": bool(context.params["release_candidate"]),
             "scope": uk_full_gate_scope_receipt(selection),
-            "report": uk_withhold_gate_report_rows(
-                gate_phase_report_payload(report, gates=gates), withheld
-            ),
+            "report": report_payload,
             "upstream_phase_reports": upstream_reports,
             "target_diagnostics": _json_safe(
                 uk_withhold_brma_figures(diagnostics, withheld)
