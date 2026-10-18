@@ -2341,6 +2341,9 @@ def _write_calibrated_artifact(
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
                 "live_stored_inputs": live_inputs.provenance,
+                # The code that wrote these bytes. Package names the release
+                # after its own code and refuses any other writer.
+                "code": _repo_code_identity(allow_dirty=True),
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -2485,6 +2488,40 @@ def do_qa(args) -> None:
     log(
         f"qa stage complete: {json.dumps({k: round(v['ssi_incidence'], 4) for k, v in per_spine.items()})}"
     )
+
+
+def _require_artifact_written_by(
+    consumer_export: dict, code: dict, *, allow_dirty: bool
+) -> None:
+    """Refuse to name a release after code that did not write its artifact.
+
+    The calibrate stage writes the published bytes and records its code in
+    ``consumer_export.json``; the release id names the packaging code. They
+    must be the same commit, so the id names the code that produced the
+    artifact. A checkpoint that records no writer is refused, not trusted.
+    """
+
+    written_by = consumer_export.get("code")
+    if not isinstance(written_by, dict) or not written_by.get("sha"):
+        raise SystemExit(
+            "consumer_export.json records no code identity for the calibrated "
+            "H5, so the release id cannot be shown to name the code that wrote "
+            "it. Re-run --stage calibrate (then qa and finalize) with the "
+            "current tool."
+        )
+    if written_by["sha"] != code["sha"]:
+        raise SystemExit(
+            f"The calibrated H5 was written by code {written_by['sha']}, but "
+            f"packaging runs {code['sha']} and would name the release after "
+            "it. Package with the code that wrote the artifact, or re-run "
+            "--stage calibrate (then qa and finalize) with this code."
+        )
+    if written_by.get("dirty") and not allow_dirty:
+        raise SystemExit(
+            "The calibrated H5 was written from a dirty tree; a packaged "
+            "release names a committed code vintage. Re-run --stage calibrate "
+            "from a clean tree, or pass --allow-dirty."
+        )
 
 
 def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
@@ -2635,8 +2672,10 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
             "people, and the donor stores its decisions under the retired "
             f"input name {wic.get('from')!r}, which the installed "
             "policyengine-us ignores. The consumer artifact stores them as "
-            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
-            "person is set to take WIC up when eligible. That is the engine's "
+            f"{wic.get('to')!r}: every stored decision is kept, and every "
+            f"person without one ({assumed}, all on the ACS spine, of "
+            f"{wic.get('people_allowed_without_decision')} ACS-spine people) "
+            "is set to take WIC up when eligible. That is the engine's "
             "default and the assumption policyengine.py applies to the same "
             "cells today; it is a modelling assumption, not observed "
             "participation."
@@ -3098,6 +3137,8 @@ def do_finalize(args) -> None:
                 "filled_columns",
                 "total_values_filled",
                 "staging_sha256",
+                "live_stored_inputs",
+                "code",
             )
         }
         if consumer_export
@@ -3411,6 +3452,7 @@ def do_package(args) -> dict:
     )
 
     code = _repo_code_identity(args.allow_dirty)
+    _require_artifact_written_by(consumer_export, code, allow_dirty=args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
