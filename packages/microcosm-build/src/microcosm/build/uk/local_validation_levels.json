@@ -24,8 +24,8 @@
         "reduction": "sum"
       },
       "available_component_selector": {
-        "record_set_id": "ons.pipr_september2026.2025-12.rental_price",
-        "source_measure_id": "ons_rent_private_rent",
+        "record_set_id": "ons.pipr.month2025_12.average_rent_by_area",
+        "source_measure_id": "private_rent",
         "period": "2025-12"
       },
       "needs_facts": "A pinned additive private-rent total for Scotland at or before 2025; PIPR supplies only an average price level and cannot answer the total.",
@@ -44,8 +44,8 @@
         "reduction": "sum"
       },
       "available_component_selector": {
-        "record_set_id": "ons.pipr_september2026.2025-12.rental_price",
-        "source_measure_id": "ons_rent_private_rent",
+        "record_set_id": "ons.pipr.month2025_12.average_rent_by_area",
+        "source_measure_id": "private_rent",
         "period": "2025-12"
       },
       "needs_facts": "A pinned additive private-rent total for Wales at or before 2025; PIPR supplies only an average price level and cannot answer the total.",

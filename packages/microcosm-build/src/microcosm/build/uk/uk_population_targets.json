@@ -29771,7 +29771,7 @@
         "source_measure_id": "private_rent",
         "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
       },
-      "selector_note": "Private rent is a price-level target: each cell is 12 x the authority's calendar-2025 PIPR mean x its reconciled private renters. English and Welsh authorities bind; Scotland binds at BRMA grain (ons.rent.private_rent_brma) and Northern Ireland has a country mean only, so their cells are signed deferrals in the local reference compiler. Placed renters' rents come from their BRMA's rent-officer list of rents at their region's FRS level (microcosm#1262); PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
+      "selector_note": "Private rent is a price-level target: each cell is 12 x the authority's calendar-2025 PIPR mean x its reconciled private renters. English and Welsh authorities bind; Scotland binds at BRMA grain (ons.rent.private_rent_brma) and Northern Ireland has a country mean only, so their cells are signed deferrals in the local reference compiler. Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
       "category_id": "ons.housing",
       "label": "Private rent"
     },
@@ -29810,7 +29810,7 @@
         "source_measure_id": "private_rent",
         "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
       },
-      "selector_note": "Scotland's PIPR rents, which ONS publishes for the 18 Broad Rental Market Areas only (microcosm#1090). Each row is 12 x the BRMA's calendar-2025 mean x its private renters, which the councils' reconciled private renters give through Census 2022's council shares of each BRMA's private renters (uk/scotland_brma_la_overlap.json). The model side sums each Scottish household's rent by the BRMA of its assigned output area (microcosm#1262). Placed renters' rents come from their BRMA's rent-officer list of rents at their region's FRS level (microcosm#1262); PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
+      "selector_note": "Scotland's PIPR rents, which ONS publishes for the 18 Broad Rental Market Areas only (microcosm#1090). Each row is 12 x the BRMA's calendar-2025 mean x its private renters, which the councils' reconciled private renters give through Census 2022's council shares of each BRMA's private renters (uk/scotland_brma_la_overlap.json). The model side sums each Scottish household's rent by the BRMA of its assigned output area (microcosm#1262). Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation.",
       "category_id": "ons.housing",
       "label": "Private rent (Scottish BRMA)"
     },
