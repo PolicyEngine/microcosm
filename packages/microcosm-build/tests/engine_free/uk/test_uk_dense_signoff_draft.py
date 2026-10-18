@@ -334,7 +334,8 @@ def _support_frame(support) -> pd.DataFrame:
     return frame
 
 
-def _target_rows(national, local) -> list[dict]:
+def _target_rows(national, local, withheld=frozenset()) -> list[dict]:
+    """The embedded rows; a ``withheld`` local key reads blank (microcosm#1262)."""
     rows = [
         {
             "name": name,
@@ -353,15 +354,22 @@ def _target_rows(national, local) -> list[dict]:
     ]
     for family, area, metric, error in local:
         name = f"synthetic.local.{family}.{area}@2025"
-        level = "constituency" if area.startswith("E14") else "local_authority"
+        level = (
+            "constituency"
+            if area.startswith("E14")
+            else "brma"
+            if area.startswith("S33")
+            else "local_authority"
+        )
+        hidden = f"{family}/{area}/{metric}" in withheld
         rows.append(
             {
                 "name": name,
                 "target_name": name,
                 "target": 50.0,
-                "estimate": 50.0 * (1.0 + error),
-                "relative_error": error,
-                "abs_relative_error": abs(error),
+                "estimate": None if hidden else 50.0 * (1.0 + error),
+                "relative_error": None if hidden else error,
+                "abs_relative_error": None if hidden else abs(error),
                 "family": family,
                 "geography_level": level,
                 "area_type": level,
@@ -369,13 +377,19 @@ def _target_rows(national, local) -> list[dict]:
                 "metric": metric,
             }
         )
+    if withheld:
+        for row in rows:
+            key = f"{row['family']}/{row['area_code']}/{row['metric']}"
+            row["model_figures_withheld"] = key in withheld
     return rows
 
 
-def _fit(errors: dict, block: dict, clock: date) -> GateResult:
+def _fit(errors: dict, block: dict, clock: date, withheld=frozenset()) -> GateResult:
     records = coerce_reviewed_exclusions(block, label="fixture")
     in_line = {key: r for key, r in records.items() if r.applies_on("local")}
-    result = uk_target_fit_gate(errors, reviewed_exclusions=in_line, now=clock)
+    result = uk_target_fit_gate(
+        errors, reviewed_exclusions=in_line, now=clock, withheld_targets=withheld
+    )
     out = sorted(set(records) - set(in_line))
     if out:
         result = replace(
@@ -443,6 +457,7 @@ def write_run(
     sample_fraction: float = 1.0,
     artifacts: dict | None = None,
     measure_exclusions: dict | None = None,
+    withheld: frozenset[str] = frozenset(),
 ) -> Path:
     """A dense run directory as a blocked or passing build leaves it.
 
@@ -452,7 +467,7 @@ def write_run(
     """
 
     national = dict(NATIONAL if national is None else national)
-    targets = _target_rows(national, local)
+    targets = _target_rows(national, local, withheld)
     support_frame = _support_frame(support)
     results = {
         "uk_target_fit": _fit(
@@ -462,6 +477,7 @@ def write_run(
             {f"{f}/{a}/{m}": e for f, a, m, e in local},
             registers["uk_local_target_fit"]["exclusions"],
             clock,
+            withheld,
         ),
         "uk_local_area_support": _area(
             support_frame, registers["uk_local_area_support"], clock
@@ -698,6 +714,85 @@ def test_draft_signs_every_signable_failure_and_retires_stale_entries(
         in area_pins
     )
     assert list((repo / "changelog.d").glob("1301-uk-dense-signoff-*.changed.md"))
+
+
+BRMA_CELL = "private_rent/S33999999/rent/private_rent_brma"
+
+
+def test_a_withheld_failing_cell_is_signed_by_key_without_its_figures(
+    repo, tmp_path, capsys
+):
+    """microcosm#1262: a withheld BRMA cell beyond the bound is signable.
+
+    targets.csv leaves its figures blank and the gate names its failure by
+    key only. The draft signs it like any cell, predicts build 2 passing, and
+    neither the public files nor the private review file carry its error,
+    which never left the build.
+    """
+
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    targets = pd.read_csv(build / f"{STEM}.targets.csv")
+    assert targets["relative_error"].isna().sum() == 1
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert receipt["signable"] is True
+    assert receipt["registers"]["uk_local_target_fit"]["add"] == [
+        "census_households/E14999998/households",
+        BRMA_CELL,
+    ]
+    assert receipt["predicted_build_2"]["uk_local_target_fit"] == {
+        "passes": True,
+        "failure_count": 0,
+    }
+    for text in (
+        (out / "signoff.patch").read_text(),
+        (out / "signoff_draft.json").read_text(),
+        (out / "PR_BODY.md").read_text(),
+        (out / "PRIVATE_review.csv").read_text(),
+        capsys.readouterr().out,
+    ):
+        assert "4567" not in text
+    apply_patch(repo, out / "signoff.patch")
+    entry = read_registers(repo)["uk_local_target_fit"]["exclusions"][BRMA_CELL]
+    assert entry["release_lines"] == ["local"] and "%" not in entry["reason"]
+
+
+def test_a_withheld_cell_inside_the_bound_needs_no_sign_off(repo, tmp_path):
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", 0.0312))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    out = tmp_path / "draft"
+    assert draft(build, repo, out) == 0
+    receipt = json.loads((out / "signoff_draft.json").read_text())
+    assert BRMA_CELL not in receipt["registers"]["uk_local_target_fit"]["add"]
+    assert receipt["predicted_build_2"]["uk_local_target_fit"]["passes"] is True
+
+
+def test_a_withheld_row_that_gives_its_error_is_refused(repo, tmp_path, capsys):
+    local = (*LOCAL, ("private_rent", "S33999999", "rent/private_rent_brma", -0.4567))
+    build = write_run(
+        tmp_path / "build-1",
+        registers=build_1_registers(),
+        local=local,
+        withheld=frozenset({BRMA_CELL}),
+    )
+    path = build / f"{STEM}.targets.csv"
+    targets = pd.read_csv(path)
+    targets.loc[targets["model_figures_withheld"], "relative_error"] = -0.4567
+    targets.to_csv(path, index=False)
+    assert draft(build, repo, tmp_path / "draft") == 2
+    assert "withheld row's relative error" in capsys.readouterr().err
 
 
 def test_public_outputs_carry_no_figures(build_1, repo, tmp_path, capsys):

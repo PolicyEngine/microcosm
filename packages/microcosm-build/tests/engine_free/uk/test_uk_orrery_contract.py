@@ -268,3 +268,142 @@ def test_unavailable_checkpoint_bytes_are_named_not_linked(tmp_path):
     assert node["statuses"][0]["label"] == "Upstream evidence missing"
     assert all(ref["url"].startswith("upstream-") for ref in node["sources"])
     assert "gone.json" not in saved.read_text()
+
+
+def _brma_problem(n: int = 4):
+    """An ordered problem over ``n`` households binding one Scottish BRMA row."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
+    from microcosm.calibrate.artifacts import decode_problem, encode_problem
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(n, dtype=np.int64),
+                    "person_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.arange(n, dtype=np.int64),
+                    "source_household_id": np.arange(n, dtype=np.int64),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(n), WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        [
+            Target("households@E14000001", "household", lambda f: np.ones(n), 4.0),
+            Target("rent@S33000001", "household", lambda f: np.ones(n), 40.0),
+        ]
+    )
+    payload = encode_problem(
+        build_constraint_matrix(frame, targets, weight_entity="household"),
+        entity_ids=list(range(n)),
+        target_metadata=[
+            {"geography_level": "constituency"},
+            {"geography_level": "brma"},
+        ],
+        bindings={},
+    )
+    return frame, decode_problem(payload), payload
+
+
+def test_the_published_result_summary_withholds_a_thin_brma_row():
+    """microcosm#1262: Orrery publishes no figure a build withholds.
+
+    The BRMA row rests on four source households, so its summary row keeps
+    its target and loses its figures, and the final loss covers the
+    published row (María's rulings of 2026-10-17 and 2026-10-18).
+    """
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime.orrery_contract import _withhold_summary_rows
+
+    frame, ordered, _ = _brma_problem()
+
+    def row(name, target, estimate):
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=estimate,
+            final_estimate=estimate,
+            relative_error=(estimate - target) / target,
+        )
+
+    result = SimpleNamespace(
+        weights=np.ones(4),
+        frame=frame,
+        diagnostics=[
+            row(ordered.problem.names[0], 4.0, 4.0),
+            row(ordered.problem.names[1], 40.0, 4.0),
+        ],
+        target_loss_weights=np.ones(2),
+        target_loss_scales=np.array([4.0, 40.0]),
+        target_loss_cap=10.0,
+        options={"target_loss_cap": 10.0},
+    )
+    data = {
+        "overview": {"final_loss": 0.45},
+        "tables": {
+            "targets": [
+                {
+                    "name": diagnostic.name,
+                    "target": diagnostic.target,
+                    "initial": diagnostic.initial_estimate,
+                    "achieved": diagnostic.final_estimate,
+                    "residual": diagnostic.final_estimate - diagnostic.target,
+                    "relative_error": diagnostic.relative_error,
+                    "within_tolerance": False,
+                }
+                for diagnostic in result.diagnostics
+            ]
+        },
+    }
+    _withhold_summary_rows(data, result, ordered)
+    published, withheld = data["tables"]["targets"]
+    assert published["achieved"] == 4.0
+    assert withheld["target"] == 40.0 and withheld["model_figures_withheld"] is True
+    assert all(
+        withheld[field] is None
+        for field in ("initial", "achieved", "residual", "relative_error")
+    )
+    assert data["overview"]["final_loss"] == 0.0
+    assert data["overview"]["model_figures_withheld"] == {
+        "targets": 1,
+        "totals_basis": "published_rows",
+    }
+
+
+def test_a_size_summary_over_brma_rows_publishes_no_all_row_total():
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.orrery_contract import _size_summary
+
+    _, ordered, payload = _brma_problem()
+    receipt = {
+        "method": "full_pool",
+        "problem_sha256": ordered.sha256,
+        "dense_loss": 0.2,
+        "compact_loss": 0.3,
+        "max_target_scaled_change": 0.4,
+        "requested_households": 4,
+    }
+    context = SimpleNamespace(
+        payload=json.dumps(receipt).encode(),
+        input_payload=lambda name: payload,
+    )
+    overview = _size_summary(context)["overview"]
+    assert overview["requested_households"] == 4
+    assert all(
+        overview[field] is None
+        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
+    )
