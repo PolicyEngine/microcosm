@@ -460,6 +460,69 @@ def test_local_area_diagnostics_use_canonical_v8_count_fields() -> None:
     assert failures == []
 
 
+def _withheld_diagnostics(**row_overrides) -> dict:
+    withheld_row = {
+        "name": "brma",
+        "target": 50.0,
+        "compiled_target": 50.0,
+        "initial_estimate": None,
+        "final_estimate": None,
+        "relative_error": None,
+        "metadata": {"model_figures_withheld": "model figures withheld"},
+        **row_overrides,
+    }
+    return {
+        "schema_version": 8,
+        "n_records": 4,
+        "target_surface": {"n_targets": 2},
+        "final_loss": 0.01,
+        "fraction_within_10pct": 1.0,
+        "targets": [
+            {
+                "name": "target",
+                "target": 1.0,
+                "compiled_target": 1.0,
+                "initial_estimate": 1.0,
+                "final_estimate": 1.0,
+            },
+            withheld_row,
+        ],
+        "uk_diagnostics": {"model_figures_withheld": {"targets": 1}},
+    }
+
+
+def test_a_withheld_row_may_leave_its_estimates_null() -> None:
+    """microcosm#1262: a thin BRMA row keeps its place without its figures."""
+
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(_withheld_diagnostics(), failures)
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    "overrides,message",
+    [
+        ({"final_estimate": 40.0}, "withholds its model figures but carries one"),
+        ({"relative_error": -0.2}, "withholds its model figures but carries one"),
+        ({"metadata": {}}, "must be a finite number"),
+    ],
+)
+def test_a_withheld_row_is_held_to_its_note(overrides, message) -> None:
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(
+        _withheld_diagnostics(**overrides), failures
+    )
+    assert any(message in failure for failure in failures), failures
+
+
+def test_the_withheld_block_must_count_the_withheld_rows() -> None:
+    diagnostics = _withheld_diagnostics()
+    diagnostics["uk_diagnostics"] = {}
+    failures: list[str] = []
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+    assert any("counts 0 withheld rows" in failure for failure in failures)
+
+
 def test_valid_dense_bundle_passes(tmp_path: Path) -> None:
     validate_release_dir(write_dense_bundle(tmp_path))
 

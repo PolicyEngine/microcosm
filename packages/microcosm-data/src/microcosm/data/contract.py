@@ -6249,6 +6249,7 @@ def _check_local_area_calibration_diagnostics(
         "final_estimate",
     )
     seen_names: set[str] = set()
+    withheld_rows = 0
     for index, row in enumerate(targets):
         if not isinstance(row, Mapping):
             failures.append(
@@ -6268,6 +6269,29 @@ def _check_local_area_calibration_diagnostics(
             )
         else:
             seen_names.add(name)
+        # A UK row resting on fewer than ten source households keeps its place
+        # without its model figures (microcosm#1262): its estimates are null,
+        # and the payload's withheld block counts it.
+        metadata = row.get("metadata")
+        withheld = isinstance(metadata, Mapping) and bool(
+            metadata.get("model_figures_withheld")
+        )
+        if withheld:
+            withheld_rows += 1
+            figures = {
+                field: row.get(field)
+                for field in (
+                    "initial_estimate",
+                    "final_estimate",
+                    "relative_error",
+                    "final_loss_contribution",
+                )
+            }
+            if any(value is not None for value in figures.values()):
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} withholds "
+                    "its model figures but carries one."
+                )
         for field in required_fields:
             value = row.get(field)
             if field not in row:
@@ -6275,11 +6299,22 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} is "
                     f"missing {field!r}."
                 )
+            elif withheld and field in ("initial_estimate", "final_estimate"):
+                continue
             elif not isinstance(value, (int, float)) or not math.isfinite(value):
                 failures.append(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
+    uk = diagnostics.get("uk_diagnostics")
+    block = uk.get("model_figures_withheld") if isinstance(uk, Mapping) else None
+    declared = block.get("targets") if isinstance(block, Mapping) else 0
+    if declared != withheld_rows:
+        failures.append(
+            "calibration_diagnostics.json uk_diagnostics.model_figures_withheld "
+            f"counts {declared!r} withheld rows, but {withheld_rows} rows withhold "
+            "their model figures."
+        )
     if not isinstance(households, int) or households <= 0:
         failures.append(
             "calibration_diagnostics.json must carry a positive integer "

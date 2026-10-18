@@ -669,6 +669,114 @@ def test_local_scorer_receipts_areas_the_incumbent_lacks() -> None:
         )
 
 
+def _with_brma_row(*, withheld: bool, estimate: float | None = None):
+    """``_case`` plus a Scottish BRMA rent row on the statistical_scope grain.
+
+    The incumbent never fitted BRMA rows (microcosm#1262), so a published
+    one scores candidate-only; a withheld one carries the note and no
+    estimate.
+    """
+
+    registry, candidate, weights, metrics = _case()
+    spec = TargetSpec(
+        name="rent@S33000001",
+        entity="household",
+        value=50.0,
+        measure="rent",
+        period=2025,
+        source="fixture",
+        family="private_rent",
+        metadata={
+            "ledger_geography_id": "S33000001",
+            "ledger_geography_level": "statistical_scope",
+        },
+        hierarchy=_hierarchy(
+            name="rent@S33000001",
+            label="Private rent",
+            provider_id="ons",
+            provider_label="Office for National Statistics",
+            category_id="ons.rent",
+            category_label="Private rent",
+            geography_id="S33000001",
+            geography_level="brma",
+        ),
+    )
+    registry = TargetRegistry([*registry.specs, spec], country="uk")
+    row = {
+        "name": spec.to_target().row_name,
+        "final_estimate": estimate,
+        "hierarchy": {**asdict(spec.hierarchy), "dimensions": []},
+    }
+    if withheld:
+        row["metadata"] = {"model_figures_withheld": "model figures withheld"}
+    candidate = {**candidate, "targets": [*candidate["targets"], row]}
+    return registry, candidate, weights, metrics, spec.to_target().row_name
+
+
+def test_a_brma_row_scores_candidate_only_on_its_statistical_scope_grain() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics, name = _with_brma_row(
+        withheld=False, estimate=55.0
+    )
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=3,
+    )
+    assert result["rows_compared"] == 2
+    assert result["rows_candidate_only"] == 1
+    assert result["rows_withheld"] == 0
+    assert result["incumbent_missing_areas"] == {"S33000001": 1}
+    (absent,) = [row for row in result["target_drift"] if row["target"] == name]
+    assert absent["winner"] == "incumbent_absent"
+    assert absent["candidate_relative_error"] == pytest.approx(0.1)
+
+
+def test_a_withheld_brma_row_is_scored_on_neither_side() -> None:
+    """microcosm#1305 re-review: the scorer skips a withheld row and counts it.
+
+    Its error is in no drift row and in no loss, so nothing the score writes
+    can be differenced to recover it.
+    """
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics, name = _with_brma_row(withheld=True)
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=3,
+    )
+    base_registry, base_candidate, _, _ = _case()
+    base = scorer.score_uk_local_candidate(
+        candidate_diagnostics=base_candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=base_registry,
+        expected_reference_count=2,
+    )
+    assert result["rows_withheld"] == 1
+    assert result["rows_compared"] == 2 and result["rows_candidate_only"] == 0
+    assert name not in {row["target"] for row in result["target_drift"]}
+    assert "private_rent" not in result["target_wins_by_family"]
+    assert (
+        result["candidate_fitted_surface_loss"] == base["candidate_fitted_surface_loss"]
+    )
+    # A withheld row that still carries an estimate is malformed.
+    candidate["targets"][-1]["final_estimate"] = 50.0
+    with pytest.raises(ValueError, match="withhold a row inconsistently"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=3,
+        )
+
+
 @pytest.mark.parametrize(
     "key", ["target_weight_rule", "loss_weight_scale", "population", "grains"]
 )

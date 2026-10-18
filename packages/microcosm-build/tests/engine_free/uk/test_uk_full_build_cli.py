@@ -621,6 +621,53 @@ def test_a_release_candidate_needs_the_signing_key_and_local_targets(
     )
 
 
+def test_a_withheld_brma_row_projects_over_the_published_rows(tmp_path, monkeypatch):
+    """microcosm#1305 re-review: a withheld row reads blank, not NaN.
+
+    The terminal table leaves a withheld BRMA row's figures blank. The
+    manifest's error summaries and family fit cover the published rows, the
+    solve block counts the withheld one, and the manifest still writes as
+    strict JSON (it refuses NaN).
+    """
+    pytest.importorskip("tables")
+    monkeypatch.setattr(support, "WITHHELD_BRMA_ROW", True)
+    args = arguments(tmp_path, "--release-candidate")
+    assert cli.execute_full_build(prepared(tmp_path, release_candidate=True), args) == 0
+    manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
+    solve = manifest["solve"]
+    assert solve["n_targets"] == 2
+    assert solve["model_figures_withheld"] == {
+        "targets": 1,
+        "totals_basis": "published_rows",
+    }
+    assert solve["max_abs_relative_error"] == 0.0
+    assert solve["median_abs_relative_error"] == 0.0
+    assert [row["family"] for row in manifest["fit"]["local_by_family"]] == [
+        "census_households"
+    ]
+
+
+def test_a_published_size_receipt_drops_its_all_row_totals_while_rows_are_withheld():
+    from microcosm.build.uk_runtime.graph_terminal import _published_size_receipt
+
+    receipt = {
+        "requested_households": 2,
+        "dense_loss": 0.2,
+        "compact_loss": 0.3,
+        "max_target_scaled_change": 0.4,
+    }
+    assert _published_size_receipt(receipt, withheld=0) == receipt
+    published = _published_size_receipt(receipt, withheld=1)
+    assert published["requested_households"] == 2
+    assert all(
+        published[field] is None
+        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
+    )
+    assert "1 row(s)" in published["withheld_totals_note"]
+    assert receipt["dense_loss"] == 0.2
+    assert _published_size_receipt(None, withheld=1) is None
+
+
 def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     pytest.importorskip("tables")
     args = arguments(tmp_path, "--release-candidate")

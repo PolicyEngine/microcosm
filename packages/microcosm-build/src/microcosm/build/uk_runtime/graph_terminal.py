@@ -1596,6 +1596,38 @@ def _reviewed_exclusions_stood_on(gate_rows: Mapping[str, Mapping]) -> dict:
     return record
 
 
+#: The size receipt's totals over every row; with a row withheld they would
+#: give it back by difference against the published rows (microcosm#1262).
+_SIZE_RECEIPT_ALL_ROW_TOTALS = (
+    "dense_loss",
+    "compact_loss",
+    "max_target_scaled_change",
+)
+
+
+def _published_size_receipt(
+    size_receipt: Mapping[str, object] | None, *, withheld: int
+) -> dict[str, object] | None:
+    """The size receipt as a manifest publishes it.
+
+    While any row's model figures are withheld, its totals over every row
+    read null and a note says why; the stored receipt keeps them.
+    """
+
+    if size_receipt is None:
+        return None
+    published = dict(size_receipt)
+    if withheld:
+        for field in _SIZE_RECEIPT_ALL_ROW_TOTALS:
+            if field in published:
+                published[field] = None
+        published["withheld_totals_note"] = (
+            f"{', '.join(_SIZE_RECEIPT_ALL_ROW_TOTALS)} cover every row, and "
+            f"{withheld} row(s) have their model figures withheld (microcosm#1262)."
+        )
+    return published
+
+
 def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
     """Split the terminal target diagnostics into local and national rows."""
     kinds = target_rows["name"].map(materialization)
@@ -1761,8 +1793,19 @@ def rowwise_candidate_manifest_from_graph(
         1 for kind in materialization.values() if kind == _NATIONAL_MATERIALIZATION
     )
     local_rows = len(materialization) - ladder_rows - national_rows
-    local_fit, national_fit = _fit_rows(target_rows, materialization)
-    abs_errors = target_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    # A row whose model figures stay in the build reads blank (microcosm#1262):
+    # every fit figure below is over the published rows, and the solve block
+    # counts the rest.
+    withheld_rows = (
+        target_rows["model_figures_withheld"].fillna(False).astype(bool)
+        if "model_figures_withheld" in target_rows
+        else pd.Series(False, index=target_rows.index)
+    )
+    published_rows = target_rows.loc[~withheld_rows].reset_index(drop=True)
+    local_fit, national_fit = _fit_rows(published_rows, materialization)
+    abs_errors = published_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    if not np.isfinite(abs_errors).all():
+        raise ValueError("A published target row has a non-finite relative error.")
     support_by_grain = {
         ("la" if grain == "local_authority" else str(grain)): rows.reset_index(
             drop=True
@@ -1936,7 +1979,19 @@ def rowwise_candidate_manifest_from_graph(
             },
             "n_households": int(frame.n("household")),
             "pool_households": int(len(problem.entity_ids)),
-            "dataset_size": None if size_receipt is None else dict(size_receipt),
+            "dataset_size": _published_size_receipt(
+                size_receipt, withheld=int(withheld_rows.sum())
+            ),
+            **(
+                {
+                    "model_figures_withheld": {
+                        "targets": int(withheld_rows.sum()),
+                        "totals_basis": "published_rows",
+                    }
+                }
+                if withheld_rows.any()
+                else {}
+            ),
             "initial_loss": diagnostics["initial_loss"],
             "final_loss": diagnostics["final_loss"],
             "max_abs_relative_error": float(abs_errors.max())
