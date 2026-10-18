@@ -801,6 +801,7 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     from microcosm.build.uk_runtime.graph_terminal import (
         UKFullGateKernel,
         decode_full_gate_report,
+        uk_terminal_only_code_hash,
     )
     from microcosm.calibrate import (
         TargetRegistry,
@@ -1041,6 +1042,7 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
             "gate_manifest": canonical_json(
                 _gates_manifest_payload(full_gates.uk_full_gate_manifest())
             ).decode(),
+            "terminal_code": uk_terminal_only_code_hash(),
         },
         artifacts=artifacts,
         sources={"uk_ladder": "fixture"},
@@ -1193,3 +1195,62 @@ def test_the_candidate_manifest_records_the_exclusions_each_signed_gate_stood_on
         "uk_local_target_fit": [],
         "uk_input_mass_parity": ["synthetic_column"],
     }
+
+
+def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
+    monkeypatch,
+):
+    # The dense solve keys on the source preflight, which runs this kernel, so
+    # the report-only high-value homes code keys the calibrated node through
+    # its parameters and stays out of the kernel's hash (microcosm#1306
+    # review).
+    from microcosm.build.uk_runtime import (
+        graph_terminal,
+        high_value_home_gates,
+        high_value_homes,
+    )
+
+    hashed: list[set[str]] = []
+    real = graph_terminal.source_hash
+
+    def recording(*objects, **kwargs):
+        hashed.append({obj.__name__ for obj in objects})
+        return real(*objects, **kwargs)
+
+    monkeypatch.setattr(graph_terminal, "source_hash", recording)
+    high_value = {high_value_home_gates.__name__, high_value_homes.__name__}
+    # The preflight kernel inherits the calibrated kernel's code hash.
+    for kernel in (
+        graph_terminal.UKFullGateKernel,
+        graph_terminal.UKFullPreflightGateKernel,
+    ):
+        kernel(
+            coverage_engine=object(), engine_identity="fixture"
+        ).implementation_hash()
+        assert not hashed[-1] & high_value, kernel.__name__
+    # The hash is memoised per process; its undecorated body hashes the two
+    # high-value homes modules.
+    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    assert hashed[-1] == high_value
+    first = graph_terminal.uk_terminal_only_code_hash()
+    calls = len(hashed)
+    assert graph_terminal.uk_terminal_only_code_hash() == first
+    assert len(hashed) == calls
+
+
+def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import UKFullGateKernel
+
+    kernel = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture")
+    context = SimpleNamespace(
+        params={
+            "engine_identity": "fixture",
+            "phase": "terminal",
+            "terminal_code": "0" * 64,
+        },
+        artifacts={},
+    )
+    with pytest.raises(ValueError, match="terminal-only code"):
+        kernel.run(context)

@@ -1603,6 +1603,49 @@ _SUPPORT_FIGURE_SHAPES = {
         {"effective_sample_size": {"min": 23.75, "p10": 29}},
         _EXTREME,
     ),
+    # Shapes the third review of microcosm#1307 found the walk missed.
+    "statistic_above_the_name": ("support", {"min": {"rows": 37}}, _EXTREME),
+    "distinct_sources": (
+        "areas",
+        [{"area_code": _AREA, "distinct_sources": 29}],
+        _FIGURE,
+    ),
+    "sample_size": ("areas", [{"geography_id": _AREA, "sample_size": 41}], _FIGURE),
+    "lad_code_column": (
+        "support_table",
+        {"lad_code": [_AREA, _OTHER_AREA], "rows": [37, 41]},
+        _FIGURE,
+    ),
+    "geography_field": ("areas", [{"geography": _AREA, "ess": 23.75}], _FIGURE),
+    "pandas_split": (
+        "support_table",
+        {
+            "index": [0, 1],
+            "columns": ["area_code", "rows"],
+            "data": [[_AREA, 37], [_OTHER_AREA, 41]],
+        },
+        _FIGURE,
+    ),
+    "pandas_split_indexed_by_area": (
+        "support_table",
+        {"index": [_AREA], "columns": ["effective_sample_size"], "data": [[23.75]]},
+        _FIGURE,
+    ),
+    "map_by_area": ("support", {"rows_by_area": {_AREA: 37}}, _FIGURE),
+    "num_rows": ("areas", [{"area_code": _AREA, "num_rows": 37}], _FIGURE),
+    "row_count": ("areas", [{"area_code": _AREA, "row_count": 37}], _FIGURE),
+    "kish_ess": ("areas", [{"area_code": _AREA, "kish_ess": 23.75}], _FIGURE),
+    "area_code_in_upper_case": ("areas", [{"AREA_CODE": _AREA, "rows": 37}], _FIGURE),
+    "figure_as_text_with_separators": (
+        "areas",
+        [{"area_code": _AREA, "nonzero_households": "3,741"}],
+        _FIGURE,
+    ),
+    "minimum_distinct_source_households": (
+        "support",
+        {"min_distinct_source_households": 29},
+        _EXTREME,
+    ),
 }
 
 
@@ -1626,8 +1669,13 @@ def test_dense_release_warns_on_support_figures_in_every_shape(
 
 @pytest.mark.parametrize(
     "content",
-    [b'{"support": {"rows": ', b'{"rows": NaN}', b'{"rows": "\xc3\x28"}'],
-    ids=["truncated", "non-standard-constant", "undecodable"],
+    [
+        b'{"support": {"rows": ',
+        b'{"rows": NaN}',
+        b'{"rows": "\xc3\x28"}',
+        b"[" * 100_000 + b"]" * 100_000,
+    ],
+    ids=["truncated", "non-standard-constant", "undecodable", "nested-too-deep"],
 )
 def test_dense_release_warns_on_a_json_document_it_cannot_walk(
     tmp_path: Path, content: bytes
@@ -1672,12 +1720,30 @@ def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:
         # Counts of target rows, and a declared bound, are not support figures.
         "fit": {"local_by_family": [{"family": "synthetic", "rows": 12}]},
         "parameters": {"maximum_max_to_median_ratio": 100.0},
-        # Names that merely end in "ess" are not ESS.
+        # Names that merely end in "ess" are not ESS, under an order
+        # statistic too.
         "subset_relations": [{"max_excess": 0.0}],
         "details": {"maximum_owner_share_without_main_residence_excess": 0.05},
-        # Region, nation and UK support is a GOR-level aggregate, not an area's.
-        "support_by_region": {"ess": {"E12000001": 4100.0, "W92000004": 2300.0}},
-        "regions": [{"area_code": "K02000001", "rows": 41000}],
+        "bounds": {"max": {"max_excess": 0.0}},
+        # Target rows by family, as a map, a family named "..._by_area" or a
+        # split table without an area column.
+        "per_family": {
+            "rows_by_family": {"synthetic": 12},
+            "family_sizes": {"hmrc_income_by_area": 3},
+            "table": {"index": [0], "columns": ["family", "rows"], "data": [["x", 12]]},
+        },
+        # A statistic of a weight is not one of a support figure.
+        "weight_summary": {"max": {"weight": 4.0}},
+        # Region, nation and UK support is a GOR-level aggregate, not an area's
+        # (placeholder region, nation and UK codes).
+        "support_by_region": {"ess": {"E12999999": 4100.0, "W92999999": 2300.0}},
+        "regions": [{"area_code": "K02999999", "rows": 41000}],
+        "region_rows": [{"region_code": "E12999999", "rows": 41000}],
+        "region_table": {
+            "index": ["E12999999", "W92999999"],
+            "columns": ["ess"],
+            "data": [[4100.0], [2300.0]],
+        },
     }
     assert dc._uk_dense_disclosure_findings("shipped.json", shipped) == []
 

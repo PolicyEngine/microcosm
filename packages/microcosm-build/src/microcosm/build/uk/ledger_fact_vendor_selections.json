@@ -1292,7 +1292,7 @@
     },
     {
       "resource": "desnz_local_energy_facts.json",
-      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and ONS's Labour Force Survey household totals for England, Wales, Scotland and the UK, 2024 (Great Britain's share of UK households, the interim share of the Energy Trends UK level the authority kWh rows are levelled to until it is read from Northern Ireland's published consumption, which Chronicle carries since PolicyEngine/chronicle#356 on a basis DESNZ calls not directly comparable). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
+      "purpose": "The DESNZ sub-national domestic electricity and gas meter counts for every Great Britain local authority, 2024 (gas meters over electricity meters give the share of each authority's census households bound as gas-connected), and Northern Ireland's sub-national domestic electricity and gas consumption, 2024 (the N92000002 row, all domestic meters: Great Britain's part of the Energy Trends UK level the authority kWh rows are levelled to is its share of the sub-national total with this row added, microcosm#1278). Consumed by the local energy appliers (uk_runtime.domestic_energy_targets, microcosm#1207).",
       "consumers": [
         "uk_runtime.domestic_energy_targets"
       ],
@@ -1320,24 +1320,31 @@
           "expected_row_count": 697
         },
         {
-          "label": "lfs_household_totals_great_britain_and_uk_2024",
+          "label": "subnational_domestic_consumption_northern_ireland_2024",
           "selector": {
-            "source_name": "ons",
-            "record_set_id": [
-              "ons.lfs.households_total.england.2024",
-              "ons.lfs.households_total.wales.2024",
-              "ons.lfs.households_total.scotland.2024",
-              "ons.families_households_2025.table5.all_households.cy2024"
-            ]
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_consumption",
+              "desnz.subnational.domestic_gas_consumption"
+            ],
+            "geography_id": "N92000002",
+            "period_type": [
+              "fiscal_year",
+              "gas_year"
+            ],
+            "period_value": "2024",
+            "dimension_values": {
+              "domestic_scope": "all_domestic",
+              "metric": "consumption"
+            }
           },
-          "expected_row_count": 4
+          "expected_row_count": 2
         }
       ],
       "licence": {
         "licence": "Open Government Licence v3.0",
         "attribution": [
-          "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics).",
-          "Source: Office for National Statistics licensed under the Open Government Licence v.3.0 (Labour Force Survey household estimates; Families and households in the UK)."
+          "Contains public sector information licensed under the Open Government Licence v3.0 (Department for Energy Security and Net Zero, sub-national electricity and gas consumption statistics, Great Britain and Northern Ireland)."
         ]
       }
     }

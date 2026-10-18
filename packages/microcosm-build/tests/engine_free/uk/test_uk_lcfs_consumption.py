@@ -407,6 +407,50 @@ def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() 
     assert second.tolist() == first.tolist()
 
 
+def test_fuel_flag_draws_each_vehicle_at_the_zero_emission_share() -> None:
+    """microcosm#1278: a household with n vehicles buys fuel unless all n are
+    zero-emission, so it is flagged at 1 - (1 - rate) ** n against its keyed
+    uniform; one-vehicle households keep the draw of the per-household rule."""
+
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+
+    ids = np.arange(1, 4_001)
+    vehicles = np.tile([0, 1, 2, 3], 1_000)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.ones(len(ids)),
+                "num_vehicles": vehicles,
+            }
+        ),
+        time_period="2023",
+    )
+    rate = 0.6
+    flagged = assign_recipient_has_fuel(frame, rate=rate, seed=0)
+    draws = stable_identity_uniforms(ids, seed=0, salt="lcfs_has_fuel_consumption")
+    expected = (vehicles > 0) & (draws < 1.0 - (1.0 - rate) ** vehicles)
+    assert flagged.tolist() == expected.tolist()
+    assert not flagged[vehicles == 0].any()
+    # One vehicle: exactly the old per-household draw at the rate.
+    one = vehicles == 1
+    assert flagged[one].tolist() == (draws[one] < rate).tolist()
+    # More vehicles, more fuel buyers: about 1 - 0.4 ** n of each group.
+    for n in (1, 2, 3):
+        share = flagged[vehicles == n].mean()
+        assert share == pytest.approx(1.0 - (1.0 - rate) ** n, abs=0.05)
+    with pytest.raises(ValueError, match="fuel-buyer share"):
+        assign_recipient_has_fuel(frame, rate=0.0, seed=0)
+
+
 def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
     """microcosm#1063 c9: a diary spend netting refunds below zero is raised to
     the declared floor before the clip ranges and the imputation see it."""
@@ -559,7 +603,7 @@ def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
     ) / licensed("all")
     assert rate == expected
     assert 0.95 < rate < 0.97
-    assert receipt["rule"] == "one_minus_zero_emission_share"
+    assert receipt["rule"] == "per_car_zero_emission_share"
     assert receipt["period_value"] == 2024
     assert receipt["geography_id"] == "K03000001"
     assert set(receipt["zero_emission_licensed_cars"]) == {
@@ -712,6 +756,50 @@ def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
 def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import fuel_flag_evidence
 
+    # Ten households or more in every group on both sides.
+    donor = pd.DataFrame(
+        {
+            "household_weight": [1.0] * 20 + [2.0] * 20,
+            "num_vehicles": [0] * 10 + [1] * 30,
+            "petrol_spending": [0.0] * 20 + [10.0] * 20,
+            "diesel_spending": [0.0] * 40,
+        }
+    )
+    recipient = pd.DataFrame(
+        {
+            "num_vehicles": [0] * 10 + [1] * 20,
+            "has_fuel_consumption": [False] * 10 + [True] * 10 + [False] * 10,
+        }
+    )
+    evidence = fuel_flag_evidence(
+        donor,
+        recipient,
+        recipient_weights=[1.0] * 20 + [2.0] * 10,
+        ice_share_receipt={"rate": 0.9},
+    )
+    assert evidence["ice_share"] == {"rate": 0.9}
+    assert evidence["donor"] == {
+        "households": 40,
+        "with_vehicles_share": pytest.approx(50 / 60),
+        "positive_fuel_share": pytest.approx(40 / 60),
+        "positive_fuel_share_among_vehicle_households": pytest.approx(40 / 50),
+    }
+    assert evidence["recipient"] == {
+        "households": 30,
+        "with_vehicles_share": pytest.approx(0.75),
+        "flagged_share": pytest.approx(0.25),
+        "flagged_share_among_vehicle_households": pytest.approx(1 / 3),
+        "fuel_free_share_of_vehicles": pytest.approx(2 / 3),
+    }
+
+
+def test_fuel_flag_evidence_withholds_every_share_beside_a_thin_group() -> None:
+    """The shares on one side difference into the households with and
+    without a vehicle, crossed with fuel or none, so one group on one to
+    nine sources withholds every share on that side (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import fuel_flag_evidence
+
     donor = pd.DataFrame(
         {
             "household_weight": [1.0, 1.0, 2.0],
@@ -720,27 +808,78 @@ def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
             "diesel_spending": [0.0, 0.0, 0.0],
         }
     )
+    # Twenty buyers and ten households without a vehicle, but three
+    # fuel-free vehicle households.
     recipient = pd.DataFrame(
-        {"num_vehicles": [0, 1, 1], "has_fuel_consumption": [False, True, False]}
+        {
+            "num_vehicles": [0] * 10 + [1] * 23,
+            "has_fuel_consumption": [False] * 10 + [True] * 20 + [False] * 3,
+        }
     )
     evidence = fuel_flag_evidence(
         donor,
         recipient,
-        recipient_weights=[1.0, 1.0, 2.0],
+        recipient_weights=np.ones(33),
         ice_share_receipt={"rate": 0.9},
     )
-    assert evidence["ice_share"] == {"rate": 0.9}
     assert evidence["donor"] == {
         "households": "<10",
-        "with_vehicles_share": 0.75,
-        "positive_fuel_share": 0.5,
-        "positive_fuel_share_among_vehicle_households": pytest.approx(2 / 3),
+        "with_vehicles_share": "<10",
+        "positive_fuel_share": "<10",
+        "positive_fuel_share_among_vehicle_households": "<10",
     }
     assert evidence["recipient"] == {
-        "households": 3,
-        "with_vehicles_share": 0.75,
-        "flagged_share": 0.25,
+        "households": 33,
+        "with_vehicles_share": "<10",
+        "flagged_share": "<10",
+        "flagged_share_among_vehicle_households": "<10",
+        "fuel_free_share_of_vehicles": "<10",
     }
+
+
+def test_fuel_flag_evidence_counts_the_cars_in_fuel_free_households() -> None:
+    """The flag is per household, so a household with a petrol car beside a
+    zero-emission one buys fuel: the receipt sets the fuel-free share of
+    vehicles beside the per-car share (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import fuel_flag_evidence
+
+    donor = pd.DataFrame(
+        {
+            "household_weight": [1.0],
+            "num_vehicles": [1],
+            "petrol_spending": [10.0],
+            "diesel_spending": [0.0],
+        }
+    )
+    recipient = pd.DataFrame(
+        {
+            "num_vehicles": [1] * 12 + [2] * 10 + [1] * 10 + [0] * 12,
+            "has_fuel_consumption": [True] * 22 + [False] * 22,
+        }
+    )
+    evidence = fuel_flag_evidence(
+        donor,
+        recipient,
+        recipient_weights=np.ones(44),
+        ice_share_receipt={"rate": 0.96},
+    )["recipient"]
+    assert evidence["flagged_share_among_vehicle_households"] == pytest.approx(22 / 32)
+    # Forty-two vehicles, ten of them in the ten fuel-free households.
+    assert evidence["fuel_free_share_of_vehicles"] == pytest.approx(10 / 42)
+    # Copies of one source household count once: the ten fuel-free rows are
+    # copies of three sources, so every share is withheld.
+    sources = list(range(22)) + [100, 100, 100, 100, 101, 101, 101, 102, 102, 102]
+    sources += list(range(200, 212))
+    withheld = fuel_flag_evidence(
+        donor,
+        recipient,
+        recipient_weights=np.ones(44),
+        ice_share_receipt={"rate": 0.96},
+        sources=sources,
+    )["recipient"]
+    assert withheld["fuel_free_share_of_vehicles"] == "<10"
+    assert withheld["flagged_share"] == "<10"
 
 
 def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
@@ -1007,12 +1146,11 @@ def _synthetic_lcfs_donor(
     return person, pd.DataFrame(household)
 
 
-def test_stage_transform_prices_bus_fares_from_journeys() -> None:
-    """End to end on synthetic inputs: the committed declaration minus the engine.
+def _synthetic_lcfs_stage(household_columns=None):
+    """The committed lcfs_consumption stage on synthetic inputs, minus the engine.
 
     The uprating step needs the installed engine and is dropped; the QRF is
-    shrunk to four trees. Everything else is the committed lcfs_consumption
-    stage (#890 A, E2; #930 pricing).
+    shrunk to four trees. ``household_columns(n)`` adds frame columns.
     """
 
     import dataclasses
@@ -1020,10 +1158,6 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.source_manifest import SourceOperationSpec
-    from microcosm.build.uk_runtime.lcfs_consumption import (
-        UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
-        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
-    )
 
     committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     operations = []
@@ -1058,6 +1192,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
             )[np.arange(n) % 3],
             "num_vehicles": np.arange(n) % 3,
             "household_gross_income": rng.uniform(5e3, 9e4, n),
+            **(household_columns(n) if household_columns else {}),
         }
     )
     ages = rng.integers(1, 90, 2 * n).astype(float)
@@ -1116,6 +1251,39 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         lcfs_household=donor_household,
         lcfs_person=donor_person,
     )
+    return SimpleNamespace(
+        transform=transform,
+        frame=frame,
+        household=household,
+        person=person,
+        regions=regions,
+        n=n,
+        donor_household=donor_household,
+    )
+
+
+def test_stage_transform_prices_bus_fares_from_journeys() -> None:
+    """End to end on synthetic inputs: the committed declaration minus the engine.
+
+    The uprating step needs the installed engine and is dropped; the QRF is
+    shrunk to four trees. Everything else is the committed lcfs_consumption
+    stage (#890 A, E2; #930 pricing).
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+    )
+
+    synthetic = _synthetic_lcfs_stage()
+    transform, frame, household = (
+        synthetic.transform,
+        synthetic.frame,
+        synthetic.household,
+    )
+    person, regions, n = synthetic.person, synthetic.regions, synthetic.n
+    donor_household = synthetic.donor_household
     result = transform(frame)
 
     out = result.table("household")
@@ -1477,6 +1645,218 @@ def test_division_capture_reads_each_division_against_its_donor() -> None:
     assert total["frame_over_donor_per_household"] == pytest.approx(
         food["frame_over_donor_per_household"]
     )
+
+
+def test_weighted_top_share_withholds_fewer_than_ten_households() -> None:
+    """The top spenders' share of a weighted total (microcosm#1278); a share
+    resting on one to nine households is "<10", as every receipt count."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_share
+
+    values = np.array([100.0] * 20 + [1.0] * 180)
+    weights = np.ones(200)
+    assert weighted_top_share(values, weights, fraction=0.10) == pytest.approx(
+        2_000.0 / 2_180.0
+    )
+    assert weighted_top_share(values, weights, fraction=0.01) == "<10"
+    # Weight, not row count, sets the group: at double weight, eleven of the
+    # top twenty households carry exactly a tenth of the 220 weight.
+    heavy = np.where(values > 1.0, 2.0, 1.0)
+    assert weighted_top_share(values, heavy, fraction=0.10) == pytest.approx(
+        (11 * 2 * 100.0) / (20 * 2 * 100.0 + 180.0)
+    )
+    assert weighted_top_share(np.zeros(20), np.ones(20), fraction=0.5) is None
+    with pytest.raises(ValueError, match="top fraction"):
+        weighted_top_share(values, weights, fraction=0.0)
+
+
+def test_weighted_top_shares_count_distinct_source_households() -> None:
+    """A frame stacks copies of one source household, so the floor counts
+    sources, not rows (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        division_tail,
+        weighted_top_shares,
+    )
+
+    values = np.array([100.0] * 12 + [1.0] * 188)
+    weights = np.ones(200)
+    # Two source households split into six copies each lead the frame.
+    sources = np.array([1] * 6 + [2] * 6 + list(range(3, 191)))
+    as_rows = weighted_top_shares(values, weights, fractions=(0.06,))
+    assert as_rows[0.06] == pytest.approx(1_200.0 / 1_388.0)
+    as_sources = weighted_top_shares(
+        values, weights, fractions=(0.06,), sources=sources
+    )
+    assert as_sources[0.06] == "<10"
+    tail = division_tail(values, weights, values, weights, frame_sources=sources)
+    # Each top 10% is twenty rows, the twelve leaders and eight more: ten
+    # sources on the frame and twenty on the donor (one row per household),
+    # so both ship. The frame's top 1% is two copies of one source.
+    assert tail["top_10_percent"]["donor"] == pytest.approx(1_208.0 / 1_388.0)
+    assert tail["top_10_percent"]["frame"] == pytest.approx(1_208.0 / 1_388.0)
+    assert tail["top_1_percent"]["frame"] == "<10"
+    with pytest.raises(ValueError, match="align"):
+        weighted_top_shares(values, weights, fractions=(0.1,), sources=sources[:5])
+
+
+def test_weighted_top_shares_withhold_a_difference_of_one_to_nine() -> None:
+    """The top 1% leads the top 10%, so the two shares' difference is the
+    spend of the households between them: a larger fraction adding one to
+    nine sources to a shipped smaller one is withheld (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
+
+    def shares(next_rows: int, next_weight: float) -> dict:
+        values = np.array([100.0] * 10 + [50.0] * next_rows + [1.0] * 100)
+        weights = np.array([10.0] * 10 + [next_weight] * next_rows + [90.0] * 100)
+        return weighted_top_shares(values, weights, fractions=(0.01, 0.10))
+
+    # Ten households carry the top 1% and five more the rest of the top 10%.
+    five_more = shares(5, 180.0)
+    assert five_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert five_more[0.10] == "<10"
+    # Ten more is enough.
+    ten_more = shares(10, 90.0)
+    assert ten_more[0.01] == pytest.approx(10_000.0 / 64_000.0)
+    assert ten_more[0.10] == pytest.approx(55_000.0 / 64_000.0)
+
+
+def test_weighted_top_shares_withhold_a_thin_rest_and_count_spenders() -> None:
+    """The receipt's total ships beside the shares, so total x (1 - share) is
+    the spend outside the top group: a share is withheld when one to nine
+    sources spend anything outside it. The floors count spenders, so zero
+    rows in a group lend it nothing (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import weighted_top_shares
+
+    # Twenty leaders carry the top 10%; five others spend; 175 spend nothing.
+    values = np.array([100.0] * 20 + [7.0] * 5 + [0.0] * 175)
+    shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
+    assert shares[0.10] == "<10"
+    # With ten spenders outside it, the share ships.
+    values = np.array([100.0] * 20 + [7.0] * 10 + [0.0] * 170)
+    shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
+    assert shares[0.10] == pytest.approx(2_000.0 / 2_070.0)
+    # A top group of twenty rows of which four spend rests on four spenders.
+    values = np.array([100.0] * 4 + [0.0] * 196)
+    shares = weighted_top_shares(values, np.ones(200), fractions=(0.10,))
+    assert shares[0.10] == "<10"
+
+
+def test_division_capture_counts_source_households_not_copies() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_capture,
+    )
+
+    # The twenty leaders are copies of four source households.
+    frame_values = [100.0] * 20 + [1.0] * 180
+    sources = [index // 5 for index in range(20)] + list(range(100, 280))
+    draws = pd.DataFrame(
+        {column: frame_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    donor = pd.DataFrame(
+        {column: [10.9] * 200 for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+        | {"household_weight": [1.0] * 200}
+    )
+    column = "food_and_non_alcoholic_beverages_consumption"
+    as_rows = division_capture(
+        draws, weights=np.ones(200), period_value=2024, donor=donor
+    )["divisions"][column]["tail"]["top_10_percent"]
+    assert as_rows["frame"] == pytest.approx(2_000.0 / 2_180.0)
+    as_sources = division_capture(
+        draws, weights=np.ones(200), period_value=2024, donor=donor, sources=sources
+    )["divisions"][column]["tail"]["top_10_percent"]
+    assert as_sources["frame"] == "<10"
+    assert as_sources["donor"] == pytest.approx(0.10)
+
+
+def test_source_households_refuse_copies_without_their_sources() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import _source_households
+
+    plain = pd.DataFrame({"household_id": [1, 2]})
+    assert _source_households(plain) is None
+    named = plain.assign(source_household_id=[7, 7])
+    assert list(_source_households(named)) == [7, 7]
+    for marker in (
+        "household_support_clone_index",
+        "household_is_high_value_support_copy",
+        "high_value_support_copy_index",
+    ):
+        with pytest.raises(ValueError, match="source_household_id"):
+            _source_households(plain.assign(**{marker: [0, 1]}))
+
+
+def test_stage_transform_counts_source_households_in_its_receipts(
+    monkeypatch,
+) -> None:
+    """The stage hands each frame row's source household to both receipts
+    that floor counts (microcosm#1306 review)."""
+
+    from microcosm.build.uk_runtime import lcfs_consumption as module
+
+    synthetic = _synthetic_lcfs_stage(
+        lambda n: {"source_household_id": np.arange(n) // 2}
+    )
+    seen = {}
+    real_flag = module.fuel_flag_evidence
+
+    def flag(*args, **kwargs):
+        seen["fuel_flag"] = kwargs["sources"]
+        return real_flag(*args, **kwargs)
+
+    def capture(*args, **kwargs):
+        seen["division_capture"] = kwargs["sources"]
+        return {"available": False, "gated": False}
+
+    # The capture runs only with the uprating step, which needs the engine:
+    # skip the donor uprating and hand the capture its year directly.
+    monkeypatch.setattr(module, "fuel_flag_evidence", flag)
+    monkeypatch.setattr(module, "lcfs_donor_uprating", lambda stage: ({}, None))
+    monkeypatch.setattr(module, "uprating_operation", lambda stage: {"to_period": 2024})
+    monkeypatch.setattr(module, "fuel_litres_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "division_capture_or_reason", capture)
+    synthetic.transform(synthetic.frame)
+    expected = synthetic.frame.table("household")["source_household_id"].to_numpy()
+    assert np.array_equal(seen["fuel_flag"], expected)
+    assert np.array_equal(seen["division_capture"], expected)
+
+
+def test_division_capture_places_an_over_draw_in_the_tail() -> None:
+    """The frame's top 10% hold far more of a division than the donor's do."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_capture,
+    )
+
+    frame_values = [100.0] * 20 + [1.0] * 180
+    donor_values = [2_180.0 / 200.0] * 200
+    draws = pd.DataFrame(
+        {column: frame_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    donor = pd.DataFrame(
+        {column: donor_values for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+        | {"household_weight": [1.0] * 200}
+    )
+
+    capture = division_capture(
+        draws, weights=np.ones(200), period_value=2024, donor=donor
+    )
+
+    tail = capture["divisions"]["food_and_non_alcoholic_beverages_consumption"]["tail"]
+    top_ten = tail["top_10_percent"]
+    assert top_ten["frame"] == pytest.approx(2_000.0 / 2_180.0)
+    assert top_ten["donor"] == pytest.approx(0.10)
+    assert top_ten["frame_over_donor"] == pytest.approx(2_000.0 / 2_180.0 / 0.10)
+    # Two households are the top 1% of two hundred: withheld on both sides.
+    assert tail["top_1_percent"] == {
+        "frame": "<10",
+        "donor": "<10",
+        "frame_over_donor": None,
+    }
+    assert "tail" not in capture["total"]
 
 
 def test_uncarried_spend_sits_beside_the_donors_other_fuels() -> None:

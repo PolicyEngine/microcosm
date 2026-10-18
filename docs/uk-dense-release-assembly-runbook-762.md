@@ -73,6 +73,23 @@ carries over: `--review-date` defaults to the day the command runs, which keys
 a different solve on a later day, and `--graph-store` defaults to
 `<out>/.graph-store`, which is empty under the second build's new `--out`.
 
+**Retrying build 1.** If build 1 fails or is stopped, run it again into a new
+`--out`, never the failed attempt's. Each attempt spools its own Logbook row
+under `<out>/logbook-spool/`, and nothing refuses an occupied `--out` for
+build 1 (only build 2's `--require-solve-reuse` does), so a retry into the
+same directory leaves two attempts' rows there. The drafter and `--verify`
+refuse a run directory whose spool names two attempts, and the assembler reads
+the last row by file name, which need not be the retry's, and then refuses
+the mismatch with the gate report. Do not clear the failed attempt's row or
+`failure.json` to reuse its directory either: the row is that attempt's
+Logbook record. Repeat every other argument, with the same `--review-date`
+and `--graph-store`, so that the retry reuses the nodes the failed attempt
+finished; a failed attempt that took the default store is reused with
+`--graph-store <failed-out>/.graph-store`. If the failed attempt spooled a
+row, `--logbook-prev-row-digest` names that row's digest (its `row_digest`,
+which is also its file name), the new tail of the `uk/local` chain, as for
+build 2 below.
+
 `--release-role dense` is required (microcosm#823): the role supplies the
 solve defaults (K=15, seed 42, 2,000 epochs, learning rate 0.15,
 `nation_grain_family_equal_sqrt_count`), names the outputs `microcosm_uk_2024_25_local.h5` and
@@ -213,19 +230,29 @@ sha256, plus any `--class-note` sentence and, for an area, its name. What the
 tool cannot template it checks in three ways, and only these three:
 
 - `--approved-by` must be a GitHub login (letters, digits and hyphens, at most
-  39 characters) that starts with a letter and holds at most one run of
-  digits: `juaristi22` passes, `4521` and `rows-7-of-50` do not.
+  39 characters) that starts with a letter. Only a login on the tool's
+  `KNOWN_DIGIT_LOGINS` (`juaristi22`) may hold digits, since no rule on their
+  shape tells a login from `ess7` or `rows-7`; a reviewer whose login has
+  digits is added there by a reviewed change. `4521`, `rows-7` and `w312` are
+  refused.
 - `--class-note` text, `--area-name` names and `--adjudication` may carry
-  digits only inside an issue reference of an allowlisted repository
-  (`microcosm#1301`, `chronicle#359`, `uk-data#521` or `PolicyEngine/<repo>#N`,
-  each optionally anchored `#issuecomment-<id>`), a GitHub URL of a
-  PolicyEngine issue or pull request (`https://github.com/PolicyEngine/<repo>/issues/<N>`
-  or `.../pull/<N>`, optionally `#issuecomment-<id>`) and an ISO date of a real
-  day in 2000-2099, and never a percent sign in any form. A bare `#N`, another
-  repository's short form (write `PolicyEngine/policyengine.py#553`), a comment
-  cited as "issue comment <id>" and any other number (`K=15`, `150,000
-  households`, a plan code such as `c9`, a bare year) are refused, before the
-  build is read.
+  digits only inside a citation of a repository on the tool's
+  `KNOWN_REPOSITORIES` (this project's repositories and those it cites, in any
+  case) and in an ISO date within 366 days of the day the tool runs, and never
+  a percent sign in any form. A citation is an issue reference
+  (`microcosm#1301`, `chronicle#359`, `uk-data#521` or `PolicyEngine/<repo>#N`),
+  a GitHub URL of an issue or pull request
+  (`https://github.com/PolicyEngine/<repo>/issues/<N>` or `.../pull/<N>`,
+  optionally anchored `#issuecomment-`, `#pullrequestreview-` or
+  `#discussion_r` with the comment's ten-digit id) or a GitHub URL of a file
+  (`.../blob/<ref>/<path>`, whose path may hold digits). A citation right next
+  to a noun a figure counts or belongs to (`uk-data#7 rows`, `household
+  microcosm#4521`) is refused, as are a bare `#N`, an anchor outside a URL
+  (cite the comment by its URL), another repository (`PolicyEngine/rows#7`) or
+  another repository's short form (write `PolicyEngine/policyengine.py#553`), a
+  comment cited as "issue comment <id>", a date far from today (`2045-12-31`)
+  and any other number (`K=15`, `150,000 households`, a plan code such as
+  `c9`, a bare year), before the build is read.
 - The drafted entries then go through the release contract's disclosure walk,
   and a finding refuses the draft, though on a release directory the walk only
   warns. On text, the walk catches only an area's support worded with its
@@ -395,6 +422,16 @@ exclusions and their windows, the holdout (recorded as not requested, or, when
 `--rotated-holdout` asked for it, measured with five folds and a finite mean,
 and in agreement with the request), the Logbook row, the artifact digest.
 
+It also runs the release's disclosure walk over the files assembly ships byte
+for byte: the candidate manifest, the original diagnostics, the signed local
+report and, when the run directory holds them, `score_vs_incumbent.json` and
+`incumbent_surface_evaluation.json`. Add `--incumbent-manifest
+<incumbent-dir>/incumbent_local_surface_manifest.json` to walk the extraction
+manifest you will attach too. Each file is read as the contract reads it, so
+one carrying NaN, or nested too deep to walk, is reported as a file the walk
+cannot rule out. A finding prints a `WARN` line naming the file and the paths,
+never a value, and never fails the pre-flight.
+
 ## Optional diagnostics (microcosm#1301)
 
 Neither of these is needed to assemble or publish. Run them when there is
@@ -511,8 +548,7 @@ cannot be edited out without failing its signature, nor one in
 `source_calibration_diagnostics.json` without failing the candidate manifest's
 hash of it; a figure in a file the assembler writes is fixed at its source and
 the directory re-assembled. The pre-flight's `--candidate-dir` runs the same
-walk over the three files the assembler ships byte for byte (the candidate
-manifest, the original diagnostics and the signed local report), so a finding
+walk over the files the assembler ships byte for byte (step 3), so a finding
 shows right after each build. The walk reads key names and the shortfall
 wording only: a figure under another name, in other prose or outside the
 top-level JSON files is not found, so the manual scan stays.
@@ -568,6 +604,13 @@ uv run python -m microcosm.data.publish_cli releases/microcosm-uk-2024-25-dense 
 `latest.json` for a non-default role. `--tag-only` publishes the immutable tag
 revision without a main-branch commit. The artifact is reachable by its tag and
 by the registry key `("uk", 2025, "dense")` only.
+
+The disclosure walk's warnings reach the publisher's JSON output as well as
+stderr: `--preflight-only` adds them to its verdict under `contract_warnings`,
+and publication lists them the same way beside the pointer it prints. Neither
+refuses on them. The immutable tag's message records that the release was
+published past them and how many there were, never what they say, since they
+name paths in the shipped files.
 
 ## Promotion is a separate change
 

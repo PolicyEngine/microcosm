@@ -658,6 +658,43 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert preflight.main(["--release-dir", str(release_dir)]) == 0
 
 
+def test_assembler_warns_on_a_shipped_support_figure_and_still_assembles(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A per-area support figure in a file the assembler ships byte for byte
+    is a warning, not a refusal: the directory is assembled, and the warning
+    is printed and listed in the summary by file and path, never by value
+    (review of microcosm#1307)."""
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, _ = _candidate_dir(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    # Synthetic figures beside a placeholder code no area carries.
+    manifest["fit"]["weakest_areas"] = [
+        {
+            "area_code": "E06999999",
+            "nonzero_households": 37,
+            "effective_sample_size": 23.75,
+        }
+    ]
+    manifest_path.write_text(json.dumps(manifest))
+    out = tmp_path / "releases"
+
+    assert assembler.main(_assemble_args(candidate, spine, None, out)) == 0
+    captured = capsys.readouterr()
+    (warning,) = json.loads(captured.out)["warnings"]
+    assert warning.startswith(
+        "rowwise_candidate_manifest.json carries 2 per-area support figure(s)"
+    )
+    assert "fit.weakest_areas[0].nonzero_households" in warning
+    assert f"warning: {warning}" in captured.err
+    for figure in ("37", "23.75"):
+        assert figure not in warning
+    release_dir = out / UK_DENSE_RELEASE_ID
+    assert dc.validate_release_dir(release_dir) == [warning]
+
+
 def test_assembler_override_assembles_a_pre_lane_run_with_a_recorded_opt_out(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

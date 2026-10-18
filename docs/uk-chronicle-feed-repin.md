@@ -44,7 +44,17 @@ this order:
    (`uk/ledger_fact_vendor_selections.json` names them; each records the feed
    identity it was taken from);
 6. the signed compile parity receipts with
-   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`;
+   `tools/build_uk_ledger_compile_parity_signed_differences.py`, one `--surface`
+   at a time with nothing else running: the tool holds every parsed fact, and
+   on abf0921 a run over both surfaces peaked at about 25.5 GB and the local
+   surface alone at about 23.9 GB, past a 24 GiB machine. On a smaller machine,
+   the local receipt and the local references and membership can be generated
+   from a cut of the pinned artifact to the constituency and local-authority
+   rows that match a local contract selector, as microcosm#1306 did. That holds
+   only while every local reference sits at those two levels and reads no facts
+   outside its own selector (widen the cut for any other level, such as BRMA
+   rows at `statistical_scope`); check that the regenerated files move only
+   where the change intends;
 7. the release input coverage manifest with
    `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
    conditioning resource, whose vendored header records the feed identity.
@@ -227,7 +237,10 @@ the new `gas_year` period type. Three selector families moved with the data, and
 - the local energy rows keep Great Britain's share of UK households as the interim for its share of
   the Energy Trends level. The Northern Ireland facts are now in the feed, on a basis DESNZ calls
   not directly comparable, and María ruled on 2026-10-16 that the interim stands until a change
-  stacked on this re-pin derives Great Britain's part from them.
+  stacked on this re-pin derives Great Britain's part from them. (microcosm#1306 retires it: Great
+  Britain's part is its share of DESNZ's sub-national consumption with Northern Ireland's
+  all-domestic row added, and that change regenerates the local compile-parity receipt's 694 kWh
+  rows.)
 
 Values move only for the UC area rows: each cell is its area's paid claims, where it was its
 all-claims count scaled by the GB paid share, so the cells keep the GB caseload's total and each

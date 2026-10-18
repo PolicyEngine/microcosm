@@ -14,6 +14,7 @@ import json
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, replace
+from functools import cache
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -701,6 +702,28 @@ def _source_gate_evidence(context: KernelContext, engine):
     }
 
 
+@cache
+def uk_terminal_only_code_hash() -> str:
+    """The source hash of the high-value homes code the calibrated gates run.
+
+    The high-value homes evidence is computed on the calibrated pool alone.
+    The source preflight runs the gate kernel's code and the dense solve keys
+    on the preflight, so this code keys the calibrated node through its
+    parameters, not the kernel's hash (microcosm#1306 review). An edit to
+    ``high_value_home_gates`` re-keys the calibrated gates and what follows
+    them, never the solve. ``high_value_homes`` also feeds the target
+    kernels, which hash it, so an edit to it still re-solves: a disclosure fix
+    between two builds that must reuse the solve belongs in
+    ``high_value_home_gates`` alone.
+
+    Hashed once per process, as the code was imported: an edit to the files
+    while a build runs cannot fail the calibrated gates after the solve.
+    """
+    from . import high_value_home_gates, high_value_homes
+
+    return source_hash(high_value_home_gates, high_value_homes)
+
+
 class UKFullGateKernel(KernelBase):
     """The calibrated gate battery: every terminal gate, on the final weights.
 
@@ -795,6 +818,13 @@ class UKFullGateKernel(KernelBase):
         if context.params["engine_identity"] != self.engine_identity:
             raise ValueError(
                 "UK full gate engine identity differs from its declared binding."
+            )
+        if (
+            context.params["phase"] == "terminal"
+            and context.params.get("terminal_code") != uk_terminal_only_code_hash()
+        ):
+            raise ValueError(
+                "UK full gate terminal-only code differs from its declared binding."
             )
         selection = json.loads(context.artifacts["selection"].payload)["receipt"]
         gates = uk_full_gate_manifest(selection)
@@ -1160,7 +1190,13 @@ def append_uk_full_gate_nodes(
         population=calibration.population,
         inputs=population_slices(population_columns(graph, calibration.population)),
         sources=sources,
-        params={**gate_params, "phase": "terminal"},
+        # Only the calibrated node keys on the code only it runs, so an edit to
+        # that code never re-keys the preflight and the solve after it.
+        params={
+            **gate_params,
+            "phase": "terminal",
+            "terminal_code": uk_terminal_only_code_hash(),
+        },
         artifact_inputs=(
             *common,
             *build_state,
