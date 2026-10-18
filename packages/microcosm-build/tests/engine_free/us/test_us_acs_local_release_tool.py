@@ -1703,6 +1703,7 @@ def _set_writer(args, **changes) -> None:
     path.write_text(json.dumps(export))
 
 
+@requires_pytables
 def test_package_refuses_another_writer_before_any_release_dir(tmp_path, monkeypatch):
     """The writer binding runs before the release directory exists."""
 
@@ -1715,10 +1716,15 @@ def test_package_refuses_another_writer_before_any_release_dir(tmp_path, monkeyp
     assert not (args.out / "releases").exists()
 
 
+@requires_pytables
 def test_a_dirty_writer_marks_the_release_dirty(tmp_path, monkeypatch):
     """A clean packaging tree cannot hide a dirty writer (review of #1311)."""
 
     module = _load_tool_module()
+    # A clean packaging tree, whatever this checkout's state, so only the
+    # writer's flag can make the release dirty.
+    clean = {**module._repo_code_identity(allow_dirty=True), "dirty": False}
+    monkeypatch.setattr(module, "_repo_code_identity", lambda allow_dirty: dict(clean))
     args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
     _set_writer(args, dirty=True)
 
