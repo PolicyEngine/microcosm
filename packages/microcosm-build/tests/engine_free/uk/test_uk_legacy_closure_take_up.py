@@ -454,3 +454,18 @@ def test_the_stage_measures_p_over_great_britain() -> None:
         "combinations"
     ]
     assert combinations["child_tax_credit"]["rate_unreachable"] is False
+
+
+def test_the_transform_refuses_a_frame_outside_the_mapped_period() -> None:
+    from microcosm.build.country_spec import load_country_spec
+
+    stage = load_country_spec("uk").sources.stage_map()[lc.LEGACY_CLOSURE_STAGE_NAME]
+    frame = _frame(
+        {"esa_income_reported": np.full(3, 100.0)},
+        would_claim_uc=np.zeros(3, dtype=bool),
+        weights=np.ones(3),
+        time_period="2030",
+    )
+    # DWP's cumulative rates are mapped to build period 2024 only.
+    with pytest.raises(ValueError, match="build period 2024"):
+        lc.UKLegacyClosureTakeUpStageTransform(stage=stage, rates=_RATES)(frame)

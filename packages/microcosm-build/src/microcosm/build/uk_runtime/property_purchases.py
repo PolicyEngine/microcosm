@@ -110,6 +110,9 @@ __all__ = [
 PROPERTY_PURCHASES_STAGE_NAME = "property_purchases"
 PROPERTY_PURCHASES_OPERATION_KIND = "impute_annual_property_purchases"
 PROPERTY_PURCHASES_RESOURCE = "hmrc_stamp_tax_facts.json"
+#: The build period the 2024-25 Stamp Tax facts are mapped to (the verify
+#: operation's ``mapped_build_period``); the stage refuses a frame at any other.
+PROPERTY_PURCHASES_BUILD_PERIOD = 2024
 _HRAD_RECORD_SET = "hmrc.stamp_taxes_2024_25.table_6b.hrad.fy2024"
 _RESIDENTIAL_INDIVIDUALS_RECORD_SET = (
     "hmrc.stamp_taxes_2024_25.table_8a.individuals.fy2024"
@@ -710,7 +713,7 @@ def property_purchases_operation_parameters() -> tuple[
                 "feed_pin": "chronicle_feed.json",
                 "record_sets": list(PROPERTY_PURCHASES_RECORD_SETS),
                 "source_vintage": "2024-25",
-                "mapped_build_period": 2024,
+                "mapped_build_period": PROPERTY_PURCHASES_BUILD_PERIOD,
                 "period_mapping": "published_tax_year_equals_build_period",
                 "require_before_source_read": True,
                 "runtime_sha256_required": True,
@@ -808,6 +811,12 @@ def impute_property_purchases(
     """Add both annual purchases at the frame's household weights."""
 
     validate_uk_national_frame(frame)
+    period = int(uk_time_period(frame))
+    if period != PROPERTY_PURCHASES_BUILD_PERIOD:
+        raise ValueError(
+            "The 2024-25 Stamp Tax facts are mapped to build period "
+            f"{PROPERTY_PURCHASES_BUILD_PERIOD}, but the frame's period is {period}."
+        )
     household = frame.table("household").copy()
     for kind in PROPERTY_PURCHASE_KINDS:
         if kind.output in household.columns:

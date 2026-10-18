@@ -326,7 +326,7 @@ def test_a_short_stock_buys_at_the_stock_and_records_the_shortfall() -> None:
     assert fitted_in_full.receipt["value_shortfall_share"] == pytest.approx(0.0)
 
 
-def _frame(n: int = 300, seed: int = 3):
+def _frame(n: int = 300, seed: int = 3, time_period: str = "2024"):
     rng = np.random.default_rng(seed)
     regions = np.array(
         ["LONDON", "SOUTH_EAST", "NORTHERN_IRELAND", "SCOTLAND", "WALES", "NORTH_WEST"]
@@ -357,7 +357,7 @@ def _frame(n: int = 300, seed: int = 3):
         person=person,
         benunit=benunit,
         household=household,
-        time_period="2024",
+        time_period=time_period,
         weight_kind=WeightKind.DESIGN,
         household_weights=rng.uniform(1.0, 3.0, n),
     )
@@ -467,6 +467,14 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
     )
     with pytest.raises(ValueError, match="household_source_id"):
         pp.impute_property_purchases(bare, targets=_frame_targets())
+
+
+def test_the_stage_refuses_a_frame_outside_the_mapped_period() -> None:
+    # The 2024-25 Stamp Tax facts are mapped to build period 2024 only.
+    with pytest.raises(ValueError, match="build period 2024"):
+        pp.impute_property_purchases(
+            _frame(time_period="2030"), targets=_frame_targets()
+        )
 
 
 def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:

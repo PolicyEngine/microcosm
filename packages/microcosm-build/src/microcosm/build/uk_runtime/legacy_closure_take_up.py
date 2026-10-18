@@ -86,6 +86,9 @@ LEGACY_CLOSURE_STAGE_NAME = "uc_legacy_closure_take_up"
 LEGACY_CLOSURE_OPERATION_KIND = "draw_uc_claim_at_legacy_closure"
 LEGACY_CLOSURE_OUTPUT = "would_claim_uc_at_legacy_closure"
 LEGACY_CLOSURE_RESOURCE = "dwp_move_to_uc_facts.json"
+#: The build period DWP's cumulative Move to UC rates are mapped to (the verify
+#: operation's ``mapped_build_period``); the stage refuses a frame at any other.
+LEGACY_CLOSURE_BUILD_PERIOD = 2024
 _DETAIL_RECORD_SET = "dwp.statx.mtuc_households.legacy_benefit_move_status.2026-06"
 #: The cells by combination and move status, and their totals (which carry the
 #: all-households row).
@@ -278,6 +281,12 @@ def assign_uc_claim_at_legacy_closure(
     """Draw ``would_claim_uc_at_legacy_closure`` for every benefit unit."""
 
     validate_uk_national_frame(frame)
+    period = int(uk_time_period(frame))
+    if period != LEGACY_CLOSURE_BUILD_PERIOD:
+        raise ValueError(
+            "DWP's Move to UC claim rates are mapped to build period "
+            f"{LEGACY_CLOSURE_BUILD_PERIOD}, but the frame's period is {period}."
+        )
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
@@ -372,7 +381,7 @@ def legacy_closure_operation_parameters() -> tuple[tuple[str, dict[str, object]]
                 "feed_pin": "chronicle_feed.json",
                 "record_sets": list(LEGACY_CLOSURE_RECORD_SETS),
                 "source_vintage": "July 2022 to June 2026",
-                "mapped_build_period": 2024,
+                "mapped_build_period": LEGACY_CLOSURE_BUILD_PERIOD,
                 "period_mapping": "cumulative_claim_rates_applied_at_every_closure",
                 "require_before_source_read": True,
                 "runtime_sha256_required": True,
