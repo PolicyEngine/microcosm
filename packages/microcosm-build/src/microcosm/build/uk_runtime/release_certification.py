@@ -319,8 +319,15 @@ def run_uk_release_cut_battery(
     the compile's unsupported references by period (empty where every
     reference resolved): the compile-parity gates need them to tell a
     reference that did not resolve from a fixture row with no counterpart.
+    The battery refuses to run on a policyengine-uk other than the pinned one
+    (microcosm#1095), since its coverage engine is the installed one.
     """
 
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     battery = GateBatteryRun(
         uk_national_gate_manifest(),
         release_id=release_id,

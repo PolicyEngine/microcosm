@@ -44,6 +44,18 @@ NON_ADVANCED_EDUCATION_LEVELS = (
 #: dependant.
 FRS_TRAINEE_COLUMN = "trainee"
 FRS_TRAINEE_YES = 1
+#: FRS SLOS, "Do you have an outstanding student loan?" (1 yes, 2 no), adult
+#: table of FRS 2024-25 (SN 9563). Adults who answer SLREPAY ("Whether making
+#: student loan repayments") no answer it, so it carries the borrowers below the
+#: repayment threshold whom the repayment amount misses (microcosm#868).
+FRS_STUDENT_LOAN_OUTSTANDING_COLUMN = "slos"
+FRS_STUDENT_LOAN_OUTSTANDING_YES = 1
+#: FRS EDUCLEFT, "Age completed full-time education", adult table. The
+#: student-loan stage dates a borrower's course from it; an age outside
+#: [MIN, MAX] is no answer and is stored as 0 (microcosm#868).
+FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN = "educleft"
+AGE_LEFT_FULL_TIME_EDUCATION_MIN = 10
+AGE_LEFT_FULL_TIME_EDUCATION_MAX = 90
 #: The tab a raw person row came from; set before the adult and child tabs are
 #: concatenated, as ``frs_relationships`` does.
 FRS_TABLE_COLUMN = "_frs_table"
@@ -122,6 +134,8 @@ FRS_EDUCATION_OUTPUT_COLUMNS = (
     "adult_ema",
     "child_ema",
     "receives_benefits_in_own_right",
+    "reports_outstanding_student_loan",
+    "age_left_full_time_education",
 )
 
 
@@ -242,6 +256,41 @@ def derive_frs_education(
     ]
     values["receives_benefits_in_own_right"] = (
         person[benefit_columns].fillna(0).sum(axis=1) > 0 if benefit_columns else False
+    )
+    student_loan_columns = [
+        column
+        for column in (
+            FRS_STUDENT_LOAN_OUTSTANDING_COLUMN,
+            FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN,
+        )
+        if column not in raw.columns
+    ]
+    if student_loan_columns:
+        # Fail rather than read nobody as a borrower: the student-loan stage
+        # would then assign plans from repayments alone.
+        raise KeyError(
+            f"FRS person rows lack {student_loan_columns}, so student-loan "
+            "borrowers and course dates cannot be derived."
+        )
+    # Adult-table answers only; a child record has neither question.
+    adult = raw[FRS_TABLE_COLUMN].eq("adult")
+    values["reports_outstanding_student_loan"] = (
+        _num(raw, FRS_STUDENT_LOAN_OUTSTANDING_COLUMN).eq(
+            FRS_STUDENT_LOAN_OUTSTANDING_YES
+        )
+        & adult
+    ).to_numpy(dtype=bool)
+    left = _num(raw, FRS_AGE_LEFT_FULL_TIME_EDUCATION_COLUMN)
+    values["age_left_full_time_education"] = (
+        left.where(
+            adult
+            & left.between(
+                AGE_LEFT_FULL_TIME_EDUCATION_MIN, AGE_LEFT_FULL_TIME_EDUCATION_MAX
+            ),
+            0,
+        )
+        .to_numpy()
+        .astype("int64")
     )
     return values
 

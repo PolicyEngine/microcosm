@@ -18,6 +18,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
 from microcosm.build.uk_runtime.target_weights import (
     NATION_REGION_GRAIN,
     UKStageTargetWeighting,
+    assert_uk_family_loss_share_floors,
     uk_rule_loss_weights,
     uk_target_loss_weight_receipt,
     uk_target_loss_weights_for_rows,
@@ -391,3 +392,61 @@ def test_stage_weighting_zeroes_held_rows_and_reapplies_the_rule(surface) -> Non
         UKStageTargetWeighting("grain_equal", surface).loss_weights(surface.names),
         uk_rule_loss_weights(surface, rule="grain_equal"),
     )
+
+
+def _floored_surface():
+    return _rows(
+        _local("l1/gas", "la", "E06000001", "energy/gas_kwh", "domestic_energy", 1.0e6),
+        _local("l1/hh", "la", "E06000001", "households", "census_households", 4.0e4),
+        _national("bus/ne", "dft_bus_journeys", "E12000001", "count", 1.4e8),
+        _national("obr/it", "obr", "K02000001", "gbp", 2.0e11),
+    )
+
+
+def test_family_loss_share_floors_check_the_weights_and_change_nothing() -> None:
+    """A floored family below its share is refused (microcosm#1207)."""
+
+    rows = _floored_surface()
+    weights = np.array([0.03, 0.47, 0.02, 0.48])
+
+    receipt = assert_uk_family_loss_share_floors(rows, weights)
+
+    assert receipt["check_only"] is True
+    energy = receipt["families"]["domestic_energy"]
+    assert energy["status"] == "met"
+    assert energy["loss_share"] == pytest.approx(0.03)
+    assert energy["floor"] == 0.025
+    assert receipt["families"]["dft_bus_journeys"]["loss_share"] == pytest.approx(0.02)
+    np.testing.assert_array_equal(weights, [0.03, 0.47, 0.02, 0.48])
+    with pytest.raises(ValueError, match=r"domestic_energy \(1\.0000% < 2\.5000%\)"):
+        assert_uk_family_loss_share_floors(rows, np.array([0.01, 0.49, 0.02, 0.48]))
+    with pytest.raises(ValueError, match="dft_bus_journeys"):
+        assert_uk_family_loss_share_floors(rows, np.array([0.03, 0.47, 0.01, 0.49]))
+
+
+def test_a_floored_family_off_the_surface_is_recorded_absent() -> None:
+    rows = _floored_surface().take([1, 3])
+    receipt = assert_uk_family_loss_share_floors(rows, np.array([0.5, 0.5]))
+    assert receipt["families"]["domestic_energy"] == {
+        "floor": 0.025,
+        "status": "absent",
+    }
+    with pytest.raises(ValueError, match="positive loss weights"):
+        assert_uk_family_loss_share_floors(rows, np.zeros(2))
+
+
+def test_a_share_equal_to_its_floor_meets_it() -> None:
+    """One family in forty (2.5 %) meets a 2.5 % floor despite rounding."""
+
+    rows = _rows(
+        *(
+            _local(f"l{i}", "la", "E06000001", f"age/{i}", f"family_{i}", 1.0)
+            for i in range(39)
+        ),
+        _local("l/gas", "la", "E06000001", "energy/gas_kwh", "domestic_energy", 1.0),
+    )
+    weights = np.full(40, 1.0 / 40.0) * 3.0  # unnormalised: shares are ratios
+    receipt = assert_uk_family_loss_share_floors(
+        rows, weights, floors={"domestic_energy": 0.025}
+    )
+    assert receipt["families"]["domestic_energy"]["status"] == "met"

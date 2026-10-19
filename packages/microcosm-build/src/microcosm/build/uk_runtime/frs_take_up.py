@@ -49,7 +49,7 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.130.1's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.134.4's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
 # Credit qualifying age. The draw's population is therefore the units with a
@@ -64,8 +64,9 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # under the UC Regs 2013 reg 8 exceptions, whom the engine includes; mixed-age
 # couples on the Pension Credit route, whom it excludes; and, from 2.128.0, a
 # pension-age family moved onto Universal Credit when its legacy benefit
-# closes, whom it includes (SI 2014/1230 reg 60A; the build leaves
-# ``would_claim_uc_at_legacy_closure`` at the engine default). The stage
+# closes, whom it includes (SI 2014/1230 reg 60A; whether such a family
+# claims is ``would_claim_uc_at_legacy_closure``, which
+# ``uc_legacy_closure_take_up`` draws, microcosm#1095). The stage
 # manifest declares the same population on the ``would_claim_uc`` operation;
 # ``assert_take_up_stage_population_declaration`` refuses a manifest that stops
 # saying so, so the declaration and the code cannot drift apart.

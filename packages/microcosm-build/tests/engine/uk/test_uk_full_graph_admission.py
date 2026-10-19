@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.graph_terminal import (
     decode_full_gate_report,
     register_uk_full_gate_kernels,
     register_uk_terminal_kernels,
+    uk_terminal_only_code_hash,
 )
 from microcosm.graph import (
     ArtifactInput,
@@ -60,6 +61,41 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
 )
 
 
+@pytest.fixture
+def gate_only_register_trap(monkeypatch):
+    """Fail any read of a gate-only register (microcosm#1301), and record it.
+
+    Every register loader reads through ``_read_register_payload``; the
+    cached default loaders are cleared so an earlier load cannot hide a read.
+    """
+    from pathlib import Path
+
+    from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
+    from microcosm.build.uk_runtime.solve_scope import UK_GATE_ONLY_RESOURCES
+
+    cached = (
+        terminal_gates.uk_default_target_fit_reviewed_exclusions,
+        terminal_gates.uk_default_local_target_fit_reviewed_exclusions,
+        weighted_integrity.uk_default_input_mass_reviewed_exclusions,
+    )
+    original = weighted_integrity._read_register_payload
+    trapped: list[str] = []
+
+    def trap(source, *, resource):
+        name = resource if source is None else Path(source).name
+        if name in UK_GATE_ONLY_RESOURCES:
+            trapped.append(name)
+            raise AssertionError(f"The solve read the gate-only register {name}.")
+        return original(source, resource=resource)
+
+    for loader in cached:
+        loader.cache_clear()
+    monkeypatch.setattr(weighted_integrity, "_read_register_payload", trap)
+    yield trapped
+    for loader in cached:
+        loader.cache_clear()
+
+
 class IncompleteSource(Source):
     ref = "uk.test.full-incomplete-source@1"
 
@@ -79,13 +115,16 @@ class IncompleteSource(Source):
 
 
 def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certification(
-    target_inputs, toy_ladder, tmp_path, monkeypatch
+    target_inputs, toy_ladder, tmp_path, monkeypatch, gate_only_register_trap
 ):
     """Source adapters are synthetic; gate, solver and terminal owners are real.
 
     A tiny fixture lacks the approved national/local reference surface and
     canonical source roster. Its proper scientific outcome is refusal, never
     fabricated passing release evidence to drive a successful filesystem test.
+    Target compilation and the preflight run with every gate-only register
+    trapped (microcosm#1301): they key on the solve fingerprint, so they may
+    read none.
     """
     _, ladder_path = toy_ladder
     primitive, _ = graph_and_registry(1)
@@ -126,6 +165,14 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         engine_identity="fixture-engine",
         review_date="2026-09-10",
     )
+    # Only the calibrated gates key on the code only they run; the preflight,
+    # which the dense solve keys on, does not (microcosm#1306 review).
+    gate_nodes = {node.id: node for node in graph.nodes}
+    assert (
+        gate_nodes["uk.full.gates.calibrated"].params["terminal_code"]
+        == uk_terminal_only_code_hash()
+    )
+    assert "terminal_code" not in gate_nodes["uk.full.gates.preflight"].params
     final_gate = ArtifactInput(
         "full_gates", "uk.full.gates.calibrated", "gate_report", FULL_GATE_REPORT_TYPE
     )
@@ -194,6 +241,14 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
     )
     assert all(receipt.hit for receipt in warm.nodes.values())
     assert warm.nodes["uk.full.gates.preflight"].opaque_artifacts["gate_report"] == key
+    assert "uk.full.target_compilation" in cold.nodes
+    assert gate_only_register_trap == []
+    # Control: the trap sees a gate-only read.
+    from microcosm.build.uk_runtime import terminal_gates
+
+    with pytest.raises(AssertionError, match="gate-only register"):
+        terminal_gates.uk_default_target_fit_reviewed_exclusions()
+    assert gate_only_register_trap == ["target_fit_reviewed_exclusions.json"]
 
     monkeypatch.setattr(
         graph_calibration,

@@ -7143,7 +7143,7 @@
        "type": "string"
       },
       "rate_rule": {
-       "const": "one_minus_zero_emission_share"
+       "const": "per_car_zero_emission_share"
       },
       "period_value": {
        "type": "integer"
@@ -9472,8 +9472,11 @@
       "reported_country_gate",
       "plan_1_before",
       "plan_5_from",
+      "plan_5_repayments_from",
       "enum_domain",
-      "plan_4_imputation"
+      "plan_4_imputation",
+      "reported_outstanding_test",
+      "reported_outstanding_region_exclusions"
      ],
      "properties": {
       "kind": {
@@ -9501,6 +9504,9 @@
       "plan_5_from": {
        "type": "integer"
       },
+      "plan_5_repayments_from": {
+       "type": "integer"
+      },
       "enum_domain": {
        "type": "array",
        "items": {
@@ -9509,6 +9515,15 @@
       },
       "plan_4_imputation": {
        "type": "boolean"
+      },
+      "reported_outstanding_test": {
+       "type": "string"
+      },
+      "reported_outstanding_region_exclusions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       }
      }
     },
@@ -9590,6 +9605,266 @@
       },
       "realization_bound": {
        "type": "string"
+      },
+      "cohort_start_formula": {
+       "type": "string"
+      },
+      "current_education": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "year_rule",
+      "weights"
+     ],
+     "properties": {
+      "kind": {
+       "const": "store_rules_engine_input"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
+      },
+      "weights": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "knots",
+      "knots_level",
+      "region_map",
+      "rows",
+      "rank",
+      "support_stratum_lower",
+      "stream",
+      "value",
+      "property_wealth",
+      "rank_basis_column"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_regional_home_values"
+      },
+      "knots": {
+       "type": "string"
+      },
+      "knots_level": {
+       "type": "string"
+      },
+      "region_map": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rank": {
+       "type": "string"
+      },
+      "support_stratum_lower": {
+       "type": "number"
+      },
+      "stream": {
+       "type": "array",
+       "items": {
+        "type": [
+         "string",
+         "integer"
+        ]
+       }
+      },
+      "value": {
+       "type": "string"
+      },
+      "property_wealth": {
+       "type": "string"
+      },
+      "rank_basis_column": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "stocks",
+      "port_of",
+      "minimum_price",
+      "eligibility",
+      "fit_regions",
+      "hazard",
+      "event_score",
+      "threshold",
+      "price",
+      "minimum_value_share",
+      "weights",
+      "streams",
+      "additional_residential_targets",
+      "non_residential_targets"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_annual_property_purchases"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "stocks": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "port_of": {
+       "type": "string"
+      },
+      "minimum_price": {
+       "type": "number"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "fit_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "hazard": {
+       "type": "string"
+      },
+      "event_score": {
+       "type": "string"
+      },
+      "threshold": {
+       "type": "string"
+      },
+      "price": {
+       "type": "string"
+      },
+      "minimum_value_share": {
+       "type": "number"
+      },
+      "weights": {
+       "type": "string"
+      },
+      "streams": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "event_salt",
+         "price_salt",
+         "seed"
+        ],
+        "properties": {
+         "event_salt": {
+          "type": "string"
+         },
+         "price_salt": {
+          "type": "string"
+         },
+         "seed": {
+          "type": "integer"
+         }
+        }
+       }
+      },
+      "additional_residential_targets": {
+       "type": "string"
+      },
+      "non_residential_targets": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "port_of",
+      "legacy_benefits",
+      "true_without_draw",
+      "rate",
+      "probability",
+      "p",
+      "stream"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_uc_claim_at_legacy_closure"
+      },
+      "output": {
+       "type": "string"
+      },
+      "port_of": {
+       "type": "string"
+      },
+      "legacy_benefits": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "true_without_draw": {
+       "type": "string"
+      },
+      "rate": {
+       "type": "string"
+      },
+      "probability": {
+       "type": "string"
+      },
+      "p": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "salt",
+        "seed"
+       ],
+       "properties": {
+        "salt": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer"
+        }
+       }
       }
      }
     },
@@ -10020,6 +10295,45 @@
         "gas": {
          "type": "number",
          "exclusiveMinimum": 0
+        }
+       }
+      },
+      "zero_kwh_cells_at_need_mean": {
+       "type": "object",
+       "additionalProperties": false,
+       "minProperties": 1,
+       "properties": {
+        "income": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string",
+          "minLength": 1
+         }
+        },
+        "tenure": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string",
+          "minLength": 1
+         }
+        },
+        "accommodation": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string",
+          "minLength": 1
+         }
+        },
+        "region": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string",
+          "minLength": 1
+         }
         }
        }
       }
@@ -11180,33 +11494,49 @@
           "type": "string"
          },
          "price_index": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-           "resource",
-           "concept",
-           "frequency"
-          ],
-          "properties": {
-           "resource": {
-            "type": "string"
+          "oneOf": [
+           {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+             "resource",
+             "concept",
+             "frequency"
+            ],
+            "properties": {
+             "resource": {
+              "type": "string"
+             },
+             "concept": {
+              "type": "string"
+             },
+             "geography_id": {
+              "type": "string"
+             },
+             "frequency": {
+              "enum": [
+               "quarterly",
+               "annual"
+              ]
+             },
+             "basis": {
+              "type": "string"
+             }
+            }
            },
-           "concept": {
-            "type": "string"
-           },
-           "geography_id": {
-            "type": "string"
-           },
-           "frequency": {
-            "enum": [
-             "quarterly",
-             "annual"
-            ]
-           },
-           "basis": {
-            "type": "string"
+           {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+             "basis"
+            ],
+            "properties": {
+             "basis": {
+              "const": "own_fiscal_yields"
+             }
+            }
            }
-          }
+          ]
          },
          "trips_basis": {
           "enum": [

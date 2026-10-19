@@ -69,6 +69,8 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN,
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
 )
 
@@ -132,6 +134,10 @@ SPI_STAGE1_ANALOGUE_COLUMNS: Mapping[str, str | None] = {
     # Restricted finance costs reach the FRS rows only at property_components,
     # after this stage, so the twin has no analogue to locate (microcosm#1106).
     SPI_PROPERTY_FINANCE_COSTS_COLUMN: None,
+    # The FRS records no losses brought forward, and its twin's profit is the
+    # self_employment_income analogue already located (microcosm#1095).
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN: None,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN: None,
 }
 
 

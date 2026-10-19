@@ -113,6 +113,18 @@ SPI_HMRC_DERIVED_AUXILIARY_COLUMNS = (
 #: last, so it conditions on every income leaf and leaves every earlier draw
 #: where it was (microcosm#1106).
 SPI_PROPERTY_FINANCE_COSTS_COLUMN = "property_finance_costs"
+#: The year's trading profit before losses brought forward (PROFITS less
+#: CAPALL, floored at zero) and the losses brought forward themselves (LOSSBF),
+#: drawn after every other leaf so every earlier draw stays where it was. The
+#: stage moves the losses out of self_employment_income, which the chain
+#: still draws net of them, into loss_relief and the Class 4 losses brought
+#: forward, then drops both draws (uk-data#528, microcosm#1095).
+SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN = "spi_profit_before_losses_draw"
+SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN = "spi_losses_brought_forward_draw"
+SPI_LOSS_DRAW_COLUMNS = (
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN,
+)
 SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     *(
         column
@@ -121,6 +133,7 @@ SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     ),
     *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
+    *SPI_LOSS_DRAW_COLUMNS,
 )
 
 # The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
@@ -177,6 +190,28 @@ FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    # uk-data#528: the year's trading loss, which the SPI tape does not
+    # carry; a redrawn row with a positive profit keeps none (microcosm#1095).
+    "trading_loss",
+    # The owner-manager inputs the root stage reads from the FRS job tab, which
+    # the tape does not carry: drawn last, in this order, so each flag follows
+    # the drawn incomes and the ones before it, then held to the root stage's
+    # rules (microcosm#1095; María's ruling of 2026-10-16).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
+)
+#: The owner-manager flags among the FRS-only fill's outputs: drawn as 0 or 1
+#: (the fill's zero regime gate) and stored as booleans again.
+FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS = (
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
 )
 
 _PERSON_ID_COLUMNS = (
@@ -1265,6 +1300,7 @@ __all__ = [
     "DEFAULT_SPI_PRIOR_MASS_SHARE",
     "DEFAULT_SPI_SUPPORT_HOUSEHOLDS",
     "FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS",
+    "FRS_ONLY_SPI_FILL_OWNER_MANAGER_FLAGS",
     "FRS_ONLY_SPI_FILL_PERSON_COLUMNS",
     "FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS",
     "HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN",
@@ -1288,8 +1324,11 @@ __all__ = [
     "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
+    "SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN",
+    "SPI_LOSS_DRAW_COLUMNS",
     "SPI_PENSION_AGE_STRATUM_COLUMN",
     "SPI_PRIOR_MASS_CHANGE_REASON",
+    "SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN",
     "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",

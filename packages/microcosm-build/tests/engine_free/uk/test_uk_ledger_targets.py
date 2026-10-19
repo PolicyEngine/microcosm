@@ -40,12 +40,14 @@ FIXTURE_FEED_ROWS = (
 
 
 def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
+    # Both sides count paid claims (microcosm#1300), so the bridge's factor
+    # sits near one: 45.45 over 45 cells is 1.01, inside its 2% bound.
     registry = TargetRegistry(
         [
             TargetSpec(
                 name="dwp.uc.households",
                 entity="household",
-                value=90.0,
+                value=45.45,
                 measure="uc_households",
                 period=2025,
                 source="DWP",
@@ -94,7 +96,7 @@ def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
     )
 
     uc = surface.loc[surface["metric"] == "uc_households"]
-    assert uc["value"].tolist() == [60.0, 30.0]
+    assert uc["value"].tolist() == pytest.approx([30.3, 15.15])
     assert uc["target_name"].tolist() == [
         "dwp.uc.households_by_area@E14001073",
         "dwp.uc.households_by_area@S14000001",
@@ -1415,33 +1417,49 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
     }
     assert reconciled.loc[4:, "value"].tolist() == [80.0, 20.0, 10.0, 10.0]
 
-    uc_surface = pd.DataFrame(
-        [
-            {
-                "grain": "country",
-                "geography_id": "K02000001",
-                "target_id": "dwp.uc.households",
-                "value": 90.0,
-            },
-            {
-                "grain": "constituency",
-                "geography_id": "E14001073",
-                "target_id": "dwp.uc.households_by_area",
-                "value": 30.0,
-            },
-            {
-                "grain": "constituency",
-                "geography_id": "S14000001",
-                "target_id": "dwp.uc.households_by_area",
-                "value": 15.0,
-            },
-        ]
-    )
+    def uc_surface(control: float) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": "dwp.uc.households",
+                    "value": control,
+                },
+                {
+                    "grain": "constituency",
+                    "geography_id": "E14001073",
+                    "target_id": "dwp.uc.households_by_area",
+                    "value": 30.0,
+                },
+                {
+                    "grain": "constituency",
+                    "geography_id": "S14000001",
+                    "target_id": "dwp.uc.households_by_area",
+                    "value": 15.0,
+                },
+            ]
+        )
+
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
-        uc_surface, uc_bridge.higher_target_ids
+        uc_surface(45.45), uc_bridge.higher_target_ids
     )
     assert receipt["groups"][0]["bridge_id"] == uc_bridge.bridge_id
-    assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
+    assert reconciled.loc[1:, "value"].tolist() == pytest.approx([30.3, 15.15])
+    # Both sides count paid claims (microcosm#1300): a control twice the cells
+    # would mean they no longer measure one quantity, and the bridge refuses.
+    assert uc_bridge.max_factor_shift == 0.02
+    with pytest.raises(ValueError, match="max_factor_shift"):
+        apply_uk_cross_grain_reconciliation(
+            uc_surface(90.0), uc_bridge.higher_target_ids
+        )
+    # Below one too: a GB caseload at 0.92 of its cells, the all-claims
+    # cells' old relation to the paid caseload, is refused rather than
+    # scaled onto them (microcosm#1302 review).
+    with pytest.raises(ValueError, match="max_factor_shift 0.02 from one"):
+        apply_uk_cross_grain_reconciliation(
+            uc_surface(41.4), uc_bridge.higher_target_ids
+        )
 
 
 def test_partially_bound_household_bridge_stays_unbound_with_reviewed_records():
@@ -1568,19 +1586,21 @@ def test_fully_bound_household_bridge_reconciles_census_cells_per_nation():
 
 
 def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
+    # Each country's leg takes its own factor (1.01 and 0.99), within the
+    # bridge's 2% bound; one Great Britain leg would give both 1.005.
     surface = pd.DataFrame(
         [
             {
                 "grain": "country",
                 "geography_id": "E92000001",
                 "target_id": "dwp.uc.households",
-                "value": 60.0,
+                "value": 30.3,
             },
             {
                 "grain": "country",
                 "geography_id": "S92000003",
                 "target_id": "dwp.uc.households",
-                "value": 40.0,
+                "value": 9.9,
             },
             {
                 "grain": "constituency",
@@ -1622,7 +1642,7 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
         area_type="constituency",
     )
     _require_uniform_target_surface(problem)
-    assert problem.targets.tolist() == [60.0, 40.0]
+    assert problem.targets.tolist() == pytest.approx([30.3, 9.9])
 
 
 def test_uk_local_target_surface_refuses_bridge_control_fanout() -> None:

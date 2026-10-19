@@ -130,7 +130,9 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
             assert source["signed_reason_id"], source["source_id"]
             assert source["signed_rationale"], source["source_id"]
         assert source["geographies"], source["source_id"]
-        assert set(source["geographies"]) <= {"constituency", "la", "msoa"}
+        # "country": a nation's total that sets a family's level factor and
+        # binds no cell (DESNZ's Northern Ireland rows, microcosm#1278).
+        assert set(source["geographies"]) <= {"constituency", "la", "msoa", "country"}
 
     household_family = next(
         family

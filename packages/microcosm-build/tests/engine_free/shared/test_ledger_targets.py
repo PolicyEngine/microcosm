@@ -5418,3 +5418,284 @@ def test__given_a_summed_cell_changes_record_set_mid_window__then_it_refuses():
     rows[0]["layout"]["record_set_id"] = "cms_medicaid.Other.month2025-04"
     with pytest.raises(ValueError, match="multiple semantic series"):
         compile_ledger_target_references(rows, [_sum_window_reference()], country="us")
+
+
+def _window_ratio_facts(
+    *, numerator: float = 60.0, denominator: float = 80.0
+) -> list[dict]:
+    facts = [
+        _cy_window_fact(key="fy2024", value=304.0, opening_year=2024),
+        _cy_window_fact(key="fy2025", value=329.0, opening_year=2025),
+        _cy_window_fact(key="fy2026", value=347.0, opening_year=2026),
+    ]
+    for key, measure_id, value in (
+        ("individuals", "individuals_receipts", numerator),
+        ("all-buyers", "all_buyers_receipts", denominator),
+    ):
+        operand = _cy_window_fact(
+            key=key,
+            value=value,
+            opening_year=2024,
+            measure_id=measure_id,
+            assertion="observation",
+        )
+        # Another publisher's universe: the operand's entity is its own.
+        operand["entity"] = {"name": "return", "role": "sdlt_land_transaction"}
+        facts.append(operand)
+    return facts
+
+
+def _window_ratio_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "households' SDLT, calendar 2025",
+        "ledger_selector": {
+            "source_name": "irs_soi",
+            "source_measure_id": "total_tax_amount",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+        },
+        "value_operation": "calendar_year_window_scaled_by_ratio",
+        "value_operands": (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "individuals_receipts",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "all_buyers_receipts",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        ),
+        "assertion_policy": "allow_source_projection",
+        "entity": "household",
+        "measure": "obr/sdlt_households",
+        "family": "obr",
+        "period": 2025,
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def test__given_a_window_and_a_pinned_quotient__then_the_window_is_translated() -> None:
+    # The OBR's calendar-2025 window of a fiscal-year line, restated for the
+    # subset HMRC's own year publishes the share of (microcosm#1095).
+    registry = compile_ledger_target_references(
+        _window_ratio_facts(), [_window_ratio_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    window = 0.25 * 304.0 + 0.75 * 329.0
+    assert spec.value == pytest.approx(window * 60.0 / 80.0)
+    metadata = spec.metadata
+    assert metadata["ledger_value_formula"] == (
+        "(3/12 * FY2024 + 9/12 * FY2025) * numerator / denominator"
+    )
+    assert metadata["ledger_value_base"] == repr(window)
+    assert metadata["ledger_value_ratio"] == repr(60.0 / 80.0)
+    members = json.loads(metadata["ledger_calendar_year_window_members"])
+    assert set(members) == {"2024", "2025"}
+    # The window's latest year carries the identity; the operands only
+    # translate it.
+    assert metadata["ledger_aggregate_fact_key"] == "ledger.aggregate_fact.v2:fy2025"
+
+
+def test__given_a_window_ratio__then_operand_selectors_are_complete_as_declared() -> (
+    None
+):
+    selectors = reference_fact_selectors(_window_ratio_reference())
+
+    assert selectors[1:] == (
+        {
+            "source_measure_id": "individuals_receipts",
+            "period_type": "tax_year",
+            "period_value": 2024,
+        },
+        {
+            "source_measure_id": "all_buyers_receipts",
+            "period_type": "tax_year",
+            "period_value": 2024,
+        },
+    )
+
+
+def test__given_a_window_ratio_outside_a_subset_share__then_it_refuses() -> None:
+    with pytest.raises(ValueError, match=r"ratio must lie in \(0, 1\]"):
+        compile_ledger_target_references(
+            _window_ratio_facts(numerator=90.0),
+            [_window_ratio_reference()],
+            country="uk",
+        )
+
+
+def test__given_a_window_ratio_operand_matching_two_facts__then_it_refuses() -> None:
+    facts = _window_ratio_facts()
+    duplicate = dict(facts[-1])
+    duplicate["aggregate_fact_key"] = "ledger.aggregate_fact.v2:all-buyers-copy"
+    duplicate["semantic_fact_key"] = "ledger.semantic_fact.v2:all-buyers-copy"
+    facts.append(duplicate)
+    with pytest.raises(ValueError, match="matched 2 facts; expected exactly 1"):
+        compile_ledger_target_references(
+            facts, [_window_ratio_reference()], country="uk"
+        )
+
+
+@pytest.mark.parametrize(
+    ("operands", "message"),
+    [
+        (
+            ({"role": "base"}, {"role": "numerator", "source_measure_id": "x"}),
+            "ordered base/numerator/denominator",
+        ),
+        (
+            (
+                {"role": "base", "source_measure_id": "x"},
+                {"role": "numerator", "source_measure_id": "x"},
+                {"role": "denominator", "source_measure_id": "y"},
+            ),
+            "takes no overrides",
+        ),
+        (
+            (
+                {"role": "base"},
+                {"role": "numerator", "source_measure_id": "x"},
+                {
+                    "role": "denominator",
+                    "source_measure_id": "y",
+                    "period_type": "tax_year",
+                    "period_value": 2024,
+                },
+            ),
+            "must pin its own period_type and period_value",
+        ),
+    ],
+)
+def test__given_malformed_window_ratio_operands__then_the_reference_refuses(
+    operands, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _window_ratio_reference(value_operands=operands)
+
+
+def test__given_window_ratio_operands_of_two_cells__then_each_sums_its_members() -> (
+    None
+):
+    # Individuals' share of SDLT receipts over both property types: each
+    # operand sums the residential and the non-residential cell.
+    facts = _window_ratio_facts()[:3]
+    for key, value in (
+        ("ind-residential", 40.0),
+        ("ind-non-residential", 20.0),
+        ("all-residential", 60.0),
+        ("all-non-residential", 20.0),
+    ):
+        operand = _cy_window_fact(
+            key=key,
+            value=value,
+            opening_year=2024,
+            measure_id="receipts",
+            assertion="observation",
+        )
+        operand["entity"] = {"name": "return", "role": "sdlt_land_transaction"}
+        facts.append(operand)
+    reference = _window_ratio_reference(
+        value_operands=(
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "aggregate_fact_key": [
+                    "ledger.aggregate_fact.v2:ind-residential",
+                    "ledger.aggregate_fact.v2:ind-non-residential",
+                ],
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "expected_member_count": 2,
+            },
+            {
+                "role": "denominator",
+                "aggregate_fact_key": [
+                    "ledger.aggregate_fact.v2:all-residential",
+                    "ledger.aggregate_fact.v2:all-non-residential",
+                ],
+                "period_type": "tax_year",
+                "period_value": 2024,
+                "expected_member_count": 2,
+            },
+        )
+    )
+
+    spec = compile_ledger_target_references(facts, [reference], country="uk").specs[0]
+
+    assert spec.value == pytest.approx((0.25 * 304.0 + 0.75 * 329.0) * 60.0 / 80.0)
+    assert spec.metadata["ledger_value_numerator"] == "60.0"
+    assert spec.metadata["ledger_value_denominator"] == "80.0"
+
+
+def _window_ratio_member_facts() -> list[dict]:
+    facts = _window_ratio_facts()[:3]
+    for key, measure_id, value in (
+        ("ind-a", "receipts_a", 40.0),
+        ("ind-a-again", "receipts_a", 20.0),
+        ("all-a", "all_receipts", 80.0),
+    ):
+        operand = _cy_window_fact(
+            key=key,
+            value=value,
+            opening_year=2024,
+            measure_id=measure_id,
+            assertion="observation",
+        )
+        operand["entity"] = {"name": "return", "role": "sdlt_land_transaction"}
+        facts.append(operand)
+    return facts
+
+
+def _window_ratio_member_reference(numerator: dict) -> LedgerTargetReference:
+    return _window_ratio_reference(
+        value_operands=(
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "period_type": "tax_year",
+                "period_value": 2024,
+                **numerator,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "all_receipts",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        )
+    )
+
+
+def test__given_a_window_ratio_member_matched_twice__then_it_refuses() -> None:
+    # Two facts for one listed member and none for the other add up to the
+    # declared total; each member must still match exactly once.
+    reference = _window_ratio_member_reference(
+        {"source_measure_id": ["receipts_a", "receipts_b"], "expected_member_count": 2}
+    )
+    with pytest.raises(ValueError, match="matched 2 facts; expected exactly one"):
+        compile_ledger_target_references(
+            _window_ratio_member_facts(), [reference], country="uk"
+        )
+
+
+def test__given_a_window_ratio_list_unlike_its_count__then_it_refuses() -> None:
+    with pytest.raises(ValueError, match="exactly one list-valued selector"):
+        compile_ledger_target_references(
+            _window_ratio_member_facts(),
+            [
+                _window_ratio_member_reference(
+                    {
+                        "source_measure_id": ["receipts_a", "receipts_b", "receipts_c"],
+                        "expected_member_count": 2,
+                    }
+                )
+            ],
+            country="uk",
+        )

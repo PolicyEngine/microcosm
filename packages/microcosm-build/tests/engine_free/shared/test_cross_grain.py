@@ -114,6 +114,182 @@ def test_bridge_sums_exhaustive_higher_partition_to_one_contract_control():
     ]
 
 
+@pytest.mark.parametrize(("shift", "refused"), [(0.5, False), (0.1, True)])
+def test_bridge_refuses_a_factor_further_than_its_declared_shift(shift, refused):
+    """microcosm#1300: a bridge whose two sides measure one quantity bounds its factor."""
+
+    bridge = CrossGrainBridge(
+        "partition_vs_contract",
+        concept="households",
+        higher_target_ids=("part_a", "part_b"),
+        lower_side="contract:census_households",
+        max_factor_shift=shift,
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "part_a", 30.0),
+            ("country", "UK", "part_b", 70.0),
+            ("constituency", "E1", "census_households", 50.0),
+            ("constituency", "W1", "census_households", 30.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    arguments = (
+        surface,
+        ("part_a", "part_b"),
+        {"part_a": _signature(), "part_b": _signature()},
+        _rule(bridges=(bridge,)),
+    )
+    if refused:
+        with pytest.raises(ValueError, match="max_factor_shift 0.1 from one"):
+            apply_cross_grain_reconciliation(*arguments)
+    else:
+        reconciled, _ = apply_cross_grain_reconciliation(*arguments)
+        # The legs sum to 80 against a control of 100: a factor of 1.25.
+        assert reconciled["value"].tolist() == [30.0, 70.0, 62.5, 37.5]
+
+
+def _bounded_surface(control: float, shift: float) -> tuple:
+    bridge = CrossGrainBridge(
+        "partition_vs_contract",
+        concept="households",
+        higher_target_ids=("part_a",),
+        lower_side="contract:census_households",
+        max_factor_shift=shift,
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "part_a", control),
+            ("constituency", "E1", "census_households", 50.0),
+            ("constituency", "W1", "census_households", 30.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    return (surface, ("part_a",), {"part_a": _signature()}, _rule(bridges=(bridge,)))
+
+
+@pytest.mark.parametrize(
+    ("control", "shift", "refused"),
+    [
+        # Controls of 100 and 60 over cells of 80 give factors of exactly 1.25
+        # and 0.75: the bound refuses a shift past it in either direction and
+        # accepts one exactly at it.
+        (100.0, 0.25, False),
+        (100.0, 0.2, True),
+        (60.0, 0.25, False),
+        (60.0, 0.2, True),
+    ],
+)
+def test_bridge_bound_is_two_sided_and_strict(control, shift, refused):
+    """microcosm#1302 review: a control below its cells is refused like one above."""
+
+    arguments = _bounded_surface(control, shift)
+    if refused:
+        with pytest.raises(ValueError, match=f"max_factor_shift {shift} from one"):
+            apply_cross_grain_reconciliation(*arguments)
+    else:
+        reconciled, receipt = apply_cross_grain_reconciliation(*arguments)
+        assert reconciled["value"].sum() == pytest.approx(2 * control)
+        (leg,) = receipt["groups"][0]["legs"]
+        assert leg["max_factor_shift"] == shift
+        assert leg["factor_on_input_totals"] == control / 80.0
+
+
+@pytest.mark.parametrize(
+    "bound", [0.0, -0.1, float("nan"), float("inf"), True, 1.0, 1, 1.5]
+)
+def test_bridge_bound_must_be_a_number_between_zero_and_one(bound):
+    # A bound of one or more never refuses a factor below one: the operator
+    # refuses it, as the UK loader does (microcosm#1302 re-review).
+    with pytest.raises(ValueError, match=r"a bound must be a number in \(0, 1\)"):
+        apply_cross_grain_reconciliation(*_bounded_surface(100.0, bound))
+
+
+def test_bridge_bound_just_below_one_is_accepted():
+    # Factors of 1.25 and 0.75 sit well inside a bound of 0.99.
+    for control in (100.0, 60.0):
+        reconciled, _ = apply_cross_grain_reconciliation(
+            *_bounded_surface(control, 0.99)
+        )
+        assert reconciled["value"].sum() == pytest.approx(2 * control)
+
+
+def test_a_pass_that_is_not_the_last_records_the_bound_without_refusing():
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        *_bounded_surface(100.0, 0.1), check_factor_bounds=False
+    )
+    assert receipt["factor_bounds_checked"] is False
+    (leg,) = receipt["groups"][0]["legs"]
+    assert leg["factor_on_input_totals"] == 1.25
+    assert leg["factor_bound_checked"] is False
+    assert reconciled["value"].tolist() == [100.0, 62.5, 37.5]
+
+
+def test_bridge_bounds_a_lower_grain_another_group_rescales_first():
+    """microcosm#1302 review: each grain is bounded on its own input total.
+
+    The local cells at both grains share one signature, so an exact group
+    rescales the authorities onto the constituencies before the bridge reaches
+    them; read off those values, the bridge's authority factor would be one
+    whatever the authorities said.
+    """
+
+    bridge = CrossGrainBridge(
+        "national_age_vs_local_age",
+        concept="people",
+        higher_target_ids=("national_age",),
+        lower_side="contract:local_age",
+        max_factor_shift=0.02,
+    )
+    signatures = {
+        "national_age": {
+            "measurement": {
+                "concept": "people",
+                "entity": "household",
+                "map_to": None,
+                "filters": [{"age": {"minimum": 0, "maximum": 9}}],
+            }
+        },
+        "local_age": {
+            "measurement": {
+                "concept": "people",
+                "entity": "household",
+                "map_to": None,
+                "filters": [{"age": {"lower": 0, "upper": 10}}],
+            }
+        },
+    }
+
+    def surface(scotland_authorities: float) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                ("country", "UK", "national_age", 100.0),
+                ("constituency", "E1", "local_age", 60.0),
+                ("constituency", "S1", "local_age", 40.0),
+                ("la", "E9", "local_age", 60.0),
+                ("la", "S9", "local_age", scotland_authorities),
+            ],
+            columns=["grain", "geography_id", "target_id", "value"],
+        )
+
+    # The constituencies match the control; the authorities sum to 85.
+    with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.17"):
+        apply_cross_grain_reconciliation(
+            surface(25.0), ("national_age",), signatures, _rule(bridges=(bridge,))
+        )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface(40.0), ("national_age",), signatures, _rule(bridges=(bridge,))
+    )
+    assert reconciled["value"].tolist() == [100.0, 60.0, 40.0, 60.0, 40.0]
+    bounded = [
+        leg
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_vs_local_age"
+        for leg in group["legs"]
+    ]
+    assert {leg["factor_on_input_totals"] for leg in bounded} == {1.0}
+
+
 def test_bridge_rescales_constituency_and_la_to_same_country_control():
     bridge = CrossGrainBridge(
         "national_age_vs_local_age",
@@ -216,6 +392,7 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
     pd.testing.assert_frame_equal(reconciled, surface)
     assert receipt == {
         "bound_higher_targets": [],
+        "factor_bounds_checked": True,
         "inconsistencies_in_force": [],
         "groups": [],
         "unbound_bridges": [],
@@ -223,6 +400,7 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
         "controls_without_lower_rows": [],
         "delegated_legs": [],
         "absent_middle_tier_legs": [],
+        "deferred_legs_without_control": [],
         "absence": "No cross-grain inconsistencies are in force on this surface.",
     }
 
@@ -418,6 +596,72 @@ def test_unparented_and_empty_legs_are_refused():
     )
     with pytest.raises(ValueError, match="empty leg.*lacks a licence"):
         apply_cross_grain_reconciliation(empty, ("national",), signatures, _rule())
+
+
+def test_a_leg_holding_only_deferred_cells_needs_no_control():
+    """Frame-only rows of a target licensed empty on their leg are deferred
+    cells: with no control above them they are receipted, not refused. A
+    bound row there, a frame-only row without the licence, or a licensed
+    row that binds is still an orphan (microcosm#1301)."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 10.0),
+            ("constituency", "E1", "local", 10.0),
+            ("constituency", "N1", "local", 3.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {
+        target_id: _signature() for target_id in ("national", "local", "bound")
+    }
+    licences = {"local": frozenset({"N"})}
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        signatures,
+        _rule(),
+        licensed_empty_legs=licences,
+        frame_only_positions=(2,),
+    )
+
+    assert reconciled["value"].tolist() == [10.0, 10.0, 3.0]
+    assert receipt["deferred_legs_without_control"] == [
+        {
+            "inconsistency_id": receipt["groups"][0]["inconsistency_id"],
+            "lower_grain": "constituency",
+            "leg": "N",
+            "lower_target_ids": ["local"],
+        }
+    ]
+
+    with_bound = pd.concat(
+        [
+            surface,
+            pd.DataFrame(
+                [("constituency", "N2", "bound", 2.0)], columns=surface.columns
+            ),
+        ],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match=r"unparented lower-grain leg\(s\) \['N'\]"):
+        apply_cross_grain_reconciliation(
+            with_bound,
+            ("national",),
+            signatures,
+            _rule(),
+            licensed_empty_legs=licences,
+            frame_only_positions=(2,),
+        )
+    for kwargs in (
+        {"frame_only_positions": (2,)},
+        {"licensed_empty_legs": licences},
+    ):
+        with pytest.raises(ValueError, match="unparented"):
+            apply_cross_grain_reconciliation(
+                surface, ("national",), signatures, _rule(), **kwargs
+            )
 
 
 def test_empty_leg_licensed_for_every_lower_target_is_receipted_and_skipped():

@@ -88,9 +88,11 @@ from . import (
     full_measure,
     full_targets,
     ledger_targets,
+    measure_simulation,
     national_calibration,
     national_doctrine,
 )
+from . import support_floor as support_floor_rules
 from .battery_bindings import UK_GATE_REGISTRY
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
@@ -478,8 +480,15 @@ class _NationalKernel(KernelBase):
             full_measure,
             full_targets,
             ledger_targets,
+            # full_targets applies the measure exclusions, and full_measure
+            # resolves the problem's measures, in measure_simulation; the
+            # dense target kernels hash it too (microcosm#1301). An edit there
+            # alone must re-key the national targets, the problem and all
+            # they feed.
+            measure_simulation,
             national_calibration,
             national_doctrine,
+            support_floor_rules,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -515,6 +524,7 @@ class UKNationalTargetKernel(_NationalKernel):
             "national_registry": registry_payload(inputs["national_registry"]),
             "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
             "measure_exclusions": inputs["measure_exclusions"],
+            "support_floor": inputs["support_floor"],
             "register_completeness": inputs["register_completeness"],
             "ledger_provenance": inputs["ledger_provenance"],
             "chronicle_feed_pin": inputs["chronicle_feed_pin"],
@@ -532,6 +542,48 @@ def _registry_artifact(context: KernelContext) -> dict[str, Any]:
     ):
         raise ValueError("Unsupported UK national target registry artifact.")
     return payload
+
+
+def solved_national_measure_exclusions(
+    registry_document: Mapping[str, Any], bindings: Mapping[str, Any]
+) -> dict[str, dict[str, str]]:
+    """The run's measure exclusions as its problem binds them.
+
+    The register's per-row entries, unchanged, and the rows the support
+    floor dropped on this frame (microcosm#1095 U3), which only the problem
+    node could measure.
+    """
+
+    declared = registry_document["measure_exclusions"]
+    bound = bindings.get("measure_exclusions", declared)
+    changed = sorted(
+        name for name, record in declared.items() if bound.get(name) != record
+    )
+    added = support_floor_rules.uk_support_floor_names(bound)
+    unexplained = sorted(set(bound) - set(declared) - added)
+    if changed or unexplained:
+        raise ValueError(
+            "The national problem's measure exclusions differ from the register's "
+            f"beyond the support floor: changed {changed}, added {unexplained}."
+        )
+    return {name: dict(record) for name, record in bound.items()}
+
+
+def solved_national_registry(
+    registry_document: Mapping[str, Any],
+    measure_exclusions: Mapping[str, Mapping[str, str]],
+) -> TargetRegistry:
+    """The register the national problem solved: the approved register less
+    the support floor's drops, checked against the declared floor."""
+
+    floor = registry_document.get("support_floor")
+    return support_floor_rules.narrow_uk_registry_by_support_floor(
+        registry_from_payload(registry_document["national_registry"]),
+        measure_exclusions,
+        None
+        if floor is None
+        else support_floor_rules.uk_support_floor_from_payload(floor["declaration"]),
+    )
 
 
 def materialize_uk_national_rows(
@@ -618,6 +670,7 @@ class UKNationalProblemKernel(_NationalKernel):
                 ),
                 period=int(registry_document["calibration_year"]),
                 measure_exclusions=registry_document["measure_exclusions"],
+                support_floor=registry_document.get("support_floor"),
                 doctrine={
                     "target_weight_rule": str(context.params["target_weight_rule"]),
                     "target_loss_cap": float(context.params["target_loss_cap"]),
@@ -640,6 +693,7 @@ def encode_uk_national_problem(
     period: int,
     doctrine: Mapping[str, object],
     measure_exclusions: Mapping[str, Mapping[str, str]] | None = None,
+    support_floor: Mapping[str, Any] | None = None,
     resolver_factory=UKMeasureResolver,
     scratch_dir: Path | None = None,
 ) -> bytes:
@@ -652,14 +706,44 @@ def encode_uk_national_problem(
     pristine tables, and encode the problem with the national doctrine's
     ``family_equal`` loss weights, mass reason and bounds in its bindings,
     which the shared dense solve node reads.
+
+    ``support_floor`` (the register's signed floor and its evaluation date,
+    microcosm#1095 U3) drops the in-scope rows the frame supports with too
+    few source households before the loss weights, families and metadata
+    are drawn; the per-row exclusions in its scope are compiled beside the
+    register only to measure their support, and leave the problem again.
     """
 
     assert_calibration_input_finite(frame)
     if not len(national_registry.specs):
         raise ValueError("The national register selects no target.")
+    exclusions = {
+        name: dict(record) for name, record in (measure_exclusions or {}).items()
+    }
+    floor = (
+        None
+        if support_floor is None
+        else support_floor_rules.uk_support_floor_from_payload(
+            support_floor["declaration"]
+        )
+    )
+    probes = (
+        ()
+        if floor is None
+        else tuple(
+            spec
+            for spec in band_edge_registry.specs
+            if spec.name in exclusions and floor.in_scope(spec)
+        )
+    )
+    compiled = (
+        TargetRegistry([*national_registry.specs, *probes], country="uk")
+        if probes
+        else national_registry
+    )
     prepared, restore, rows, evidence = materialize_uk_national_rows(
         frame,
-        national_registry,
+        compiled,
         period=period,
         band_edge_registry=band_edge_registry,
         resolver_factory=resolver_factory,
@@ -674,18 +758,32 @@ def encode_uk_national_problem(
     clean = restore(prepared)
     for entity in frame.entities:
         pd.testing.assert_frame_equal(clean.table(entity), frame.table(entity))
-    if len(problem.targets) != len(national_registry.specs):
+    if len(problem.targets) != len(compiled.specs):
         raise ValueError(
             "UK national calibration matrix did not contain every activated "
-            f"reference: declared={len(national_registry.specs)}, "
+            f"reference: declared={len(compiled.specs)}, "
             f"rows={len(problem.targets)}."
         )
-    families = [spec.family for spec in national_registry.specs]
+    registry = national_registry
+    floor_receipt = None
+    if floor is not None:
+        applied = support_floor_rules.apply_uk_support_floor(
+            compiled,
+            problem,
+            source_ids=lambda: support_floor_rules.uk_household_source_ids(frame),
+            floor=floor,
+            evaluated_on=date.fromisoformat(str(support_floor["evaluated_on"])),
+            row_excluded={spec.name for spec in probes},
+        )
+        registry, problem = applied.registry, applied.problem
+        exclusions.update(applied.exclusions)
+        floor_receipt = applied.receipt
+    families = [spec.family for spec in registry.specs]
     rule = str(doctrine["target_weight_rule"])
     target_loss_weights = uk_national_target_loss_weights(families, rule=rule)
     mass_reason = national_calibration_mass_reason(families)
     ids = frame.table("household")["household_id"].tolist()
-    levels = national_target_geography_levels(national_registry)
+    levels = national_target_geography_levels(registry)
     target_metadata = [
         {
             **spec.metadata,
@@ -694,7 +792,7 @@ def encode_uk_national_problem(
             "geography_level": levels[spec.to_target().row_name],
             "materialization": NATIONAL_MATERIALIZATION,
         }
-        for spec in national_registry.specs
+        for spec in registry.specs
     ]
     return encode_problem(
         problem,
@@ -718,12 +816,13 @@ def encode_uk_national_problem(
                 f"national/{family}" for family in sorted(set(families))
             ],
             "measure_resolution": _json_safe(evidence),
-            "measure_exclusions": dict(measure_exclusions or {}),
+            "measure_exclusions": exclusions,
+            "support_floor": floor_receipt,
             "register_sha256": national_registry.version,
             "band_edge_register_sha256": band_edge_registry.version,
             "calibration_year": int(period),
-            "activated_reference_count": len(national_registry.specs),
-            "resolved_reference_count": len(national_registry.specs),
+            "activated_reference_count": len(registry.specs),
+            "resolved_reference_count": len(registry.specs),
         },
     )
 
@@ -902,6 +1001,7 @@ class UKNationalGateKernel(_NationalKernel):
                         calibration_run,
                         weighted_integrity,
                         diagnostics,
+                        support_floor_rules,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }
@@ -911,8 +1011,11 @@ class UKNationalGateKernel(_NationalKernel):
     def run(self, context: KernelContext) -> KernelResult:
         frame = context_frame(context)
         registry_document = _registry_artifact(context)
-        national = registry_from_payload(registry_document["national_registry"])
         result, problem = decode_national_result(context, frame)
+        measure_exclusions = solved_national_measure_exclusions(
+            registry_document, problem.bindings
+        )
+        national = solved_national_registry(registry_document, measure_exclusions)
         doctrine = json.loads(str(context.params["doctrine"]))
         scope = tuple(
             str(gate) for gate in json.loads(str(context.params["gate_scope"]))
@@ -986,9 +1089,7 @@ class UKNationalGateKernel(_NationalKernel):
             "calibration": _json_safe(manifest_block),
             "diagnostics": _json_safe(diagnostics_rows),
             "target_geography_levels": uk_target_geography_levels(national),
-            "register": calibration_run._register_census(
-                national, registry_document["measure_exclusions"]
-            ),
+            "register": calibration_run._register_census(national, measure_exclusions),
         }
         return KernelResult(
             artifacts={
@@ -1106,7 +1207,12 @@ def graph_payload(manifest, store, node: str, artifact: str) -> bytes:
 
 
 def national_result_from_manifest(
-    manifest, store, *, frame: Frame, registry: TargetRegistry | None = None
+    manifest,
+    store,
+    *,
+    frame: Frame,
+    registry: TargetRegistry | None = None,
+    registry_document: Mapping[str, Any] | None = None,
 ):
     """The dense result and its ordered problem, rebound to the calibrated frame.
 
@@ -1114,12 +1220,21 @@ def national_result_from_manifest(
     (each spec's entity and column measure), as the seam's result carried
     them: the graph solves the compiled rows, whose descriptors would
     otherwise read as callables on the weight entity in the diagnostics.
-    The numbers are the compiled rows' either way.
+    The numbers are the compiled rows' either way. With ``registry_document``
+    (the national targets node's artifact) the register is the one the
+    problem solved, less the support floor's drops.
     """
 
     problem = decode_problem(
         graph_payload(manifest, store, NATIONAL_PROBLEM_NODE, "problem")
     )
+    if registry_document is not None:
+        if registry is not None:
+            raise ValueError("Pass a register or a register artifact, not both.")
+        registry = solved_national_registry(
+            registry_document,
+            solved_national_measure_exclusions(registry_document, problem.bindings),
+        )
     dense = manifest.nodes["uk.full.dense"].opaque_artifacts
     solution = decode_solution(
         store.load_bytes(dense["solution"]),

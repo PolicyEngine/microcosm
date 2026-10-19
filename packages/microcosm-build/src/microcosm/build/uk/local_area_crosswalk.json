@@ -1370,14 +1370,17 @@
       "ladder_vintage": "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd",
       "expected_vintage": {
         "E": [
-          "lad_2023"
+          "lad_2023",
+          "publication_2025_nspl"
         ],
         "W": [
-          "lad_2023"
+          "lad_2023",
+          "publication_2025_nspl"
         ],
         "S": [
           "ca_2019",
-          "lad_2023"
+          "lad_2023",
+          "publication_2025_nspl"
         ],
         "N": [
           "lgd_2014",

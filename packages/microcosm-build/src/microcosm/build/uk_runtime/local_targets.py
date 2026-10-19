@@ -18,10 +18,19 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    household_energy_kwh,
+    household_energy_prices,
+)
+from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_metric_names,
     uk_high_value_home_thresholds,
+)
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
 )
 from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_OWNED_OUTRIGHT,
@@ -58,6 +67,14 @@ LA_EXTRA_METRICS = (
     "tenure/private_rent",
     "tenure/social_rent",
     "rent/private_rent",
+)
+#: DESNZ sub-national domestic energy by local authority (microcosm#1207):
+#: electricity and gas kWh, and the gas-connected households. DESNZ publishes
+#: no constituency cut, so the family is local-authority only.
+LA_ENERGY_METRICS = (
+    "energy/electricity_kwh",
+    "energy/gas_kwh",
+    "energy/gas_connected_households",
 )
 #: Local tenure metric -> the shared tenure category it counts, in matrix order.
 _TENURE_METRIC_CATEGORIES = {
@@ -126,6 +143,10 @@ def metric_names(
     # microcosm#1240: owner-occupied homes above value thresholds, both grains,
     # appended after every earlier family under the same append-only rule.
     names.extend(uk_high_value_home_metric_names())
+    # microcosm#1207: DESNZ sub-national domestic energy, local authorities
+    # only, appended after every earlier family under the same rule.
+    if area_type == "la":
+        names.extend(LA_ENERGY_METRICS)
     return tuple(names)
 
 
@@ -284,6 +305,12 @@ def compute_household_metrics(
 
     for income_variable in INCOME_VARIABLES:
         income_values = _values(_calculate(sim, income_variable, period))
+        if income_variable == "self_employment_income":
+            # HMRC's area rows count the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            income_values = self_employment_income_after_loss_relief(
+                income_values, _values(_calculate(sim, LOSS_RELIEF_COLUMN, period))
+            )
         in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
         matrix[f"hmrc/{income_variable}/amount"] = _map_result(
             sim,
@@ -388,6 +415,27 @@ def compute_household_metrics(
         matrix[threshold.metric_name] = high_value_home_mask(
             stored_value, stored_tenure, threshold_basis_gbp=threshold.basis_gbp
         ).astype(float)
+
+    if area_type == "la":
+        # microcosm#1207: the stored spend is the lcfs stage's calendar-2024
+        # spend; read at the dataset period the engine does not uprate it,
+        # and the stage's own prices turn it back into the kWh it raked.
+        electricity_spend = _values(
+            _calculate(sim, "electricity_consumption", stored_period)
+        ).astype(float)
+        gas_spend = _values(_calculate(sim, "gas_consumption", stored_period)).astype(
+            float
+        )
+        energy = household_energy_kwh(
+            electricity_spend,
+            gas_spend,
+            region=_decoded(_calculate(sim, "region", stored_period)),
+            prices=household_energy_prices(),
+        )
+        electricity_metric, gas_metric, connected_metric = LA_ENERGY_METRICS
+        matrix[electricity_metric] = energy[ELECTRICITY_KWH]
+        matrix[gas_metric] = energy[GAS_KWH]
+        matrix[connected_metric] = (gas_spend > 0).astype(float)
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]
@@ -502,6 +550,14 @@ def _values(result: Any) -> np.ndarray:
     if hasattr(result, "values"):
         return np.asarray(result.values)
     return np.asarray(result)
+
+
+def _decoded(result: Any) -> np.ndarray:
+    """An enum result as its names (a plain engine Simulation returns codes)."""
+
+    if hasattr(result, "decode_to_str"):
+        return np.asarray(result.decode_to_str())
+    return _values(result)
 
 
 def _map_result(

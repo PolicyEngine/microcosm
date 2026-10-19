@@ -78,6 +78,8 @@ def test_training_qyp_ema_and_benefits_in_own_right() -> None:
             # training (uk-data#561).
             "trainee": [2, 1, 1],
             "_frs_table": ["child", "child", "adult"],
+            "slos": [np.nan, np.nan, 2],
+            "educleft": [np.nan, np.nan, 18],
             # 2023-24-shaped vintage: no adema pair, eduma/edumaamt instead.
             "eduma": [1, 1, 0],
             "edumaamt": [2.0, -1.0, 5.0],
@@ -126,6 +128,8 @@ def test_adult_ema_prefers_the_adema_pair_when_present() -> None:
             # absent).
             "trainee": [2, 2],
             "_frs_table": ["child", "adult"],
+            "slos": [np.nan, 2],
+            "educleft": [np.nan, 18],
             "adema": [1, 1],
             "ademaamt": [4.0, -1.0],
             "eduma": [1, 1],
@@ -162,6 +166,8 @@ def test_approved_training_is_trainee_on_child_table_records_only() -> None:
             # 1 yes, 2 no; a blank and an out-of-range code are not a yes.
             "trainee": [1, 1, 1, np.nan, 1],
             "_frs_table": ["child", "child", "adult", "child", "adult"],
+            "slos": [np.nan, np.nan, 2, np.nan, 2],
+            "educleft": [np.nan, np.nan, 17, np.nan, 16],
             "chema": [0, 0, 0, 0, 0],
             "chemaamt": [0.0, 0.0, 0.0, 0.0, 0.0],
             "eduma": [0, 0, 0, 0, 0],
@@ -204,6 +210,8 @@ def test_approved_training_refuses_rows_without_its_columns(column: str) -> None
             "educqual": [86],
             "trainee": [1],
             "_frs_table": ["child"],
+            "slos": [np.nan],
+            "educleft": [np.nan],
         }
     )
 
@@ -238,3 +246,57 @@ def test_the_stage_refuses_a_tab_without_trainee(tmp_path, table: str) -> None:
 
     with pytest.raises(KeyError, match=f"The FRS {table} tab has no TRAINEE column"):
         add_frs_education(None, tmp_path, stage=SimpleNamespace(artifacts=artifacts))
+
+
+def test_student_loan_answers_are_read_from_adult_records_only() -> None:
+    """SLOS = 1 reports an outstanding loan and EDUCLEFT the age full-time
+    education ended, on adult-table records; a child record, a no, a blank and
+    an age outside 10 to 90 read as no loan and 0 (microcosm#868)."""
+
+    person = pd.DataFrame({"person_id": [1, 2, 3, 4, 5], "age": [30, 25, 15, 40, 50]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            "fted": [2, 2, 1, 2, 2],
+            "typeed2": [0, 0, 5, 0, 0],
+            "educqual": [3, 3, 86, 86, 86],
+            "trainee": [2, 2, 2, 2, 2],
+            "_frs_table": ["adult", "adult", "child", "adult", "adult"],
+            "slos": [1, 2, 1, np.nan, 1],
+            "educleft": [21, 22, 15, 97, -1],
+        }
+    )
+
+    result = derive_frs_education(person, raw)
+
+    assert result["reports_outstanding_student_loan"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert result["age_left_full_time_education"].tolist() == [21, 22, 0, 0, 0]
+    assert result["age_left_full_time_education"].dtype == np.int64
+
+
+@pytest.mark.parametrize("column", ["slos", "educleft"])
+def test_student_loan_answers_refuse_rows_without_their_columns(column: str) -> None:
+    """A missing column refuses rather than read nobody as a borrower."""
+
+    person = pd.DataFrame({"person_id": [1], "age": [30]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1],
+            "fted": [2],
+            "typeed2": [0],
+            "educqual": [3],
+            "trainee": [2],
+            "_frs_table": ["adult"],
+            "slos": [1],
+            "educleft": [21],
+        }
+    )
+
+    with pytest.raises(KeyError, match="student-loan borrowers and course dates"):
+        derive_frs_education(person, raw.drop(columns=[column]))

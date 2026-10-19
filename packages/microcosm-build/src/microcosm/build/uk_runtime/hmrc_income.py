@@ -18,6 +18,8 @@ from typing import Literal
 from xml.etree import ElementTree
 from zipfile import ZIP_STORED, BadZipFile, ZipFile
 
+import numpy as np
+
 __all__ = [
     "HMRCIncomeBandTargetRecord",
     "HMRCIncomeSourceProvenance",
@@ -36,9 +38,11 @@ __all__ = [
     "HMRC_SPI_SOURCE_TAX_YEAR_START",
     "HMRC_SPI_SOURCE_VINTAGE",
     "HMRC_SPI_TARGET_RECORD_COUNT",
+    "LOSS_RELIEF_COLUMN",
     "VerifiedHMRCODSIdentity",
     "hmrc_spi_component_source_columns",
     "materialize_hmrc_spi_income_band_targets",
+    "self_employment_income_after_loss_relief",
     "verify_hmrc_spi_collated_ods",
 ]
 
@@ -87,6 +91,29 @@ HMRC_SPI_INCOME_COMPONENTS = (
     "dividend_income",
     "other_investment_income",
 )
+#: policyengine-uk's input for the losses of earlier years relieved against a
+#: trade's profit (ITA 2007 s.83, pe-uk#2085); the SPI tape's profits are after
+#: that relief (microcosm#1095).
+LOSS_RELIEF_COLUMN = "loss_relief"
+
+
+def self_employment_income_after_loss_relief(
+    self_employment_income: object, loss_relief: object
+) -> np.ndarray:
+    """The profit HMRC counts: the year's profit after losses brought forward.
+
+    policyengine-uk holds a trade's profit for the year in
+    ``self_employment_income`` and the losses of earlier years it relieves
+    against that profit in ``loss_relief``, never taking the profit below zero
+    (ITA 2007 s.83). The SPI tape's profits, the HMRC accounting aggregates and
+    the HMRC self-employment rows are after that relief (microcosm#1095).
+    """
+
+    profit = np.asarray(self_employment_income, dtype=float)
+    relief = np.asarray(loss_relief, dtype=float)
+    return np.maximum(profit - relief, 0.0)
+
+
 HMRC_SPI_TARGET_RECORD_COUNT = (
     len(HMRC_SPI_INCOME_BAND_LOWER_BOUNDS) * len(HMRC_SPI_INCOME_COMPONENTS) * 2
 )

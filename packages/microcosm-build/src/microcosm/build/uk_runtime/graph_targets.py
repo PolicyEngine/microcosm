@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build import cross_grain
-from microcosm.build.country_spec import load_country_spec
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
@@ -53,6 +52,7 @@ from . import (
     local_doctrine,
     local_rowwise,
     national_doctrine,
+    support_floor,
     target_weights,
 )
 from .full_measure import resolve_uk_full_national_problem
@@ -77,6 +77,7 @@ from .ledger_targets import (
     uk_small_cell_deferred_cells,
 )
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
+from .solve_scope import uk_solve_fingerprint
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
 TARGET_SELECTION_TYPE = ArtifactType("microcosm.uk.full-target-selection", 1)
@@ -216,7 +217,7 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets, high_value_homes
+        from . import full_targets, high_value_homes, measure_simulation
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -229,13 +230,21 @@ class _TargetKernel(KernelBase):
             ladder_targets,
             ledger_targets,
             local_doctrine,
+            # The measures full_measure and full_targets resolve, the high-value
+            # homes region rows among them (microcosm#1301): an edit there
+            # alone must re-key the measures and everything they feed.
+            measure_simulation,
+            support_floor,
             *uk_target_compile_modules(),
         )
+        # The solve fingerprint: every packaged resource but the gate-only
+        # registers, which no compile module reads (microcosm#1301), so a
+        # sign-off between two release builds leaves the surface a cache hit.
         return hashlib.sha256(
             canonical_json(
                 {
                     "implementation": implementation,
-                    "country_spec": load_country_spec("uk").fingerprint,
+                    "country_spec": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()
@@ -345,6 +354,7 @@ def compile_uk_full_target_surface(
         "household_dispersion": dispersion,
         "ladder_provenance": ladder_provenance,
         "measure_exclusions": inputs["measure_exclusions"],
+        "support_floor": inputs.get("support_floor"),
         "reviewed_unbound_higher_targets": inputs["reviewed_unbound_higher_targets"],
         "source_validation": {
             "national_source_pin": inputs["national_source_pin"],
@@ -459,6 +469,25 @@ class UKFullMeasureKernel(_TargetKernel):
                     local_grains=grains,
                 )
             )
+        floor_document = full.get("support_floor")
+        floor_evidence = None
+        if national_problem is not None and floor_document is not None:
+            # microcosm#1095 U3: the pool's clones share their spine
+            # household's source id, so support counts spine households.
+            applied = support_floor.apply_uk_support_floor(
+                national,
+                national_problem,
+                source_ids=lambda: support_floor.uk_household_source_ids(frame),
+                floor=support_floor.uk_support_floor_from_payload(
+                    floor_document["declaration"]
+                ),
+                evaluated_on=date.fromisoformat(str(floor_document["evaluated_on"])),
+            )
+            national_problem = applied.problem
+            floor_evidence = {
+                "exclusions": applied.exclusions,
+                "receipt": applied.receipt,
+            }
         arrays = {
             f"metrics_{grain}": metrics[grain].to_numpy(dtype=np.float64)
             for grain in grains
@@ -477,6 +506,7 @@ class UKFullMeasureKernel(_TargetKernel):
             "grains": {grain: metrics[grain].columns.tolist() for grain in grains},
             "has_national": national_problem is not None,
             "evidence": evidence,
+            "support_floor": floor_evidence,
         }
         return KernelResult(artifacts={"measures": _pack(metadata, arrays)})
 
@@ -534,6 +564,14 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
     ]
     metadata, arrays = decode_measures(
         context.artifacts["measures"].payload, selected=selected
+    )
+    floor_document = full.get("support_floor")
+    national = support_floor.narrow_uk_registry_by_support_floor(
+        national,
+        (metadata.get("support_floor") or {}).get("exclusions", {}),
+        None
+        if floor_document is None
+        else support_floor.uk_support_floor_from_payload(floor_document["declaration"]),
     )
     ids = frame.table("household")["household_id"].tolist()
     if ids != metadata["household_ids"]:
@@ -639,7 +677,9 @@ class UKFullProblemKernel(_TargetKernel):
                     prepared.target_rows,
                     prepared.target_loss_weights,
                     rule=str(context.params["target_weight_rule"]),
-                )
+                ),
+                # microcosm#1207: the family loss-share floors' check.
+                "family_loss_share_floors": prepared.family_loss_share_floor_receipt,
             }
         )
         payload = encode_problem(
@@ -677,7 +717,11 @@ class UKFullProblemKernel(_TargetKernel):
                 "bound_families": list(bound_families),
                 "measure_resolution": metadata["evidence"],
                 "cross_geography": cross,
-                "measure_exclusions": full["measure_exclusions"],
+                "measure_exclusions": {
+                    **full["measure_exclusions"],
+                    **(metadata.get("support_floor") or {}).get("exclusions", {}),
+                },
+                "support_floor": (metadata.get("support_floor") or {}).get("receipt"),
                 "calibration_year": full["calibration_year"],
                 **weight_receipt,
             },
@@ -711,7 +755,8 @@ def append_uk_target_nodes(
     common = {"time_period": time_period}
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
-    contract_identity = load_country_spec("uk").fingerprint
+    # The solve fingerprint, as the target kernels hash it (microcosm#1301).
+    contract_identity = uk_solve_fingerprint()
     surface = ArtifactInput(
         "surface", "uk.full.target_compilation", "surface", TARGET_SURFACE_TYPE
     )

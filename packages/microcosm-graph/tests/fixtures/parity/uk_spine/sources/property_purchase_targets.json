@@ -1,0 +1,63 @@
+{
+  "additional_residential": {
+    "band_ids": [
+      "gbp_250k_or_less",
+      "gbp_250k_to_500k",
+      "gbp_500k_to_1m",
+      "gbp_1m_to_1_5m",
+      "gbp_1_5m_to_2m",
+      "over_gbp_2m"
+    ],
+    "band_transactions": [
+      60.0,
+      30.0,
+      14.0,
+      3.0,
+      2.0,
+      1.0
+    ],
+    "band_values": [
+      90000.0,
+      90000.0,
+      84000.0,
+      33000.0,
+      30000.0,
+      40000.0
+    ],
+    "minimum_price": 1000.0,
+    "property_type": "additional_residential",
+    "transactions": 26.999194565555904,
+    "value": 204508.05790306703
+  },
+  "derivation": {},
+  "non_residential": {
+    "band_ids": [
+      "gbp_250k_or_less",
+      "gbp_250k_to_500k",
+      "gbp_500k_to_1m",
+      "gbp_1m_to_1_5m",
+      "gbp_1_5m_to_2m",
+      "over_gbp_2m"
+    ],
+    "band_transactions": [
+      60.0,
+      30.0,
+      14.0,
+      3.0,
+      2.0,
+      1.0
+    ],
+    "band_values": [
+      90000.0,
+      90000.0,
+      84000.0,
+      33000.0,
+      30000.0,
+      40000.0
+    ],
+    "minimum_price": 1000.0,
+    "property_type": "non_residential",
+    "transactions": 9.653686298356586,
+    "value": 122568.16771002862
+  }
+}

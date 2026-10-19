@@ -33,6 +33,7 @@ from microcosm.build.target_materialization import (
     TargetMaterializationResult,
     materialize_target_bindings,
 )
+from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
@@ -41,6 +42,9 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_grain,
     uk_cross_grain_partitions,
     uk_fanout_sum_bridges,
+)
+from microcosm.build.uk_runtime.domestic_energy_targets import (
+    domestic_energy_appliers,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
@@ -88,6 +92,9 @@ _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
     f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
 }
 UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
+#: The census household partition member the meter share divides
+#: (microcosm#1207): it takes the grain's census uprating as tenure does.
+UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID = "desnz.subnational.gas_connected_households"
 
 
 #: Every region-tier code is a leg of its own; the national parents cover the
@@ -325,6 +332,9 @@ def align_uk_local_registry_parity_fixture(
     exclusions.
     """
 
+    # The contract is read and checked once for the whole fixture, not once
+    # per row: the local fixture has tens of thousands of rows.
+    metric_targets = _uk_local_metric_targets()
     rows: list[dict[str, Any]] = []
     for row in fixture.get("rows", ()):
         if not isinstance(row, Mapping):
@@ -340,7 +350,9 @@ def align_uk_local_registry_parity_fixture(
             updated.get("geography_id")
             or (name.split("@", 1)[1] if "@" in name else "")
         )
-        target_id = _uk_local_metric_target_id(contract_metric, geography_id)
+        target_id = _uk_local_metric_target_id(
+            contract_metric, geography_id, metric_targets=metric_targets
+        )
         if target_id is not None:
             updated["name"] = f"{target_id}@{geography_id}"
             updated["contract_target_id"] = updated["name"]
@@ -413,10 +425,21 @@ def _uk_local_metric_targets() -> dict[str, tuple[tuple[str, tuple[str, ...]], .
     return {metric: tuple(sharers) for metric, sharers in entries.items()}
 
 
-def _uk_local_metric_target_id(metric_name: str, area_id: str) -> str | None:
-    """The contract target measuring ``metric_name`` for ``area_id``."""
+def _uk_local_metric_target_id(
+    metric_name: str,
+    area_id: str,
+    *,
+    metric_targets: Mapping[str, tuple[tuple[str, tuple[str, ...]], ...]] | None = None,
+) -> str | None:
+    """The contract target measuring ``metric_name`` for ``area_id``.
 
-    sharers = _uk_local_metric_targets().get(metric_name)
+    ``metric_targets`` is :func:`_uk_local_metric_targets`, passed in by a
+    caller that looks up many rows, since building it reads the contract.
+    """
+
+    if metric_targets is None:
+        metric_targets = _uk_local_metric_targets()
+    sharers = metric_targets.get(metric_name)
     if not sharers:
         return None
     if len(sharers) == 1 and not sharers[0][1]:
@@ -670,6 +693,8 @@ UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
     **tenure_drift_appliers(),
+    **domestic_energy_appliers(),
+    **bus_journey_appliers(),
 }
 
 
@@ -769,6 +794,13 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         "obr.pip": (
             "dwp.pip.daily_living_standard_claimants",
             "dwp.pip.daily_living_enhanced_claimants",
+        ),
+        # microcosm#1095 (María, 2026-10-16): DWP's count of UC households
+        # with five or more children carries the families outside the
+        # two-child limit, which the frame cannot hold; it sits beside the
+        # bound limit row of the same month.
+        "dwp.uc.two_child_limit.households_5_children": (
+            "dwp.uc.households_children_5_or_more",
         ),
     }
 )
@@ -1766,6 +1798,97 @@ def _uk_contract_targets(
     }
 
 
+#: The lines a UK contract target can bind on (microcosm#1301): the national
+#: line (``load_uk_national_target_inputs``, the release-cut certifier) and the
+#: local line (the full dense build, whose solve binds the national rows beside
+#: the local surface).
+UK_CALIBRATION_LINES: tuple[str, ...] = ("national", "local")
+
+
+def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset[str]:
+    """The lines a contract target binds on.
+
+    A target binds on every line unless it declares ``calibration_lines``: a
+    non-empty list of distinct lines from :data:`UK_CALIBRATION_LINES`. The
+    high-value homes region rows declare ``["local"]`` (microcosm#1301). Since
+    microcosm#1095 the national spine reads ``main_residence_value`` off the
+    regions' Land Registry knots too, but binding the rows there would move
+    the national registry and solve while the knots' tails still place more
+    homes in the top bands than the derived stock (microcosm#1112).
+    """
+
+    declared = target.get("calibration_lines")
+    if declared is None:
+        return frozenset(UK_CALIBRATION_LINES)
+    target_id = target.get("target_id", "<unknown>")
+    if isinstance(declared, (str, bytes)) or not isinstance(declared, Sequence):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must be a list of lines, "
+            f"got {declared!r}."
+        )
+    lines = [str(line) for line in declared]
+    if not lines or len(set(lines)) != len(lines):
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines must name at least one "
+            f"line, each once; got {lines!r}."
+        )
+    unknown = sorted(set(lines) - set(UK_CALIBRATION_LINES))
+    if unknown:
+        raise ValueError(
+            f"UK target {target_id!r} calibration_lines names unknown line(s) "
+            f"{unknown!r}; the lines are {list(UK_CALIBRATION_LINES)!r}."
+        )
+    return frozenset(lines)
+
+
+def uk_registry_on_calibration_line(
+    registry: TargetRegistry, *, line: str
+) -> tuple[TargetRegistry, dict[str, Any]]:
+    """The compiled registry less the references ``line`` does not bind.
+
+    Every committed reference compiles on every line, so the compile-parity
+    registries stay complete; a line's solve surface drops the references
+    whose contract target's ``calibration_lines`` leave ``line`` out, right
+    after the compile and before reconciliation, the measure exclusions and the
+    frozen-register check. A line no declaration narrows keeps its registry
+    (the same object, so the same version). The receipt names the line, the
+    all-lines registry version and count, and the dropped contract targets.
+    """
+
+    if line not in UK_CALIBRATION_LINES:
+        raise ValueError(
+            f"unknown UK calibration line {line!r}; the lines are "
+            f"{list(UK_CALIBRATION_LINES)!r}."
+        )
+    off_line = frozenset(
+        target_id
+        for target_id, target in _uk_contract_targets(national_only=False).items()
+        if line not in uk_contract_target_calibration_lines(target)
+    )
+    kept: list[TargetSpec] = []
+    dropped: list[TargetSpec] = []
+    dropped_target_ids: set[str] = set()
+    for spec in registry.specs:
+        target_id = str(
+            spec.metadata.get("contract_target_id") or spec.name.split("@", 1)[0]
+        )
+        if target_id in off_line:
+            dropped.append(spec)
+            dropped_target_ids.add(target_id)
+        else:
+            kept.append(spec)
+    receipt: dict[str, Any] = {
+        "line": line,
+        "all_lines_registry_version": registry.version,
+        "all_lines_reference_count": len(registry.specs),
+        "dropped_reference_count": len(dropped),
+        "dropped_target_ids": sorted(dropped_target_ids),
+    }
+    if not dropped:
+        return registry, receipt
+    return TargetRegistry(kept, country=registry.country), receipt
+
+
 def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
     """Resolve one compiled target's local or Ledger geography spelling."""
 
@@ -1874,11 +1997,18 @@ def apply_uk_cross_grain_reconciliation(
     area_region_codes: Mapping[str, str] | None = None,
     extra_bridges: Sequence[CrossGrainBridge] = (),
     extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
+    check_factor_bounds: bool = True,
+    frame_only_positions: Iterable[int] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
     ``extra_bridges`` and ``extra_signatures`` carry the summed fan-out
     controls the joint surface adds for its declared fan-out sum bridges.
+    ``check_factor_bounds=False`` records the bridges' factor bounds without
+    refusing, for a pass the caller reruns with more rows.
+    ``frame_only_positions`` names the rows that bind nothing (the small-cell
+    rule's deferred cells), so a wholly deferred leg with no control above it
+    is receipted rather than refused (microcosm#1301).
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -1914,6 +2044,8 @@ def apply_uk_cross_grain_reconciliation(
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
+        check_factor_bounds=check_factor_bounds,
+        frame_only_positions=frame_only_positions,
     )
 
 
@@ -2319,6 +2451,8 @@ def uk_local_target_surface(
     # calibration period carries no hold and is never touched.
     tenure_uprated: dict[str, int] = {}
     tenure_holds: list[dict[str, Any]] = []
+    gas_connected_uprated: dict[str, int] = {}
+    gas_connected_holds: list[dict[str, Any]] = []
     household_uprated: dict[str, int] = {}
     household_holds: list[dict[str, Any]] = []
 
@@ -2359,7 +2493,12 @@ def uk_local_target_surface(
             value = float(spec.value)
             is_households = contract_target_id == UK_CENSUS_HOUSEHOLDS_TARGET_ID
             is_tenure = contract_target_id.startswith("ons.tenure.")
-            if is_households or is_tenure:
+            # microcosm#1207: the gas-connected cells are census households
+            # times a meter share, so they share the grain's factor.
+            is_gas_connected = (
+                contract_target_id == UK_GAS_CONNECTED_HOUSEHOLDS_TARGET_ID
+            )
+            if is_households or is_tenure or is_gas_connected:
                 from_period = spec.metadata.get("uprating_from_period")
                 to_period = spec.metadata.get("uprating_to_period")
                 grain = uprating_receipt.get("grains", {}).get(geography_level)
@@ -2382,7 +2521,11 @@ def uk_local_target_surface(
                 if applied:
                     value *= factor
                     applied_by_vintage = (
-                        household_uprated if is_households else tenure_uprated
+                        household_uprated
+                        if is_households
+                        else gas_connected_uprated
+                        if is_gas_connected
+                        else tenure_uprated
                     )
                     applied_by_vintage[str(from_period)] = (
                         applied_by_vintage.get(str(from_period), 0) + 1
@@ -2396,7 +2539,13 @@ def uk_local_target_surface(
                     reason = "hold_not_from_grain_census_vintage_or_wrong_period"
                 else:
                     reason = "census_household_uprating_not_applied"
-                hold_rows = household_holds if is_households else tenure_holds
+                hold_rows = (
+                    household_holds
+                    if is_households
+                    else gas_connected_holds
+                    if is_gas_connected
+                    else tenure_holds
+                )
                 hold_rows.append(
                     {
                         "target_name": spec.name,
@@ -2590,12 +2739,22 @@ def uk_local_target_surface(
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
     )
 
-    def reconcile() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    def reconcile(
+        *, check_factor_bounds: bool = True
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         frame = pd.DataFrame(
             reconciliation_rows,
             columns=["grain", "geography_id", "target_id", "value", "_output_position"],
         )
         raw = frame[["grain", "geography_id", "target_id", "value"]]
+        # The area rows that bind nothing (deferred and off-surface cells): a
+        # leg holding only deferred ones needs no control (microcosm#1301).
+        frame_only = [
+            position
+            for position, row in enumerate(reconciliation_rows)
+            if row["_output_position"] is None
+            and row["grain"] in level_to_area_type.values()
+        ]
         result, pass_receipt = apply_uk_cross_grain_reconciliation(
             raw,
             bound_control_ids,
@@ -2604,11 +2763,18 @@ def uk_local_target_surface(
             area_region_codes=area_region_codes,
             extra_bridges=fanout_bridges,
             extra_signatures=fanout_signatures,
+            check_factor_bounds=check_factor_bounds,
+            frame_only_positions=frame_only,
         )
         return frame, raw, result, pass_receipt
 
     coverage = uk_cross_grain_coverage_receipt()
-    reconciliation, raw_surface, reconciled, receipt = reconcile()
+    # A bridge's factor bound is a property of the whole frame, off-surface
+    # cells included, so a surface that has them is bounded on its last pass
+    # only (microcosm#1302 review).
+    reconciliation, raw_surface, reconciled, receipt = reconcile(
+        check_factor_bounds=not off_surface_cells
+    )
     off_surface_rows: list[dict[str, Any]] = []
     off_surface_receipt: dict[str, Any] = {
         "deferred_with_value": [],
@@ -2689,9 +2855,8 @@ def uk_local_target_surface(
             frame_only_rows=frame_only_rows,
             share_reference=households or None,
         )
-        if off_surface_rows:
-            reconciliation_rows.extend(off_surface_rows)
-            reconciliation, raw_surface, reconciled, receipt = reconcile()
+        reconciliation_rows.extend(off_surface_rows)
+        reconciliation, raw_surface, reconciled, receipt = reconcile()
     receipt["off_surface_cells"] = {
         **off_surface_receipt,
         "areas_outside_the_ladder": sorted(areas_outside_the_ladder),
@@ -2735,6 +2900,15 @@ def uk_local_target_surface(
             "Census tenure cells held to the calibration period take the "
             "corresponding Chronicle census-household grain factor so their "
             "published shares remain unchanged."
+        ),
+    }
+    uprating_receipt["gas_connected_cells"] = {
+        **cell_receipt(gas_connected_holds, gas_connected_uprated),
+        "adjudication": "microcosm#1207 (plan approved 2026-10-14)",
+        "reason": (
+            "Gas-connected households are census households times a DESNZ "
+            "meter share; held to the calibration period, they take the "
+            "census-household grain factor so the share is unchanged."
         ),
     }
     receipt["census_household_uprating"] = uprating_receipt

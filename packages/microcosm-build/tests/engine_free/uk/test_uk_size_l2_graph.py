@@ -18,6 +18,7 @@ _BASE_PARAMS = {
     "households",
     "pi_hi",
     "initial_lambda",
+    "l0_search_floor",
 }
 
 
@@ -33,6 +34,9 @@ def test_default_size_nodes_keep_their_parameters() -> None:
     assert set(params["size_search"]) == _BASE_PARAMS
     assert set(params["size_draw"]) == _BASE_PARAMS
     assert set(params["size_refit"]) == _BASE_PARAMS | {"baseline_pi_floor"}
+    # microcosm#1301: the doctrine's L0 floor keys every size node.
+    for node in ("size_search", "size_draw", "size_refit"):
+        assert params[node]["l0_search_floor"] == 1e-10
 
 
 def test_selection_l2_joins_the_shared_size_params_and_refit_l2_the_refit_only() -> (
@@ -69,3 +73,34 @@ def test_config_refuses_l2_without_a_size_or_on_the_wrong_stage() -> None:
         )
     with pytest.raises(ValueError, match="Unknown target_weight_rule"):
         UKGraphCalibrationConfig(target_weight_rule="family_weird")
+
+
+def test_the_l0_search_floor_keys_the_size_nodes_and_bounds_the_warm_start() -> None:
+    """microcosm#1301: the floor is a size-node parameter, so a different
+    floor re-keys the search; the config refuses a warm start below it."""
+    lower = _params(
+        UKGraphCalibrationConfig(
+            epochs=2, dataset_households=2, selection_l0_search_floor=1e-9
+        )
+    )
+    assert lower["size_search"]["l0_search_floor"] == 1e-9
+    assert (
+        UKGraphCalibrationConfig(
+            dataset_households=2, selection_initial_lambda=2.5e-8
+        ).selection_initial_lambda
+        == 2.5e-8
+    )
+    with pytest.raises(ValueError, match="initial_lambda"):
+        UKGraphCalibrationConfig(
+            dataset_households=2,
+            selection_initial_lambda=2.5e-8,
+            selection_l0_search_floor=1e-7,
+        )
+    for bad in (0.0, -1e-10, 10.0, float("nan"), True):
+        with pytest.raises(ValueError, match="l0_search_floor"):
+            UKGraphCalibrationConfig(selection_l0_search_floor=bad)
+    # Unsized, the floor is configuration only: no size node carries it.
+    assert not any(
+        "l0_search_floor" in node_params
+        for node_params in _params(UKGraphCalibrationConfig(epochs=2)).values()
+    )
