@@ -175,6 +175,43 @@ def test_code_revision_names_the_checkout_that_tracks_the_file(tmp_path):
     assert code_revision(outside_any_checkout) == unknown
 
 
+def _checkout_tracking(checkout, files: dict[str, str]) -> str:
+    """Commit ``files`` to a new repository at ``checkout``; return its HEAD."""
+
+    checkout.mkdir()
+    run_git(checkout, "init", "--quiet")
+    for name, text in files.items():
+        (checkout / name).write_text(text)
+    run_git(checkout, "add", *files)
+    run_git(checkout, "commit", "--quiet", "-m", "Add the fixture files")
+    return run_git(checkout, "rev-parse", "HEAD")
+
+
+def test_code_revision_ignores_git_variables_that_select_another_checkout(
+    tmp_path, monkeypatch
+):
+    reconstructing = tmp_path / "reconstructing"
+    reconstructing_head = _checkout_tracking(
+        reconstructing,
+        {"reconstruct.py": "VERSION = 1\n", "only_here.py": "VERSION = 1\n"},
+    )
+    other = tmp_path / "other"
+    other_head = _checkout_tracking(other, {"reconstruct.py": "VERSION = 2\n"})
+    assert other_head != reconstructing_head
+    # An outer git command, a hook or a caller's shell can export these, and
+    # each one points git at the other checkout.
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(other / ".git" / "index"))
+    monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
+
+    expected = {"git_commit": reconstructing_head, "git_dirty": False}
+    # A file both checkouts track by the same name ...
+    assert code_revision(reconstructing / "reconstruct.py") == expected
+    # ... and one only the reconstructing checkout tracks.
+    assert code_revision(reconstructing / "only_here.py") == expected
+
+
 def test_reconstructed_document_claims_no_execution():
     declaration = recorded_declaration()
 

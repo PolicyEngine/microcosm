@@ -378,7 +378,10 @@ The marker is the producer extension `microcosm.reconstruction`:
 - **`reconstruction_revision`:** the code that performed the reconstruction,
   and so computed every section except the declaration. `code_revision(path)`
   reads it from the git checkout that tracks `path` (the reconstructing
-  module's own file), not from the current directory. Both fields are `null`
+  module's own file), not from the current directory, and runs git without
+  the repository-selecting variables of `git rev-parse --local-env-vars`
+  (`GIT_DIR`, `GIT_WORK_TREE` and the rest), so an inherited one cannot point
+  it at another checkout. Both fields are `null`
   when no checkout tracks that file, as for an installed wheel. `git_dirty` is
   `null` alone when git could not check the working tree.
 - **`inputs`:** every file the reconstruction read, in name order, by digest
@@ -463,7 +466,9 @@ The build directory is only read. The command:
 It writes a new directory with the layout of a normal publication, and moves the
 directory into place only after every file is written. The output must not
 exist, and must not be the build directory or lie inside it once `..` and links
-are resolved:
+are resolved. The command writes to that resolved path, so a path that passes
+through a missing folder inside the build creates nothing there, and a
+read-only build can be reconstructed:
 
 | File | Contents |
 | --- | --- |
