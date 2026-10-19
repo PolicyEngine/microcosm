@@ -400,6 +400,7 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
         "controls_without_lower_rows": [],
         "delegated_legs": [],
         "absent_middle_tier_legs": [],
+        "deferred_legs_without_control": [],
         "absence": "No cross-grain inconsistencies are in force on this surface.",
     }
 
@@ -595,6 +596,72 @@ def test_unparented_and_empty_legs_are_refused():
     )
     with pytest.raises(ValueError, match="empty leg.*lacks a licence"):
         apply_cross_grain_reconciliation(empty, ("national",), signatures, _rule())
+
+
+def test_a_leg_holding_only_deferred_cells_needs_no_control():
+    """Frame-only rows of a target licensed empty on their leg are deferred
+    cells: with no control above them they are receipted, not refused. A
+    bound row there, a frame-only row without the licence, or a licensed
+    row that binds is still an orphan (microcosm#1301)."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 10.0),
+            ("constituency", "E1", "local", 10.0),
+            ("constituency", "N1", "local", 3.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {
+        target_id: _signature() for target_id in ("national", "local", "bound")
+    }
+    licences = {"local": frozenset({"N"})}
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        signatures,
+        _rule(),
+        licensed_empty_legs=licences,
+        frame_only_positions=(2,),
+    )
+
+    assert reconciled["value"].tolist() == [10.0, 10.0, 3.0]
+    assert receipt["deferred_legs_without_control"] == [
+        {
+            "inconsistency_id": receipt["groups"][0]["inconsistency_id"],
+            "lower_grain": "constituency",
+            "leg": "N",
+            "lower_target_ids": ["local"],
+        }
+    ]
+
+    with_bound = pd.concat(
+        [
+            surface,
+            pd.DataFrame(
+                [("constituency", "N2", "bound", 2.0)], columns=surface.columns
+            ),
+        ],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match=r"unparented lower-grain leg\(s\) \['N'\]"):
+        apply_cross_grain_reconciliation(
+            with_bound,
+            ("national",),
+            signatures,
+            _rule(),
+            licensed_empty_legs=licences,
+            frame_only_positions=(2,),
+        )
+    for kwargs in (
+        {"frame_only_positions": (2,)},
+        {"licensed_empty_legs": licences},
+    ):
+        with pytest.raises(ValueError, match="unparented"):
+            apply_cross_grain_reconciliation(
+                surface, ("national",), signatures, _rule(), **kwargs
+            )
 
 
 def test_empty_leg_licensed_for_every_lower_target_is_receipted_and_skipped():

@@ -182,6 +182,13 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1045: the CGT support split's family copy count.
     "household.cgt_support_copies",
     "household.cgt_support_copy_index",
+    # microcosm#1240: the high-value homes support split's family copy count,
+    # index and flag, the CGT split's precedent. The stage's coverage-manifest
+    # outputs; the first dense release build failed this gate on them
+    # (microcosm#1301).
+    "household.high_value_support_copies",
+    "household.high_value_support_copy_index",
+    "household.household_is_high_value_support_copy",
     # #1063: the residential split's arm flag and index.
     "household.household_is_cgt_residential_clone",
     "household.cgt_residential_clone_index",
