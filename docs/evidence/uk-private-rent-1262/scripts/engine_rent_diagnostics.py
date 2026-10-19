@@ -42,7 +42,6 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Iterable, Mapping
-from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -216,6 +215,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     from microcosm.build.uk_runtime.receipt_counts import outside_work_trees
 
     out = outside_work_trees(args.out, what="the engine report")
+    # The report measures the engine the build is pinned to (#1308's freeze),
+    # so it refuses any other policyengine-uk before it reads an H5.
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    engine = assert_installed_engine_is_pinned()
     households = _households(args.h5)
     dataset_year = _dataset_year(args.h5)
     variants: dict[str, Mapping[str, np.ndarray] | None] = {"built": None}
@@ -238,7 +244,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     report: dict[str, Any] = {
         "year": args.year,
         "dataset_year": dataset_year,
-        "engine": f"policyengine-uk {metadata.version('policyengine-uk')}",
+        "engine": f"policyengine-uk {engine}",
         "dwp_source": DWP_SOURCE,
         "disclosure": (
             "Weighted totals, means and shares over Great Britain or a nation; "

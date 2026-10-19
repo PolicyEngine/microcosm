@@ -503,6 +503,27 @@ def test_every_writer_refuses_a_work_tree_before_any_work(tmp_path):
         engine.main(["--h5", str(missing), "--out", str(inside / "engine.json")])
 
 
+def test_the_engine_report_refuses_an_unpinned_engine_before_reading(
+    tmp_path, monkeypatch
+):
+    """#1308's freeze: the report measures the pinned policyengine-uk only."""
+
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    def refuse() -> str:
+        raise RuntimeError("policyengine-uk 0.0 is installed, but the build is pinned")
+
+    monkeypatch.setattr(hmrc_uprating, "assert_installed_engine_is_pinned", refuse)
+    engine = _load_script(
+        "engine_rent_diagnostics",
+        _TEST_PATHS.repository
+        / "docs/evidence/uk-private-rent-1262/scripts/engine_rent_diagnostics.py",
+    )
+    missing = tmp_path / "missing.h5"
+    with pytest.raises(RuntimeError, match="pinned"):
+        engine.main(["--h5", str(missing), "--out", str(tmp_path / "engine.json")])
+
+
 def _synthetic_run(tmp_path):
     """A run directory, its pool table and an empty feed for ``main``.
 

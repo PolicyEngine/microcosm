@@ -55,11 +55,20 @@ def source_household_ids(household: Any, *, stage: str) -> np.ndarray:
     return ids.to_numpy()
 
 
-def distinct_count(source_ids: np.ndarray, mask: np.ndarray) -> int:
-    """The distinct source households behind a cell."""
+def distinct_count(
+    source_ids: np.ndarray, mask: np.ndarray, weights: np.ndarray | None = None
+) -> int:
+    """The distinct source households behind a cell, by the receipts' one rule.
 
-    selected = np.asarray(source_ids)[np.asarray(mask, dtype=bool)]
-    return int(len(np.unique(selected)))
+    The cell's rows are counted as :func:`distinct_carriers` counts them: given
+    ``weights``, a row of zero weight carries nothing (microcosm#1262).
+    """
+
+    selected = np.asarray(mask, dtype=bool)
+    ids = np.asarray(source_ids)[selected]
+    if weights is None:
+        return distinct_carriers(ids)
+    return distinct_carriers(ids, np.asarray(weights, dtype=float)[selected])
 
 
 def rounded_count(count: int) -> int | str:
@@ -160,6 +169,10 @@ def distinct_carriers(
     positive weight. A row of zero weight adds nothing to a figure, so it
     carries none; this is the rule the build's BRMA withholding counts by
     (microcosm#1262). Without ``weights`` every row counts as weighted.
+
+    A missing key (None, NaN, NA or blank text) carries nothing, and a key
+    is read one way however it is spelled, so ``1``, ``1.0`` and ``"1"`` are
+    one household: an over-count is the unsafe direction for a floor.
     """
 
     keys = list(keys)
@@ -168,7 +181,34 @@ def distinct_carriers(
         if len(weights) != len(keys):
             raise ValueError("carrier keys and weights must align.")
         keys = [key for key, weight in zip(keys, weights, strict=True) if weight > 0]
-    return len({str(key) for key in keys if key is not None and str(key) != ""})
+    spelled = (_carrier_key(key) for key in keys)
+    return len({key for key in spelled if key is not None})
+
+
+def _carrier_key(key: object) -> str | None:
+    """A source household key's one spelling, or None for a missing key."""
+
+    if key is None:
+        return None
+    if isinstance(key, str):
+        return key.strip() or None
+    if isinstance(key, (bool, np.bool_)):
+        return str(bool(key))
+    if isinstance(key, (int, np.integer)):
+        return str(int(key))
+    if isinstance(key, (float, np.floating)):
+        value = float(key)
+        if math.isnan(value):
+            return None
+        return str(int(value)) if value.is_integer() else str(value)
+    import pandas as pd
+
+    try:
+        if pd.isna(key) is True:
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(key).strip() or None
 
 
 def outside_work_trees(path: Path | str, *, what: str) -> Path:
