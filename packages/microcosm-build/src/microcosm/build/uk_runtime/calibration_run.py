@@ -341,6 +341,29 @@ def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     return sidecar
 
 
+def _assert_spine_engine_is_pinned(sidecar: Mapping[str, object]) -> None:
+    """Refuse a spine built on a policyengine-uk other than the pinned one.
+
+    The engine freeze holds the build's own engine (microcosm#1095); this
+    holds the spine it binds. A sidecar that records no engine version, or
+    "unavailable" as a synthetic one does, is left to the preflight's stage
+    roster, which already refuses a spine built before the freeze.
+    """
+
+    from microcosm.build.uk_runtime.hmrc_uprating import pinned_engine_version
+
+    recorded = sidecar.get("rules_engine")
+    version = recorded.get("version") if isinstance(recorded, Mapping) else None
+    if version in (None, "", "unavailable"):
+        return
+    pinned = pinned_engine_version()
+    if str(version) != pinned:
+        raise ValueError(
+            f"Spine checkpoint was built on policyengine-uk {version}, but the UK "
+            f"build is pinned to {pinned}: rebuild the spine on the pinned engine."
+        )
+
+
 def load_bound_spine_checkpoint(
     path: Path,
     frame: Frame,
@@ -367,6 +390,7 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    _assert_spine_engine_is_pinned(sidecar)
     recorded = sidecar.get("output")
     if (
         input_sha256 is not None
