@@ -13825,15 +13825,15 @@ def _forwarded_calibration_events(emitter: _TestEmitter) -> list[dict[str, objec
     return [recorded[1] for recorded in emitter.events if recorded[0] == "calibration"]
 
 
-def test_us_build_progress_forwards_every_tenth_and_each_solve_final_calibration_epoch(
+def test_us_build_progress_forwards_each_solve_first_final_and_every_tenth_epoch(
     tmp_path,
 ) -> None:
-    """The US forwards the UK's epochs: every tenth and each solve's last.
+    """The US forwards the UK's epochs: each solve's first and last, every tenth.
 
     The solver reports every epoch (microcosm#1292). An L0 selection and its
     refit are two solves whose epoch counters each restart at 1, so each
-    keeps its own final epoch, and both the hosted emitter and the staging
-    bundle receive the same thinned rows.
+    keeps its own first and final epoch, and both the hosted emitter and the
+    staging bundle receive the same thinned rows.
     """
 
     module = _load_builder_module()
@@ -13860,7 +13860,7 @@ def test_us_build_progress_forwards_every_tenth_and_each_solve_final_calibration
     expected_rows = [
         (phase, epoch, 100.0 / epoch)
         for phase in ("l0_selection", "post_l0_refit")
-        for epoch in (10, 20, 25)
+        for epoch in (1, 10, 20, 25)
     ]
     forwarded = _forwarded_calibration_events(emitter)
     assert [
@@ -13877,15 +13877,74 @@ def test_us_build_progress_forwards_every_tenth_and_each_solve_final_calibration
     assert (latest["epoch"], latest["epochs"], latest["loss"]) == (25, 25, 4.0)
 
 
+@pytest.mark.parametrize("epochs", [10, 5])
+@pytest.mark.parametrize(
+    "solve_phases",
+    [("l0_selection", "post_l0_refit"), ("l0_selection", "exact_k_refit")],
+    ids=["l0_refit", "exact_k_below_the_pool"],
+)
+def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_refit(
+    tmp_path, solve_phases, epochs
+) -> None:
+    """A run no longer than the stride still shows both of its solves.
+
+    With ``--epochs`` of 10 or fewer, no epoch but the last is a multiple of
+    the stride, so without each solve's first epoch an L0 run, or an exact-k
+    run whose k is below the pool, forwarded ``(epochs, epochs)`` twice. The
+    calibration-diagnostics build monitor starts a new solver pass only when
+    the epoch falls or the epoch total changes, so it merged the selection and
+    its refit into one pass with no start time it could back-date
+    (microcosm#1292).
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    run_dir = tmp_path / "stage"
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=run_dir,
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+        epochs=epochs,
+        dense_default_dataset=False,
+    )
+    progress = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=emitter,
+    )
+
+    for phase in solve_phases:
+        for report in _solver_epoch_events(phase, epochs):
+            progress.calibration_progress(report)
+
+    assert [
+        (event["phase"], event["epoch"])
+        for event in _forwarded_calibration_events(emitter)
+    ] == [(phase, epoch) for phase in solve_phases for epoch in (1, epochs)]
+    staged_epochs = [
+        row["epoch"]
+        for row in json.loads((run_dir / "calibration_progress.json").read_text())[
+            "events"
+        ]
+    ]
+    assert staged_epochs == [1, epochs, 1, epochs]
+    refit_first_row = 2
+    assert staged_epochs[refit_first_row] < staged_epochs[refit_first_row - 1]
+
+
 @pytest.mark.parametrize(
     ("epochs", "dense_default_dataset", "expected_stride", "expected_rows"),
     [
         # The default L0 selection and refit: 2 x 1,500 epochs.
-        (1_500, False, 10, 300),
+        (1_500, False, 10, 302),
         # 2 x 15,000 epochs would be 3,000 rows at the base stride.
-        (15_000, False, 13, 2_308),
+        (15_000, False, 13, 2_310),
         # A single dense solve of the same total length.
-        (30_000, True, 13, 2_308),
+        (30_000, True, 13, 2_309),
     ],
 )
 def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
@@ -13893,8 +13952,8 @@ def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
 ) -> None:
     """The stride grows with the run's solves, as the UK's does.
 
-    No run forwards more than the UK's 2,400 rows plus each solve's last
-    epoch, whatever ``--epochs`` says (microcosm#1292).
+    No run forwards more than the UK's 2,400 epochs on the stride plus each
+    solve's first and last epoch, whatever ``--epochs`` says (microcosm#1292).
     """
 
     module = _load_builder_module()
@@ -13923,12 +13982,12 @@ def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
 
     forwarded = _forwarded_calibration_events(emitter)
     assert len(forwarded) == expected_rows
-    assert len(forwarded) <= 2_400 + len(phases)
+    assert len(forwarded) <= 2_400 + 2 * len(phases)
     for phase in phases:
         assert [event["epoch"] for event in forwarded if event["phase"] == phase] == [
             epoch
             for epoch in range(1, epochs + 1)
-            if epoch % expected_stride == 0 or epoch == epochs
+            if epoch == 1 or epoch % expected_stride == 0 or epoch == epochs
         ]
 
 

@@ -367,8 +367,8 @@ def thinned_epochs(
     """Forward the shared rule's calibration epochs to ``sink``.
 
     :func:`~microcosm.build.calibration_epoch_telemetry.forwards_calibration_epoch`
-    selects every ``every``-th epoch and each phase's last epoch, as for every
-    build.
+    selects each phase's first and last epoch and every ``every``-th epoch, as
+    for every build.
 
     The kernel flags probe epochs with ``budget_search: True``; the staging
     contract records that field as an integer or null, so the flag becomes 1

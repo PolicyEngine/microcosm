@@ -11524,8 +11524,9 @@ def _calibration_epoch_every(args: argparse.Namespace) -> int:
 class _BuildProgress:
     """Report progress to an emitter and, independently, a staging bundle.
 
-    Both receive the same calibration epochs: every ``epoch_every``-th epoch
-    and each solve's last, the rule the UK build follows too (microcosm#1292).
+    Both receive the same calibration epochs: each solve's first and last and
+    every ``epoch_every``-th epoch, the rule the UK build follows too
+    (microcosm#1292).
     """
 
     def __init__(
