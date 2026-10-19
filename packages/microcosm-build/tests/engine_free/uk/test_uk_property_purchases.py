@@ -630,11 +630,13 @@ def test_support_copies_band_on_their_sources_in_the_stage_and_the_node() -> Non
         assert kind["fitted_transactions"] == "<10"
 
 
-def test_the_stage_refuses_a_frame_outside_the_mapped_period() -> None:
-    # The 2024-25 Stamp Tax facts are mapped to build period 2024 only.
+@pytest.mark.parametrize("period", ["2023", "2030", "2024-25"])
+def test_the_stage_refuses_a_frame_outside_the_mapped_period(period) -> None:
+    # The 2024-25 Stamp Tax facts are mapped to build period 2024 only: an
+    # earlier or a later year, or a fiscal-year label, is refused by name.
     with pytest.raises(ValueError, match="build period 2024"):
         pp.impute_property_purchases(
-            _frame(time_period="2030"), targets=_frame_targets()
+            _frame(time_period=period), targets=_frame_targets()
         )
 
 

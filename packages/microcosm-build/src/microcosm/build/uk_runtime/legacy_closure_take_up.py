@@ -282,11 +282,13 @@ def assign_uc_claim_at_legacy_closure(
     """Draw ``would_claim_uc_at_legacy_closure`` for every benefit unit."""
 
     validate_uk_national_frame(frame)
-    period = int(uk_time_period(frame))
-    if period != LEGACY_CLOSURE_BUILD_PERIOD:
+    # Compared as the label the frame carries, so that a "2024-25" or a later
+    # year is refused by this message, not by a failed int().
+    period = uk_time_period(frame)
+    if period != str(LEGACY_CLOSURE_BUILD_PERIOD):
         raise ValueError(
             "DWP's Move to UC claim rates are mapped to build period "
-            f"{LEGACY_CLOSURE_BUILD_PERIOD}, but the frame's period is {period}."
+            f"{LEGACY_CLOSURE_BUILD_PERIOD}, but the frame's period is {period!r}."
         )
     person = frame.table("person")
     benunit = frame.table("benunit").copy()

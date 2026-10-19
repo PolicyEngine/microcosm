@@ -823,11 +823,13 @@ def impute_property_purchases(
     """Add both annual purchases at the frame's household weights."""
 
     validate_uk_national_frame(frame)
-    period = int(uk_time_period(frame))
-    if period != PROPERTY_PURCHASES_BUILD_PERIOD:
+    # Compared as the label the frame carries, so that a "2024-25" or a later
+    # year is refused by this message, not by a failed int().
+    period = uk_time_period(frame)
+    if period != str(PROPERTY_PURCHASES_BUILD_PERIOD):
         raise ValueError(
             "The 2024-25 Stamp Tax facts are mapped to build period "
-            f"{PROPERTY_PURCHASES_BUILD_PERIOD}, but the frame's period is {period}."
+            f"{PROPERTY_PURCHASES_BUILD_PERIOD}, but the frame's period is {period!r}."
         )
     household = frame.table("household").copy()
     for kind in PROPERTY_PURCHASE_KINDS:
